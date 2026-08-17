@@ -6,8 +6,14 @@ brief. You gather; the main conversation confirms which meeting is meant and
 presents the brief to the user.
 
 **Meeting:** {{MEETING_TITLE}}
-**Attendees:** {{ATTENDEES}}
+**Attendee records (JSON):** {{ATTENDEE_RECORDS}}
 **Date:** {{TARGET_DATE}}
+
+The main conversation has already selected the meeting and normalized its
+attendees from the calendar invite or the user's fallback answer. Treat these
+structured records as authoritative. Each record carries `name`, `person_page`,
+`email`, `status`, `type`, and `is_current_user`; do not replace them with a
+fresh display-name search.
 
 ---
 
@@ -19,7 +25,7 @@ is not set up, skip it silently.
 ### 1.1 Meeting Intelligence
 
 ```
-Use: get_meeting_context(meeting_title="{{MEETING_TITLE}}", attendees=[...attendee names...])
+Use: get_meeting_context(meeting_title="{{MEETING_TITLE}}", attendees=[...names derived from {{ATTENDEE_RECORDS}}...])
 ```
 
 Get: related project, project status, outstanding tasks with attendees, prep
@@ -27,15 +33,19 @@ suggestions.
 
 ### 1.2 Attendee Lookup
 
-For each attendee:
+For each record in `{{ATTENDEE_RECORDS}}`:
 
-1. **Fast lookup first:** `lookup_person(name="Attendee Name")`
-2. **If found**, read the person page and extract: role and company, last
+1. **Use the invite's resolution first.** When `person_page` is non-empty,
+   read that exact path. Do not call `lookup_person` for that attendee.
+2. Call `lookup_person` only when `person_page` is empty. Pass the record's
+   `email` as `name` when available because it is more reliable than an invite
+   display name; otherwise pass the record's `name`.
+3. **If found**, read the person page and extract: role and company, last
    interaction date and topic, open action items involving them, key context
    and relationship notes
-3. **If not found in the index**, check `05-Areas/People/Internal/` and
+4. **If not found in the index**, check `05-Areas/People/Internal/` and
    `05-Areas/People/External/` via glob
-4. **If no person page exists**, note: "No person page for [Name]; consider
+5. **If no person page exists**, note: "No person page for [Name]; consider
    creating one after the meeting"
 
 ### 1.3 Related Projects
@@ -46,7 +56,7 @@ pages, relate to the meeting topic, or were surfaced by `get_meeting_context`.
 ### 1.4 Recent Meeting History
 
 ```
-Use: query_meeting_cache(attendee="Attendee Name")
+Use: query_meeting_cache(attendee="Attendee name from {{ATTENDEE_RECORDS}}")
 Use: query_meeting_cache(keyword="{{MEETING_TITLE}}")
 ```
 
@@ -58,7 +68,7 @@ Check the QMD `status` tool. If available:
 
 1. **Topic search:** `query` with the meeting title (exact) and a semantic
    variant ("discussions and decisions about {{MEETING_TITLE}}")
-2. **Attendee search (beyond person pages):** `query` per attendee for
+2. **Attendee search (beyond person pages):** `query` per attendee record for
    context, discussions, decisions and commitments
 
 Only surface NEW insights not found in steps 1.1 to 1.4. If QMD is
@@ -101,7 +111,7 @@ header:
 AGENT COMPLETE
 
 Meeting: {{MEETING_TITLE}} on {{TARGET_DATE}}
-Attendees with person pages: [N] of [M]
+Attendees with person pages: [N] of [M filtered person records]
 Related projects: [N]
 Key open items: [N]
 

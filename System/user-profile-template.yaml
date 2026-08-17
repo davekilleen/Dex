@@ -89,7 +89,7 @@ meeting_processing:
   api_provider: gemini
 
 # Where meeting notes come from. Meeting skills consult this before searching.
-# primary: granola | zoom | teams | exported-folder | none
+# primary: granola | zoom | teams | exported-folder | wispr | none
 # notes_folder: vault-relative folder where exported/recorder notes land
 #   (for exported-folder, or a recorder like ClickUp AI dropping notes into the vault)
 meeting_sources:

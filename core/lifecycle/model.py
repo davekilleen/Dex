@@ -10,7 +10,8 @@ from typing import Any, Mapping
 
 from core import portable_contract
 
-CATALOG_VERSION = 1
+CATALOG_VERSION = 2
+SUPPORTED_CATALOG_VERSIONS = frozenset({1, CATALOG_VERSION})
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 FULL_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 ITEM_ID = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
@@ -278,19 +279,25 @@ class ManifestBinding:
 class ReleaseIdentity:
     version: str
     channel: str
-    immutable_distribution_tag: str
     source_commit: str
     manifest: ManifestBinding
+    immutable_distribution_tag: str | None = None
+    immutable_distribution_tag_pattern: str | None = None
 
     @classmethod
-    def from_dict(cls, raw: object) -> "ReleaseIdentity":
+    def from_dict(cls, raw: object, *, catalog_version: int) -> "ReleaseIdentity":
         value = _mapping(raw, "release identity")
+        identity_field = (
+            "immutable_distribution_tag"
+            if catalog_version == 1
+            else "immutable_distribution_tag_pattern"
+        )
         _closed_fields(
             value,
             required={
                 "version",
                 "channel",
-                "immutable_distribution_tag",
+                identity_field,
                 "source_commit",
                 "manifest",
             },
@@ -300,27 +307,48 @@ class ReleaseIdentity:
         channel = _string(value["channel"], "release channel")
         if channel not in ("release", "release-beta"):
             raise _unknown(f"release channel {channel!r} is unsupported")
-        tag = _string(value["immutable_distribution_tag"], "immutable distribution tag")
         commit = _string(value["source_commit"], "release source_commit")
         if FULL_COMMIT.fullmatch(commit) is None:
             raise _unknown("release source_commit must be a full lowercase 40-character git commit")
-        match = TAG.fullmatch(tag)
-        if match is None:
-            raise _unknown("immutable distribution tag does not use the closed dist tag form")
-        if match.group("channel") != channel or match.group("version") != version:
-            raise _unknown("immutable distribution tag disagrees with release channel or version")
-        if not commit.startswith(match.group("short")):
-            raise _unknown("immutable distribution tag disagrees with the source commit")
-        return cls(version, channel, tag, commit, ManifestBinding.from_dict(value["manifest"]))
+        manifest = ManifestBinding.from_dict(value["manifest"])
+        if catalog_version == 1:
+            tag = _string(value[identity_field], "immutable distribution tag")
+            match = TAG.fullmatch(tag)
+            if match is None:
+                raise _unknown("immutable distribution tag does not use the closed dist tag form")
+            if match.group("channel") != channel or match.group("version") != version:
+                raise _unknown("immutable distribution tag disagrees with release channel or version")
+            if not commit.startswith(match.group("short")):
+                raise _unknown("immutable distribution tag disagrees with the source commit")
+            return cls(version, channel, commit, manifest, immutable_distribution_tag=tag)
+        tag_pattern = _string(value[identity_field], "immutable distribution tag pattern")
+        expected_pattern = f"dist/{channel}/v{version}-<release-commit-prefix>"
+        if tag_pattern != expected_pattern:
+            raise _unknown(
+                "immutable distribution tag pattern disagrees with release channel or version"
+            )
+        return cls(
+            version,
+            channel,
+            commit,
+            manifest,
+            immutable_distribution_tag_pattern=tag_pattern,
+        )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "version": self.version,
             "channel": self.channel,
-            "immutable_distribution_tag": self.immutable_distribution_tag,
             "source_commit": self.source_commit,
             "manifest": self.manifest.to_dict(),
         }
+        if self.immutable_distribution_tag is not None:
+            result["immutable_distribution_tag"] = self.immutable_distribution_tag
+        elif self.immutable_distribution_tag_pattern is not None:
+            result["immutable_distribution_tag_pattern"] = self.immutable_distribution_tag_pattern
+        else:
+            raise _unknown("release identity has no immutable distribution tag contract")
+        return result
 
 
 @dataclass(frozen=True)
@@ -401,15 +429,19 @@ class ReleaseCatalog:
             required={"catalog_version", "release", "items", "integrity"},
             context="release catalog",
         )
-        if type(value["catalog_version"]) is not int or value["catalog_version"] != CATALOG_VERSION:
-            raise _unknown(f"catalog_version must be exactly {CATALOG_VERSION}")
+        catalog_version = value["catalog_version"]
+        if type(catalog_version) is not int or catalog_version not in SUPPORTED_CATALOG_VERSIONS:
+            raise _unknown(
+                "catalog_version must be one of "
+                + ", ".join(str(version) for version in sorted(SUPPORTED_CATALOG_VERSIONS))
+            )
         if not isinstance(value["items"], list):
             raise _unknown("release catalog items must be an array")
         items = tuple(CatalogItem.from_dict(entry) for entry in value["items"])
         integrity = CatalogIntegrity.from_dict(value["integrity"])
         catalog = cls(
-            CATALOG_VERSION,
-            ReleaseIdentity.from_dict(value["release"]),
+            catalog_version,
+            ReleaseIdentity.from_dict(value["release"], catalog_version=catalog_version),
             items,
             integrity,
         )

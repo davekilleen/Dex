@@ -19,9 +19,11 @@ import os
 import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core import portable_contract
+from core.analytics_events import RECEIPT_ANALYTICS_EVENT_NAMES
 from core.customization_migration.registration import mcp_registration_snippet
 from core.lifecycle.catalog import load_catalog, load_catalog_payload_sources
 from core.lifecycle.conflict import (
@@ -35,6 +37,7 @@ from core.lifecycle.engine import (
     execute_adoption,
     execute_conflict_resolution,
     execute_topology_migration,
+    recover_committed_adoption_evidence,
     rewind_acknowledgement_token,
     rewind_adoption,
 )
@@ -47,8 +50,9 @@ from core.lifecycle.preview import AdoptionPreview, build_adoption_preview
 from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+from core.utils import automation_ownership
 
-api_version = "1.4.0"
+api_version = "1.5.0"
 
 _CATALOG_RELATIVE = "System/.release-catalog.json"
 _PURPOSE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -57,6 +61,32 @@ _ARCHIVE_RECEIPTS_RELATIVE = "System/.dex/archive-removals"
 _MCP_CONFIG_RELATIVE = ".mcp.json"
 _MCP_REGISTRATION_NAME = "customization-migration-mcp"
 _ONBOARDING_PROFILE_RELATIVE = "System/user-profile.yaml"
+_ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE
+_ANALYTICS_RECEIPT_FIELDS = frozenset({"timestamp", "event", "outcome", "reason"})
+_ANALYTICS_RECEIPT_OUTCOMES = frozenset({"sent", "not_sent"})
+_ANALYTICS_RECEIPT_REASONS = frozenset(
+    {
+        "analytics_disabled",
+        "no_analytics_endpoint",
+        "no_pendo_secret",
+        "requests_not_installed",
+        "sent",
+        "http_error",
+        "invalid_event_name",
+        "request_failed",
+    }
+)
+_ANALYTICS_EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+_MAX_ANALYTICS_RECEIPT_INPUT_BYTES = (
+    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+)
+_MAX_RETAINED_ANALYTICS_RECEIPT_BYTES = (
+    portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
+)
+_ANALYTICS_RECEIPT_APPEND_ATTEMPTS = 2
+_ANALYTICS_RECEIPT_TIMESTAMP = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$"
+)
 _REBUILD_TRANSACTION_PATH = re.compile(
     r"^System/\.dex/customization-migrations/cap-[0-9a-f]{16}/(?:"
     r"receipts/(?:capsule|activation|rewind)\.json|"
@@ -90,6 +120,39 @@ def _transaction_preview_document(
     purpose: str,
     operation: str = "update",
 ) -> dict[str, object]:
+    """Build the historic private service-to-Transaction approval binding."""
+    return _transaction_preview_document_with_bounded_reads(
+        vault_root,
+        plan,
+        purpose=purpose,
+        operation=operation,
+        max_read_bytes_by_relative=_internal_transaction_read_limits(operation),
+    )
+
+
+def _internal_transaction_read_limits(operation: str) -> dict[str, int]:
+    """Return service-owned caps for bounded private runtime files."""
+    if operation == "analytics-receipt":
+        return {
+            _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
+                portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+            )
+        }
+    if operation == "automation-ownership":
+        return {
+            automation_ownership.SIDECAR_RELATIVE: automation_ownership.SIDECAR_MAX_BYTES,
+        }
+    return {}
+
+
+def _transaction_preview_document_with_bounded_reads(
+    vault_root: str | Path,
+    plan: Sequence[PlanEntry],
+    *,
+    purpose: str,
+    operation: str,
+    max_read_bytes_by_relative: Mapping[str, int],
+) -> dict[str, object]:
     """Build the private service-to-Transaction approval binding.
 
     This is deliberately outside the frozen public ABI.  It gives trusted
@@ -101,6 +164,7 @@ def _transaction_preview_document(
     if not plan:
         raise ValueError("transaction preview needs at least one write")
     root = Path(vault_root)
+    read_limits = dict(max_read_bytes_by_relative)
     writes: list[dict[str, object]] = []
     seen: set[str] = set()
     for entry in plan:
@@ -126,7 +190,12 @@ def _transaction_preview_document(
         if target.exists():
             if target.is_symlink() or not target.is_file():
                 raise PlanRejected(f"{entry.relative}: existing target is not a regular file")
-            raw = target.read_bytes()
+            max_bytes = read_limits.get(entry.relative)
+            raw = (
+                bounded_read(root, entry.relative, max_bytes=max_bytes)
+                if max_bytes is not None
+                else target.read_bytes()
+            )
             current = {
                 "exists": True,
                 "sha256": hashlib.sha256(raw).hexdigest(),
@@ -225,8 +294,11 @@ def _execute_approved_transaction(
     )
     tx_root_relative = Path("System/.dex/tx")
     tx_paths_before = _tree_paths(root, tx_root_relative)
-    result = Transaction.begin(root, list(plan), operation=operation).run(
-        before_commit=before_commit
+    result = _run_internal_transaction(
+        root,
+        plan,
+        operation=operation,
+        before_commit=before_commit,
     )
     tx_paths_after = _tree_paths(root, tx_root_relative)
     declared_paths = (
@@ -252,6 +324,210 @@ def _execute_approved_transaction(
             "declared_paths": sorted(declared_paths),
         }
     )
+
+
+def _run_internal_transaction(
+    vault_root: Path,
+    plan: Sequence[PlanEntry],
+    *,
+    operation: str,
+    before_commit: Callable[[], None] | None,
+) -> dict[str, object]:
+    """Run one private transaction while keeping bounded reads off legacy seams."""
+    return Transaction.begin(
+        vault_root,
+        list(plan),
+        operation=operation,
+        max_read_bytes_by_relative=_internal_transaction_read_limits(operation),
+    ).run(before_commit=before_commit)
+
+
+def _validate_analytics_receipt_record(record: object) -> None:
+    """Refuse to append to a receipt that could already contain unsafe data."""
+    if not isinstance(record, dict) or set(record) != _ANALYTICS_RECEIPT_FIELDS:
+        raise PlanRejected("analytics receipt has unsupported fields")
+    timestamp = record.get("timestamp")
+    event = record.get("event")
+    outcome = record.get("outcome")
+    reason = record.get("reason")
+    if not isinstance(timestamp, str) or _ANALYTICS_RECEIPT_TIMESTAMP.fullmatch(timestamp) is None:
+        raise PlanRejected("analytics receipt timestamp is invalid")
+    if (
+        not isinstance(event, str)
+        or _ANALYTICS_EVENT_NAME.fullmatch(event) is None
+        or event not in RECEIPT_ANALYTICS_EVENT_NAMES
+    ):
+        raise PlanRejected("analytics receipt event name is invalid")
+    if outcome not in _ANALYTICS_RECEIPT_OUTCOMES:
+        raise PlanRejected("analytics receipt outcome is invalid")
+    if reason not in _ANALYTICS_RECEIPT_REASONS:
+        raise PlanRejected("analytics receipt reason is invalid")
+
+
+def _analytics_receipt_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build a receipt object only when each JSON field occurs once.
+
+    Python's normal JSON decoder accepts duplicate keys and silently keeps the
+    last value.  That would let an unsafe earlier value remain on disk even
+    though schema validation sees only the safe replacement.
+    """
+    record: dict[str, object] = {}
+    for key, value in pairs:
+        if key in record:
+            raise ValueError("analytics receipt contains duplicate JSON keys")
+        record[key] = value
+    return record
+
+
+def _validated_analytics_receipt_prefix(raw: bytes) -> bytes:
+    """Return only an existing receipt whose every line follows the safe schema."""
+    if not raw:
+        return b""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise PlanRejected("analytics receipt is not UTF-8") from error
+    if not text.endswith("\n"):
+        raise PlanRejected("analytics receipt must end with a newline")
+    for line in text.splitlines():
+        try:
+            record = json.loads(line, object_pairs_hook=_analytics_receipt_json_object)
+        except (json.JSONDecodeError, ValueError) as error:
+            raise PlanRejected("analytics receipt contains invalid JSON") from error
+        _validate_analytics_receipt_record(record)
+    return raw
+
+
+def _retain_newest_analytics_receipt_records(
+    existing: bytes,
+    record: bytes,
+) -> bytes:
+    """Keep a bounded rolling receipt without splitting or skipping records.
+
+    ``existing`` has already been fully validated, including every record that
+    may be dropped.  That makes retention safe: an old malformed or unsafe
+    line fails closed instead of being silently hidden by truncation.
+    """
+    combined = existing + record
+    if len(combined) <= _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES:
+        return combined
+
+    lines = combined.splitlines(keepends=True)
+    retained_size = len(combined)
+    first_retained = 0
+    while retained_size > _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES:
+        retained_size -= len(lines[first_retained])
+        first_retained += 1
+
+    retained = b"".join(lines[first_retained:])
+    if not retained or not retained.endswith(b"\n"):
+        raise PlanRejected("analytics receipt retention must keep complete records")
+    if len(retained) != retained_size:
+        raise PlanRejected("analytics receipt retention size is inconsistent")
+    return retained
+
+
+def _is_stale_analytics_receipt_plan(error: PlanRejected) -> bool:
+    """Recognize only a stale precondition for this one local receipt file."""
+    message = str(error)
+    if message == "transaction approval token does not match the current preview":
+        return True
+    if _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE not in message:
+        return False
+    return any(
+        marker in message
+        for marker in (
+            "changed after the mutation plan was built",
+            "changed after the mutation snapshot",
+            "appeared after the mutation plan was built",
+            "appeared after the mutation snapshot",
+            "appeared in the vault after authorization",
+        )
+    )
+
+
+def _append_analytics_attempt_receipt(
+    vault_root: str | Path,
+    *,
+    event_name: str,
+    outcome: str,
+    reason: str,
+) -> dict[str, object]:
+    """Append one safe analytics-attempt receipt through the transaction core.
+
+    This private service seam is intentionally narrow: it owns the four-field
+    receipt shape and can write only its exact runtime file. It is not part of
+    the frozen public lifecycle API.
+    """
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event_name,
+        "outcome": outcome,
+        "reason": reason,
+    }
+    _validate_analytics_receipt_record(record)
+    record_bytes = _canonical(record)
+    if (
+        len(record_bytes)
+        > portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_RECORD_BYTES
+    ):
+        raise PlanRejected("analytics receipt record exceeds its bounded size")
+
+    root = Path(vault_root)
+    for attempt in range(_ANALYTICS_RECEIPT_APPEND_ATTEMPTS):
+        # Check the entire route before even asking whether the receipt exists:
+        # a user-owned symlinked parent must never be traversed to read it.
+        unsafe_parent = unsafe_existing_parent(root, _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE)
+        if unsafe_parent is not None:
+            raise PlanRejected(f"analytics receipt: {unsafe_parent}")
+        target = root / _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE
+        if target.is_symlink():
+            raise PlanRejected("analytics receipt target must be a regular file")
+        target_exists = target.exists()
+        if target_exists and not target.is_file():
+            raise PlanRejected("analytics receipt target must be a regular file")
+        existing = (
+            bounded_read(
+                root,
+                _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
+                max_bytes=_MAX_ANALYTICS_RECEIPT_INPUT_BYTES,
+            )
+            if target_exists
+            else b""
+        )
+        prefix = _validated_analytics_receipt_prefix(existing)
+        entry = PlanEntry(
+            _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE,
+            _retain_newest_analytics_receipt_records(prefix, record_bytes),
+            mode=0o600,
+            expected_current_sha256=(
+                hashlib.sha256(existing).hexdigest() if target_exists else None
+            ),
+            expected_absent=not target_exists,
+        )
+        plan = [entry]
+        preview = _preview_transaction(
+            root,
+            plan,
+            purpose="analytics-receipt",
+            operation="analytics-receipt",
+        )
+        try:
+            return _execute_approved_transaction(
+                root,
+                plan,
+                purpose="analytics-receipt",
+                operation="analytics-receipt",
+                approved_token=str(preview["approval_token"]),
+            )
+        except PlanRejected as error:
+            if (
+                attempt + 1 < _ANALYTICS_RECEIPT_APPEND_ATTEMPTS
+                and _is_stale_analytics_receipt_plan(error)
+            ):
+                continue
+            raise
+    raise RuntimeError("analytics receipt retry loop ended unexpectedly")
 
 
 def _confirmed_onboarding_context(
@@ -502,6 +778,120 @@ def _pin_missing_companies_default(vault_root: str | Path) -> dict[str, object]:
     return _envelope(pinned=True, receipt=executed["receipt"], states=states)
 
 
+def build_and_preview_automation_claim(
+    vault_root: str | Path,
+    claim: Mapping[str, object],
+) -> dict[str, object]:
+    """Preview Dex Solo claiming one unloaded, plist-bound launchd automation."""
+    try:
+        preview = automation_ownership.build_claim_preview(vault_root, claim)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def _execute_approved_automation_ownership(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    expected = hashlib.sha256(_canonical(preview)).hexdigest()
+    if not isinstance(approved_token, str) or not hmac.compare_digest(
+        approved_token,
+        expected,
+    ):
+        raise PlanRejected("automation ownership approval token does not match preview")
+    try:
+        entry, status = automation_ownership.execution_plan(vault_root, preview)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    claim = preview.get("claim")
+    if not isinstance(claim, Mapping):
+        raise PlanRejected("automation ownership preview claim must be an object")
+    if entry is None:
+        return _envelope(
+            receipt={
+                "operation": preview.get("operation"),
+                "status": status,
+                "automation_id": claim.get("automation_id"),
+                "owner_id": claim.get("owner_id"),
+                "transaction_id": None,
+                "sidecar_sha256": preview.get("next_sidecar_sha256"),
+            }
+        )
+    plan = [entry]
+    internal = _preview_transaction(
+        vault_root,
+        plan,
+        purpose="automation-ownership",
+        operation="automation-ownership",
+    )
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="automation-ownership",
+        operation="automation-ownership",
+        approved_token=str(internal["approval_token"]),
+    )
+    transaction_receipt = executed["receipt"]
+    return _envelope(
+        receipt={
+            "operation": preview.get("operation"),
+            "status": status,
+            "automation_id": claim.get("automation_id"),
+            "owner_id": claim.get("owner_id"),
+            "transaction_id": transaction_receipt["transaction_id"],
+            "sidecar_sha256": preview.get("next_sidecar_sha256"),
+        }
+    )
+
+
+def execute_approved_automation_claim(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Record one exact approved claim through the lifecycle transaction door."""
+    if preview.get("operation") != "claim":
+        raise PlanRejected("automation claim execution requires a claim preview")
+    return _execute_approved_automation_ownership(vault_root, preview, approved_token)
+
+
+def build_and_preview_automation_release(
+    vault_root: str | Path,
+    release: Mapping[str, object],
+) -> dict[str, object]:
+    """Preview release after the Dex Solo scheduler has stopped."""
+    try:
+        preview = automation_ownership.build_release_preview(vault_root, release)
+    except automation_ownership.AutomationOwnershipError as error:
+        raise PlanRejected(str(error)) from error
+    if preview is None:
+        return _envelope(needed=False, preview=None, approval_token=None)
+    return _envelope(
+        needed=True,
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_automation_release(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Record one exact approved release through the lifecycle transaction door."""
+    if preview.get("operation") != "release":
+        raise PlanRejected("automation release execution requires a release preview")
+    return _execute_approved_automation_ownership(vault_root, preview, approved_token)
+
+
 def _inventory_and_plan_models(vault_root: str | Path):
     root = Path(vault_root)
     catalog = load_catalog(root / _CATALOG_RELATIVE, release_root=root)
@@ -534,6 +924,7 @@ def _release_payload_loader(release_root: str | Path):
 def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> None:
     from core.lifecycle.bridge import BridgeActivationError, prepare_vault
 
+    recover_committed_adoption_evidence(Path(vault_root))
     try:
         prepare_vault(vault_root, release_root=release_root)
     except BridgeActivationError:
@@ -1262,6 +1653,10 @@ __all__ = [
     "execute_approved_mcp_registration",
     "build_and_preview_onboarding_context",
     "execute_approved_onboarding_context",
+    "build_and_preview_automation_claim",
+    "execute_approved_automation_claim",
+    "build_and_preview_automation_release",
+    "execute_approved_automation_release",
     "deliver_and_apply_latest_release",
     "build_and_preview_conflict_resolution",
     "execute_approved_conflict_resolution",

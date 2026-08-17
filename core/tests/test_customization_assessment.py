@@ -34,11 +34,11 @@ def _install_verified_catalog(vault: Path) -> None:
     manifest = write_manifest(vault, [SHIPPED_SKILL])
     document = with_catalog_identity(
         {
-            "catalog_version": 1,
+            "catalog_version": 2,
             "release": {
                 "version": "1.73.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.73.0-0123456",
+                "immutable_distribution_tag_pattern": "dist/release/v1.73.0-<release-commit-prefix>",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",

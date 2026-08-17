@@ -14,10 +14,99 @@ import sys
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from core import portable_contract
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_portable_contract_v2_versions_the_new_room_pin_wire_shape() -> None:
+    v1_document = portable_contract.build_contract_document(contract_version=1)
+    v1_schema = portable_contract.build_contract_schema(contract_version=1)
+    v2_document = portable_contract.build_contract_document(contract_version=2)
+    v2_schema = portable_contract.build_contract_schema(contract_version=2)
+
+    assert portable_contract.CONTRACT_VERSION == 2
+    assert v1_schema["$id"] != v2_schema["$id"]
+    Draft202012Validator.check_schema(v1_schema)
+    Draft202012Validator.check_schema(v2_schema)
+    assert list(Draft202012Validator(v1_schema).iter_errors(v1_document)) == []
+    assert list(Draft202012Validator(v2_schema).iter_errors(v2_document)) == []
+
+    # A consumer can distinguish the historical v1 room shape from v2's
+    # release-authoritative skill pins. Neither wire shape masquerades as the
+    # other version.
+    assert list(Draft202012Validator(v2_schema).iter_errors(v1_document))
+    assert list(Draft202012Validator(v1_schema).iter_errors(v2_document))
+    assert all("skill_sources" not in room for room in v1_document["capabilities"].values())
+    assert all("skill_sources" in room for room in v2_document["capabilities"].values())
+
+
+def test_room_upgrade_ledger_preserves_all_published_payload_identities() -> None:
+    expected = {
+        "career-setup": {
+            (
+                "v1.95.2",
+                "12784bb4a2c5bb1edc786226b2e4108a34db85583c9d59ea80b1a941fb6b474c",
+                14824,
+            ),
+            (
+                "v1.70.0",
+                "06bfbd6de60a204449eb793508201431587d7c0b34b57d4b5c4a4421847e1f59",
+                14812,
+            ),
+        },
+        "career-coach": {
+            (
+                "v1.95.2",
+                "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
+                29547,
+            ),
+            (
+                "v1.83.0",
+                "ae9b0e67688e45a8e24233c28781a18a8b527eee0ab49e3999c8a4d5bc1fd26a",
+                29185,
+            ),
+            (
+                "v1.70.0",
+                "0bda287205a5f1674dcaada2f596e61505d63443518cab5dd350b0ec1b2885dd",
+                29179,
+            ),
+        },
+        "resume-builder": {
+            (
+                "v1.95.2",
+                "f759f12154a6b928ad4e16bf2bf82c363d6e9baf9cd9ddfedd639b60fc51d5de",
+                29649,
+            ),
+        },
+        "quarter-plan": {
+            (
+                "v1.95.2",
+                "08679c722b1555563e125a7bbc67ef1ccf1dfa367f522a5eb8565cea77fd937f",
+                9406,
+            ),
+        },
+        "quarter-review": {
+            (
+                "v1.95.2",
+                "069b339f63aa436b8ae01b16d97756b14f003f9069eb10c11827ed9abf5df794",
+                12851,
+            ),
+        },
+    }
+    document = portable_contract.build_contract_document(contract_version=2)
+    observed = {
+        pin["skill"]: {
+            (previous["release"], previous["sha256"], previous["byte_size"]) for previous in pin["previous_payloads"]
+        }
+        for room in document["capabilities"].values()
+        for pin in room["skill_sources"]
+        if pin["previous_payloads"]
+    }
+
+    assert observed == expected
 
 
 def _tracked_paths() -> list[str]:
@@ -34,6 +123,7 @@ def _tracked_paths() -> list[str]:
 # ---------------------------------------------------------------------------
 # Resolution semantics
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     ("path", "ownership", "denied"),
@@ -67,6 +157,7 @@ def _tracked_paths() -> list[str]:
         ("System/.installed-files.manifest", "generated", False),
         ("packages/dex-contracts/dist/paths.contract.json", "generated", False),
         ("System/.dex/gardener.json", "runtime", False),
+        (portable_contract.AUTOMATION_OWNERSHIP_RELATIVE, "runtime", False),
         ("System/.onboarding-session.json", "runtime", False),
         ("System/Session_Learnings/2026-05-01.md", "runtime", False),
     ],
@@ -81,10 +172,7 @@ def test_exact_seed_beats_region_and_specificity_orders_directories() -> None:
     # Exact starter file wins over its vault region.
     assert portable_contract.resolve("03-Tasks/Tasks.md").rule_id == "seed-tasks-file"
     # Shipped system docs are enumerated file-by-file as brain…
-    assert (
-        portable_contract.resolve("06-Resources/Dex_System/README.md").rule_id
-        == "brain-doc-dex-system-readme"
-    )
+    assert portable_contract.resolve("06-Resources/Dex_System/README.md").rule_id == "brain-doc-dex-system-readme"
 
 
 def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
@@ -93,9 +181,7 @@ def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
     resolution = portable_contract.resolve("06-Resources/Dex_System/my-notes.md")
     assert resolution.ownership == "vault"
     assert resolution.rule_id == "vault-resources"
-    verdict = portable_contract.update_write_verdict(
-        "06-Resources/Dex_System/my-notes.md", exists=True
-    )
+    verdict = portable_contract.update_write_verdict("06-Resources/Dex_System/my-notes.md", exists=True)
     assert verdict.allowed is False
 
 
@@ -297,6 +383,73 @@ def test_onboarding_context_operation_only_authorizes_the_live_profile() -> None
     assert refused.action == "outside-onboarding-context"
 
 
+def test_automation_ownership_operation_only_authorizes_its_sidecar() -> None:
+    allowed = portable_contract.update_write_verdict(
+        portable_contract.AUTOMATION_OWNERSHIP_RELATIVE,
+        exists=True,
+        operation="automation-ownership",
+    )
+    refused = portable_contract.update_write_verdict(
+        "System/.dex/ledger/automation.jsonl",
+        exists=False,
+        operation="automation-ownership",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-automation-ownership"
+    assert allowed.rule_id == "runtime-automation-ownership"
+    assert refused.allowed is False
+    assert refused.action == "outside-automation-ownership"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/user-profile.yaml",
+        "System/pillars.yaml",
+        "System/.onboarding-complete",
+        "System/.onboarding-session.json",
+        "CLAUDE.md",
+        ".mcp.json",
+        "core/paths.json",
+        "03-Tasks/Tasks.md",
+        "02-Week_Priorities/Week_Priorities.md",
+        ".claude/skills/career-setup/SKILL.md",
+        "05-Areas/Career/Evidence/README.md",
+    ],
+)
+def test_onboarding_provision_operation_authorizes_only_declared_outputs(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="onboarding-provision",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "write-onboarding-provision"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.onboarding/other.json",
+        "System/credentials/token.json",
+        ".claude/skills/not-a-room-skill/SKILL.md",
+        "05-Areas/Career/private.md",
+        "README.md",
+    ],
+)
+def test_onboarding_provision_operation_refuses_adjacent_and_denied_paths(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="onboarding-provision",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action in {"deny", "outside-onboarding-provision"}
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -325,9 +478,7 @@ def test_customization_migration_hard_deny_survives_unclassified_resolution(
     assert portable_contract.is_denied(path) is True
 
     def unclassified(candidate: str) -> portable_contract.Resolution:
-        raise portable_contract.ContractViolation(
-            f"no ownership rule classifies: {candidate}"
-        )
+        raise portable_contract.ContractViolation(f"no ownership rule classifies: {candidate}")
 
     monkeypatch.setattr(portable_contract, "resolve", unclassified)
     with pytest.raises(portable_contract.ContractViolation):
@@ -406,14 +557,13 @@ def test_traversal_and_empty_paths_are_rejected() -> None:
 def test_unknown_path_raises_and_unclassified_reports_it() -> None:
     with pytest.raises(portable_contract.ContractViolation):
         portable_contract.resolve("totally/unknown/path.xyz")
-    assert portable_contract.unclassified(["totally/unknown/path.xyz"]) == [
-        "totally/unknown/path.xyz"
-    ]
+    assert portable_contract.unclassified(["totally/unknown/path.xyz"]) == ["totally/unknown/path.xyz"]
 
 
 # ---------------------------------------------------------------------------
 # Whole-tree invariants (the gate's substance, asserted directly)
 # ---------------------------------------------------------------------------
+
 
 def test_every_tracked_path_classifies() -> None:
     missing = portable_contract.unclassified(_tracked_paths())
@@ -425,9 +575,7 @@ def test_no_tracked_path_is_release_forbidden() -> None:
 
 
 def test_release_forbidden_flags_vault_and_denied_content() -> None:
-    forbidden = portable_contract.release_forbidden(
-        ["04-Projects/private-notes.md", ".env", "core/utils/doctor.py"]
-    )
+    forbidden = portable_contract.release_forbidden(["04-Projects/private-notes.md", ".env", "core/utils/doctor.py"])
     assert "04-Projects/private-notes.md" in forbidden
     assert ".env" in forbidden
     assert "core/utils/doctor.py" not in forbidden
@@ -436,9 +584,7 @@ def test_release_forbidden_flags_vault_and_denied_content() -> None:
 def test_capability_rooms_cover_gated_regions() -> None:
     capabilities = portable_contract.CAPABILITIES
     assert set(capabilities) == {"career", "companies", "quarter_goals"}
-    gated_folders = {
-        folder for spec in capabilities.values() for folder in spec["folders"]
-    }
+    gated_folders = {folder for spec in capabilities.values() for folder in spec["folders"]}
     assert gated_folders == {
         "05-Areas/Career",
         "05-Areas/Companies",
@@ -455,13 +601,11 @@ def test_capability_rooms_cover_gated_regions() -> None:
 
 def test_committed_dist_matches_source_of_truth() -> None:
     committed = json.loads(
-        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json")
-        .read_text(encoding="utf-8")
+        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.contract.json").read_text(encoding="utf-8")
     )
     assert committed == portable_contract.build_contract_document()
     committed_schema = json.loads(
-        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.schema.json")
-        .read_text(encoding="utf-8")
+        (REPO_ROOT / "packages/dex-contracts/dist/portable-vault.schema.json").read_text(encoding="utf-8")
     )
     assert committed_schema == portable_contract.build_contract_schema()
 
@@ -469,9 +613,7 @@ def test_committed_dist_matches_source_of_truth() -> None:
 def test_rule_ids_are_unique_and_document_is_deterministic() -> None:
     ids = [rule.rule_id for rule in portable_contract.RULES]
     assert len(ids) == len(set(ids))
-    assert portable_contract.build_contract_document() == (
-        portable_contract.build_contract_document()
-    )
+    assert portable_contract.build_contract_document() == (portable_contract.build_contract_document())
 
 
 def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
@@ -485,6 +627,7 @@ def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
 # ---------------------------------------------------------------------------
 # The gate script: red-when-removed proofs in an isolated fixture repo
 # ---------------------------------------------------------------------------
+
 
 def _gate_fixture(tmp_path: Path) -> Path:
     """A minimal repo the real gate script runs against."""
@@ -507,13 +650,9 @@ def _gate_fixture(tmp_path: Path) -> Path:
     dist = root / "packages/dex-contracts/dist"
     dist.mkdir(parents=True)
     for name in ("portable-vault.contract.json", "portable-vault.schema.json"):
-        (dist / name).write_bytes(
-            (REPO_ROOT / "packages/dex-contracts/dist" / name).read_bytes()
-        )
+        (dist / name).write_bytes((REPO_ROOT / "packages/dex-contracts/dist" / name).read_bytes())
     subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "fixture"], cwd=root, check=True, capture_output=True
-    )
+    subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=root, check=True, capture_output=True)
     return root
 
 

@@ -50,11 +50,11 @@ def lifecycle_catalog_document(version: str, manifest_bytes: bytes) -> dict[str,
     """Build a minimal schema-valid catalog binding ``manifest_bytes`` for ``version``."""
     return with_catalog_identity(
         {
-            "catalog_version": 1,
+            "catalog_version": 2,
             "release": {
                 "version": version,
                 "channel": "release",
-                "immutable_distribution_tag": f"dist/release/v{version}-0123456",
+                "immutable_distribution_tag_pattern": f"dist/release/v{version}-<release-commit-prefix>",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",
@@ -87,11 +87,11 @@ def catalog_for(manifest_bytes: bytes, expected: dict[str, bytes]) -> ReleaseCat
     ]
     return ReleaseCatalog.from_dict(
         {
-            "catalog_version": 1,
+            "catalog_version": 2,
             "release": {
                 "version": "1.64.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
+                "immutable_distribution_tag_pattern": "dist/release/v1.64.0-<release-commit-prefix>",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",

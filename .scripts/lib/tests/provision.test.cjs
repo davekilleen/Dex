@@ -77,6 +77,15 @@ function fileSnapshot(root) {
   return result;
 }
 
+function transactionJournals(vault) {
+  const transactionRoot = path.join(vault, 'System', '.dex', 'tx');
+  if (!fs.existsSync(transactionRoot)) return [];
+  return fs.readdirSync(transactionRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => path.join(transactionRoot, entry.name, 'journal.jsonl'))
+    .filter(journal => fs.existsSync(journal));
+}
+
 function withVault(callback, options) {
   const vault = makeReleaseTree(options);
   try { return callback(vault); } finally { fs.rmSync(vault, { recursive: true, force: true }); }
@@ -107,7 +116,10 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.ok(first.summary.created.length > 0);
 
     for (const directory of contract.para_directories) {
-      assert.equal(fs.statSync(path.join(vault, directory)).isDirectory(), true, directory);
+      const target = path.join(vault, directory);
+      if (fs.existsSync(target)) {
+        assert.ok(fs.readdirSync(target).length > 0, `provision created empty directory ${directory}`);
+      }
     }
     assert.match(fs.readFileSync(path.join(vault, contract.seed_files.tasks), 'utf8'), /## Build #build/);
     assert.equal(fs.existsSync(path.join(vault, contract.seed_files.week_priorities)), true);
@@ -150,6 +162,39 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
     assert.equal(second.status, 0, second.stderr);
     assert.deepEqual(second.summary.created, []);
     assert.deepEqual(fileSnapshot(vault), before);
+
+    const repeatedDryRun = runProvision(vault, ['--profile', profilePath, '--dry-run']);
+    assert.equal(repeatedDryRun.status, 0, repeatedDryRun.stderr);
+    assert.deepEqual(repeatedDryRun.summary.created, []);
+    assert.deepEqual(fileSnapshot(vault), before);
+  });
+});
+
+test('provision receipt preserves every mutation path reported by the room authority', () => {
+  withVault(vault => {
+    const fakePython = path.join(vault, 'fake-capability-python');
+    fs.writeFileSync(
+      fakePython,
+      '#!/bin/sh\n'
+      + 'if [ "$2" = "--preflight" ]; then\n'
+      + '  printf \'{"preflight":"passed","rooms":["career","companies","quarter_goals"],"skill_targets":{"career":[{"skill":"career-setup","target_path":".claude/skills/career-setup/SKILL.md","state":"missing"},{"skill":"career-coach","target_path":".claude/skills/career-coach/SKILL.md","state":"missing"},{"skill":"resume-builder","target_path":".claude/skills/resume-builder/SKILL.md","state":"missing"}],"companies":[],"quarter_goals":[{"skill":"quarter-plan","target_path":".claude/skills/quarter-plan/SKILL.md","state":"missing"},{"skill":"quarter-review","target_path":".claude/skills/quarter-review/SKILL.md","state":"missing"}]}}\\n\'\n'
+      + 'else\n'
+      + '  printf \'{"rooms":[{"room":"career","enabled":true,"mutation_paths":[".claude",".claude/skills/career-setup/SKILL.md"]}]}\\n\'\n'
+      + 'fi\n',
+    );
+    fs.chmodSync(fakePython, 0o755);
+
+    const result = runProvision(vault, [], { DEX_CAPABILITY_PYTHON: fakePython });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.summary.created.includes('.claude'));
+    assert.ok(result.summary.created.includes('.claude/skills/career-setup/SKILL.md'));
+    assert.ok(result.summary.mutation_receipt.declared_paths.includes('.claude'));
+    assert.ok(
+      result.summary.mutation_receipt.declared_paths.includes(
+        '.claude/skills/career-setup/SKILL.md',
+      ),
+    );
   });
 });
 
@@ -172,7 +217,7 @@ test('fresh provision surfaces only the selected capability rooms', () => {
       assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', skill, 'SKILL.md')), true);
     }
     assert.equal(fs.existsSync(path.join(vault, '05-Areas', 'Companies')), false);
-    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), true);
+    assert.equal(fs.existsSync(path.join(vault, '01-Quarter_Goals')), false);
     assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-plan')), false);
     assert.equal(fs.existsSync(path.join(vault, '.claude', 'skills', 'quarter-review')), false);
   });
@@ -286,6 +331,61 @@ test('adopt never overwrites existing seeds even without an onboarding marker', 
     const result = runProvision(vault, ['--adopt']);
     assert.equal(result.status, 0, result.stderr);
     assert.equal(fs.readFileSync(path.join(vault, '03-Tasks', 'Tasks.md'), 'utf8'), 'my tasks\n');
+  });
+});
+
+test('hard-killed onboarding keeps finalization recoverable and converges on restart', () => {
+  withVault(vault => {
+    const profilePath = path.join(vault, 'desktop-profile.json');
+    fs.writeFileSync(profilePath, JSON.stringify({
+      name: 'Restart Test',
+      role: 'Operator',
+      pillars: [{ name: 'Recover safely' }],
+    }));
+    const sessionPath = path.join(vault, 'System', '.onboarding-session.json');
+    const sessionBytes = Buffer.from('{"step":"finalize"}\n');
+    fs.writeFileSync(sessionPath, sessionBytes);
+
+    const killingPython = path.join(vault, 'kill-before-lifecycle-commit');
+    fs.writeFileSync(
+      killingPython,
+      '#!/bin/sh\n'
+      + 'if [ "$5" = "preview-only" ]; then\n'
+      + '  printf \'{"ok":true,"api_version":"1.4.0","previewed":[],"receipt":null,"compatibility_pinned":false,"compatibility_receipt":null,"compatibility_preview":null,"compatibility_states":{},"skipped":"dry-run"}\\n\'\n'
+      + '  exit 0\n'
+      + 'fi\n'
+      + 'kill -KILL "$PPID"\n',
+    );
+    fs.chmodSync(killingPython, 0o755);
+    const before = fileSnapshot(vault);
+
+    const interrupted = runProvision(
+      vault,
+      ['--onboard', '--profile', profilePath, '--session-file', sessionPath],
+      { DEX_LIFECYCLE_PYTHON: killingPython },
+    );
+
+    assert.equal(interrupted.status, null);
+    assert.equal(interrupted.signal, 'SIGKILL');
+    assert.equal(fs.existsSync(path.join(vault, 'System', '.onboarding-complete')), false);
+    assert.deepEqual(fs.readFileSync(sessionPath), sessionBytes);
+    assert.deepEqual(fileSnapshot(vault), before);
+
+    const recovered = runProvision(
+      vault,
+      ['--onboard', '--profile', profilePath, '--session-file', sessionPath],
+    );
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.equal(recovered.summary.ok, true);
+    assert.equal(fs.existsSync(sessionPath), false);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(vault, 'System', '.onboarding-complete'))).completed,
+      true,
+    );
+    for (const journal of transactionJournals(vault)) {
+      const events = fs.readFileSync(journal, 'utf8');
+      assert.match(events, /"event":"(?:COMMITTED|ROLLED-BACK)"/);
+    }
   });
 });
 

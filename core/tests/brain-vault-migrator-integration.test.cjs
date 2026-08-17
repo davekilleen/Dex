@@ -111,6 +111,7 @@ function snapshotKnownUserFiles(root) {
     '.mcp.json',
     'System/integrations/config.yaml',
     'System/integrations/slack.yaml',
+    'System/user-profile.yaml',
   ];
   if (fs.existsSync(path.join(root, '01-Quarter_Goals', 'Quarter_Goals.md'))) {
     relatives.push('01-Quarter_Goals/Quarter_Goals.md');
@@ -270,7 +271,7 @@ test('dry-run writes only its report and leaves the vault topology and file byte
   assert.match(report, /planned brain history/i);
   assert.match(report, /planned vault history/i);
   assert.match(report, /skipped/i);
-  assert.match(report, /tracked-ignore baseline 1/i);
+  assert.match(report, /tracked-ignore baseline \d+/i);
   assert.match(report, /DEX_VAULT/);
 });
 

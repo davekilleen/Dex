@@ -14,9 +14,18 @@ from typing import Mapping
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
 from core.lifecycle.model import CatalogError, CatalogModelError, ReleaseCatalog
 
-SCHEMA_PATH = Path(__file__).with_name("schemas") / "release-catalog-v1.schema.json"
+SCHEMA_DIRECTORY = Path(__file__).with_name("schemas")
+SCHEMA_PATHS = {
+    1: SCHEMA_DIRECTORY / "release-catalog-v1.schema.json",
+    2: SCHEMA_DIRECTORY / "release-catalog-v2.schema.json",
+}
+SCHEMA_PATH = SCHEMA_PATHS[1]
 SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
-SCHEMA_ID = "https://dex/contracts/release-catalog-v1.schema.json"
+SCHEMA_IDS = {
+    1: "https://dex/contracts/release-catalog-v1.schema.json",
+    2: "https://dex/contracts/release-catalog-v2.schema.json",
+}
+SCHEMA_ID = SCHEMA_IDS[1]
 CATALOG_SOURCE_DIR = Path("core/lifecycle/catalog")
 BRIDGE_SOURCE_NAME = "bridge-release.json"
 MAX_CATALOG_SOURCE_BYTES = 4 * 1024 * 1024
@@ -162,7 +171,9 @@ def _validate_schema_node(value: object, schema: object, location: str) -> None:
                 _validate_schema_node(child, additional, f"{location}.{field}")
 
 
-def load_catalog_schema(schema_path: Path = SCHEMA_PATH) -> dict[str, object]:
+def load_catalog_schema(
+    schema_path: Path = SCHEMA_PATH, *, expected_id: str = SCHEMA_ID
+) -> dict[str, object]:
     try:
         text = Path(schema_path).read_text(encoding="utf-8")
     except OSError as error:
@@ -170,16 +181,24 @@ def load_catalog_schema(schema_path: Path = SCHEMA_PATH) -> dict[str, object]:
     raw = _strict_json_loads(text, error_type=CatalogSchemaError, context="catalog schema")
     if not isinstance(raw, dict):
         _fail(CatalogSchemaError, "catalog schema root is not an object")
-    if raw.get("$schema") != SCHEMA_DRAFT or raw.get("$id") != SCHEMA_ID:
+    if raw.get("$schema") != SCHEMA_DRAFT or raw.get("$id") != expected_id:
         _fail(CatalogSchemaError, "catalog schema identity or draft is unknown")
     return raw
 
 
-def validate_catalog_document(
-    document: object, *, schema_path: Path = SCHEMA_PATH
-) -> None:
+def validate_catalog_document(document: object, *, schema_path: Path | None = None) -> None:
     """Validate a JSON-like value against the committed schema using stdlib."""
-    _validate_schema_node(document, load_catalog_schema(schema_path), "catalog")
+    if not isinstance(document, Mapping):
+        _fail(CatalogSchemaError, "catalog must be an object")
+    catalog_version = document.get("catalog_version")
+    if type(catalog_version) is not int or catalog_version not in SCHEMA_PATHS:
+        _fail(CatalogSchemaError, "catalog_version is unsupported")
+    selected = schema_path or SCHEMA_PATHS[catalog_version]
+    _validate_schema_node(
+        document,
+        load_catalog_schema(selected, expected_id=SCHEMA_IDS[catalog_version]),
+        "catalog",
+    )
 
 
 def _canonical_bytes(value: object) -> bytes:

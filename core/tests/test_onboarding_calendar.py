@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 from core.mcp import calendar_server, onboarding_server
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _decode_tool_result(result):
@@ -24,6 +27,19 @@ def onboarding_vault(tmp_path, monkeypatch) -> Path:
     vault = tmp_path / "vault"
     system_dir = vault / "System"
     system_dir.mkdir(parents=True)
+    shutil.copy(
+        REPO_ROOT / "System/.mcp.json.example",
+        system_dir / ".mcp.json.example",
+    )
+    shutil.copy(
+        REPO_ROOT / "System/user-profile-template.yaml",
+        system_dir / "user-profile-template.yaml",
+    )
+    (vault / "core").mkdir()
+    shutil.copy(REPO_ROOT / "core/paths.py", vault / "core/paths.py")
+    (vault / ".scripts").mkdir()
+    shutil.copy(REPO_ROOT / "package.json", vault / "package.json")
+    shutil.copy(REPO_ROOT / "CLAUDE.md", vault / "CLAUDE.md")
 
     monkeypatch.setattr(onboarding_server, "BASE_DIR", vault)
     monkeypatch.setattr(

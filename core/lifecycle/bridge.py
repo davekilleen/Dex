@@ -24,7 +24,7 @@ ACTIVATION_VERSION = 1
 BRIDGE_RELEASE_RELATIVE = Path("core/lifecycle/catalog/bridge-release.json")
 ACTIVATION_RELATIVE = Path("System/.dex/lifecycle/activation.json")
 CATALOG_RELATIVE = Path("System/.release-catalog.json")
-COMPATIBLE_ACTIVATION_API_VERSIONS = frozenset({"1.2.0", "1.3.0"})
+COMPATIBLE_ACTIVATION_API_VERSIONS = frozenset({"1.2.0", "1.3.0", "1.4.0"})
 
 
 class BridgeError(RuntimeError):

@@ -37,10 +37,18 @@ from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
 from core.transaction.journal import Journal, JournalCorruptError
-from core.utils import dex_logger, launch_agents, preflight, release_channel
+from core.utils import (
+    apple_mail_health,
+    automation_ownership,
+    dex_logger,
+    launch_agents,
+    preflight,
+    release_channel,
+)
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+QMD_STATUS_TIMEOUT_SECONDS = 10
 MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
@@ -675,16 +683,22 @@ def _sentence(value: object) -> str:
 
 
 def _actionable_probe_error(error: Exception) -> str:
-    detail = _one_line(error)
-    if _is_missing_package_error(error, detail):
-        return MISSING_PACKAGES_DETAIL
-    return detail
+    missing_module_detail = _missing_module_detail(error)
+    return missing_module_detail or _one_line(error)
 
 
-def _is_missing_package_error(value: object, detail: str | None = None) -> bool:
-    rendered = detail or _one_line(value)
-    return isinstance(value, ModuleNotFoundError) or any(
-        marker in rendered for marker in ("ModuleNotFoundError", "No module named")
+def _missing_module_detail(value: object) -> str | None:
+    module = dex_logger.missing_module_name(value)
+    if module is None:
+        return MISSING_PACKAGES_DETAIL if isinstance(value, ModuleNotFoundError) else None
+    if dex_logger.is_dex_module(module):
+        return (
+            f"Dex's own code could not be loaded (missing module {module!r}). "
+            "This is a Dex checkup fault, not a missing Python package."
+        )
+    return (
+        f"Python packages not installed (missing module {module!r}) — run /dex-update "
+        "(or pip install -r requirements.txt) then re-run /dex-doctor"
     )
 
 
@@ -1031,11 +1045,26 @@ def collect(
                 result = ProbeResult(
                     "UNKNOWN",
                     error_text
-                    if error_text == MISSING_PACKAGES_DETAIL
+                    if _missing_module_detail(error) is not None
                     else f"The {definition.feature} probe could not run: {error_text}",
                 )
-            if result.verdict == "UNKNOWN" and _is_missing_package_error(result.detail):
-                result = ProbeResult("UNKNOWN", MISSING_PACKAGES_DETAIL, result.heal)
+            missing_module = dex_logger.missing_module_name(result.detail)
+            missing_detail = _missing_module_detail(result.detail)
+            truthful_missing_diagnosis = bool(
+                missing_module
+                and (
+                    (
+                        dex_logger.is_dex_module(missing_module)
+                        and "Dex checkup fault" in result.detail
+                    )
+                    or (
+                        not dex_logger.is_dex_module(missing_module)
+                        and f"missing module {missing_module!r}" in result.detail
+                    )
+                )
+            )
+            if result.verdict == "UNKNOWN" and missing_detail and not truthful_missing_diagnosis:
+                result = ProbeResult("UNKNOWN", missing_detail, result.heal)
             check_actions = t1_actions.get(definition.id, [])
             if definition.id == "vault.structure" and check_actions:
                 action = "; ".join(check_actions) + "."
@@ -2543,11 +2572,13 @@ def _launchctl_status(label: str) -> dict[str, int | bool | None]:
     if result.returncode != 0:
         if _looks_like_sandbox_failure(combined):
             raise PermissionError(combined)
-        return {"loaded": False, "last_exit_status": None}
-    match = re.search(r"LastExitStatus\D+(-?\d+)", result.stdout)
+        return {"loaded": False, "pid": None, "last_exit_status": None}
+    pid_match = re.search(r"\bPID\D+(\d+)", result.stdout)
+    exit_match = re.search(r"LastExitStatus\D+(-?\d+)", result.stdout)
     return {
         "loaded": True,
-        "last_exit_status": int(match.group(1)) if match else None,
+        "pid": int(pid_match.group(1)) if pid_match else None,
+        "last_exit_status": int(exit_match.group(1)) if exit_match else None,
     }
 
 
@@ -2562,6 +2593,7 @@ def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
 
 
 _OWNED = "owned"
+_OFFLOADED = "offloaded"
 _STALE = "stale"
 _FOREIGN = "foreign"
 _UNREADABLE = "unreadable"
@@ -2572,7 +2604,7 @@ class LaunchAgentRecord:
     """One launch agent's classification, computed once per doctor run."""
 
     plist: Path
-    classification: str  # "owned" | "stale" | "foreign" | "unreadable"
+    classification: str  # "owned" | "offloaded" | "stale" | "foreign" | "unreadable"
     label: str
     data: dict[str, Any] | None = None
     error_detail: str | None = None  # unreadable only
@@ -2603,7 +2635,28 @@ def _classify_launch_agents(context: DoctorContext) -> LaunchAgentScan:
     except (OSError, RuntimeError):
         vault_root = context.vault_root
     records: list[LaunchAgentRecord] = []
+    offloaded = {
+        claim["plist_relative_path"]: claim
+        for claim in automation_ownership.valid_claims(
+            context.vault_root,
+            home_root=context.home,
+        )
+    }
     for plist, dex_named in _installed_launch_agents(context):
+        try:
+            plist_relative = plist.relative_to(context.home).as_posix()
+        except ValueError:
+            plist_relative = ""
+        offloaded_claim = offloaded.get(plist_relative)
+        if offloaded_claim is not None:
+            records.append(
+                LaunchAgentRecord(
+                    plist=plist,
+                    classification=_OFFLOADED,
+                    label=offloaded_claim["automation_id"],
+                )
+            )
+            continue
         try:
             data = _plist_data(plist)
         except PermissionError:
@@ -2693,9 +2746,13 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     unknowns = []
     runtime_labels = []
     skipped_count = 0
+    offloaded_count = 0
     owned_count = 0
     stale_count = 0
     for record in scan.records:
+        if record.classification == _OFFLOADED:
+            offloaded_count += 1
+            continue
         if record.classification == _UNREADABLE:
             # A corrupt plist could belong to this vault, but a filename alone
             # cannot establish that safely. Surface the uncertainty instead of
@@ -2762,16 +2819,28 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
                     continue
                 if not status["loaded"]:
                     issues.append((2, f"{label} is installed but not loaded"))
+                elif isinstance(status.get("pid"), int) and status["pid"] > 0:
+                    # LastExitStatus describes the previous process. A live PID
+                    # is the current state and must win over stale history.
+                    continue
                 elif status["last_exit_status"] is None:
                     unknowns.append(f"{label} is loaded but has no observable LastExitStatus")
                 elif status["last_exit_status"] != 0:
                     issues.append((2, f"{label} last exited with status {status['last_exit_status']}"))
+    offloaded_note = (
+        f"{offloaded_count} launch agent{' is' if offloaded_count == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded_count
+        else ""
+    )
     if not owned_count and not issues:
         if unknowns:
             return ProbeResult(
                 "UNKNOWN",
                 _with_skipped_launch_agents("; ".join(unknowns), skipped_count),
             )
+        if offloaded_note:
+            return ProbeResult("OK", _with_skipped_launch_agents(offloaded_note, skipped_count))
         return ProbeResult(
             "OFF",
             _with_skipped_launch_agents("No launch agents for this vault are installed", skipped_count),
@@ -2791,6 +2860,8 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
         if sum(1 for issue_tier, _detail in issues if issue_tier == 2) > stale_count:
             action_parts.append("repair or reload the named launch agent only after explicit approval")
         detail_parts = [detail for _tier, detail in issues]
+        if offloaded_note:
+            detail_parts.append(offloaded_note)
         detail_parts.extend(unknowns)
         return ProbeResult(
             "BROKEN",
@@ -2805,7 +2876,14 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_skipped_launch_agents(
-            f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+            "; ".join(
+                part
+                for part in (
+                    f"All {owned_count} installed launch agents for this vault are loaded with valid interpreters",
+                    offloaded_note,
+                )
+                if part
+            ),
             skipped_count,
         ),
     )
@@ -2840,6 +2918,15 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     installed = sorted(
         {record.label for record in scan.records if record.classification == _OWNED}
     )
+    offloaded = sorted(
+        {record.label for record in scan.records if record.classification == _OFFLOADED}
+    )
+    offloaded_note = (
+        f"{len(offloaded)} launch agent{' is' if len(offloaded) == 1 else 's are'} "
+        "owned by Dex Solo and offloaded from Core"
+        if offloaded
+        else ""
+    )
     monitored = []
     monitored_ids = set()
     unregistered = []
@@ -2872,7 +2959,8 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
         if unknowns:
             return ProbeResult("UNKNOWN", _with_coverage_note("; ".join(unknowns)))
         return ProbeResult(
-            "OFF", _with_coverage_note("No shipped Dex freshness jobs are installed")
+            "OFF",
+            _with_coverage_note(offloaded_note or "No shipped Dex freshness jobs are installed"),
         )
 
     stale = []
@@ -2891,7 +2979,14 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         _with_coverage_note(
-            f"All {len(monitored)} installed job promises are within their promised cadence"
+            "; ".join(
+                part
+                for part in (
+                    f"All {len(monitored)} installed job promises are within their promised cadence",
+                    offloaded_note,
+                )
+                if part
+            )
         ),
     )
 
@@ -4720,7 +4815,7 @@ def _probe_pipedrive_connection(context: DoctorContext) -> ProbeResult:
     means "the stored token actually works" and not merely "the settings parse".
     """
     try:
-        from core.mcp import pipedrive_server
+        from core.integrations.pipedrive import pipedrive_server
     except Exception as error:  # pragma: no cover - import guard
         detail = _one_line(error)
         if _looks_like_sandbox_failure(detail):
@@ -4983,156 +5078,32 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
 
 
-APPLE_MAIL_INDEX_STALE_AFTER = timedelta(days=7)
-APPLE_MAIL_INDEX_FIX = (
-    "Run `apple-mail-mcp index` in Terminal. It needs Full Disk Access: "
-    "System Settings > Privacy & Security > Full Disk Access, add Terminal, then re-run the command."
-)
-
-
-def _apple_mail_user_scope_config(context: DoctorContext) -> dict[str, Any]:
-    """Read the user-scope MCP registrations Dex's own hook steers people towards."""
-    user_config = context.home / ".claude.json"
-    try:
-        loaded = json.loads(user_config.read_text())
-    except (FileNotFoundError, ValueError, OSError):
-        return {}
-    if not isinstance(loaded, dict):
-        return {}
-    servers = loaded.get("mcpServers")
-    return servers if isinstance(servers, dict) else {}
-
-
-def _apple_mail_registered(context: DoctorContext) -> bool:
-    """An Apple Mail server counts whether it is registered at user or project scope."""
-    entries: dict[str, Any] = dict(_apple_mail_user_scope_config(context))
-    try:
-        entries.update(_load_mcp_config(context).get("mcpServers", {}))
-    except (FileNotFoundError, ValueError, OSError):
-        pass
-    for name, entry in entries.items():
-        if "apple-mail" in name.lower().replace("_", "-"):
-            return True
-        if not isinstance(entry, dict):
-            continue
-        tokens = [str(entry.get("command", ""))]
-        tokens.extend(str(argument) for argument in entry.get("args", []) if isinstance(argument, str))
-        if any("apple-mail-mcp" in token for token in tokens):
-            return True
-    return False
-
-
-def _apple_mail_index_path(context: DoctorContext) -> Path:
-    return context.home / ".apple-mail-mcp" / "index.db"
-
-
 def _apple_mail_cli_present() -> bool:
     return shutil.which("apple-mail-mcp") is not None
 
 
 def _probe_apple_mail_search(context: DoctorContext) -> ProbeResult:
-    """Tell the truth about Apple Mail search instead of letting it fail silently.
-
-    The community server's list/read tools work on Automation permission alone, so the
-    integration looks healthy while its search tool returns empty every time because the
-    FTS index was never built (that needs a manual run plus Full Disk Access).
-    """
-    if not _apple_mail_registered(context):
-        return ProbeResult(
-            "OFF",
-            "Apple Mail search is not connected, so it stays opt-in",
-            feature_status="off",
+    """Adapt the focused Apple Mail checker to Doctor's normalized result."""
+    result = apple_mail_health.probe(
+        apple_mail_health.Context(
+            home=context.home,
+            vault_root=context.vault_root,
+            now=context.now,
+            user_config_path=context.home / ".claude.json",
+            project_config_path=_mcp_config_path(context),
+            environment=os.environ,
+            macos=_is_macos(),
+            cli_present=_apple_mail_cli_present(),
         )
-    if not _is_macos():
-        return ProbeResult(
-            "UNKNOWN",
-            "An Apple Mail server is registered but its index can only be checked on macOS",
-            feature_status="unknown",
-        )
-    if not _apple_mail_cli_present():
-        return ProbeResult(
-            "BROKEN",
-            "An Apple Mail server is registered but the apple-mail-mcp command is not installed, "
-            "so mail search cannot work",
-            Heal(
-                tier=3,
-                action="Install the server with `pipx install apple-mail-mcp`, then run /apple-mail-setup.",
-                applied=False,
-            ),
-            feature_status="broken",
-            user_message=(
-                "Mail search is registered but the apple-mail-mcp command is missing. "
-                "Install it with `pipx install apple-mail-mcp`, then run /apple-mail-setup."
-            ),
-        )
-
-    index = _apple_mail_index_path(context)
-    try:
-        stat = index.stat()
-    except FileNotFoundError:
-        return ProbeResult(
-            "BROKEN",
-            "Apple Mail search has no index, so every mail search returns nothing "
-            f"(expected {index})",
-            Heal(tier=3, action=APPLE_MAIL_INDEX_FIX, applied=False),
-            feature_status="broken",
-            user_message=(
-                "Mail search has never been built, so it silently returns nothing. "
-                + APPLE_MAIL_INDEX_FIX
-            ),
-        )
-    except OSError as error:
-        detail = _one_line(error)
-        if _looks_like_sandbox_failure(detail):
-            return ProbeResult(
-                "UNKNOWN",
-                f"The sandbox blocked the Apple Mail index check: {detail}",
-                feature_status="unknown",
-            )
-        return ProbeResult(
-            "UNKNOWN",
-            f"The Apple Mail index could not be read: {detail}",
-            feature_status="unknown",
-        )
-
-    if stat.st_size == 0:
-        return ProbeResult(
-            "BROKEN",
-            f"The Apple Mail search index at {index} is empty, so every mail search returns nothing",
-            Heal(tier=3, action=APPLE_MAIL_INDEX_FIX, applied=False),
-            feature_status="broken",
-            user_message="Mail search's index is empty, so it returns nothing. " + APPLE_MAIL_INDEX_FIX,
-        )
-
-    built = datetime.fromtimestamp(stat.st_mtime, timezone.utc)
-    age = context.now - built
-    if age > APPLE_MAIL_INDEX_STALE_AFTER:
-        days = max(age.days, 1)
-        return ProbeResult(
-            "BROKEN",
-            f"The Apple Mail search index was last built {days} days ago, so recent mail is missing "
-            "from every search",
-            Heal(tier=3, action=APPLE_MAIL_INDEX_FIX, applied=False),
-            feature_status="broken",
-            user_message=(
-                f"Mail search is running on a {days}-day-old index, so recent mail is invisible to it. "
-                + APPLE_MAIL_INDEX_FIX
-            ),
-        )
-    return ProbeResult(
-        "OK",
-        f"Apple Mail search has an index built {_describe_index_age(age)}",
-        feature_status="ok",
     )
-
-
-def _describe_index_age(age: timedelta) -> str:
-    if age.days >= 1:
-        return f"{age.days} day{'s' if age.days != 1 else ''} ago"
-    hours = int(age.total_seconds() // 3600)
-    if hours >= 1:
-        return f"{hours} hour{'s' if hours != 1 else ''} ago"
-    return "in the last hour"
+    heal = Heal(tier=3, action=result.action, applied=False) if result.action else None
+    return ProbeResult(
+        result.verdict,
+        result.detail,
+        heal,
+        feature_status=result.feature_status,
+        user_message=result.user_message,
+    )
 
 
 def _qmd_registered(config: dict[str, Any]) -> bool:
@@ -5157,7 +5128,7 @@ def _qmd_status(binary: str) -> tuple[bool, str]:
         [binary, "status"],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=QMD_STATUS_TIMEOUT_SECONDS,
         check=False,
     )
     detail = _one_line(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
@@ -5178,7 +5149,14 @@ def _probe_qmd_live(context: DoctorContext) -> ProbeResult:
             "qmd is registered but its binary is not installed",
             Heal(tier=3, action="Run /enable-semantic-search to install and configure qmd.", applied=False),
         )
-    healthy, detail = _qmd_status(binary)
+    try:
+        healthy, detail = _qmd_status(binary)
+    except subprocess.TimeoutExpired:
+        return ProbeResult(
+            "UNKNOWN",
+            "qmd status did not finish within "
+            f"{QMD_STATUS_TIMEOUT_SECONDS} seconds, so semantic search health could not be checked",
+        )
     if not healthy:
         if _looks_like_sandbox_failure(detail):
             return ProbeResult("UNKNOWN", f"The sandbox or GPU environment blocked qmd status: {detail}")
@@ -5390,16 +5368,39 @@ def _probe_mcp_importable(context: DoctorContext) -> ProbeResult:
     config = _load_mcp_config(context)
     registered = _registered_core_scripts(context, config)
     failures = []
+    missing_dependencies: set[str] = set()
+    dex_code_missing = False
+    unclassified_failure = False
     for _name, (target, interpreter) in registered.items():
         module = f"core.mcp.{target.stem}"
         importable, detail = _mcp_import_check(context, module, interpreter)
         if not importable:
-            failures.append(f"{module}: {detail}")
+            missing_module = dex_logger.missing_module_name(detail)
+            classified_detail = _missing_module_detail(detail)
+            failures.append(f"{module}: {classified_detail or detail}")
+            if dex_logger.is_dex_module(missing_module):
+                dex_code_missing = True
+            elif missing_module:
+                missing_dependencies.add(missing_module)
+            else:
+                unclassified_failure = True
     if failures:
+        remedies = []
+        if dex_code_missing:
+            remedies.append("Run /dex-update to restore Dex's own code, then re-run /dex-doctor.")
+        if missing_dependencies:
+            noun = "dependency" if len(missing_dependencies) == 1 else "dependencies"
+            named = ", ".join(repr(name) for name in sorted(missing_dependencies))
+            remedies.append(
+                f"Reinstall missing MCP {noun} {named} into the vault .venv, "
+                "then re-run /dex-doctor."
+            )
+        if unclassified_failure:
+            remedies.append("Reinstall the missing MCP dependencies into the vault .venv.")
         return ProbeResult(
             "BROKEN",
             f"Registered MCP imports failed: {'; '.join(failures)}",
-            Heal(tier=2, action="Reinstall the missing MCP dependencies into the vault .venv.", applied=False),
+            Heal(tier=2, action=" ".join(remedies), applied=False),
         )
     return ProbeResult("OK", f"All {len(registered)} registered core MCP servers import in a subprocess")
 

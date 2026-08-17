@@ -332,87 +332,79 @@ def test_resume_missing_career_evidence_reports_calm_off_state(
 def test_analytics_missing_requests_reports_not_installed_and_preserves_error(
     monkeypatch,
 ):
-    monkeypatch.setattr(analytics_server, "HAS_REQUESTS", False)
+    monkeypatch.setattr(
+        analytics_server,
+        "fire_event",
+        lambda *_args, **_kwargs: {
+            "fired": False,
+            "reason": "requests_not_installed",
+            "receipt_written": True,
+        },
+    )
 
     payload = _decode_tool_result(
         asyncio.run(analytics_server._call_tool_inner("test_connection", {}))
     )
 
-    assert payload["feature"] == "Usage analytics"
-    assert payload["feature_status"] == "not_installed"
-    assert payload["user_message"] == payload["error"]
-    assert payload["success"] is False
-    assert payload["error"] == "requests library not installed. Run: pip install requests"
+    assert payload == {
+        "feature": "Usage analytics",
+        "feature_status": "not_installed",
+        "user_message": "Usage analytics needs the request library installed.",
+        "success": False,
+        "reason": "requests_not_installed",
+        "receipt_written": True,
+    }
 
 
-def test_analytics_http_failure_reports_broken_and_preserves_transport_keys(
+def test_analytics_http_failure_returns_only_the_safe_delivery_result(
     monkeypatch,
 ):
-    monkeypatch.setattr(analytics_server, "HAS_REQUESTS", True)
     monkeypatch.setattr(
         analytics_server,
-        "get_analytics_transport",
-        lambda: {
-            "configured": True,
+        "fire_event",
+        lambda *_args, **_kwargs: {
+            "fired": False,
             "mode": "proxy",
-            "endpoint": "https://analytics.example.test",
-            "headers": {},
+            "reason": "http_error",
+            "receipt_written": True,
         },
-    )
-    monkeypatch.setattr(
-        analytics_server,
-        "get_visitor_info",
-        lambda: {"visitor_id": "visitor-123", "account_id": "account-123"},
-    )
-    monkeypatch.setattr(
-        analytics_server.requests,
-        "post",
-        lambda *args, **kwargs: SimpleNamespace(status_code=503, text="unavailable"),
     )
 
     payload = _decode_tool_result(
         asyncio.run(analytics_server._call_tool_inner("test_connection", {}))
     )
 
-    assert payload["feature"] == "Usage analytics"
-    assert payload["feature_status"] == "broken"
-    assert payload["user_message"] == "Analytics connection failed (HTTP 503)."
-    assert payload["success"] is False
-    assert payload["status"] == 503
-    assert payload["transport_mode"] == "proxy"
-    assert payload["transport_endpoint"] == "https://analytics.example.test"
-    assert payload["body"] == "unavailable"
+    assert payload == {
+        "feature": "Usage analytics",
+        "feature_status": "broken",
+        "user_message": "Usage analytics could not send the connection check.",
+        "success": False,
+        "reason": "http_error",
+        "receipt_written": True,
+        "transport_mode": "proxy",
+    }
 
 
-def test_analytics_request_exception_reports_broken_and_preserves_error(monkeypatch):
-    monkeypatch.setattr(analytics_server, "HAS_REQUESTS", True)
+def test_analytics_request_exception_returns_a_normalized_failure(monkeypatch):
     monkeypatch.setattr(
         analytics_server,
-        "get_analytics_transport",
-        lambda: {
-            "configured": True,
-            "mode": "proxy",
-            "endpoint": "https://analytics.example.test",
-            "headers": {},
+        "fire_event",
+        lambda *_args, **_kwargs: {
+            "fired": False,
+            "reason": "request_failed",
+            "receipt_written": True,
         },
     )
-    monkeypatch.setattr(
-        analytics_server,
-        "get_visitor_info",
-        lambda: {"visitor_id": "visitor-123", "account_id": "account-123"},
-    )
-
-    def raise_network_error(*_args, **_kwargs):
-        raise OSError("network unavailable")
-
-    monkeypatch.setattr(analytics_server.requests, "post", raise_network_error)
 
     payload = _decode_tool_result(
         asyncio.run(analytics_server._call_tool_inner("test_connection", {}))
     )
 
-    assert payload["feature"] == "Usage analytics"
-    assert payload["feature_status"] == "broken"
-    assert payload["user_message"] == "network unavailable"
-    assert payload["success"] is False
-    assert payload["error"] == "network unavailable"
+    assert payload == {
+        "feature": "Usage analytics",
+        "feature_status": "broken",
+        "user_message": "Usage analytics could not send the connection check.",
+        "success": False,
+        "reason": "request_failed",
+        "receipt_written": True,
+    }

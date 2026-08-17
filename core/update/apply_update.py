@@ -128,6 +128,13 @@ def _vault_mode_gitignore_section() -> str:
     place to restore vault-side behavior is the end of the file itself
     (last match wins). The section is derived from the ownership contract so
     there is no second path list to drift.
+
+    The distribution file is wrong inside a vault in BOTH directions, so this
+    section corrects both. Its negations un-ignore brain-owned product files,
+    handled above. Its ignore rules for the PARA folders hide the user's own
+    content, handled below with ``VAULT_REGIONS``. Fixing only the first leaves
+    ``git add 04-Projects/`` failing, which silently disables any pathspec-based
+    staging such as the vault-autocommit hook.
     """
     tops = sorted(
         (rule for rule in portable_contract.RULES
@@ -163,6 +170,29 @@ def _vault_mode_gitignore_section() -> str:
             lines.extend(f"!/{exception}/" for exception in exceptions)
         else:
             lines.append(f"/{top.path}/")
+
+    # The distribution .gitignore also ignores the PARA folders, because in the
+    # product repository they hold sample content. Inside a vault they are the
+    # user's entire history, and ignoring them is worse than a cosmetic wart:
+    # `git add 04-Projects/` fails outright with "The following paths are
+    # ignored", so any pathspec-based staging (the vault-autocommit hook)
+    # hard-fails and stops committing. Re-include them last so the negation
+    # wins, derived from the same contract as the rules above.
+    lines.append("# Vault regions are the user's own content and stay tracked.")
+    lines.extend(f"!/{region}/" for region in sorted(portable_contract.VAULT_REGIONS))
+
+    # Mirror of the brain-with-vault-children case above. The release also
+    # delivers product files INTO vault regions (the Dex_System reference docs
+    # under 06-Resources), and those are refreshed by every update, so tracking
+    # them puts product churn in the user's private history. Re-ignore them
+    # after the region negation, or last-match keeps them tracked. Emitted
+    # per file rather than per directory: the contract declares individual
+    # files, so a note the user writes alongside them stays theirs.
+    brain_in_regions = portable_contract.brain_paths_inside_vault_regions()
+    if brain_in_regions:
+        lines.append("# Product files delivered inside a vault region stay untracked.")
+        lines.extend(f"/{path}" for path in brain_in_regions)
+
     lines.append(GITIGNORE_SECTION_END)
     return "\n".join(lines)
 

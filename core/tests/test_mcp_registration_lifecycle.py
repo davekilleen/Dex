@@ -145,3 +145,48 @@ def test_mcp_registration_uses_the_delivered_definition_not_a_preserved_seed(
 def test_shipped_registration_definition_matches_the_fresh_install_template() -> None:
     template = json.loads((REPO_ROOT / "System/.mcp.json.example").read_text(encoding="utf-8"))
     assert mcp_registration_snippet()[SERVER_NAME] == template["mcpServers"][SERVER_NAME]
+
+
+# The only registration an update can add to a vault that already exists is
+# SERVER_NAME above: `_mcp_registration_preview` names exactly one server, and
+# the code that performs an update is the *installed* release's code, so a
+# server added to this repo today can never be registered by any release a user
+# is already running. Doctor's `mcp.orphans` check requires every
+# `core/mcp/*_server.py` in the vault to be registered in `.mcp.json`, so a new
+# file in that directory makes Doctor report BROKEN on every upgraded install --
+# which is exactly what the historic-fleet upgrade gate caught when
+# `core/mcp/pipedrive_server.py` was added.
+#
+# Adding to this tuple therefore is not a formality: it is a claim that every
+# released version can register the new server. An opt-in integration server
+# belongs at `core/integrations/<name>/<name>_server.py`, where its setup skill
+# registers it when the user connects it.
+CORE_MCP_SERVERS = (
+    "analytics_server.py",
+    "calendar_server.py",
+    "career_server.py",
+    "customization_migration_server.py",
+    "dex_improvements_server.py",
+    "granola_server.py",
+    "onboarding_server.py",
+    "resume_server.py",
+    "session_memory_server.py",
+    "work_server.py",
+)
+
+
+def test_core_mcp_server_set_is_pinned() -> None:
+    """No release may add a core MCP server no installed version can register."""
+    shipped = tuple(sorted(p.name for p in (REPO_ROOT / "core/mcp").glob("*_server.py")))
+    assert shipped == CORE_MCP_SERVERS
+
+
+def test_every_core_mcp_server_is_registered_for_fresh_installs() -> None:
+    template = json.loads((REPO_ROOT / "System/.mcp.json.example").read_text(encoding="utf-8"))
+    registered = {
+        Path(argument).name
+        for entry in template["mcpServers"].values()
+        for argument in entry.get("args", [])
+        if isinstance(argument, str) and "/core/mcp/" in argument
+    }
+    assert set(CORE_MCP_SERVERS) <= registered

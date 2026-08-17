@@ -17,9 +17,11 @@ import hashlib
 import json
 import os
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
 from core.transaction.fsync import fsync_directory
 
@@ -64,7 +66,13 @@ class Snapshot:
 
     # -- capture -----------------------------------------------------------
 
-    def capture(self, vault_root: Path, relatives: list[str]) -> list[SnapshotEntry]:
+    def capture(
+        self,
+        vault_root: Path,
+        relatives: list[str],
+        *,
+        max_read_bytes_by_relative: Mapping[str, int] | None = None,
+    ) -> list[SnapshotEntry]:
         """Capture the current state of every relative path, fsynced.
 
         Refuses symlinked targets outright: a transaction plan must operate
@@ -72,6 +80,7 @@ class Snapshot:
         restore onto) the wrong object.
         """
         vault = Path(vault_root)
+        read_limits = dict(max_read_bytes_by_relative or {})
         try:
             manifest_relative = (self.root / MANIFEST_NAME).relative_to(vault)
         except ValueError:
@@ -96,13 +105,24 @@ class Snapshot:
                 raise SnapshotError(f"plans operate on files, not directories: {relative}")
             if target.exists():
                 store = self.root / _store_name(index)
-                shutil.copyfile(target, store)
+                max_bytes = read_limits.get(relative)
+                if max_bytes is None:
+                    shutil.copyfile(target, store)
+                else:
+                    store.write_bytes(
+                        bounded_read(vault, relative, max_bytes=max_bytes)
+                    )
                 os.chmod(store, 0o600)
                 digest, size = _sha256(store)
                 # The copy must byte-match the source AT CAPTURE TIME; if the
                 # source is being mutated concurrently the lock was violated
                 # and we must not proceed on a torn snapshot.
-                source_digest, _ = _sha256(target)
+                if max_bytes is None:
+                    source_digest, _ = _sha256(target)
+                else:
+                    source_digest = hashlib.sha256(
+                        bounded_read(vault, relative, max_bytes=max_bytes)
+                    ).hexdigest()
                 if digest != source_digest:
                     raise SnapshotError(f"target changed while being snapshotted: {relative}")
                 descriptor = os.open(store, os.O_RDONLY)

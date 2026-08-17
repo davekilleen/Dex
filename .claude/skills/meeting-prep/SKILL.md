@@ -25,7 +25,11 @@ Agent tool, using the self-contained prompt in this skill's
 
 1. Read `.claude/skills/meeting-prep/AGENT_INSTRUCTIONS.md`.
 2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{MEETING_TITLE}}`,
-   `{{ATTENDEES}}`).
+   `{{ATTENDEE_RECORDS}}`). `{{ATTENDEE_RECORDS}}` is the filtered JSON array
+   from the selected invite, preserving `name`, `person_page`, `email`,
+   `status`, `type`, and `is_current_user` for each attendee. For attendees the
+   user supplied manually, use the same fields with unknown values set to
+   `null`, `type` set to `Person`, and `is_current_user` set to `false`.
 3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
    a short description.
 4. Present its findings as the prep brief, in the Output Format below.
@@ -89,9 +93,9 @@ See CLAUDE.md → "Communication Adaptation" for full guidelines.
 
 **Optional:** $MEETING, $ATTENDEES
 
-If not provided, prompt the user for:
-1. Meeting topic or title
-2. List of attendees (comma-separated names)
+If either value is missing, try the calendar before prompting. Ask for the
+meeting topic or attendee list only when the calendar status or the returned
+events cannot identify the meeting safely.
 
 **Examples:**
 - `/meeting-prep "Q1 Planning" "Sarah Chen, Mike Rodriguez"`
@@ -99,29 +103,110 @@ If not provided, prompt the user for:
 
 ## What This Does
 
-1. Looks up each attendee in `People/` folder
-2. Surfaces recent interactions and open action items
-3. Checks for related projects
-4. Suggests talking points based on context
+1. Reads the matching calendar invite and keeps its resolved attendee records
+2. Looks up only attendees whose invite record has no `person_page`
+3. Surfaces recent interactions and open action items
+4. Checks for related projects
+5. Suggests talking points based on context
 
 ## Process
 
 ### Step 0: Gather Context (if needed)
 
-**If $MEETING or $ATTENDEES are not provided:**
+**If $MEETING or $ATTENDEES are not provided, try the calendar before asking.** The user booked
+the meeting; the invite already holds the title and the attendee list, and asking them to retype
+it is both friction and a source of duplicate person pages from misspelt names.
 
-Ask: "Which meeting are you prepping for?"
-- Get meeting topic/title
+When the calendar integration is available, search every calendar visible to
+Apple Calendar by default:
 
-Ask: "Who's attending? (comma-separated names or just list them)"
-- Accept formats: "Sarah Chen, Mike Rodriguez" or "Sarah, Mike" or natural list
-- Parse into individual attendee names
+```
+mcp__calendar-mcp__calendar_get_events_with_attendees(calendar_name="all", start_date="YYYY-MM-DD", end_date="YYYY-MM-DD")
+```
+
+`calendar_name="all"` means all calendars currently visible to the local Apple
+Calendar integration. It cannot see a calendar account that is not synced into
+Apple Calendar, and on hosts that do not support the `all` selector you must say
+which single calendar was searched. Never describe a no-match from one calendar
+as proof that the meeting is absent from every calendar.
+
+**The end date is exclusive.** For a single day, pass the following day as `end_date`. Passing
+the same date twice returns zero events with no error, which is indistinguishable from an empty
+calendar.
+
+Match the user's phrasing to an event:
+
+- **A time** ("prep me for the 2pm", "tomorrow's 1:30"): match on start time, usually
+  unambiguous on its own.
+- **A person or topic** ("prep me for the Acme call"): match on title, or on an attendee name
+  within the event's `attendees` list.
+- **Nothing specified:** list today's and tomorrow's events and ask which one is meant.
+
+Each attendee carries `name`, `email`, `status`, `type`, `is_organizer`,
+`is_current_user`, plus `has_person_page` and (when resolved) `person_page`, so
+the vault lookup in Step 1 is already done for anyone who has a page.
+
+Before delegating gathering, build `{{ATTENDEE_RECORDS}}` from the selected
+event. Preserve `name`, `person_page` (or `null`), `email`, `status`, `type`, and
+`is_current_user`; do not reduce the records to display names. Filter out:
+
+- the user (`is_current_user: true`)
+- `Room`, `Resource`, and `Group` attendee types
+- invitees whose status is `Declined` or `Delegated`
+
+Keep `Person` attendees who are `Accepted` or `Tentative`. A `Pending` or
+`Unknown` person may still attend: keep them, but do not describe their
+attendance as confirmed. If an attendee has an unknown type, keep them only
+when they have a usable name or email and flag that uncertainty in the brief.
+
+**Ask when the calendar cannot answer.** The calendar is the preferred source,
+not a required one, and this skill must still work without it. Inspect the
+complete calendar response before reading `events` or `count`, and follow
+CLAUDE.md's **Calendar response confidence contract** at this inline call site:
+
+- Only `success: true` is a healthy read. A healthy `count: 0` means the
+  searched range is empty only when the response has no `warning`; preserve a
+  warning and ask rather than claiming there are no meetings.
+- `feature_status: off` is healthy optional absence. Ask for the meeting and
+  attendees with no error tone, setup advice, or nag.
+- `feature_status: not_installed` surfaces the returned `user_message` and fix
+  once in a calm setup tone, then asks for the meeting and attendees.
+- `feature_status: broken` surfaces the returned `user_message` exactly,
+  including its permission or other fix guidance, then asks so prep can
+  continue. Never recast it as “not connected” or “no meetings.”
+- `feature_status: unknown`, or an unstructured tool error, means the calendar
+  could not be checked. Say that plainly and ask rather than guessing.
+- **No Calendar tool response** (for example, on a non-macOS machine) is
+  optional absence. Ask for the meeting and attendees without reporting a
+  fault.
+
+Every non-healthy branch is unavailable evidence, not an empty calendar. Never
+substitute an empty event list for a missing or failed response.
+
+- **No matching event** in the range returned: ask which meeting is meant rather than guessing.
+- **Two events match a stated time:** that is a double-booking. Name both and let the user
+  choose; it is worth telling them about in itself.
+
+Never treat an empty result as proof of an empty calendar. A tool that is absent, a permission
+that was refused, and a query built with the wrong range all return nothing, and none of them
+mean "no meetings". If you cannot tell which it was, say so and ask.
+
+When asking, accept any natural format: "Sarah Chen, Mike Rodriguez", "Sarah, Mike", or a plain
+list.
 
 ### Step 1: Attendee Lookup
 
-For each attendee in $ATTENDEES:
+For each filtered attendee record:
 
-1. Search `05-Areas/People/Internal/` and `05-Areas/People/External/` for matching names
+1. **If the calendar supplied `person_page`, use it and pass it through to
+   delegated gathering.** That resolution is already done and is
+   more reliable than matching a name, particularly for the display forms invites actually
+   carry: `Surname, First`, a job title in parentheses, or a bare email address where the name
+   should be. Only fall back to searching when `has_person_page` is false or the attendee came
+   from the user rather than the calendar.
+
+   Otherwise search `05-Areas/People/Internal/` and
+   `05-Areas/People/External/` using the attendee's email first, then name.
 2. If found, extract:
    - Role and company
    - Last interaction date
@@ -366,6 +451,14 @@ This only fires if the user has opted into analytics. No action needed if it ret
 - Before any meeting with multiple attendees
 - When meeting someone you haven't seen in a while
 - Before important meetings where you want full context
+
+## MCP Dependencies
+
+| Integration | MCP Server | Tools Used |
+|-------------|------------|------------|
+| Calendar | calendar-mcp | `calendar_get_events_with_attendees` (optional: resolves the meeting and its attendees; the skill asks the user when it is unavailable) |
+
+---
 
 ## Tips
 

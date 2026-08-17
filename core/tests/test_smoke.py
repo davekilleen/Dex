@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 
@@ -481,6 +483,83 @@ def test_main_exit_one_for_a_broken_journey(tmp_path: Path, capsys) -> None:
     assert report["summary"] == {"ok": 0, "broken": 1, "unknown": 0, "off": 0}
 
 
+@pytest.mark.parametrize(
+    ("missing_module", "expected_detail"),
+    [
+        (
+            "core",
+            "Dex's own code could not be loaded (No module named 'core'). "
+            "This is a Dex checkup fault, not a missing Python package.",
+        ),
+        (
+            "yaml",
+            "Python packages not installed in this vault's .venv (missing module 'yaml') — run /dex-update "
+            "(or reinstall requirements.txt into that .venv), then re-run /dex-doctor",
+        ),
+    ],
+)
+def test_smoke_preparation_names_the_missing_module_truthfully(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    missing_module: str,
+    expected_detail: str,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setattr(smoke, "_authorize_internal", lambda *_args: None)
+    monkeypatch.setattr(smoke, "_block_python_network", lambda: None)
+    monkeypatch.setattr(smoke, "_internal_release_root", lambda *_args: tmp_path)
+
+    def fail_with_missing_module(*_args) -> None:
+        raise ModuleNotFoundError(f"No module named '{missing_module}'", name=missing_module)
+
+    monkeypatch.setattr(smoke, "_prepare_vault", fail_with_missing_module)
+
+    exit_code = smoke.main(
+        [
+            "--_prepare",
+            "configs",
+            "--source-root",
+            str(tmp_path),
+            "--vault-root",
+            str(vault),
+        ]
+    )
+
+    result = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert result == {"verdict": "UNKNOWN", "detail": expected_detail}
+
+
+def test_smoke_journey_names_a_missing_dex_module_truthfully(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setattr(smoke, "_authorize_internal", lambda *_args: None)
+    monkeypatch.setattr(smoke, "_block_python_network", lambda: None)
+    monkeypatch.setattr(smoke, "_internal_release_root", lambda *_args: tmp_path)
+
+    def fail_with_missing_core(*_args) -> dict[str, str]:
+        raise ModuleNotFoundError("No module named 'core'", name="core")
+
+    monkeypatch.setitem(smoke.INTERNAL_JOURNEYS, "configs", fail_with_missing_core)
+
+    exit_code = smoke.main(["--_journey", "configs"])
+
+    result = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert result == {
+        "verdict": "UNKNOWN",
+        "detail": "Dex's own code could not be loaded (No module named 'core'). "
+        "This is a Dex checkup fault, not a missing Python package.",
+    }
+
+
 def test_ledger_writes_latest_and_versioned_history(tmp_path: Path, capsys) -> None:
     vault = _write_valid_vault(tmp_path)
 
@@ -654,6 +733,7 @@ def test_runner_fallback_is_import_complete_for_the_runner_entry(
 ) -> None:
     required = {
         Path("core/utils/smoke.py"),
+        Path("core/utils/dex_logger.py"),
         Path("core/utils/release_channel.py"),
         Path("core/utils/update_verifier.py"),
     }
@@ -959,6 +1039,7 @@ def test_all_journeys_share_one_runner_generation(monkeypatch, tmp_path: Path) -
     assert [journey["verdict"] for journey in run.report["journeys"]] == ["OK", "OK"]
 
 
+@pytest.mark.xdist_group("serial_sensitive")
 def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
 
@@ -992,20 +1073,56 @@ def test_hanging_journey_is_killed_and_returns_exit_two(monkeypatch, tmp_path: P
     assert "timed out" in run.report["journeys"][0]["detail"]
 
 
+@pytest.mark.xdist_group("serial_sensitive")
+def test_hanging_journey_timeout_survives_killpg_permission_error(
+    monkeypatch, tmp_path: Path
+) -> None:
+    # Observed on macOS CI (PR 541 tests (1)): killpg raised
+    # PermissionError(1, "Operation not permitted") and the hanging-journey
+    # test then saw "journey harness failed: [Errno 1] Operation not permitted"
+    # instead of a timeout. Drive the JSON process helper directly so a
+    # missing vault .venv cannot hide the kill path.
+    def deny_killpg(_process_group_id: int, _requested_signal: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(smoke.os, "killpg", deny_killpg)
+    started = time.monotonic()
+    result, failed = smoke._run_json_process(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        cwd=tmp_path,
+        env=os.environ,
+        timeout_seconds=0.5,
+        label="journey",
+    )
+
+    assert time.monotonic() - started < 30
+    assert failed is True
+    assert result["verdict"] == "UNKNOWN"
+    assert "timed out" in result["detail"]
+    assert "Operation not permitted" not in result["detail"]
+
+
 def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     sentinel = tmp_path / "timed-out-descendant-survived"
-    # The survival window and the post-run wait below are seconds apart on purpose:
-    # with a tight margin (formerly 0.7s sleep / 0.8s wait) a CPU-starved descendant
-    # on a loaded runner could be delayed past the check and fake a pass even when
-    # the kill logic is broken. Wide margins keep this test honest under parallel load.
+    spawned = tmp_path / "descendant-was-spawned"
+    # Three timings, and the order between them is the whole test:
+    #   spawn happens well inside the journey budget (so there is something to kill),
+    #   the budget expires long before the descendant would write (so a working kill
+    #   leaves no sentinel), and the post-run wait outlasts the descendant (so a
+    #   survivor is actually observed rather than merely not-yet-arrived).
+    # The former 0.4s budget was the flake (F11, #477): on a loaded runner it could
+    # expire before the parent had spawned the descendant at all, orphaning a process
+    # the kill never saw, which then wrote the sentinel and blamed the kill logic.
+    budget, descendant_delay, post_run_wait = 3.0, 8.0, 10.0
     descendant = (
-        "import time; from pathlib import Path; time.sleep(2.5); "
+        f"import time; from pathlib import Path; time.sleep({descendant_delay}); "
         f"Path({str(sentinel)!r}).touch()"
     )
     parent = (
-        "import subprocess, sys, time; "
+        "import subprocess, sys, time; from pathlib import Path; "
         f"subprocess.Popen([sys.executable, '-c', {descendant!r}]); "
+        f"Path({str(spawned)!r}).touch(); "
         "time.sleep(60)"
     )
     monkeypatch.setattr(
@@ -1017,12 +1134,18 @@ def test_timed_out_journey_kills_delayed_descendants(monkeypatch, tmp_path: Path
     run = smoke.run_smoke(
         vault_root=vault,
         repo_root=REPO_ROOT,
-        journey_definitions=(_definition("configs", 0.4),),
+        journey_definitions=(_definition("configs", budget),),
     )
-    time.sleep(4.0)
+    time.sleep(post_run_wait)
 
     assert run.exit_code == 2
     assert "timed out" in run.report["journeys"][0]["detail"]
+    # Without this, a run where the descendant was never spawned passes while
+    # proving nothing: no descendant, no sentinel, no kill exercised.
+    assert spawned.exists(), (
+        "the parent never spawned a descendant, so this test did not exercise the "
+        "kill path at all; it cannot pass on that basis"
+    )
     assert not sentinel.exists()
 
 
@@ -1827,3 +1950,34 @@ def test_internal_task_journey_refuses_a_live_vault(monkeypatch, tmp_path: Path,
     assert exit_code == 2
     assert "refused" in capsys.readouterr().err
     assert _tree_hash(vault) == before
+
+
+def test_every_runtime_core_path_survives_git_archive() -> None:
+    """Paths the release comparison expects must actually reach the archive.
+
+    ``_materialize_release_core`` builds the trusted snapshot with ``git archive``,
+    which honours ``export-ignore``. ``_release_execution_reason`` builds the set of
+    paths it expects to find there from ``git ls-tree`` filtered by
+    ``_is_runner_runtime_path``. When a ``core`` path is export-ignored but still
+    counts as a runtime path, it is expected and missing, so every vault-mutating
+    journey skips with "Dex-owned core differs" no matter which ref is used.
+    """
+    listed = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "--name-only", "HEAD", "--", "core"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+    ).stdout
+    paths = [raw.decode("utf-8") for raw in listed.split(b"\0") if raw]
+    runtime = {path for path in paths if smoke._is_runner_runtime_path(path)}
+
+    archived = subprocess.run(
+        ["git", "archive", "--format=tar", "HEAD", "--", "core"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archived), mode="r:") as archive:
+        exported = {member.name for member in archive.getmembers() if member.isfile()}
+
+    assert sorted(runtime - exported) == []

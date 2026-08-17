@@ -6,3 +6,6 @@ ruff
 hypothesis
 pytest-split
 cryptography>=42
+jsonschema>=4.23,<5
+# Real macOS contract seam for the optional Apple Mail search health check.
+apple-mail-mcp==0.4.3

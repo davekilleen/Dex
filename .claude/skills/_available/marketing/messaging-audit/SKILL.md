@@ -1,83 +1,97 @@
 ---
 name: messaging-audit
-description: Review positioning and messaging across content
+description: Use when comparing product or campaign messaging across content against a cited canonical baseline and its supporting evidence.
 role_groups: [marketing, product, leadership]
 jtbd: |
-  Your messaging drifts over time as different people write content. This scans 
-  05-Areas/Content/, checks consistency across materials, identifies conflicts or gaps, 
+  Your messaging drifts over time as different people write content. This scans
+  05-Areas/Content/, checks consistency across materials, identifies conflicts or gaps,
   and suggests refinements so your positioning stays tight and consistent.
 time_investment: "15-20 minutes per audit"
 ---
 
-## Purpose
+# Messaging audit
 
-Ensure messaging consistency across all content and identify where positioning needs tightening.
+## When to use
 
-## Usage
+Use this skill when multiple artifacts need comparison for positioning, value proposition,
+audience, terminology, or product claims and a canonical baseline can be cited. It also
+handles an audit that discovers no usable baseline, provided that limitation is explicit.
 
-- `/messaging-audit` - Full messaging review
-- `/messaging-audit [topic]` - Focus on specific product/feature messaging
+Do not use it to invent positioning, approve legal or factual claims, or silently rewrite
+brand copy. Not for publishing edits, changing the canonical baseline, or deciding that a
+variation is intentional without evidence and human authority.
 
----
+## Inputs and source discipline
 
-## Steps
+- Identify the canonical baseline by source path or ID, version, source date, and as-of
+  date/time. If no authority or version is available, record “no canonical baseline” as an
+  unknown rather than choosing the most polished artifact.
+- Build a source/date matrix for every compared artifact: title or ID, version, source,
+  publication or update date, retrieval/as-of date, audience/channel, and scope.
+- Extract claims, value propositions, audience descriptions, problem statements, benefits,
+  and terms verbatim. Attach a source and date to each extracted item.
+- Normalize terms only through an explicit, cited mapping. Preserve the original wording
+  and do not treat similar words as equivalent when the source does not support that.
 
-1. **Scan 05-Areas/Content/** for published content
-2. **Extract messaging elements:**
-   - Value propositions mentioned
-   - Key benefits highlighted
-   - Target audience descriptions
-   - Problem statements
-   - Competitive positioning
+## Method
 
-3. **Check consistency:**
-   - Same value props across content?
-   - Consistent problem framing?
-   - Aligned audience descriptions?
-   - Unified competitive positioning?
+1. Confirm the audit question, scope, canonical baseline, versions, timezone if relevant,
+   and as-of boundary.
+2. Populate the source/date matrix and exclude inaccessible or out-of-scope artifacts from
+   conclusions while reporting them as coverage limits.
+3. Extract the baseline's claims and terminology, then extract the same fields from each
+   artifact without paraphrasing away meaningful qualifiers.
+4. Apply only cited term normalization and compare each artifact with the canonical
+   baseline and with other in-scope artifacts.
+5. Classify each difference as aligned, an intentional variation only when its purpose and
+   authority are evidenced, contradictory, stale copy, missing, or an unsupported claim.
+   Do not call a difference intentional merely because it sounds appropriate.
+6. Trace every finding to its source/date entry, mark observed versus inferred meaning,
+   state confidence, and surface unknowns and contradictions side by side.
+7. Offer proposed refinements or questions. Show a preview before any edit, baseline change,
+   or saved report and obtain explicit confirmation from the human authority.
 
-4. **Identify issues:**
-   - Conflicting messages
-   - Outdated positioning
-   - Missing key messages
-   - Inconsistent terminology
+## Truth and uncertainty rules
 
-5. **Generate audit report with:**
-   - Consistency analysis
-   - Conflicts found
-   - Missing messages
-   - Recommendations for alignment
+- **Observed:** exact copy, term, claim, baseline version, or source date present in an
+  artifact or canonical source.
+- **Inferred:** a semantic relationship or likely audience effect derived from observed
+  wording; explain the inference and confidence.
+- **Unknown:** intent, authority, claim support, version, or equivalence not evidenced.
+- **Stale:** copy based on an older dated baseline or artifact outside the requested as-of
+  boundary; do not call it a current contradiction without checking versions.
+- **Contradictory:** sources make incompatible claims or definitions; preserve both wording,
+  sources, dates, and any known scope difference.
 
----
+An unsupported claim means “support was not found in the permitted sources”; it does not
+prove the claim false. Never invent dates, metrics, percentages, owners, intent, money,
+causes, status, or evidence. Recommendations are not human decisions.
 
-## Output Format
+## Output contract
 
-```markdown
-# 🎯 Messaging Audit
+Return an audit with:
 
-**Date:** [Today]
-**Content reviewed:** [Count]
+- canonical baseline citation, version, source/date, as-of date/time, and authority status;
+- the complete source/date matrix and declared artifact coverage;
+- a normalized-terms table that preserves original wording and cited mappings;
+- findings classified as aligned, intentional variation, contradiction, stale copy, missing,
+  or unsupported claim, each with source, date, evidence, and confidence;
+- unknowns, contradictions, coverage limits, and recommendations clearly separated from
+  approved messaging decisions.
 
-## Current Messaging Patterns
+## Safety and write boundaries
 
-### Value Propositions
-- "[Value prop 1]" - Used in [X] pieces
-- "[Value prop 2]" - Used in [X] pieces
+Default to read-only. Do not rewrite, publish, approve, or replace canonical messaging;
+do not edit content systems or claim authority over legal, product, or brand decisions. A
+requested write requires a precise preview, explicit confirm, and human authority. Apply
+only that confirmed scope; a recommendation remains a recommendation.
 
-### Problem Statements
-- "[Problem 1]" - [X] mentions
-- "[Problem 2]" - [X] mentions
+## Verification and recovery
 
-## Consistency Issues
-
-### Conflicts Found
-1. [Content A] says "[X]" but [Content B] says "[Y]"
-2. [Inconsistency description]
-
-### Missing Key Messages
-- [Message] not mentioned in [content type]
-
-## Recommendations
-1. [Recommendation for alignment]
-2. [Recommendation for improvement]
-```
+Read back every finding against the cited artifact and reconcile wording, version, source,
+date, and classification before delivery. After an authorized edit or saved report, read
+back the destination and reconcile it with the confirmed preview and canonical baseline.
+If a baseline or artifact cannot be read, mark dependent findings unknown; if a newer version
+appears, mark prior comparisons stale and re-check. If a write fails or is partial, stop,
+preserve the draft and error, report what changed, and wait for human authority before
+retrying or recovering.

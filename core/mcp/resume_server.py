@@ -20,6 +20,7 @@ Tools:
 - export_resume: Export to file
 """
 
+import hashlib
 import json
 import logging
 import re
@@ -33,14 +34,26 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-# Analytics helper (optional - gracefully degrade if not available)
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
 
 # Ensure sibling modules (resume_parser) are importable
 _mcp_dir = str(Path(__file__).parent)
@@ -1037,10 +1050,11 @@ async def handle_compile_resume(arguments: dict) -> list[types.TextContent]:
         "message": "Resume compiled. Use export_resume to save to file."
     }
     
-    try:
-        _fire_analytics_event('resume_compiled')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'resume_compiled',
+    )
     
     return [types.TextContent(
         type="text",
@@ -1161,53 +1175,123 @@ async def handle_export_resume(arguments: dict) -> list[types.TextContent]:
             }, indent=2)
         )]
     
-    # Generate resume
+    extensions = {
+        'markdown': 'markdown',
+        'plain_text': 'txt',
+        'json': 'json',
+    }
+    if format_type not in extensions:
+        return [types.TextContent(
+            type="text",
+            text=json.dumps({
+                "success": False,
+                "error": f"Unsupported resume export format: {format_type}",
+            }, indent=2),
+        )]
+
+    if custom_filename is not None:
+        if not isinstance(custom_filename, str):
+            filename_error = "Custom filename must be a string"
+        else:
+            custom_filename = custom_filename.strip()
+            filename_error = None
+            if (
+                not custom_filename
+                or custom_filename in {'.', '..'}
+                or Path(custom_filename).name != custom_filename
+                or '/' in custom_filename
+                or '\\' in custom_filename
+                or any(ord(character) < 32 for character in custom_filename)
+                or len(custom_filename) > 120
+            ):
+                filename_error = (
+                    "Custom filename must be one local filename without path "
+                    "separators or control characters"
+                )
+        if filename_error:
+            return [types.TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": False,
+                    "error": filename_error,
+                }, indent=2),
+            )]
+
+    # Generate resume only after all caller-controlled path input is validated.
     resume_content = format_resume(session, enforce_limit=True)
-    
-    # Determine filename
+
+    # Determine a base filename. Existing paths are never overwritten; the
+    # exclusive-create loop below selects a new numbered filename on collision.
     if custom_filename:
-        filename = f"{custom_filename}.{format_type}"
+        filename_stem = custom_filename
     else:
         date_str = datetime.now().strftime('%Y-%m-%d')
-        filename = f"{date_str} - Resume.{format_type if format_type != 'plain_text' else 'txt'}"
-    
-    # Ensure Resume directory exists
-    RESUME_DIR.mkdir(parents=True, exist_ok=True)
-    
-    filepath = RESUME_DIR / filename
-    
-    # Export based on format
+        filename_stem = f"{date_str} - Resume"
+
+    if format_type == 'markdown':
+        export_bytes = resume_content.encode('utf-8')
+    elif format_type == 'plain_text':
+        plain_text = re.sub(r'#+ ', '', resume_content)
+        plain_text = re.sub(r'\*\*(.+?)\*\*', r'\1', plain_text)
+        plain_text = re.sub(r'---', '', plain_text)
+        export_bytes = plain_text.encode('utf-8')
+    else:
+        export_bytes = json.dumps(
+            session.to_dict(),
+            indent=2,
+            cls=EnhancedJSONEncoder,
+        ).encode('utf-8')
+
+    filepath: Path | None = None
     try:
-        if format_type == 'markdown':
-            with open(filepath, 'w') as f:
-                f.write(resume_content)
-        
-        elif format_type == 'plain_text':
-            # Convert markdown to plain text (remove markdown syntax)
-            plain_text = resume_content
-            plain_text = re.sub(r'#+ ', '', plain_text)  # Remove headers
-            plain_text = re.sub(r'\*\*(.+?)\*\*', r'\1', plain_text)  # Remove bold
-            plain_text = re.sub(r'---', '', plain_text)  # Remove dividers
-            
-            with open(filepath, 'w') as f:
-                f.write(plain_text)
-        
-        elif format_type == 'json':
-            # Export session as JSON
-            with open(filepath, 'w') as f:
-                json.dump(session.to_dict(), f, indent=2, cls=EnhancedJSONEncoder)
+        try:
+            relative_resume_dir = Path(RESUME_DIR).absolute().relative_to(
+                Path(BASE_DIR).absolute()
+            )
+            capability_rooms.preflight_mutation_targets(
+                BASE_DIR,
+                [{"path": relative_resume_dir.as_posix(), "kind": "directory"}],
+            )
+        except (ValueError, capability_rooms.CapabilityError) as error:
+            raise RuntimeError(f"Unsafe resume export directory: {error}") from error
+        RESUME_DIR.mkdir(parents=True, exist_ok=True)
+        extension = extensions[format_type]
+        for suffix in range(1, 10_000):
+            disambiguator = '' if suffix == 1 else f" ({suffix})"
+            candidate = RESUME_DIR / f"{filename_stem}{disambiguator}.{extension}"
+            try:
+                with candidate.open('xb') as export_file:
+                    export_file.write(export_bytes)
+                    export_file.flush()
+                filepath = candidate
+                break
+            except FileExistsError:
+                continue
+        if filepath is None:
+            raise RuntimeError("Could not allocate a unique resume export filename")
+
+        read_back = filepath.read_bytes()
+        if read_back != export_bytes:
+            filepath.unlink(missing_ok=True)
+            filepath = None
+            raise RuntimeError("Resume export read-back did not match the written bytes")
         
         session.phase = PhaseEnum.COMPLETE
         auto_save_session(session)
-        
+        relative_path = filepath.relative_to(BASE_DIR)
         result = {
             "success": True,
-            "filepath": str(filepath.relative_to(BASE_DIR)),
+            "filepath": str(relative_path),
             "format": format_type,
-            "message": f"Resume exported to {filepath.relative_to(BASE_DIR)}"
+            "byte_size": len(read_back),
+            "sha256": hashlib.sha256(read_back).hexdigest(),
+            "read_back_verified": True,
+            "message": f"Resume exported to new file {relative_path}",
         }
     
     except Exception as e:
+        if filepath is not None:
+            filepath.unlink(missing_ok=True)
         result = {
             "success": False,
             "error": f"Failed to export resume: {str(e)}"

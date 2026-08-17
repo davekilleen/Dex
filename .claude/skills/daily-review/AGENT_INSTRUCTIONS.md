@@ -15,22 +15,27 @@ context. Do not rely on hook-driven side effects for any write you make.
 
 ## Step 0: Meeting Catch-Up (not same-day only)
 
-Check for meetings that have not yet reached the vault. Process every
-unprocessed meeting since the last one that did, NOT only {{TARGET_DATE}}: find
-the newest dated folder under `00-Inbox/Meetings/`; the catch-up window runs
-from that date to {{TARGET_DATE}} inclusive. If the window is wider than seven
-days, process the most recent seven days and REPORT the older backlog rather
-than silently skipping it.
+Check for meetings that have not yet been processed. Read `meeting_sources` in
+`System/user-profile.yaml` first, using the exact validation, vault-boundary,
+source-order, and degradation rules in
+`.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md`. The profile records
+provenance and a local folder; it does not grant access to an external recorder.
+
+Process every unprocessed meeting since the last one that did, NOT only
+{{TARGET_DATE}}. Compute that catch-up window from dated notes across the valid
+configured `notes_folder` and `00-Inbox/Meetings/`, not from the default folder
+alone. If no dated local note exists, use the most recent seven days. If the
+window is wider than seven days, process the most recent seven days and REPORT
+the older backlog rather than silently skipping it.
 
 Why the window matters: a same-day filter loses meetings permanently on any day
 the review does not run.
 
-If the meeting source (Granola via `GRANOLA_API_KEY`, or another configured
-source) has unprocessed meetings in the window, process them following the
-conventions in `.claude/skills/process-meetings/AGENT_INSTRUCTIONS.md`,
-including updating person pages directly rather than counting on a hook.
-Note which meetings were processed. If no source is connected or nothing is
-unprocessed, skip silently.
+Process local candidates following the process-meetings instructions, including
+provider-neutral discovery and updating person pages directly rather than
+counting on a hook. Note the actual path of every meeting processed. If the
+profile is missing or malformed, report that once and use the safe local
+fallback. If nothing is unprocessed, skip silently.
 
 ---
 
@@ -63,9 +68,15 @@ weekly goals. Also call `get_week_priorities()` for the full list.
 
 ### 2.3 Meetings
 
-Check `00-Inbox/Meetings/{{TARGET_DATE}}/` for meeting notes. Also call
-`calendar_get_today()` for the calendar view. Combine meetings processed in
-Step 0 with any manually created notes.
+Use the actual meeting paths returned by Step 0, then check both the valid
+configured notes folder and `00-Inbox/Meetings/{{TARGET_DATE}}/` for additional
+local meeting notes. Also call `calendar_get_today()` for the calendar view.
+Calendar events are scheduling evidence, not meeting-note content. Combine the
+local notes with any manually created notes without widening into an external
+notes service.
+
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or passing them to `analyze_calendar_capacity`.
 
 ### 2.4 Semantic Context Enrichment (if QMD available)
 

@@ -1651,6 +1651,134 @@ def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
     assert "\n/.claude/\n" not in section
 
 
+def test_applied_shipped_gitignore_saves_user_files_and_excludes_product_files(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """Install the shipped rules, commit real files, and inspect Git history."""
+    release = split_release_fixture["release"]
+    vault = split_release_fixture["vault"]
+    brain = split_release_fixture["brain"]
+
+    _write(release, ".gitignore", (REPO_ROOT / ".gitignore").read_bytes())
+    target = _commit_release(release, "1.65.0")
+    split_release_fixture["target"] = target
+    _target_tag, _target_tag_object, target_commit, _target_tree = target
+    subprocess.run(
+        [
+            "git",
+            f"--git-dir={brain}",
+            "fetch",
+            "--quiet",
+            "--tags",
+            str(release),
+            f"+{target_commit}:refs/remotes/upstream/release",
+        ],
+        check=True,
+    )
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+    assert result["committed"] is True
+    assert ".gitignore" in result["replaced"]
+
+    _git(vault, "init", "--quiet")
+    _git(vault, "config", "user.name", "Dex Vault Test")
+    _git(vault, "config", "user.email", "vault@example.com")
+
+    user_files = {
+        f"{region}/user-note.md" for region in portable_contract.VAULT_REGIONS
+    }
+    for relative in user_files:
+        _write(vault, relative, b"user-owned\n")
+
+    product_files = set(portable_contract.brain_paths_inside_vault_regions())
+    assert product_files
+    product_files.add("README.md")
+    customization = ".claude/skills-custom/mine/SKILL.md"
+    secret = ".env"
+    for relative in product_files:
+        _write(vault, relative, b"release-owned\n")
+    _write(vault, customization, b"user customization\n")
+    _write(vault, secret, b"API_KEY=never-stage\n")
+
+    _git(vault, "add", "-A", "--", *portable_contract.VAULT_REGIONS)
+    _git(vault, "add", "-A", "--", customization)
+    _git(vault, "commit", "--quiet", "-m", "save user work")
+    committed = set(_git(vault, "show", "--format=", "--name-only", "HEAD").splitlines())
+
+    assert user_files <= committed
+    assert customization in committed
+    assert product_files.isdisjoint(committed)
+    assert secret not in committed
+
+    ignored = set(
+        _git(vault, "check-ignore", "--", *sorted(product_files), secret).splitlines()
+    )
+    assert product_files <= ignored
+    assert secret in ignored
+
+
+def test_composed_gitignore_reincludes_every_vault_region() -> None:
+    """The distribution file ignores the PARA folders; a vault must track them.
+
+    Without this the failure is not cosmetic: `git add 04-Projects/` refuses
+    outright, so every pathspec-based staging path (the vault-autocommit hook)
+    stops committing the user's own work, silently.
+    """
+    release_blob = b"# distribution rules\n00-Inbox/\n03-Tasks/\n04-Projects/\n"
+
+    composed = apply_update._compose_gitignore(release_blob, Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    for region in portable_contract.VAULT_REGIONS:
+        assert f"\n!/{region}/\n" in section, region
+
+    # the negations must come after the distribution's ignore rules, or they
+    # are dead letters: last match wins
+    assert composed.index("04-Projects/") < composed.index("!/04-Projects/")
+
+
+def test_composed_gitignore_reignores_product_files_inside_vault_regions() -> None:
+    """The release delivers reference docs into 06-Resources, a vault region.
+
+    Tracking them would put product churn in the user's private history and
+    re-dirty the working tree on every update. The re-ignore must come AFTER
+    the region negation or last-match keeps them tracked.
+    """
+    composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    brain_paths = portable_contract.brain_paths_inside_vault_regions()
+    assert brain_paths, "expected product files inside a vault region"
+
+    for path in brain_paths:
+        assert f"\n/{path}\n" in section, path
+        region = path.split("/", 1)[0]
+        # ordering is the whole point: the negation first, the re-ignore after
+        assert section.index(f"!/{region}/") < section.index(f"/{path}")
+
+
+def test_composed_gitignore_leaves_user_files_in_a_vault_region_tracked() -> None:
+    """Per-file, not per-directory: a note the user writes stays theirs."""
+    composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    # a blanket directory ignore would sweep up anything the user put alongside
+    assert "\n/06-Resources/Dex_System/\n" not in section
+
+
+def test_composed_gitignore_vault_regions_track_the_contract() -> None:
+    """Derived from the contract, so a new region cannot be forgotten here."""
+    composed = apply_update._compose_gitignore(b"# rules\n", Path("/unused")).decode()
+    section = composed.split(apply_update.GITIGNORE_SECTION_BEGIN, 1)[1]
+
+    emitted = {
+        line[2:].rstrip("/")
+        for line in section.splitlines()
+        if line.startswith("!/") and "/" not in line[2:].rstrip("/")
+    }
+    assert set(portable_contract.VAULT_REGIONS) <= emitted
+
+
 def test_composed_gitignore_is_idempotent_and_replaces_stale_section() -> None:
     release_blob = b"# rules\n"
     once = apply_update._compose_gitignore(release_blob, Path("/unused"))

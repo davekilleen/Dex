@@ -65,6 +65,59 @@ fi
 # These are fast checks with interval throttling - only run when needed
 if [[ -f "$ONBOARDING_MARKER" ]]; then
 
+    # This records only the built-in session_started event and the analytics
+    # helper owns consent, delivery, and the safe local receipt. Keep the
+    # result long enough to show a fixed, non-sensitive receipt failure; never
+    # print helper output or retry the delivery. A first-run vault emits none.
+    if [[ -f "$CLAUDE_DIR/core/mcp/analytics_helper.py" ]]; then
+        ANALYTICS_PYTHON="python3"
+        if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+            ANALYTICS_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+        fi
+        ANALYTICS_TOTAL_TIMEOUT_SECONDS=3
+        # macOS has no GNU timeout command. This standard-library wrapper
+        # bounds the whole helper process (startup, imports, receipt work, and
+        # request), not just requests.post, and kills its process group on a
+        # timeout so a stalled descendant cannot outlive session start.
+        ANALYTICS_RESULT=$(
+            cd "$CLAUDE_DIR" && VAULT_PATH="$CLAUDE_DIR" \
+                "$ANALYTICS_PYTHON" - "$ANALYTICS_PYTHON" \
+                    core/mcp/analytics_helper.py --event session_started \
+                    --request-timeout-seconds 2 "$ANALYTICS_TOTAL_TIMEOUT_SECONDS" \
+                    2>/dev/null <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+command = sys.argv[1:-1]
+timeout_seconds = float(sys.argv[-1])
+process = subprocess.Popen(
+    command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+    start_new_session=True,
+)
+try:
+    output, _ = process.communicate(timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.communicate()
+    raise SystemExit(124)
+sys.stdout.write(output)
+raise SystemExit(process.returncode)
+PY
+        )
+        ANALYTICS_STATUS=$?
+        if [[ "$ANALYTICS_STATUS" -ne 0 || "$ANALYTICS_RESULT" == *receipt_write_failed* ]]; then
+            echo "Dex could not save the local analytics receipt. No usage event was retried."
+        fi
+    fi
+
     # Claude Code changelog is now checked in daily plan Step 0.5 via fetch-changelog.cjs
     # Background checker removed (was never installed as LaunchAgent, redundant)
 
@@ -353,8 +406,19 @@ fi
 # (core/health/promises.py), which Doctor and Proactive Health audit.
 {
     DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+    AUTOMATION_OWNER_PYTHON="python3"
+    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        AUTOMATION_OWNER_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+    fi
     while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL JOB_MODE; do
         [[ -f "$DEX_LAUNCH_AGENTS_DIR/$JOB_NAME.plist" ]] || continue
+        if [[ -f "$CLAUDE_DIR/core/utils/launch_agents.py" ]] && (
+            cd "$CLAUDE_DIR" && "$AUTOMATION_OWNER_PYTHON" -m core.utils.launch_agents \
+                --offloaded-check --vault "$CLAUDE_DIR" \
+                --plist-relative "Library/LaunchAgents/$JOB_NAME.plist"
+        ) >/dev/null 2>&1; then
+            continue
+        fi
 
         JOB_LOG="$CLAUDE_DIR/$JOB_LOG_RELATIVE_PATH"
         if [[ ! -f "$JOB_LOG" ]]; then

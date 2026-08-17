@@ -237,7 +237,7 @@ test('update mutation follows the immutable preview, approval, execute service r
   assertOnlyServiceOperations(UPDATE_SKILL, UPDATE_SERVICE_OPERATIONS, 'dex-update');
   assert.match(
     UPDATE_SKILL,
-    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.4\.0\./,
+    /Every lifecycle operation goes through `core\.lifecycle\.service` version 1\.5\.0\./,
   );
   assert.match(UPDATE_SKILL, /Execution requires an explicit yes to that exact preview\./);
   // execute is gated on an UNCHANGED preview + token for BOTH the adoption route and the

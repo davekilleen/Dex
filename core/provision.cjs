@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const childProcess = require('node:child_process');
+const crypto = require('node:crypto');
 const yaml = require('js-yaml');
 const contract = require('./provision-contract.json');
 const portableContract = require('../packages/dex-contracts/dist/portable-vault.contract.json');
@@ -40,23 +41,25 @@ function parseArgs(argv) {
   return options;
 }
 
-function atomicWrite(filePath, content) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tempPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
-  );
-  try {
-    fs.writeFileSync(tempPath, content, 'utf8');
-    fs.renameSync(tempPath, filePath);
-  } catch (error) {
-    try { fs.unlinkSync(tempPath); } catch (_) { /* absent */ }
-    throw error;
-  }
+function contentBytes(content) {
+  return Buffer.isBuffer(content) ? Buffer.from(content) : Buffer.from(content, 'utf8');
 }
 
 function reportPath(vaultRoot, filePath) {
   return path.relative(vaultRoot, filePath).split(path.sep).join('/') || '.';
+}
+
+function treePaths(vaultRoot, relativeRoot) {
+  const absoluteRoot = path.join(vaultRoot, ...relativeRoot.split('/'));
+  const paths = new Set();
+  function walk(candidate) {
+    const metadata = fs.lstatSync(candidate);
+    paths.add(reportPath(vaultRoot, candidate));
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) return;
+    for (const entry of fs.readdirSync(candidate)) walk(path.join(candidate, entry));
+  }
+  if (fs.existsSync(absoluteRoot)) walk(absoluteRoot);
+  return paths;
 }
 
 function createReporter(vaultRoot, dryRun) {
@@ -71,14 +74,208 @@ function createReporter(vaultRoot, dryRun) {
   };
   return {
     summary,
-    created(filePath) { summary.created.push(reportPath(vaultRoot, filePath)); },
-    removed(filePath) { summary.removed.push(reportPath(vaultRoot, filePath)); },
-    skipped(filePath) { summary['skipped-existing'].push(reportPath(vaultRoot, filePath)); },
+    created(filePath) {
+      const relative = reportPath(vaultRoot, filePath);
+      if (!summary.created.includes(relative)) summary.created.push(relative);
+    },
+    removed(filePath) {
+      const relative = reportPath(vaultRoot, filePath);
+      if (!summary.removed.includes(relative)) summary.removed.push(relative);
+    },
+    skipped(filePath) {
+      const relative = reportPath(vaultRoot, filePath);
+      if (!summary['skipped-existing'].includes(relative)) {
+        summary['skipped-existing'].push(relative);
+      }
+    },
     error(message) { summary.ok = false; summary.errors.push(message); },
   };
 }
 
-function ensureDirectory(directory, reporter, dryRun) {
+class ProvisionTransaction {
+  constructor(vaultRoot) {
+    this.vaultRoot = path.resolve(vaultRoot);
+    this.actions = [];
+    this.plannedKinds = new Map();
+    this.transactionPathsBefore = treePaths(this.vaultRoot, 'System/.dex');
+  }
+
+  relative(target) {
+    const absolute = path.resolve(target);
+    const relative = path.relative(this.vaultRoot, absolute);
+    if (
+      relative === ''
+      || relative === '..'
+      || relative.startsWith(`..${path.sep}`)
+      || path.isAbsolute(relative)
+    ) {
+      if (relative === '') return null;
+      throw new Error(`Provision transaction target escapes the vault: ${target}`);
+    }
+    return relative.split(path.sep).join('/');
+  }
+
+  lstat(target) {
+    try {
+      return fs.lstatSync(target);
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  registerKind(target, kind) {
+    const absolute = path.resolve(target);
+    const previous = this.plannedKinds.get(absolute);
+    if (previous && previous !== kind) {
+      throw new Error(`Provision transaction has conflicting plans for ${this.relative(target)}`);
+    }
+    this.plannedKinds.set(absolute, kind);
+    return previous === kind;
+  }
+
+  stageDirectory(directory) {
+    const relative = this.relative(directory);
+    if (relative === null) return;
+    let cursor = path.resolve(directory);
+    while (cursor !== this.vaultRoot) {
+      const metadata = this.lstat(cursor);
+      if (metadata && (metadata.isSymbolicLink() || !metadata.isDirectory())) {
+        throw new Error(`Provision transaction directory is unsafe: ${relative}`);
+      }
+      cursor = path.dirname(cursor);
+    }
+  }
+
+  stageWrite(filePath, content) {
+    const expected = contentBytes(content);
+    this.stageDirectory(path.dirname(filePath));
+    const repeated = this.registerKind(filePath, 'write-file');
+    if (repeated) {
+      const previous = this.actions.find(action => (
+        action.kind === 'write-file' && action.path === path.resolve(filePath)
+      ));
+      if (!previous || !previous.expected.equals(expected)) {
+        throw new Error(`Provision transaction has conflicting writes for ${this.relative(filePath)}`);
+      }
+      return;
+    }
+    const metadata = this.lstat(filePath);
+    if (metadata && (metadata.isSymbolicLink() || !metadata.isFile())) {
+      throw new Error(`Provision transaction file is unsafe: ${this.relative(filePath)}`);
+    }
+    this.actions.push({
+      kind: 'write-file',
+      path: path.resolve(filePath),
+      expected,
+      mode: metadata ? metadata.mode & 0o777 : 0o644,
+      expectedCurrentSha256: metadata
+        ? crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+        : null,
+      expectedAbsent: metadata === null,
+    });
+  }
+
+  stageDeleteFile(filePath) {
+    const metadata = this.lstat(filePath);
+    if (!metadata) return;
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      throw new Error(`Provision transaction deletion target is unsafe: ${this.relative(filePath)}`);
+    }
+    if (this.registerKind(filePath, 'delete-file')) return;
+    this.actions.push({
+      kind: 'delete-file',
+      path: path.resolve(filePath),
+      mode: metadata.mode & 0o777,
+      expectedCurrentSha256: crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(filePath))
+        .digest('hex'),
+    });
+  }
+
+  stageRemoveDirectory(directory) {
+    const metadata = this.lstat(directory);
+    if (!metadata) return;
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw new Error(`Provision transaction removal target is unsafe: ${this.relative(directory)}`);
+    }
+    // The file deletion is transaction-owned. Leaving its now-empty parent is
+    // safer than introducing an unjournalled directory mutation.
+  }
+
+  rollback() {
+    // Planning is read-only, and the lifecycle engine rolls back any failed
+    // commit from its durable snapshot. This method keeps the existing caller
+    // contract for reporting a completed rollback.
+  }
+
+  document() {
+    return {
+      schema_version: 1,
+      entries: this.actions.map(action => ({
+        path: this.relative(action.path),
+        action: action.kind === 'delete-file' ? 'delete' : 'write',
+        content_base64: action.kind === 'write-file'
+          ? action.expected.toString('base64')
+          : null,
+        mode: action.mode,
+        expected_current_sha256: action.expectedCurrentSha256,
+        expected_absent: action.kind === 'write-file' && action.expectedAbsent,
+      })),
+    };
+  }
+
+  commit() {
+    return routeProvisionTransaction(this.vaultRoot, { document: this.document() });
+  }
+
+  failureReceipt() {
+    const after = treePaths(this.vaultRoot, 'System/.dex');
+    const declaredPaths = [...after]
+      .filter(relative => !this.transactionPathsBefore.has(relative))
+      .sort();
+    const transactionIds = [...new Set(declaredPaths.map(relative => {
+      const match = /^System\/\.dex\/tx\/([^/]+)/.exec(relative);
+      return match?.[1] || null;
+    }).filter(Boolean))];
+    const terminal = transactionIds.every(transactionId => {
+      const journal = path.join(
+        this.vaultRoot,
+        'System',
+        '.dex',
+        'tx',
+        transactionId,
+        'journal.jsonl',
+      );
+      if (!fs.existsSync(journal)) return false;
+      const events = fs.readFileSync(journal, 'utf8');
+      return /"event":"(?:COMMITTED|ROLLED-BACK)"/.test(events);
+    });
+    return {
+      declared_paths: declaredPaths,
+      transaction_ids: transactionIds,
+      terminal,
+    };
+  }
+
+}
+
+function rollbackProvision(transaction, reporter, cause) {
+  reporter.error(cause.message);
+  try {
+    transaction.rollback();
+    reporter.summary.provision_transaction_failure = transaction.failureReceipt();
+    reporter.summary.rolled_back = reporter.summary.provision_transaction_failure.terminal;
+    reporter.summary.created = [];
+    reporter.summary.removed = [];
+  } catch (rollbackError) {
+    reporter.summary.rolled_back = false;
+    reporter.error(rollbackError.message);
+  }
+}
+
+function ensureDirectory(directory, reporter, dryRun, transaction = null) {
   if (fs.existsSync(directory)) {
     if (!fs.statSync(directory).isDirectory()) throw new Error(`${directory} exists but is not a directory`);
     reporter.skipped(directory);
@@ -92,26 +289,53 @@ function ensureDirectory(directory, reporter, dryRun) {
     if (parent === candidate) break;
     candidate = parent;
   }
-  if (!dryRun) fs.mkdirSync(directory, { recursive: true });
+  if (!dryRun && !transaction) {
+    throw new Error('Directory planning requires the provision transaction service');
+  }
+  if (!dryRun) transaction.stageDirectory(directory);
   for (const created of missing.reverse()) reporter.created(created);
 }
 
-function writeIfMissing(filePath, content, reporter, dryRun) {
+function reportMissingAncestors(filePath, reporter) {
+  const missing = [];
+  let candidate = path.dirname(filePath);
+  while (!fs.existsSync(candidate)) {
+    missing.push(candidate);
+    const parent = path.dirname(candidate);
+    if (parent === candidate) break;
+    candidate = parent;
+  }
+  for (const created of missing.reverse()) reporter.created(created);
+}
+
+function writeIfMissing(filePath, content, reporter, dryRun, transaction = null) {
   if (fs.existsSync(filePath)) {
     reporter.skipped(filePath);
     return false;
   }
-  if (!dryRun) atomicWrite(filePath, content);
+  reportMissingAncestors(filePath, reporter);
+  if (!dryRun) {
+    if (!transaction) {
+      throw new Error('Provision writes require the provision transaction service');
+    }
+    transaction.stageWrite(filePath, content);
+  }
   reporter.created(filePath);
   return true;
 }
 
-function writeIfChanged(filePath, content, reporter, dryRun) {
+function writeIfChanged(filePath, content, reporter, dryRun, transaction = null) {
   if (fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf8') === content) {
     reporter.skipped(filePath);
     return false;
   }
-  if (!dryRun) atomicWrite(filePath, content);
+  if (!fs.existsSync(filePath)) reportMissingAncestors(filePath, reporter);
+  if (!dryRun) {
+    if (!transaction) {
+      throw new Error('Provision writes require the provision transaction service');
+    }
+    transaction.stageWrite(filePath, content);
+  }
   reporter.created(filePath);
   return true;
 }
@@ -211,92 +435,319 @@ function capabilityEnabled(profile, room, definition) {
   return definition.default_enabled === true;
 }
 
-function copyMissing(source, target, reporter, dryRun) {
+function copyMissing(source, target, reporter, dryRun, transaction = null) {
   if (!fs.existsSync(source)) return;
   const stat = fs.statSync(source);
   if (stat.isDirectory()) {
-    ensureDirectory(target, reporter, dryRun);
     for (const entry of fs.readdirSync(source)) {
-      copyMissing(path.join(source, entry), path.join(target, entry), reporter, dryRun);
+      copyMissing(path.join(source, entry), path.join(target, entry), reporter, dryRun, transaction);
     }
-  } else if (!fs.existsSync(target)) {
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.copyFileSync(source, target);
-    }
-    reporter.created(target);
-  } else reporter.skipped(target);
+  } else writeIfMissing(target, fs.readFileSync(source), reporter, dryRun, transaction);
 }
 
-function snapshotTree(target) {
-  const observed = new Map();
-  function walk(candidate) {
-    if (!fs.existsSync(candidate)) return;
-    const stat = fs.lstatSync(candidate);
-    if (stat.isSymbolicLink()) {
-      observed.set(candidate, `link:${stat.mode & 0o777}:${fs.readlinkSync(candidate)}`);
-      return;
-    }
-    if (stat.isDirectory()) {
-      observed.set(candidate, `directory:${stat.mode & 0o777}`);
-      for (const entry of fs.readdirSync(candidate)) walk(path.join(candidate, entry));
-      return;
-    }
-    observed.set(candidate, `file:${stat.mode & 0o777}:${fs.readFileSync(candidate).toString('base64')}`);
+function stageCopyMissing(source, target, transaction) {
+  const sourceMetadata = fs.lstatSync(source);
+  if (sourceMetadata.isSymbolicLink()) {
+    throw new Error(`Capability seed source is a symlink: ${source}`);
   }
-  walk(target);
-  return observed;
+  if (sourceMetadata.isDirectory()) {
+    const targetMetadata = transaction.lstat(target);
+    if (!targetMetadata) transaction.stageDirectory(target);
+    else if (targetMetadata.isSymbolicLink() || !targetMetadata.isDirectory()) {
+      throw new Error(`Capability seed target is unsafe: ${transaction.relative(target)}`);
+    }
+    for (const entry of fs.readdirSync(source)) {
+      stageCopyMissing(path.join(source, entry), path.join(target, entry), transaction);
+    }
+    return;
+  }
+  if (!sourceMetadata.isFile()) {
+    throw new Error(`Capability seed source is not a regular file: ${source}`);
+  }
+  if (!transaction.lstat(target)) transaction.stageWrite(target, fs.readFileSync(source));
 }
 
-function reportTreeChanges(before, after, reporter) {
-  for (const candidate of new Set([...before.keys(), ...after.keys()])) {
-    if (before.get(candidate) === after.get(candidate)) continue;
-    if (after.has(candidate)) reporter.created(candidate);
-    else reporter.removed(candidate);
+function stageCapabilityReconciliation(vaultRoot, profile, authority, transaction) {
+  for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
+    const roomEnabled = capabilityEnabled(profile, room, definition);
+    if (roomEnabled) {
+      const roomSource = path.join(CAPABILITY_CATALOG, room);
+      for (const relativeFolder of definition.folders || []) {
+        stageCopyMissing(
+          path.join(roomSource, 'folders', ...relativeFolder.split('/')),
+          path.join(vaultRoot, ...relativeFolder.split('/')),
+          transaction,
+        );
+      }
+    }
+
+    for (const skill of definition.skills || []) {
+      const state = authority?.skill_targets?.[room]
+        ?.find(item => item.skill === skill)?.state;
+      if (typeof state !== 'string') {
+        throw new Error(`Capability authority omitted transaction state for ${room}/${skill}`);
+      }
+      const pin = (definition.skill_sources || []).find(item => item.skill === skill);
+      if (!pin || typeof pin.source_path !== 'string' || typeof pin.target_path !== 'string') {
+        throw new Error(`Portable contract omitted the source authority for ${room}/${skill}`);
+      }
+      const source = path.resolve(__dirname, '..', ...pin.source_path.split('/'));
+      const targetFile = path.join(vaultRoot, ...pin.target_path.split('/'));
+      const targetDirectory = path.dirname(targetFile);
+      if (roomEnabled) {
+        if (state !== 'current') {
+          transaction.stageDirectory(targetDirectory);
+          transaction.stageWrite(targetFile, fs.readFileSync(source));
+        }
+      } else if (state !== 'missing') {
+        transaction.stageDeleteFile(targetFile);
+        transaction.stageRemoveDirectory(targetDirectory);
+      }
+    }
   }
 }
 
-function reconcileCapabilities(vaultRoot, profile, reporter, dryRun) {
+function reconcileCapabilities(
+  vaultRoot,
+  profile,
+  reporter,
+  dryRun,
+  authority = null,
+  transaction = null,
+) {
+  if (!dryRun) {
+    if (!transaction) throw new Error('Capability reconciliation requires a provision transaction');
+    const start = transaction.actions.length;
+    stageCapabilityReconciliation(vaultRoot, profile, authority, transaction);
+    for (const action of transaction.actions.slice(start)) {
+      if (action.kind === 'delete-file') {
+        reporter.removed(action.path);
+        continue;
+      }
+      if (action.expectedAbsent) reportMissingAncestors(action.path, reporter);
+      reporter.created(action.path);
+    }
+    return { preflight: 'passed', planned: transaction.actions.length - start };
+  }
+
+  // A dry run reports the intended surfaces after the shared Python authority
+  // has validated all pins and targets. It never copies or removes a skill.
   for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
     const roomEnabled = capabilityEnabled(profile, room, definition);
     const roomSource = path.join(CAPABILITY_CATALOG, room);
     if (roomEnabled) {
       for (const relativeFolder of definition.folders || []) {
         const target = path.join(vaultRoot, ...relativeFolder.split('/'));
-        ensureDirectory(target, reporter, dryRun);
+        ensureDirectory(target, reporter, dryRun, transaction);
         copyMissing(
           path.join(roomSource, 'folders', ...relativeFolder.split('/')),
           target,
           reporter,
           dryRun,
+          transaction,
         );
       }
       for (const skill of definition.skills || []) {
-        const source = path.join(roomSource, 'skills', skill);
         const target = path.join(vaultRoot, '.claude', 'skills', skill);
-        if (!fs.existsSync(source)) throw new Error(`Dormant skill is missing for ${room}: ${skill}`);
-        ensureDirectory(path.dirname(target), reporter, dryRun);
-        const before = dryRun ? null : snapshotTree(target);
-        if (!dryRun) {
-          fs.rmSync(target, { recursive: true, force: true });
-          fs.cpSync(source, target, { recursive: true });
+        const skillFile = path.join(target, 'SKILL.md');
+        const state = authority?.skill_targets?.[room]
+          ?.find(item => item.skill === skill)?.state;
+        if (typeof state !== 'string') {
+          throw new Error(`Capability authority omitted dry-run state for ${room}/${skill}`);
         }
-        if (dryRun) reporter.created(target);
-        else reportTreeChanges(before, snapshotTree(target), reporter);
+        if (state === 'missing') {
+          ensureDirectory(target, reporter, true);
+          reporter.created(skillFile);
+        } else if (state === 'current') {
+          reporter.skipped(target);
+          reporter.skipped(skillFile);
+        } else {
+          reporter.created(skillFile);
+        }
       }
     } else {
       // Room folders contain user content and are never deleted. Only release-owned
       // active skill copies are hidden when a room is switched off.
       for (const skill of definition.skills || []) {
         const target = path.join(vaultRoot, '.claude', 'skills', skill);
-        if (fs.existsSync(target)) {
-          const before = dryRun ? null : snapshotTree(target);
-          if (!dryRun) fs.rmSync(target, { recursive: true, force: true });
-          if (!dryRun) reportTreeChanges(before, snapshotTree(target), reporter);
-          else reporter.removed(target);
+        const skillFile = path.join(target, 'SKILL.md');
+        const state = authority?.skill_targets?.[room]
+          ?.find(item => item.skill === skill)?.state;
+        if (typeof state !== 'string') {
+          throw new Error(`Capability authority omitted dry-run state for ${room}/${skill}`);
+        }
+        if (state !== 'missing') {
+          reporter.removed(skillFile);
+          reporter.removed(target);
         }
       }
     }
+  }
+}
+
+function addCapabilityFolderTargets(source, targetRelative, add) {
+  const metadata = fs.lstatSync(source);
+  if (metadata.isSymbolicLink()) {
+    throw new Error(`Capability seed source is a symlink: ${source}`);
+  }
+  if (metadata.isDirectory()) {
+    for (const entry of fs.readdirSync(source)) {
+      addCapabilityFolderTargets(
+        path.join(source, entry),
+        path.posix.join(targetRelative, entry),
+        add,
+      );
+    }
+    return;
+  }
+  if (!metadata.isFile()) {
+    throw new Error(`Capability seed source is not a regular file: ${source}`);
+  }
+  add(targetRelative, 'file');
+}
+
+function provisionMutationTargets(vaultRoot, options) {
+  const targets = [];
+  const add = (relativePath, kind) => targets.push({ path: relativePath, kind });
+
+  if (options.installConfigOnly) {
+    add('.mcp.json', 'file');
+    add('core/paths.json', 'file');
+  } else if (options.lifecycleOnly) {
+    add('System/user-profile.yaml', 'file');
+    add('System/.dex', 'directory');
+  } else {
+    for (const relativePath of Object.values(contract.seed_files || {})) add(relativePath, 'file');
+    for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
+      for (const relativePath of definition.folders || []) {
+        addCapabilityFolderTargets(
+          path.join(CAPABILITY_CATALOG, room, 'folders', ...relativePath.split('/')),
+          relativePath,
+          add,
+        );
+      }
+      for (const source of definition.skill_sources || []) add(source.target_path, 'file');
+    }
+    for (const [relativePath, kind] of [
+      ['System/user-profile.yaml', 'file'],
+      ['System/pillars.yaml', 'file'],
+      ['System/.onboarding-complete', 'file'],
+      ['System/.dex', 'directory'],
+      ['CLAUDE.md', 'file'],
+      ['.mcp.json', 'file'],
+      ['core/paths.json', 'file'],
+    ]) add(relativePath, kind);
+  }
+
+  if (options.sessionFile) {
+    const sessionPath = path.resolve(options.sessionFile);
+    const canonicalSession = path.join(vaultRoot, 'System', '.onboarding-session.json');
+    if (sessionPath !== canonicalSession) {
+      throw new Error('--session-file must be System/.onboarding-session.json inside the vault');
+    }
+    add('System/.onboarding-session.json', 'file');
+  }
+
+  return targets.filter((target, index, all) => all.findIndex(
+    candidate => candidate.path === target.path && candidate.kind === target.kind,
+  ) === index);
+}
+
+function routeCapabilityAuthority(
+  vaultRoot,
+  { preflightOnly = true, mutationTargets = [], targetsOnly = false } = {},
+) {
+  const python = process.env.DEX_CAPABILITY_PYTHON
+    || process.env.DEX_PYTHON
+    || (process.platform === 'win32' ? 'python' : 'python3');
+  const repoRoot = path.resolve(__dirname, '..');
+  const separator = process.platform === 'win32' ? ';' : ':';
+  const contractPath = process.env.DEX_CAPABILITY_CONTRACT_PATH
+    || path.join(repoRoot, 'packages', 'dex-contracts', 'dist', 'portable-vault.contract.json');
+  const result = childProcess.spawnSync(
+    python,
+    [
+      path.join(repoRoot, 'core', 'capabilities.py'),
+      targetsOnly ? '--preflight-mutation-targets' : (preflightOnly ? '--preflight' : '--reconcile'),
+      '--vault',
+      vaultRoot,
+      '--contract',
+      contractPath,
+      '--mutation-targets-json',
+      JSON.stringify(mutationTargets),
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PYTHONPATH: process.env.PYTHONPATH
+          ? `${repoRoot}${separator}${process.env.PYTHONPATH}`
+          : repoRoot,
+      },
+    },
+  );
+  if (result.error) {
+    throw new Error(`Capability source authority could not start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`Capability source authority refused provisioning: ${(result.stderr || result.stdout).trim()}`);
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (_) {
+    throw new Error('Capability source authority returned an invalid response');
+  }
+}
+
+function routeProvisionTransaction(
+  vaultRoot,
+  { document = null, recoverOnly = false } = {},
+) {
+  if (recoverOnly === (document !== null)) {
+    throw new Error('Provision transaction route requires exactly one mode');
+  }
+  const python = process.env.DEX_PROVISION_PYTHON
+    || process.env.DEX_PYTHON
+    || (process.platform === 'win32' ? 'python' : 'python3');
+  const repoRoot = path.resolve(__dirname, '..');
+  const separator = process.platform === 'win32' ? ';' : ':';
+  const args = [
+    path.join(repoRoot, 'core', 'provision_transaction.py'),
+    '--vault',
+    vaultRoot,
+  ];
+  if (recoverOnly) args.push('--recover');
+  const result = childProcess.spawnSync(
+    python,
+    args,
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      input: recoverOnly ? '' : JSON.stringify(document),
+      env: {
+        ...process.env,
+        PYTHONPATH: process.env.PYTHONPATH
+          ? `${repoRoot}${separator}${process.env.PYTHONPATH}`
+          : repoRoot,
+      },
+    },
+  );
+  if (result.error) {
+    throw new Error(`Provision transaction service could not start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || result.signal || 'unknown failure').trim();
+    throw new Error(`Provision transaction service refused provisioning: ${detail}`);
+  }
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (!parsed || parsed.ok !== true) {
+      throw new Error('Provision transaction service returned a non-success receipt');
+    }
+    return parsed;
+  } catch (_) {
+    throw new Error('Provision transaction service returned an invalid response');
   }
 }
 
@@ -476,7 +927,11 @@ function routeAdoptionThroughLifecycleService(
     throw new Error(`Lifecycle service refused adoption: ${(result.stderr || result.stdout).trim()}`);
   }
   try {
-    return JSON.parse(result.stdout);
+    const parsed = JSON.parse(result.stdout);
+    if (!parsed || parsed.ok !== true) {
+      throw new Error('Lifecycle service returned a non-success receipt');
+    }
+    return parsed;
   } catch (_) {
     throw new Error('Lifecycle service returned an invalid adoption receipt');
   }
@@ -515,7 +970,7 @@ function verifyShipped(vaultRoot) {
   });
 }
 
-function provisionInstallerConfig(options, vaultRoot, reporter) {
+function provisionInstallerConfig(options, vaultRoot, reporter, transaction = null) {
   const mcpPath = path.join(vaultRoot, '.mcp.json');
   if (fs.existsSync(mcpPath)) {
     reporter.skipped(mcpPath);
@@ -530,6 +985,7 @@ function provisionInstallerConfig(options, vaultRoot, reporter) {
       `${JSON.stringify(mcp, null, 2)}\n`,
       reporter,
       options.dryRun,
+      transaction,
     );
   }
   writeIfChanged(
@@ -537,14 +993,67 @@ function provisionInstallerConfig(options, vaultRoot, reporter) {
     `${JSON.stringify(pathExports(vaultRoot), null, 2)}\n`,
     reporter,
     options.dryRun,
+    transaction,
   );
   reporter.summary.bootstrap_executor = 'provision-contract';
-  reporter.summary.mutation_receipt = {
-    executor: 'provision-contract-bootstrap',
-    declared_paths: [...new Set(reporter.summary.created)].sort(),
-    lifecycle_transaction_id: null,
-  };
   return reporter.summary;
+}
+
+function buildMutationReceipt(reporter, options) {
+  const lifecycleReceipts = [
+    reporter.summary.lifecycle_executor?.compatibility_receipt,
+    reporter.summary.lifecycle_executor?.receipt,
+  ].filter(Boolean);
+  const lifecycleTransactionIds = lifecycleReceipts
+    .map(receipt => receipt.transaction_id)
+    .filter(Boolean);
+  const lifecycleDeclaredPaths = lifecycleReceipts.flatMap(
+    receipt => receipt.declared_paths
+      || (receipt.files_written || []).map(file => file.path),
+  );
+  const provisionReceipt = reporter.summary.provision_transaction?.receipt || null;
+  const provisionDeclaredPaths = reporter.summary.provision_transaction?.declared_paths
+    || provisionReceipt?.declared_paths
+    || [];
+  const failedProvisionDeclaredPaths = (
+    reporter.summary.provision_transaction_failure?.declared_paths || []
+  );
+  const observedCommittedTransactionIds = (
+    reporter.summary.provision_recovery?.committed_transaction_ids || []
+  );
+  const recoveredProvisionTransactionIds = (
+    reporter.summary.provision_recovery?.committed_transactions || []
+  )
+    .filter(transaction => transaction.operation === 'onboarding-provision')
+    .map(transaction => transaction.transaction_id);
+  const provisionTransactionIds = [...new Set([
+    ...recoveredProvisionTransactionIds,
+    ...(provisionReceipt?.transaction_id ? [provisionReceipt.transaction_id] : []),
+  ])];
+  return {
+    executor: options.adopt || options.onboard
+      ? 'lifecycle-service+provision-contract'
+      : 'provision-contract-bootstrap',
+    declared_paths: [...new Set([
+      ...reporter.summary.created,
+      ...reporter.summary.removed,
+      ...lifecycleDeclaredPaths,
+      ...provisionDeclaredPaths,
+      ...failedProvisionDeclaredPaths,
+    ])].sort(),
+    lifecycle_transaction_id: lifecycleTransactionIds[0] || null,
+    lifecycle_transaction_ids: lifecycleTransactionIds,
+    provision_transaction_id: provisionReceipt?.transaction_id
+      || recoveredProvisionTransactionIds.at(-1)
+      || null,
+    provision_transaction_ids: provisionTransactionIds,
+    observed_committed_transaction_ids: observedCommittedTransactionIds,
+    transaction_ids: [...new Set([
+      ...observedCommittedTransactionIds,
+      ...lifecycleTransactionIds,
+      ...(provisionReceipt?.transaction_id ? [provisionReceipt.transaction_id] : []),
+    ])],
+  };
 }
 
 function provision(options) {
@@ -556,11 +1065,42 @@ function provision(options) {
     return reporter.summary;
   }
 
-  if (options.installConfigOnly) {
+  let mutationTargets;
+  try {
+    mutationTargets = provisionMutationTargets(vaultRoot, options);
+  } catch (error) {
+    reporter.error(error.message);
+    return reporter.summary;
+  }
+
+  if (!options.dryRun) {
     try {
-      return provisionInstallerConfig(options, vaultRoot, reporter);
+      reporter.summary.provision_recovery = routeProvisionTransaction(
+        vaultRoot,
+        { recoverOnly: true },
+      );
     } catch (error) {
       reporter.error(error.message);
+      reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
+      return reporter.summary;
+    }
+  }
+
+  if (options.installConfigOnly) {
+    const transaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
+    try {
+      reporter.summary.capability_authority = routeCapabilityAuthority(
+        vaultRoot,
+        { mutationTargets, targetsOnly: true },
+      );
+      const summary = provisionInstallerConfig(options, vaultRoot, reporter, transaction);
+      if (transaction) summary.provision_transaction = transaction.commit();
+      summary.mutation_receipt = buildMutationReceipt(reporter, options);
+      return summary;
+    } catch (error) {
+      if (transaction) rollbackProvision(transaction, reporter, error);
+      else reporter.error(error.message);
+      reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
       return reporter.summary;
     }
   }
@@ -571,6 +1111,10 @@ function provision(options) {
       return reporter.summary;
     }
     try {
+      reporter.summary.capability_authority = routeCapabilityAuthority(
+        vaultRoot,
+        { preflightOnly: true, mutationTargets },
+      );
       reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
         vaultRoot,
         { previewOnly: options.dryRun },
@@ -606,28 +1150,30 @@ function provision(options) {
     return reporter.summary;
   }
 
+  let provisionTransaction = null;
   try {
+    const capabilityAuthority = routeCapabilityAuthority(
+      vaultRoot,
+      { preflightOnly: true, mutationTargets },
+    );
+    reporter.summary.capability_authority = capabilityAuthority;
     if (options.adopt || options.onboard) {
-      try {
-        reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
-          vaultRoot,
-          {
-            pinCompanies: options.adopt === true,
-            previewOnly: options.dryRun,
-          },
-        );
-      } catch (lifecycleError) {
-        // The lifecycle service needs a working Python. A user whose Python has
-        // broken should still be able to update: refusing the whole run is the
-        // wrong trade, and it is how a shipped release blocked updates outright.
-        // Continue and report honestly instead of aborting.
-        reporter.summary.lifecycle_executor = {
-          ok: false,
-          reason: lifecycleError.message,
-          compatibility_pinned: false,
-          fallback: 'continued without the lifecycle step',
-        };
+      if (options.sessionFile) {
+        const sessionPath = path.resolve(options.sessionFile);
+        const markerPath = path.join(vaultRoot, 'System', '.onboarding-complete');
+        if (!fs.existsSync(markerPath) && !fs.existsSync(sessionPath)) {
+          throw new Error(
+            'Onboarding finalization requires its session until the completion marker exists',
+          );
+        }
       }
+      reporter.summary.lifecycle_executor = routeAdoptionThroughLifecycleService(
+        vaultRoot,
+        {
+          pinCompanies: options.adopt === true,
+          previewOnly: options.dryRun === true,
+        },
+      );
     }
     const overlay = loadProfileOverlay(options.profile);
     const templatePath = path.join(vaultRoot, 'System', 'user-profile-template.yaml');
@@ -635,10 +1181,11 @@ function provision(options) {
     const freshProfile = buildFreshProfile(template, overlay);
     const profilePath = path.join(vaultRoot, 'System', 'user-profile.yaml');
     let profile = freshProfile;
+    provisionTransaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
 
     if (fs.existsSync(profilePath)) {
       profile = yaml.load(fs.readFileSync(profilePath, 'utf8')) || {};
-      if (options.adopt && options.dryRun) {
+      if (options.adopt) {
         profile.capabilities ||= {};
         for (const [room, enabled] of Object.entries(
           reporter.summary.lifecycle_executor?.compatibility_states || {},
@@ -654,6 +1201,7 @@ function provision(options) {
           yaml.dump(profile, { sortKeys: false, lineWidth: -1 }),
           reporter,
           options.dryRun,
+          provisionTransaction,
         );
       } else if (options.adopt) {
         // Never inject entity_creation into an existing vault: a vault that
@@ -673,7 +1221,13 @@ function provision(options) {
           }
         }
         if (deepFillMissing(profile, gapDefaults)) {
-          writeIfChanged(profilePath, yaml.dump(profile, { sortKeys: false, lineWidth: -1 }), reporter, options.dryRun);
+          writeIfChanged(
+            profilePath,
+            yaml.dump(profile, { sortKeys: false, lineWidth: -1 }),
+            reporter,
+            options.dryRun,
+            provisionTransaction,
+          );
         } else reporter.skipped(profilePath);
       } else reporter.skipped(profilePath);
     } else {
@@ -682,19 +1236,35 @@ function provision(options) {
         yaml.dump(freshProfile, { sortKeys: false, lineWidth: -1 }),
         reporter,
         options.dryRun,
+        provisionTransaction,
       );
     }
 
-    for (const relativePath of contract.para_directories) {
-      ensureDirectory(path.join(vaultRoot, ...relativePath.split('/')), reporter, options.dryRun);
-    }
-
-    reconcileCapabilities(vaultRoot, profile, reporter, options.dryRun);
+    reconcileCapabilities(
+      vaultRoot,
+      profile,
+      reporter,
+      options.dryRun,
+      capabilityAuthority,
+      provisionTransaction,
+    );
 
     const tasksPath = path.join(vaultRoot, ...contract.seed_files.tasks.split('/'));
-    writeIfMissing(tasksPath, tasksContent(profile.pillars), reporter, options.dryRun);
+    writeIfMissing(
+      tasksPath,
+      tasksContent(profile.pillars),
+      reporter,
+      options.dryRun,
+      provisionTransaction,
+    );
     const prioritiesPath = path.join(vaultRoot, ...contract.seed_files.week_priorities.split('/'));
-    writeIfMissing(prioritiesPath, weekPrioritiesContent(), reporter, options.dryRun);
+    writeIfMissing(
+      prioritiesPath,
+      weekPrioritiesContent(),
+      reporter,
+      options.dryRun,
+      provisionTransaction,
+    );
 
     const pillarsPath = path.join(vaultRoot, 'System', 'pillars.yaml');
     const pillars = (profile.pillars || []).map(pillar => {
@@ -702,13 +1272,34 @@ function provision(options) {
       return { id: pillarId(name), name, description: pillarDescription(pillar) };
     }).filter(pillar => pillar.name);
     const pillarsContent = yaml.dump({ pillars }, { sortKeys: false, lineWidth: -1 });
-    if (options.onboard) writeIfChanged(pillarsPath, pillarsContent, reporter, options.dryRun);
-    else writeIfMissing(pillarsPath, pillarsContent, reporter, options.dryRun);
+    if (options.onboard) {
+      writeIfChanged(
+        pillarsPath,
+        pillarsContent,
+        reporter,
+        options.dryRun,
+        provisionTransaction,
+      );
+    } else {
+      writeIfMissing(
+        pillarsPath,
+        pillarsContent,
+        reporter,
+        options.dryRun,
+        provisionTransaction,
+      );
+    }
 
     const claudePath = path.join(vaultRoot, 'CLAUDE.md');
     if (fs.existsSync(claudePath)) {
       const current = fs.readFileSync(claudePath, 'utf8');
-      writeIfChanged(claudePath, updateClaudeContent(current, profile), reporter, options.dryRun);
+      writeIfChanged(
+        claudePath,
+        updateClaudeContent(current, profile),
+        reporter,
+        options.dryRun,
+        provisionTransaction,
+      );
     }
 
     const mcpPath = path.join(vaultRoot, '.mcp.json');
@@ -717,7 +1308,13 @@ function provision(options) {
       const existing = JSON.parse(fs.readFileSync(mcpPath, 'utf8'));
       mcp = mergeMcp(existing, mcp);
     }
-    writeIfChanged(mcpPath, `${JSON.stringify(mcp, null, 2)}\n`, reporter, options.dryRun);
+    writeIfChanged(
+      mcpPath,
+      `${JSON.stringify(mcp, null, 2)}\n`,
+      reporter,
+      options.dryRun,
+      provisionTransaction,
+    );
 
     const pathsPath = path.join(vaultRoot, 'core', 'paths.json');
     writeIfChanged(
@@ -725,6 +1322,7 @@ function provision(options) {
       `${JSON.stringify(pathExports(vaultRoot), null, 2)}\n`,
       reporter,
       options.dryRun,
+      provisionTransaction,
     );
 
     const markerPath = path.join(vaultRoot, 'System', '.onboarding-complete');
@@ -750,6 +1348,7 @@ function provision(options) {
       }, null, 2)}\n`,
       reporter,
       options.dryRun,
+      provisionTransaction,
     );
 
     if (options.sessionFile) {
@@ -764,37 +1363,22 @@ function provision(options) {
         if (fs.lstatSync(sessionPath).isSymbolicLink() || !fs.statSync(sessionPath).isFile()) {
           throw new Error('--session-file must name a regular file');
         }
-        if (!options.dryRun) fs.unlinkSync(sessionPath);
+        if (!options.dryRun) {
+          provisionTransaction.stageDeleteFile(sessionPath);
+        }
         reporter.removed(sessionPath);
       } else reporter.skipped(sessionPath);
     }
+
+    if (provisionTransaction) {
+      reporter.summary.provision_transaction = provisionTransaction.commit();
+    }
   } catch (error) {
-    reporter.error(error.message);
+    if (provisionTransaction) rollbackProvision(provisionTransaction, reporter, error);
+    else reporter.error(error.message);
   }
 
-  const lifecycleReceipts = [
-    reporter.summary.lifecycle_executor?.compatibility_receipt,
-    reporter.summary.lifecycle_executor?.receipt,
-  ].filter(Boolean);
-  const lifecycleTransactionIds = lifecycleReceipts
-    .map(receipt => receipt.transaction_id)
-    .filter(Boolean);
-  const lifecycleDeclaredPaths = lifecycleReceipts.flatMap(
-    receipt => receipt.declared_paths
-      || (receipt.files_written || []).map(file => file.path),
-  );
-  reporter.summary.mutation_receipt = {
-    executor: options.adopt || options.onboard
-      ? 'lifecycle-service+provision-contract'
-      : 'provision-contract-bootstrap',
-    declared_paths: [...new Set([
-      ...reporter.summary.created,
-      ...reporter.summary.removed,
-      ...lifecycleDeclaredPaths,
-    ])].sort(),
-    lifecycle_transaction_id: lifecycleTransactionIds[0] || null,
-    lifecycle_transaction_ids: lifecycleTransactionIds,
-  };
+  reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
 
   return reporter.summary;
 }
@@ -848,8 +1432,10 @@ module.exports = {
   deepFillMissing,
   parseArgs,
   pathExports,
+  provisionMutationTargets,
   provision,
   routeAdoptionThroughLifecycleService,
+  routeCapabilityAuthority,
   reconcileCapabilities,
   updateClaudeContent,
 };

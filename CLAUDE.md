@@ -141,6 +141,31 @@ Extend concepts, spot synergies, think bigger, challenge the ceiling. Don't just
 
 Never invent details beyond the returned `user_message`.
 
+#### Calendar response confidence contract
+
+Calendar-using skills must inspect the complete tool response before reading
+`events`, `count`, or making capacity claims:
+
+- `success: true` is the only healthy calendar result. `count: 0` means the
+  queried range is genuinely empty only when there is no `warning`; preserve a
+  `warning` and do not claim the calendar is empty or the period is open.
+- `feature_status: off` is healthy optional absence: continue calmly with
+  non-calendar evidence, with no error tone, fix suggestion, or nag.
+- `feature_status: not_installed` surfaces the returned `user_message` and fix
+  once in a calm setup tone, then continues with non-calendar evidence.
+- `feature_status: broken` surfaces the returned `user_message` exactly,
+  including permission or other fix guidance. Never recast it as “not
+  connected” or “no meetings.”
+- `feature_status: unknown` means calendar-derived counts and capacity remain
+  unknown. Say the calendar could not be checked; do not report an empty result.
+- If the calendar tool is unavailable and returns no response, treat that as
+  optional absence. If the tool errors without a structured status, say it
+  could not be checked; tool errors are not absence and are not empty results.
+
+Every non-healthy branch is unavailable evidence, not an empty calendar. Never
+substitute `[]`, and do not call `analyze_calendar_capacity` with missing or
+failed calendar results because that would manufacture a falsely open period.
+
 ### Release Awareness (Automatic, Bounded)
 
 The SessionStart hook performs one bounded daily fetch-only evidence attempt against Dex's pinned canonical HTTPS

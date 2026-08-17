@@ -19,17 +19,37 @@ hook does also run, because both skip a page that already lists the meeting.
 
 ---
 
-## Step 1: Check Background Sync Status
+## Step 1: Resolve the Local Meeting Sources
 
-From the vault root:
+Read `System/user-profile.yaml` before looking for notes. Its exact supported
+shape is:
 
-```bash
-ls .scripts/meeting-intel/processed-meetings.json
+```yaml
+meeting_sources:
+  primary: granola | zoom | teams | exported-folder | wispr | none
+  notes_folder: "vault-relative/folder/or/empty"
 ```
 
-If the state file exists, continue. If not, stop and return a message telling
-the conversation that background sync is not set up (the conversation will
-guide the user through `--setup`); do not attempt setup yourself.
+`primary` records provenance; it does not grant access to that recorder or
+prove that a matching MCP tool exists. This delegated prompt has the vault and
+the inherited Dex tools. It has no general Zoom, Teams, Wispr, email, Drive, or
+Notion reader. Never search an external service merely because `primary` names
+it. Process only notes already present in the vault.
+
+Resolve `notes_folder` only when it is a non-empty string. It is vault-relative:
+reject an absolute path, `..`, the vault root itself, and any symlink whose real
+target escapes the vault. Report that invalid configuration, then continue with
+the safe default and provider-neutral fallback below. If the profile is missing,
+malformed YAML, not an object, `meeting_sources` is not an object, or `primary`
+is not one of the supported values, report the configuration problem and use
+the same safe fallback. Never guess a path from malformed configuration.
+
+The Granola state file (`.scripts/meeting-intel/processed-meetings.json`) is
+optional bookkeeping for Granola sync, not a gate on local notes. Read it when
+it exists. If it is absent and `primary` is `granola`, report that background
+sync is not set up so the conversation can offer `--setup`; still continue with
+any local meeting notes. Its absence must never stop an exported-folder, Zoom,
+Teams, manual-note, or provider-neutral local pass.
 
 ---
 
@@ -41,15 +61,29 @@ Read the processed meetings state:
 cat .scripts/meeting-intel/processed-meetings.json
 ```
 
-List meeting files:
+Search candidate folders in this order:
+
+1. the valid configured `notes_folder`, when present
+2. `00-Inbox/Meetings/`
+3. bounded provider-neutral Markdown discovery elsewhere in the vault, only
+   when the first two sources return no candidates
+
+For the fallback, match likely meeting notes by the requested date window plus
+meeting title, attendee, or meeting frontmatter. Exclude `.git`, `.claude`,
+`.agents`, `.scripts`, `System`, dependency folders, binary files, and archives
+outside the requested date. Do not treat arbitrary Markdown as a meeting.
+
+List Markdown meeting files from each local candidate folder without following
+directory symlinks. For the default folder that is equivalent to:
 
 ```bash
 find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
 ```
 
 This includes synced notes in day directories and flat notes in the folder
-root (manually captured meetings with no `granola_id`); process and stamp those
-the same way. Skip notes containing `<!-- dex:skip-processing -->`.
+root. A manual note with no capture id is still a meeting candidate and must be
+processed and stamped the same way. Skip notes containing
+`<!-- dex:skip-processing -->`.
 
 If `00-Inbox/Meetings/queue/*.json` files exist, consume each queued meeting
 first, following the queue rules in this skill's `SKILL.md` (Step 2.5): create
@@ -62,10 +96,51 @@ invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
 subagent of your own.
 
 For each meeting file:
-1. Read frontmatter for `granola_id`, `participants`, `company`, `date`
+1. Preserve its actual vault-relative path; never reconstruct it under
+   `00-Inbox/Meetings/`. Read frontmatter for `participants`, `company`, `date`,
+   and recorder provenance. A capture id is a non-empty scalar frontmatter key
+   ending in `_id` (for example `granola_id` or `wispr_id`). When `source` names
+   a provider, use only that provider's matching `<source>_id`; if it is absent,
+   report the mismatch and use the note path as identity. When `source` is
+   absent, use a capture id only when exactly one such key is present. Empty or
+   non-scalar values do not count. If multiple capture-id keys remain, report
+   the ambiguity and use the note path as identity. The path identity is the
+   normalized vault-relative Markdown path, with `/` separators and the `.md`
+   extension retained; never reduce it to a basename. A manual note with no
+   capture id remains valid.
 2. Check whether person/company pages need updating
 3. Check whether tasks need extracting (unchecked items in the "For Me"
    section, no `tasks-extracted` marker)
+
+### Match capture identity to Calendar when both inputs exist
+
+This is the only matching boundary. Daily review delegates meeting ingestion
+here, and meeting prep has no capture to match, so neither owns a copy of this
+policy.
+
+For each synced note with an ISO `capture_started_at` value that includes `Z`
+or a numeric UTC offset:
+
+1. Apply CLAUDE.md's **Calendar response confidence contract**, then call
+   `calendar_get_events_with_attendees` for that calendar date (fetch once
+   per date and reuse the result).
+2. Call `match_capture_to_calendar` with a `capture` containing only the note's
+   `title`, `capture_started_at` as `start_time`, and attendee identities, plus
+   the Calendar response's `events` array as `calendar_events` (not the whole
+   Calendar response object).
+3. If it returns `status: matched`, use its `identity` only (title, normalized
+   start time, attendees) as the meeting identity for the rest of this run. If
+   the returned title differs, update the note's title frontmatter and heading
+   before the person/company/task steps.
+4. If it returns `unmatched` or `ambiguous`, leave the capture identity alone.
+   Never widen the five-minute limit or guess a timezone. If Calendar is not
+   connected or errors, continue with the capture unchanged.
+
+The matcher owns nearest-time, title, participant, ambiguity, and poor-title
+rules. Do not reproduce them in prose or make a second judgment. Import
+**identity only**: never copy join URLs, dial-ins, access codes, locations,
+descriptions, notes, conferencing data, or any other invite payload into the
+meeting note or person/company pages.
 
 ---
 
@@ -89,7 +164,7 @@ For each participant in synced meetings:
    line format the rest of Dex writes and reads:
 
    ```
-   - [{Meeting Title}](00-Inbox/Meetings/{date}/{slug}.md) — {date}
+   - [{Meeting Title}]({actual vault-relative meeting path}) — {date}
    ```
 
    The path must be the vault-relative meeting path. Keep a maximum of 20

@@ -16,6 +16,27 @@ Requires the Pipedrive integration. If `System/integrations/config.yaml -> piped
 - `/pipeline-sync map`: (re)map focus deals to their Pipedrive records (first-run, or after adding a deal)
 - `/pipeline-sync discover`: list open Pipedrive deals **not** in the tracker (find what you're missing)
 
+## Method
+
+Gate the run on the companion skill, integration state, configured tracker path,
+and a complete live read. Build a deal-by-deal ledger containing the tracker and
+Pipedrive identifiers, values, source update times, retrieval `as-of` time, and
+read completeness. Reconcile mappings, fields, totals, and untracked deals
+without changing either system. Present each drift direction as a human choice.
+For every confirmed mutation, preview the exact payload or file diff, apply only
+that choice, then read back both affected authorities before moving to the next
+change. Treat ambiguous network outcomes as unresolved, not retryable failures.
+
+## Output contract
+
+Return integration and coverage status, the source ledger, drift rows, unchecked
+deals, mapping gaps, totals reconciliation, and decisions still required. The
+final change summary must be derived only from read-back receipts and must name
+each verified target. Explicitly report zero changes, partial completion, or
+failure rather than using a fixed success sentence. Include unresolved and
+unknown items, the denominator behind every total, and any ambiguous write that
+must be inspected before retry. A tool response alone is never a success receipt.
+
 ## Operating principles (non-negotiable)
 
 - **Confirm every write.** Never call a Pipedrive write tool (`pipedrive_add_deal_note`, `pipedrive_add_deal_activity`, `pipedrive_update_deal`, `pipedrive_create_deal`, `pipedrive_create_org`) without first showing the exact payload (use `dry_run: true`) and getting the user's explicit yes. CRMs are often shared with colleagues. The tools preview by default and only send on an explicit `dry_run: false`, so that parameter is the record of the user's yes — never pass it to "get past" a preview the user has not actually seen and approved.
@@ -26,6 +47,40 @@ Requires the Pipedrive integration. If `System/integrations/config.yaml -> piped
 - **Report, don't editorialise.** Drift is information, not a prompt to pressure the user into action. Show the numbers plainly and let them decide.
 
 ---
+
+## Evidence, authority, and recovery
+
+Treat catalogue-visible companion skills and Pipedrive prerequisites as gates,
+not optional context. Before gathering, verify that the catalogue exposes the
+`pipedrive-setup` companion, that the Pipedrive integration is enabled and
+connected, and that the configured tracker path is readable. If a required
+companion or prerequisite is missing, unavailable, or contradictory, name it
+and stop or degrade to a clearly labelled local-only report; never fake a live
+CRM view.
+
+- Record provenance for every drift row and total: source path or Pipedrive
+  record, source date/updated time, and the `as-of` time of the read. Keep
+  tracker and CRM values side by side. If they conflict, show both sources and
+  dates; keep missing data as `Unknown`, never invent absent facts, or silently
+  choose a direction.
+- A partial read is an incomplete read. When `complete` is false, a warning is
+  present, or a companion returns only part of the catalogue, list every
+  unchecked deal and the missing scope, disclose denominator coverage, and do
+  not report "no drift" or write based on the partial result.
+- Keep reconciliation read-only until an authorized human decides. A mapping,
+  recommendation, or drift direction is not a human decision. Before any
+  tracker or Pipedrive change, show an exact write preview: target, exact
+  before/after content or payload, and all derived total changes. Require the
+  authorized human's explicit confirmation; do not rely on implied approval.
+- After every confirmed write, read back the changed record and tracker and
+  reconcile the read-back with the approved preview. Report success only when
+  the values match. If a write fails, times out, or read-back is incomplete or
+  differs, state what may have changed, re-read the authoritative source, and
+  wait for explicit human direction before repairing or retrying.
+- Retry idempotency must be proved rather than assumed. A network error after
+  Pipedrive accepts a write is ambiguous; do not silently retry. Check the
+  deal's notes/activities or other authoritative record first, then show a
+  fresh exact preview and obtain confirmation before sending a new write.
 
 ## Step 0: Gate
 
@@ -46,10 +101,14 @@ If the Agent fails, fall back to running the instructions inline.
 **Reconcile mode**: show a compact table:
 
 ```
-Deal                       Field        Tracker        Pipedrive
-Platform Migration (Acme)  value        £250k          £200k          -> [tracker|pipedrive|skip]
-Data Warehouse (Initech)   probability  40%            45%            -> [tracker|pipedrive|skip]
+Deal                                      Field        Tracker                 Pipedrive
+[Deal title] ([account from source])      [field]      [tracker source value]  [Pipedrive source value]  -> [tracker|pipedrive|skip]
+[Second sourced deal, if one exists]      [field]      [tracker source value]  [Pipedrive source value]  -> [tracker|pipedrive|skip]
 ```
+
+Populate every bracket from the reconciliation ledger and retain `[source ID]`,
+`[source date]`, and `[as-of date]` for both sides. If a field lacks evidence,
+display `Unknown`; do not turn the example shape into deal facts.
 
 For each row ask which way to resolve (or batch: "take Pipedrive for all numbers, leave narrative alone").
 
@@ -66,11 +125,12 @@ For each row ask which way to resolve (or batch: "take Pipedrive for all numbers
 
 ## Step 4: Summarise
 
-Report what changed and where: "Updated 2 tracker rows from Pipedrive; pushed 1 value change to Pipedrive (confirmed); recomputed totals; logged sync to the company page." Note anything left unresolved.
-
-## Step 5: Rating
-
-After completing, ask: "Quick rating (1-5, 5 = great)?" If a number comes back, `capture_skill_rating(skill_name="pipeline-sync", rating=N)`.
+Build the summary from the read-back receipt for each approved target. Name the
+verified tracker rows, company pages, mappings, or Pipedrive records and report
+their actual counts. If no approved mutation occurred, say `zero changes`. If
+some writes failed or could not be read back, report `partial` with each verified
+and unverified target. If the gather or every mutation failed, report `failure`
+and the authoritative state that remains unknown. Note all unresolved drift.
 
 ---
 
@@ -79,7 +139,7 @@ After completing, ask: "Quick rating (1-5, 5 = great)?" If a number comes back, 
 - Names may be dictated by voice; resolve owner names against `owner_mapping` and the People Index before mapping, and don't create duplicates from spelling variants.
 - A focus deal owned by a colleague is in scope: the tracker can hold the whole team's book. A 403 on a write means the token can't edit that deal; surface it honestly and offer to note the change on the tracker side only.
 
-## Known limitation: a retried write can duplicate
+## Known limitation: retry idempotency must be proved, not assumed
 
 If the connection drops after Pipedrive accepts a note or activity but before
 its reply arrives, the write succeeded and Dex cannot tell. Pipedrive's API

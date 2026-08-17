@@ -15,8 +15,9 @@ The copies here are **adapters**, not a second source of truth: when a skill
 that exists in both places changes in `.claude/skills/`, the change should be
 mirrored here in the same PR.
 
-> Last synced 2026-07-27 (canonical body verbatim; Claude-Code-only frontmatter
-> keys like `hooks:`/`context:` dropped). These files are covered by
+> Last synced 2026-08-13 (`process-meetings` source selection mirrored; the
+> adapter remains harness-neutral and omits Claude-only delegation/frontmatter).
+> These files are covered by
 > instruction-honesty and configuration-truth tests
 > (`core/tests/test_instruction_honesty.py`,
 > `core/tests/test_granola_configuration_truth.py`,

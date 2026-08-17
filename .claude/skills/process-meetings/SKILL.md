@@ -115,26 +115,40 @@ Meetings are synced automatically every 30 minutes by a background process. This
 - `--no-todos`: Create notes but don't extract tasks
 - `--setup`: Install/check background automation
 
-## Pre-flight: Granola Check
+## Pre-flight: Local Source Check
 
-Granola sync uses the official Granola public API. Desktop and mobile recordings both come through it once your Granola API key is connected. If `GRANOLA_API_KEY` isn't set (checked in the environment, then the `.env` file at the vault root), say: "Granola isn't connected yet — run `/granola-setup` to add your Granola API key (requires a Granola Business plan)." and continue with any meetings already synced.
+Read `meeting_sources` in `System/user-profile.yaml` before assuming a recorder.
+The configured `primary` is provenance, not permission or tool access. A valid
+vault-relative `notes_folder` outranks the default landing zone. Missing or
+malformed config, an invalid primary, an absolute path, `..`, the vault root, or
+a symlink escape must be reported and ignored; continue with safe local notes.
+Never widen into an external service just because the profile names it.
+
+For `primary: granola`, Granola sync uses the official public API. If
+`GRANOLA_API_KEY` is absent, offer `/granola-setup` and continue with local
+notes. Other primaries do not inherit a direct reader from this setting.
 
 ---
 
 ## Process
 
-### Step 1: Check Background Sync Status
+### Step 1: Check Source and Sync Status
 
-First, check if background sync is set up:
+Resolve the configured local folder using the rules above. Then check whether
+Granola background sync has left its optional state file:
 
 ```bash
 # Check for state file (indicates sync has run)
 ls .scripts/meeting-intel/processed-meetings.json
 ```
 
-**If state file exists:** Background sync is working. Continue to Step 2.
+**If the state file exists:** Granola background sync has run. Continue to Step 2.
 
-**If state file doesn't exist:**
+**If it does not exist and Granola is the configured source:** offer setup, but
+continue with local notes. The missing file is not a gate for an
+`exported-folder`, Zoom, Teams, manual note, or provider-neutral local source.
+
+For Granola setup guidance:
 > "Background meeting sync isn't set up yet. This runs automatically every 30 minutes so `/process-meetings` doesn't need terminal commands.
 >
 > **To set up (one-time, takes 30 seconds):**
@@ -155,24 +169,34 @@ cd .scripts/meeting-intel && ./install-automation.sh
 
 ### Step 2: Find Waiting Meetings
 
-Read the processed meetings state:
+Read the processed meetings state when it exists:
 ```javascript
 const state = JSON.parse(fs.readFileSync('.scripts/meeting-intel/processed-meetings.json'));
 ```
 
-List meeting files in `00-Inbox/Meetings/`:
+Search the valid configured folder first, then `00-Inbox/Meetings/`. If neither
+contains a candidate, use bounded provider-neutral Markdown discovery in the
+vault by date plus title, attendee, or meeting frontmatter. Exclude Dex
+internals, dependencies, binaries, and archives outside the requested window;
+never treat arbitrary Markdown as a meeting. For the default folder:
 ```bash
 find 00-Inbox/Meetings -name "*.md" -mtime -7 | head -50
 ```
 
-This includes Granola-synced notes in day directories and flat `*.md` notes in
-the `00-Inbox/Meetings/` folder root. Root-level notes are manually captured
-meetings with no `granola_id`; process and stamp them with the same
-`tasks-extracted` marker as any other meeting note. The `queue/` subfolder is
-handled in Step 2.5.
+This includes synced notes in day directories and flat `*.md` notes in the
+folder root. A manual note with no capture id is valid; process and stamp it
+with the same `tasks-extracted` marker as any other meeting note. The `queue/`
+subfolder is handled in Step 2.5.
 
 For each meeting file, skip notes containing `<!-- dex:skip-processing -->`:
-1. Read frontmatter to get `granola_id`, `participants`, `company`, `date`
+1. Preserve the actual vault-relative source path. Read `participants`,
+   `company`, `date`, and any non-empty scalar key ending in `_id`. Prefer the
+   key matching a string `source`; if that key is absent, report the mismatch
+   and use the note path. When `source` is absent, use an id only when exactly
+   one non-empty scalar candidate is present. `granola_id` and `wispr_id` are
+   examples, not a closed list. Multiple ids fall back to note-path identity.
+   The path identity is the normalized vault-relative Markdown path, with `/`
+   separators and the `.md` extension retained; never reduce it to a basename
 2. Check if person/company pages need updating
 3. Check if tasks need extracting (look for unchecked items in "For Me" section)
 
@@ -480,7 +504,7 @@ Update `System/usage_log.md` to mark meeting processing as used.
 
 **Analytics (Silent):**
 
-Call `track_event` with event_name `meetings_processed` and properties:
+Call `track_event` with event_name `meeting_processed` and properties:
 - `meetings_count`: number of meetings processed
 - `people_created`: number of new person pages created
 - `todos_extracted`: number of tasks extracted

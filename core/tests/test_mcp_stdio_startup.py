@@ -15,7 +15,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_TEMPLATE = REPO_ROOT / "System" / ".mcp.json.example"
 VAULT_PLACEHOLDER = "{{VAULT_PATH}}"
 CONFIGURED_PYTHON = f"{VAULT_PLACEHOLDER}/.venv/bin/python"
-DEX_SCRIPT_PREFIX = f"{VAULT_PLACEHOLDER}/core/mcp/"
+# Dex ships servers in two places: the core set every install registers, and
+# opt-in integration servers a setup skill registers when the user connects
+# one. Both are Dex-owned and both must survive a real stdio initialize.
+DEX_SCRIPT_PREFIXES = (
+    f"{VAULT_PLACEHOLDER}/core/mcp/",
+    f"{VAULT_PLACEHOLDER}/core/integrations/",
+)
 
 
 def _dex_owned_servers(
@@ -32,7 +38,11 @@ def _dex_owned_servers(
             continue
         command = entry.get("command")
         args = entry.get("args", [])
-        is_candidate = command == CONFIGURED_PYTHON or "core/mcp/" in json.dumps(args)
+        rendered_args = json.dumps(args)
+        is_candidate = command == CONFIGURED_PYTHON or any(
+            prefix.removeprefix(f"{VAULT_PLACEHOLDER}/") in rendered_args
+            for prefix in DEX_SCRIPT_PREFIXES
+        )
         if not is_candidate:
             continue
         if command != CONFIGURED_PYTHON:
@@ -45,11 +55,12 @@ def _dex_owned_servers(
         script_args = [
             argument
             for argument in args
-            if argument.startswith(DEX_SCRIPT_PREFIX)
+            if argument.startswith(DEX_SCRIPT_PREFIXES)
         ]
         if len(script_args) != 1:
             raise AssertionError(
-                f"{name}: Dex-owned server must have exactly one {DEX_SCRIPT_PREFIX} argument"
+                f"{name}: Dex-owned server must have exactly one "
+                f"{' or '.join(DEX_SCRIPT_PREFIXES)} argument"
             )
         script = REPO_ROOT / script_args[0].removeprefix(f"{VAULT_PLACEHOLDER}/")
         if not script.is_file():
@@ -127,11 +138,11 @@ def test_dex_owned_server_completes_stdio_initialize(
     ("entry", "expected_error"),
     [
         (
-            {"command": "python", "args": [f"{DEX_SCRIPT_PREFIX}work_server.py"]},
+            {"command": "python", "args": [f"{DEX_SCRIPT_PREFIXES[0]}work_server.py"]},
             "command must be",
         ),
         (
-            {"command": CONFIGURED_PYTHON, "args": f"{DEX_SCRIPT_PREFIX}work_server.py"},
+            {"command": CONFIGURED_PYTHON, "args": f"{DEX_SCRIPT_PREFIXES[0]}work_server.py"},
             "args must be a list of strings",
         ),
         (

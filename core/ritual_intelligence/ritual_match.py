@@ -79,9 +79,13 @@ def _upcoming_confirmed_occurrence_ids(conn, *, now: datetime | None = None) -> 
     current = now or datetime.now().astimezone()
     today = current.date()
     days_until_end_of_week = 6 - current.weekday()
-    horizon_end = current + timedelta(days=days_until_end_of_week)
     if current.weekday() == 4:
-        horizon_end = current + timedelta(days=days_until_end_of_week + 7)
+        days_until_end_of_week += 7
+    # The horizon must reach the END of its last day, not `now`'s time-of-day on
+    # that date — otherwise a Sunday-morning run excludes Sunday-evening events.
+    horizon_end = datetime.combine(
+        today + timedelta(days=days_until_end_of_week), datetime.max.time(), tzinfo=current.tzinfo
+    )
 
     rows = conn.execute(
         """

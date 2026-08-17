@@ -121,6 +121,10 @@ def test_reactivation_is_idempotent_but_invalid_existing_record_is_refused(
     activation_path.write_bytes(_canonical(previous_api))
     assert activate_vault(vault) == previous_api
 
+    previous_api = {**first, "api_version": "1.4.0"}
+    activation_path.write_bytes(_canonical(previous_api))
+    assert activate_vault(vault) == previous_api
+
     activation_path.write_text('{"activation_version":999}\n', encoding="utf-8")
     with pytest.raises(BridgeActivationError, match="existing activation"):
         activate_vault(vault)
@@ -159,8 +163,8 @@ def _deliver_release(vault: Path, release_version: str) -> None:
     catalog_path = vault / "System/.release-catalog.json"
     document = json.loads(catalog_path.read_text(encoding="utf-8"))
     document["release"]["version"] = release_version
-    document["release"]["immutable_distribution_tag"] = (
-        f"dist/release/v{release_version}-0123456"
+    document["release"]["immutable_distribution_tag_pattern"] = (
+        f"dist/release/v{release_version}-<release-commit-prefix>"
     )
     catalog_path.write_bytes(canonical_catalog_bytes(with_catalog_identity(document)))
 
@@ -463,7 +467,7 @@ def test_lifecycle_1_2_callers_resolve_unchanged_operations() -> None:
         ),
     }
 
-    assert service.api_version == "1.4.0"
+    assert service.api_version == "1.5.0"
     assert {
         name: str(inspect.signature(getattr(service, name)))
         for name in expected_signatures

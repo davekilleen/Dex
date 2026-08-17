@@ -65,20 +65,29 @@ Check `00-Inbox/Meetings/` for this week's meeting notes, and:
 Use: calendar_get_events_with_attendees(start_date="{{WEEK_START_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
 ```
 
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or deriving meeting counts from them.
+
 Extract: meetings held, key decisions, action items created, new contacts, and
 follow-ups that may have slipped.
 
 ### 1.6 Email Weekly Review (if connected)
 
-Check `System/integrations/config.yaml`. If an email integration is enabled and
-its MCP is healthy, analyse the week's mail:
+Check `System/integrations/config.yaml`. Also treat a registered `apple-mail-mcp`
+server as connected. Before querying any connected email source, run
+`python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`mail.apple-search` check reports `OK` / `feature_status: ok`. If healthy, analyse
+the week's mail:
 - Total volume (received vs sent)
 - Key relationship threads (most contact)
 - Unresolved threads carrying into next week
 - Promises made with no matching task
 - New contacts who may need person pages
 
-If not connected or unhealthy, skip silently.
+For Apple Mail, do not interpret an empty search as an empty mailbox unless that
+check is OK. If a connected source is broken or unknown, **do not silently skip**:
+report it under skipped sources with Doctor's `user_message` or fix path. If the
+source is not connected (`OFF`), omit it without noise.
 
 ### 1.7 Learning Compilation & Pattern Detection
 

@@ -14,6 +14,29 @@ Review and synthesize the quarter that just ended. Evaluates goal completion, ca
 
 ---
 
+## Method
+
+Verify the room, fiscal boundaries, target quarter, and source availability before
+counting anything. Build a dated evidence ledger across goals, tasks, projects,
+meetings, syntheses, reminders, and backlog records. Report unavailable sources
+as `Unknown` with their coverage impact; never infer completion percentages from
+activity or modification times. Walk through each goal with the user, separating
+recorded status, observed evidence, and their assessment. Apply only configured,
+dated backlog policies. Preview and confirm each processing, archive, reminder,
+task, or backlog mutation separately, make archives idempotent, and read back
+every destination.
+
+## Output contract
+
+Return the quarter calculation, source/tool coverage, goal-by-goal evidence and
+user assessment, exact status counts with denominator, unknowns, contradictions,
+learnings, pillar context, and backlog observations under the named policy source
+and policy date. Unavailable sources remain visible and excluded from affected
+counts. Never output an inferred completion percentage. End with separate mutation
+receipts for every confirmed write or external action; label partial or failed
+operations explicitly, and call the archive verified only after byte-for-byte
+read-back.
+
 ## Step 0: Check if Quarterly Planning is Enabled
 
 Read `System/user-profile.yaml`:
@@ -41,6 +64,10 @@ Calculate:
 - `quarter_start`: "2026-01-01"
 - `quarter_end`: "2026-03-31"
 
+Use the configured fiscal start month and explicit three-month fiscal-quarter
+boundaries, including year rollover. Record the source of the setting and the
+calculation `as-of` date/time; do not substitute calendar dates silently.
+
 ---
 
 ## Step 2: Context Gathering
@@ -51,7 +78,8 @@ Check for `01-Quarter_Goals/Quarter_Goals.md`:
 
 **If exists and matches target quarter:**
 - Extract goals that were set
-- Note progress percentages (if updated)
+- Record any progress percentage exactly as reported, with its source, source date,
+  and `as-of` time; do not treat it as independently verified
 - List milestones and completion status
 
 **If missing or wrong quarter:**
@@ -66,20 +94,27 @@ Before reviewing, check for tasks captured from phone that haven't been triaged:
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
-**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): record `Dex Inbox: Unknown — source unavailable` in the coverage summary. Do not present it as an error the user caused, and exclude phone captures from any completeness claim.
 
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"
-- Run triage flow: infer pillar, confirm with user, create task, mark Reminder complete
+- Suggest a pillar without treating the suggestion as a decision; obtain separate
+  user consent before creating each task and before marking each Reminder complete
 - Complete this before the review so task counts are accurate
 
-**If empty:** Skip silently.
+**If empty:** Record `Dex Inbox: 0 items` with the successful query time in the
+coverage summary, then continue without a separate alert.
 
 ### Process Unprocessed Meetings
 
 Before scanning meeting data, ensure all recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the quarterly review has complete meeting data.
 
-- If no new meetings are found, continue silently
+Treat processing as a mutation: preview the affected paths and obtain explicit
+confirmation before running it when it will write notes, pages, or tasks. Verify
+the processed sources and dates afterward; do not call the review complete merely
+because the command returned.
+
+- If no new meetings are found, record the checked sources and a zero result
 - If meetings are processed, note the count
 
 ### Task Completion
@@ -124,24 +159,28 @@ If available, enhance the quarterly review with meaning-based analysis:
    qmd query "learning description" --limit 3
    ```
    against `01-Quarter_Goals/Quarter_Goals.md`. Discover which goals a learning actually impacted, even without explicit tags.
-   - Example: Learning "Realized we need better onboarding docs" semantically matches goal "Improve customer activation rate"
+   - Evidence template: `[learning text from source]` may match `[goal text from the authoritative goal file]`. Label the match `Inferred`, retain `[source ID]`, `[source date]`, `[as-of date]`, and the query result, and do not claim impact from similarity alone.
 
 2. **Detect hidden goal progress:** For each quarterly goal, search across all meeting notes and tasks:
    ```
    qmd query "goal success criteria" --limit 5
    ```
    Find work that advanced the goal but wasn't explicitly linked.
-   - Example: Goal "Expand EMEA presence" — QMD finds 4 meetings about European partnerships and 2 tasks about localization that were never formally linked.
+   - Evidence template: `[goal text from source]` has `[observed result references]` returned by QMD. Cite each result ID/date, deduplicate it, and keep contribution `Unknown` until the underlying source proves that it advanced the goal.
 
 3. **Cross-goal connections:** Search for themes that span multiple goals:
    ```
    qmd query "recurring theme from the quarter" --limit 5
    ```
-   Surface patterns like "Customer feedback kept driving both your product and content goals."
+   Surface a candidate such as `[theme inferred from cited query results]` across
+   `[goal IDs returned by the search]`; label it `Inferred` and retain the same
+   source/date/as-of provenance before asking the user whether it is meaningful.
 
 **Integration:** Add a "Semantic Discoveries" subsection under each goal assessment showing work that contributed but wasn't explicitly tracked. Also add a "Cross-Goal Themes" section to the quarterly review output.
 
-**If QMD unavailable:** Skip silently. Goal assessment still works from explicit data.
+**If QMD unavailable:** Record semantic enrichment as `Unknown — source unavailable`
+and state its coverage impact. Goal assessment may continue from explicit data,
+but must not claim that hidden progress or cross-goal links were comprehensively checked.
 
 ---
 
@@ -168,12 +207,12 @@ For each, capture:
 
 > "Goal 1: [Goal title]
 > 
-> Progress indicator showed: [X%]
+> Progress indicator reported: [value, source, source date, and as-of time] (omit this line when unavailable; never calculate it)
 > Milestones: [Y of Z completed]
 > 
 > How would you assess this goal?
 > - ✅ Completed
-> - 🔄 Partial (what % done?)
+> - 🔄 Partial (describe what is done and what remains; do not infer a percentage)
 > - ❌ Didn't get to it
 > - 🚫 Deprioritized"
 
@@ -221,7 +260,7 @@ Read `System/Dex_Backlog.md` if it exists:
 
 **Extract:**
 - Total ideas in backlog
-- High-priority ideas (score >= 85)
+- Ideas matching the configured priority policy, when a policy source and policy date exist
 - Ideas captured during this quarter
 - Ideas marked as implemented
 
@@ -230,12 +269,12 @@ Read `System/Dex_Backlog.md` if it exists:
 > "**Dex System Improvement Backlog:**
 > 
 > - Total ideas captured: [count]
-> - High-priority (ready to implement): [count]
+> - Policy-matched priority ideas: [count, configured policy source, policy date; otherwise Unknown]
 > - Implemented this quarter: [count]
 > 
 > Looking at your Dex backlog:
 > - Any 1-2 high-impact improvements to prioritize next quarter?
-> - Any stale ideas (>6 months old) to archive?"
+> - Any ideas that meet your configured, dated staleness policy to review? If no policy exists, which review rule would you like to use?"
 
 Wait for user input on:
 - Which 1-2 ideas to tackle next quarter
@@ -243,12 +282,12 @@ Wait for user input on:
 
 ### Suggest Backlog Review
 
-**If 3+ high-priority ideas exist:**
+**If the configured, dated policy identifies more priority items than the user
+wants to inspect here:**
 
 > "💡 Consider running `/dex-backlog` soon to re-rank ideas based on updated system state."
 
 **If no Dex_Backlog.md exists:**
-- Skip this section silently
 - In review document, note: "Dex backlog system not yet in use"
 
 ---
@@ -256,6 +295,12 @@ Wait for user input on:
 ## Step 6: Generate Quarterly Review
 
 Create `07-Archives/Reviews/[Quarter].md`:
+
+Before creating or updating the archive, preview the exact destination and
+complete bytes. If that destination already contains the same review, report it
+as already archived and do not write again. If it contains different bytes,
+preserve the existing file and stop for a user decision; do not overwrite, merge,
+or create a duplicate path silently.
 
 ```markdown
 ---
@@ -273,7 +318,7 @@ reviewed_on: [date]
 
 ## TL;DR
 
-- **Goals:** [X of Y completed]
+- **Goals:** [count of each reviewed status, sourced from the goal records and user answers]
 - **Key win:** [Biggest accomplishment]
 - **Key learning:** [Most important insight]
 - **Pillar balance:** [Assessment]
@@ -284,7 +329,7 @@ reviewed_on: [date]
 
 ### Goal 1: [Goal Title] — **[Pillar]**
 
-**Status:** ✅ Completed / 🔄 Partial (X%) / ❌ Not Started / 🚫 Deprioritized
+**Status:** ✅ Completed / 🔄 Partial / ❌ Not Started / 🚫 Deprioritized
 
 **Original success criteria:**
 [What was defined in 01-Quarter_Goals/Quarter_Goals.md]
@@ -366,7 +411,7 @@ reviewed_on: [date]
 ### Dex Backlog Activity
 - **Ideas captured:** [Count during quarter]
 - **Ideas implemented:** [Count marked as completed]
-- **Current high-priority ideas:** [Count with score >= 85]
+- **Current policy-matched priority ideas:** [Count, policy source, policy date; otherwise Unknown]
 
 ### Improvements Implemented This Quarter
 - **[idea-XXX]** [Title] — [Brief description of what was built]
@@ -396,11 +441,11 @@ Based on backlog review, prioritize these improvements:
 
 ## Stats
 
-- **Weeks in quarter:** 13
-- **Meetings held:** [Count]
-- **Tasks completed:** [Count]
-- **Projects shipped:** [Count]
-- **Weekly syntheses:** [Count completed]
+- **Weeks in quarter:** [Count, with source and as-of date]
+- **Meetings held:** [Count, with source and as-of date]
+- **Tasks completed:** [Count, with source and as-of date]
+- **Projects shipped:** [Count, with source and as-of date]
+- **Weekly syntheses:** [Count completed, with source and as-of date]
 
 ---
 
@@ -424,6 +469,15 @@ Based on this quarter's learnings:
 ### Process Changes
 - [Adjustment to workflow]
 - [System improvement to implement]
+
+---
+
+## Unknowns and contradictions
+
+List every material unknown, unavailable source, stale result, and contradiction
+that affected the review. Include the source identifier or path, source date, and
+review `as-of` date/time. Do not convert an unknown into zero, a missing source
+into a negative result, or a contradiction into a single invented value.
 
 ---
 
@@ -455,7 +509,7 @@ Based on this quarter's learnings:
 
 After review is complete:
 
-> "Quarter reviewed and saved to `07-Archives/Reviews/Q1-2026.md`
+> "Quarter reviewed and verified at `07-Archives/Reviews/Q1-2026.md`
 > 
 > **Ready to plan next quarter (Q2 2026)?**
 > 
@@ -470,8 +524,10 @@ After review is complete:
 ## Follow-up Actions
 
 After review:
-1. Archive old `01-Quarter_Goals/Quarter_Goals.md` if not already done
-2. Update `System/user-profile.yaml` with completed quarter
+1. Propose archiving old `01-Quarter_Goals/Quarter_Goals.md` if not already done;
+   do not assume the review confirmation authorizes this separate mutation
+2. Propose updating `System/user-profile.yaml` with the completed quarter only
+   after a separate preview and consent
 3. Suggest running `/quarter-plan` for next quarter
 
 ---
@@ -510,14 +566,46 @@ After review:
 
 ---
 
+## Evidence, authority, and recovery
+
+- Source every statistic: record the source path, tool query, or user answer, its
+  source date, and the review or retrieval `as-of` date/time. If a source or date
+  is absent, write `unknown`; if sources contradict, expose both versions and ask
+  the user how to proceed. Never invent counts, dates, outcomes, or explanations.
+- Never infer completion percentages. Use explicit status words from the goal
+  record or the user's answer; do not calculate a percentage from milestones,
+  elapsed time, task counts, or a status label. If the user supplies a percentage,
+  label it as a user-supplied estimate with its source and as-of time. Keep the
+  archive idempotent and never infer a completion percentage just to fill a
+  template or analytics field.
+- Make the archive operation idempotent: if the canonical review already exists
+  with the same bytes, report it and perform no write; on any conflict, preserve
+  existing bytes and stop. Do not overwrite, merge, duplicate, or rename around a
+  conflict without a new explicit choice.
+- Before each mutation, show an exact preview of every destination and new bytes
+  or patch. Obtain separate consent for each mutation—task creation, Reminder
+  completion, meeting processing, review archive, profile update, usage-log
+  update, and analytics action—from the human user. Recommendations are not human
+  decisions or authority, and consent for the review does not authorize follow-up
+  writes.
+- After every confirmed mutation, read back the affected file, record, or tool
+  result and compare it with the preview. If any write, archive, tool call, or
+  read back fails, surface the exact failure, preserve existing bytes, and do not
+  claim completion. List partial confirmed changes and offer a fresh preview to
+  resume; retry only after explicit human confirmation.
+
+---
+
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark quarterly review as used.
+"Silent" does not bypass the mutation boundary: include the exact
+`System/usage_log.md` patch in the preview, honor analytics opt-in, obtain human
+confirmation, read it back, and surface any failure before claiming it was updated.
 
 **Analytics (Silent):**
 
 Call `track_event` with event_name `quarter_review_completed` and properties:
 - goals_assessed
-- completion_rate
+- completion_status_summary (statuses only; never an inferred completion percentage)
 
 This only fires if the user has opted into analytics. No action needed if it returns "analytics_disabled".

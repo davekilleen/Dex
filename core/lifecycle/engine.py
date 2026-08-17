@@ -27,7 +27,7 @@ from core.lifecycle.conflict import (
     sidecar_path,
 )
 from core.lifecycle.inventory import build_inventory
-from core.lifecycle.model import HEX_SHA256, ITEM_ID, ReleaseCatalog
+from core.lifecycle.model import HEX_SHA256, ITEM_ID, SEMVER, ReleaseCatalog
 from core.lifecycle.plan import (
     PLAN_VERSION,
     AdoptionPlan,
@@ -90,6 +90,12 @@ class LifecycleLedgerPersistenceError(RuntimeError):
 
 class TopologyMigrationError(RuntimeError):
     """The topology preview or conversion was refused or failed safely."""
+
+
+def _stop_adoption_seam(seam: str) -> None:
+    """Hard-stop test seam around post-commit receipt and ledger publication."""
+    if os.environ.get("DEX_ADOPTION_TEST_STOP_AFTER") == seam:
+        os._exit(137)
 
 
 def _refuse(message: str) -> AdoptionExecutionError:
@@ -503,13 +509,7 @@ def _receipt_path(vault_root: Path, transaction_id: str) -> Path:
 
 
 def _persist_adoption_receipt(vault_root: Path, receipt: AdoptionReceipt) -> None:
-    """Atomically persist post-commit runtime evidence.
-
-    This deliberately happens after the adoption transaction commits because
-    the receipt describes that outcome. A process crash between COMMITTED and
-    this write leaves a committed-but-unreceipted adoption; the fsynced
-    transaction journal remains the authority for what happened.
-    """
+    """Atomically publish the receipt precommitted in the adoption journal."""
     target = _receipt_path(vault_root, receipt.transaction_id)
     root = Path(vault_root)
     directory = target.parent
@@ -572,6 +572,148 @@ def load_adoption_receipt(vault_root: Path, transaction_id: str) -> AdoptionRece
     if not hmac.compare_digest(raw, canonical_adoption_receipt_bytes(receipt)):
         raise _rewind_refuse("receipt file is valid JSON but not canonical")
     return receipt
+
+
+def _receipt_from_adoption_intent(
+    tx_dir: Path,
+    entries: list,
+) -> tuple[AdoptionReceipt, dict[str, str]]:
+    intents = [entry for entry in entries if entry.event == "ADOPTION-INTENT"]
+    begins = [entry for entry in entries if entry.event == "BEGIN"]
+    if len(intents) != 1 or len(begins) != 1:
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} has ambiguous journal evidence"
+        )
+    payload = intents[0].payload
+    if set(payload) != {"receipt", "item_versions"}:
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} intent is not closed"
+        )
+    try:
+        receipt = AdoptionReceipt.from_dict(payload["receipt"])
+    except (AdoptionExecutionError, AttributeError, TypeError, ValueError) as error:
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} intent has an invalid receipt"
+        ) from error
+    versions = payload["item_versions"]
+    if (
+        not isinstance(versions, Mapping)
+        or not all(isinstance(key, str) for key in versions)
+        or set(versions) != set(receipt.items_adopted)
+        or any(
+            not isinstance(version, str) or SEMVER.fullmatch(version) is None
+            for version in versions.values()
+        )
+    ):
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} intent has invalid item versions"
+        )
+    if (
+        receipt.transaction_id != tx_dir.name
+        or receipt.snapshot_ref
+        != f"System/.dex/tx/{tx_dir.name}/snapshot"
+    ):
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} intent targets another transaction"
+        )
+    raw_plan = begins[0].payload.get("plan")
+    if (
+        begins[0].payload.get("operation") != "update"
+        or not isinstance(raw_plan, list)
+        or not all(
+            isinstance(entry, Mapping)
+            and entry.get("operation") == "write"
+            and isinstance(entry.get("relative"), str)
+            and isinstance(entry.get("sha256"), str)
+            and HEX_SHA256.fullmatch(str(entry.get("sha256"))) is not None
+            and type(entry.get("size")) is int
+            and int(entry.get("size")) >= 0
+            for entry in raw_plan
+        )
+    ):
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} has an invalid transaction plan"
+        )
+    planned = sorted(
+        (
+            str(entry["relative"]),
+            str(entry["sha256"]),
+            int(entry["size"]),
+        )
+        for entry in raw_plan
+    )
+    receipted = sorted(
+        (entry.path, entry.sha256, entry.byte_size)
+        for entry in receipt.files_written
+    )
+    if planned != receipted:
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} plan disagrees with its intent"
+        )
+    return receipt, {str(key): str(value) for key, value in versions.items()}
+
+
+def recover_committed_adoption_evidence(vault_root: Path) -> tuple[str, ...]:
+    """Rebuild exact receipt and ledger evidence after a post-commit crash."""
+    root = Path(vault_root).resolve()
+    outcomes = Transaction.resume(root)
+    if any(
+        outcome.get("quarantined") is not None
+        or outcome.get("resumed") is not True
+        or outcome.get("committed") is not False
+        or outcome.get("journal_ok") is not True
+        for outcome in outcomes
+    ):
+        raise AdoptionReceiptPersistenceError(
+            "adoption recovery found an incomplete or quarantined transaction"
+        )
+    tx_root = root / "System/.dex/tx"
+    if not tx_root.exists():
+        return ()
+    if tx_root.is_symlink() or not tx_root.is_dir():
+        raise AdoptionReceiptPersistenceError("adoption transaction root is unsafe")
+
+    recovered: list[str] = []
+    for tx_dir in sorted(tx_root.iterdir(), key=lambda candidate: candidate.name):
+        if tx_dir.is_symlink() or not tx_dir.is_dir():
+            raise AdoptionReceiptPersistenceError("adoption transaction entry is unsafe")
+        try:
+            entries = Journal(tx_dir / "journal.jsonl").read()
+        except JournalCorruptError as error:
+            raise AdoptionReceiptPersistenceError(
+                f"adoption transaction {tx_dir.name} journal is damaged"
+            ) from error
+        if not any(entry.event == "ADOPTION-INTENT" for entry in entries):
+            continue
+        events = [entry.event for entry in entries]
+        if events.count("COMMITTED") != 1 or "ROLLED-BACK" in events:
+            if "ROLLED-BACK" in events:
+                continue
+            raise AdoptionReceiptPersistenceError(
+                f"adoption transaction {tx_dir.name} is not terminal"
+            )
+        receipt, versions = _receipt_from_adoption_intent(tx_dir, entries)
+        _verify_adoption_commit(root, receipt)
+        receipt_path = _receipt_path(root, receipt.transaction_id)
+        if receipt_path.exists() or receipt_path.is_symlink():
+            existing = load_adoption_receipt(root, receipt.transaction_id)
+            if existing.to_dict() != receipt.to_dict():
+                raise AdoptionReceiptPersistenceError(
+                    f"adoption {receipt.transaction_id} receipt disagrees with its journal"
+                )
+        else:
+            _persist_adoption_receipt(root, receipt)
+        try:
+            from core.lifecycle.ledger import LedgerError, record_adoption
+
+            record_adoption(root, receipt, versions)
+        except (LedgerError, OSError) as error:
+            raise LifecycleLedgerPersistenceError(
+                f"adoption {receipt.transaction_id} receipt was recovered, but its "
+                "lifecycle ledger could not be reconciled"
+            ) from error
+        recovered.append(receipt.transaction_id)
+    return tuple(recovered)
 
 
 def _sha256_file(path: Path) -> tuple[str, int]:
@@ -908,13 +1050,7 @@ def execute_adoption(
     approved_token: str,
     payload_loader: PayloadLoader,
 ) -> AdoptionReceipt:
-    """Re-prove an approved preview, execute it, then persist its receipt.
-
-    Receipt persistence is intentionally after COMMITTED because the receipt
-    records the transaction outcome. A crash in that narrow window leaves a
-    committed-but-unreceipted adoption; the transaction journal remains the
-    durable source of truth and no adoption bytes are rolled back or guessed.
-    """
+    """Re-prove, journal exact evidence, commit, then publish that evidence."""
     if not isinstance(preview, AdoptionPreview):
         raise _refuse("preview must be an AdoptionPreview")
     if not isinstance(approved_token, str) or not hmac.compare_digest(
@@ -967,9 +1103,44 @@ def execute_adoption(
         for item in rebuilt.items
         for write in item.writes
     ]
+    files = tuple(
+        sorted(
+            (
+                ReceiptFile(item.item_id, write.path, write.new_sha256, write.byte_size)
+                for item in rebuilt.items
+                for write in item.writes
+            ),
+            key=lambda entry: (entry.path, entry.item_id),
+        )
+    )
+    item_versions = {
+        item.item_id: item.item_version
+        for item in rebuilt.items
+    }
 
     try:
         transaction = Transaction.begin(root, entries)
+        receipt = AdoptionReceipt(
+            RECEIPT_VERSION,
+            requested,
+            files,
+            transaction.tx_id,
+            f"System/.dex/tx/{transaction.tx_id}/snapshot",
+            rebuilt.catalog_sha256,
+            rebuilt.inventory_sha256,
+            rebuilt.sha256,
+        )
+        try:
+            transaction.journal.append(
+                "ADOPTION-INTENT",
+                {
+                    "receipt": receipt.to_dict(),
+                    "item_versions": item_versions,
+                },
+            )
+        except BaseException:
+            transaction.rollback()
+            raise
 
         def verify_approval_binding() -> None:
             """Catch pre-snapshot drift, including approved file absence.
@@ -1034,28 +1205,11 @@ def execute_adoption(
         raise _refuse(f"the ownership contract rejected the complete adoption: {error}") from error
     except TransactionError as error:
         raise _refuse(f"the transaction could not complete safely: {error}") from error
-
-    files = tuple(
-        sorted(
-            (
-                ReceiptFile(item.item_id, write.path, write.new_sha256, write.byte_size)
-                for item in rebuilt.items
-                for write in item.writes
-            ),
-            key=lambda entry: (entry.path, entry.item_id),
-        )
-    )
     transaction_id = result["tx_id"]
-    receipt = AdoptionReceipt(
-        RECEIPT_VERSION,
-        requested,
-        files,
-        transaction_id,
-        f"System/.dex/tx/{transaction_id}/snapshot",
-        rebuilt.catalog_sha256,
-        rebuilt.inventory_sha256,
-        rebuilt.sha256,
-    )
+    if transaction_id != receipt.transaction_id:
+        raise AdoptionReceiptPersistenceError(
+            "adoption transaction identity changed before receipt persistence"
+        )
     try:
         _persist_adoption_receipt(root, receipt)
     except AdoptionReceiptPersistenceError:
@@ -1065,6 +1219,7 @@ def execute_adoption(
             f"adoption {transaction_id} committed, but its receipt could not be "
             f"persisted; the transaction journal is authoritative: {error}"
         ) from error
+    _stop_adoption_seam("after-receipt")
     # Boundary: adoption and receipt persistence are already durable.  Ledger
     # projection is post-commit evidence; failure is loud and never rolls back
     # the transaction whose fsynced journal remains authoritative.
@@ -1074,7 +1229,7 @@ def execute_adoption(
         record_adoption(
             root,
             receipt,
-            {item.item_id: item.item_version for item in rebuilt.items},
+            item_versions,
         )
     except (LedgerError, OSError) as error:
         raise LifecycleLedgerPersistenceError(
@@ -1083,6 +1238,7 @@ def execute_adoption(
             f"authoritative: {error}. Run 'python3 -m core.lifecycle.cli --vault-root "
             f"{root} rebuild-state' to repair the lifecycle ledger"
         ) from error
+    _stop_adoption_seam("after-ledger")
     return receipt
 
 
@@ -1931,6 +2087,7 @@ __all__ = [
     "execute_adoption",
     "execute_conflict_resolution",
     "load_adoption_receipt",
+    "recover_committed_adoption_evidence",
     "rewind_acknowledgement_token",
     "rewind_adoption",
     "TopologyMigrationError",

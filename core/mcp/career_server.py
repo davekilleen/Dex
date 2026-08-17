@@ -24,6 +24,15 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
+_ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _ANALYTICS_REPO_ROOT not in sys.path:
+    sys.path.insert(0, _ANALYTICS_REPO_ROOT)
+
+from core.mcp.analytics_receipts import (
+    surface_analytics_attempt,
+    unavailable_analytics_delivery,
+)
+
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
     from utils.qmd_query import is_qmd_available, vault_search
@@ -31,14 +40,17 @@ try:
 except ImportError:
     HAS_QMD = False
 
-# Analytics helper (optional - gracefully degrade if not available)
+# Analytics receipts must remain observable in both direct-launch and package
+# import modes. If the helper cannot load, callers receive only the fixed safe
+# receipt failure below.
 try:
-    from analytics_helper import fire_event as _fire_analytics_event
+    from core.mcp.analytics_helper import fire_event as _fire_analytics_event
     HAS_ANALYTICS = True
 except ImportError:
     HAS_ANALYTICS = False
+
     def _fire_analytics_event(event_name, properties=None):
-        return {'fired': False, 'reason': 'analytics_not_available'}
+        return unavailable_analytics_delivery()
 
 # Ensure sibling modules (career_parser) and repo root are importable
 _mcp_dir = str(Path(__file__).parent)
@@ -443,10 +455,11 @@ async def handle_scan_evidence(arguments: dict) -> list[types.TextContent]:
         }
     }
     
-    try:
-        _fire_analytics_event('career_evidence_scanned')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'career_evidence_scanned',
+    )
     
     return [types.TextContent(
         type="text",
@@ -526,29 +539,31 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
     evidence_files = scan_evidence_directory(EVIDENCE_DIR, date_range)
     
     if not evidence_files:
-        try:
-            _fire_analytics_event('career_coverage_analyzed')
-        except Exception:
-            pass
+        result = {
+            "success": True,
+            "target_level": ladder_data.get('target_level'),
+            "analysis_date": datetime.now().isoformat(),
+            "total_evidence_files": 0,
+            "note": "No evidence files found. Start capturing achievements with /career-coach",
+            "coverage_by_competency": [
+                {
+                    "competency": comp['category'],
+                    "evidence_count": 0,
+                    "coverage_level": "none",
+                    "example_files": [],
+                    "skills_mentioned": []
+                }
+                for comp in ladder_data['competencies']
+            ]
+        }
+        surface_analytics_attempt(
+            result,
+            _fire_analytics_event,
+            'career_coverage_analyzed',
+        )
         return [types.TextContent(
             type="text",
-            text=json.dumps({
-                "success": True,
-                "target_level": ladder_data.get('target_level'),
-                "analysis_date": datetime.now().isoformat(),
-                "total_evidence_files": 0,
-                "note": "No evidence files found. Start capturing achievements with /career-coach",
-                "coverage_by_competency": [
-                    {
-                        "competency": comp['category'],
-                        "evidence_count": 0,
-                        "coverage_level": "none",
-                        "example_files": [],
-                        "skills_mentioned": []
-                    }
-                    for comp in ladder_data['competencies']
-                ]
-            }, indent=2, cls=DateTimeEncoder)
+            text=json.dumps(result, indent=2, cls=DateTimeEncoder)
         )]
     
     # Analyze coverage
@@ -570,10 +585,11 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
         **coverage_analysis
     }
     
-    try:
-        _fire_analytics_event('career_coverage_analyzed')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'career_coverage_analyzed',
+    )
     
     return [types.TextContent(
         type="text",
@@ -795,6 +811,64 @@ async def handle_scan_work_for_evidence(arguments: dict) -> list[types.TextConte
     )]
 
 
+def _required_skills_from_ladder() -> list[str]:
+    """Read required skills with the same ladder parser the rest of Dex uses."""
+    ladder_data = parse_ladder_file(LADDER_FILE)
+    required_skills = []
+    seen = set()
+    for competency in ladder_data.get("competencies") or []:
+        skill = competency.get("category")
+        if not skill or skill in seen:
+            continue
+        seen.add(skill)
+        required_skills.append(skill)
+    return required_skills
+
+
+def _score_evidence_count(evidence_count: int) -> int:
+    if evidence_count >= 21:
+        return 25
+    if evidence_count >= 16:
+        return 20
+    if evidence_count >= 11:
+        return 15
+    if evidence_count >= 6:
+        return 10
+    return evidence_count
+
+
+def _score_skills_from_coverage(coverage_analysis: dict, competency_count: int) -> int:
+    if competency_count <= 0:
+        return 0
+    weights = {"strong": 1.0, "moderate": 0.6, "weak": 0.3, "none": 0.0}
+    items = coverage_analysis.get("coverage_by_competency") or []
+    if not items:
+        return 0
+    fraction = sum(weights.get(item.get("coverage_level"), 0.0) for item in items) / len(items)
+    return round(fraction * 25)
+
+
+def _score_growth_velocity(growth: dict, period_data: list) -> int:
+    if not period_data or growth.get("trend") == "no_data":
+        return 0
+    average = float(growth.get("average_monthly") or 0)
+    if average >= 4:
+        score = 10
+    elif average >= 2:
+        score = 8
+    elif average >= 1:
+        score = 6
+    elif average > 0:
+        score = 4
+    else:
+        return 0
+    if growth.get("trend") == "accelerating":
+        return min(10, score + 1)
+    if growth.get("trend") == "decelerating":
+        return max(0, score - 1)
+    return score
+
+
 async def handle_skills_gap_analysis(arguments: dict) -> list[types.TextContent]:
     """Analyze skills gap by comparing career ladder to active work"""
     target_level = arguments.get('target_level')
@@ -802,26 +876,7 @@ async def handle_skills_gap_analysis(arguments: dict) -> list[types.TextContent]
     stale_threshold_days = arguments.get('stale_threshold_days', 42)
     
     # 1. Parse career ladder to get required skills
-    ladder_file = CAREER_DIR / 'Career_Ladder.md'
-    required_skills = []
-    
-    if ladder_file.exists():
-        content = ladder_file.read_text()
-        # Simple skill extraction - look for skills in target level section
-        # This is basic - real implementation would parse more sophisticatedly
-        lines = content.split('\n')
-        in_target_section = False
-        
-        for line in lines:
-            if target_level and target_level in line and line.startswith('#'):
-                in_target_section = True
-            elif line.startswith('#') and in_target_section:
-                break  # Moved to next section
-            elif in_target_section and ('- ' in line or '* ' in line):
-                # Extract skill mentions
-                skill_match = re.search(r'[-*]\s*(.+)', line)
-                if skill_match:
-                    required_skills.append(skill_match.group(1).strip())
+    required_skills = _required_skills_from_ladder()
     
     # 2. Scan work data for skills being developed
     active_skills = {}
@@ -1077,24 +1132,10 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
     score_breakdown = {}
     
     # 1. Evidence Coverage (0-25 points)
-    # Count evidence files in last 12 months
-    evidence_count = 0
-    if EVIDENCE_DIR.exists():
-        for category_dir in EVIDENCE_DIR.iterdir():
-            if category_dir.is_dir():
-                evidence_count += len(list(category_dir.glob('*.md')))
-    
-    # Scoring: 0-5 files=5pts, 6-10=10pts, 11-15=15pts, 16-20=20pts, 21+=25pts
-    if evidence_count >= 21:
-        evidence_score = 25
-    elif evidence_count >= 16:
-        evidence_score = 20
-    elif evidence_count >= 11:
-        evidence_score = 15
-    elif evidence_count >= 6:
-        evidence_score = 10
-    else:
-        evidence_score = evidence_count
+    # Same whole-folder scanner used by scan_evidence / timeline_analysis.
+    evidence_files = scan_evidence_directory(EVIDENCE_DIR) if EVIDENCE_DIR.exists() else []
+    evidence_count = len(evidence_files)
+    evidence_score = _score_evidence_count(evidence_count)
     
     score_breakdown['evidence_coverage'] = {
         'score': evidence_score,
@@ -1133,13 +1174,16 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
     }
     
     # 3. Skills Coverage (0-25 points)
-    # Use skills_gap_analysis to check coverage
-    # Simplified for now - would call skills_gap_analysis tool
-    skills_score = 15  # Placeholder
+    ladder_data = parse_ladder_file(LADDER_FILE)
+    competencies = ladder_data.get("competencies") or []
+    coverage_analysis = analyze_competency_coverage(evidence_files, competencies) if competencies else {}
+    skills_score = _score_skills_from_coverage(coverage_analysis, len(competencies))
     score_breakdown['skills_coverage'] = {
         'score': skills_score,
         'max': 25,
-        'notes': 'Skills demonstrated vs required (use skills_gap_analysis for details)'
+        'required_competencies': len(competencies),
+        'coverage': coverage_analysis.get('overall_coverage', {}),
+        'notes': 'Skills demonstrated vs required, from career ladder and evidence'
     }
     
     # 4. Time in Role (0-10 points)
@@ -1159,12 +1203,17 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
     }
     
     # 5. Growth Velocity (0-10 points)
-    # Evidence accumulation over time
-    velocity_score = 5  # Placeholder
+    recent_range = parse_date_range("last-12-months")
+    recent_evidence = scan_evidence_directory(EVIDENCE_DIR, recent_range) if EVIDENCE_DIR.exists() else []
+    period_data = group_evidence_by_period(recent_evidence, group_by="month")
+    growth = calculate_growth_velocity(period_data)
+    velocity_score = _score_growth_velocity(growth, period_data)
     score_breakdown['growth_velocity'] = {
         'score': velocity_score,
         'max': 10,
-        'notes': 'Consistent evidence accumulation (use timeline_analysis for details)'
+        'average_monthly': growth.get('average_monthly', 0),
+        'trend': growth.get('trend', 'no_data'),
+        'notes': 'Evidence accumulation over the last 12 months'
     }
     
     # Total Score
@@ -1198,10 +1247,11 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
         'score_breakdown': score_breakdown
     }
     
-    try:
-        _fire_analytics_event('promotion_readiness_checked')
-    except Exception:
-        pass
+    surface_analytics_attempt(
+        result,
+        _fire_analytics_event,
+        'promotion_readiness_checked',
+    )
     
     return [types.TextContent(
         type="text",

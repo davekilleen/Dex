@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dex/contracts/automation-ownership-v1.schema.json",
+  "title": "Dex Solo launchd automation ownership sidecar v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "claims"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "claims": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "automation_id",
+          "owner_id",
+          "plist_relative_path",
+          "plist_sha256"
+        ],
+        "properties": {
+          "automation_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+          },
+          "owner_id": {"const": "dex-solo"},
+          "plist_relative_path": {
+            "type": "string",
+            "pattern": "^Library/LaunchAgents/[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?\\.plist$"
+          },
+          "plist_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

@@ -106,9 +106,25 @@ def _dispatch_tool_names(compare: ast.Compare) -> set[str]:
     return names
 
 
+def _server_sources(repo_root: Path) -> list[Path]:
+    """Every MCP server Dex ships: the core set, plus opt-in integrations.
+
+    Integration servers live at ``core/integrations/<name>/<name>_server.py``
+    rather than in the core ``core/mcp`` namespace, because a core server has
+    to be registered in every vault and an update cannot add a registration to
+    an install that already exists. They are still Dex's own engines, so the
+    inventory has to see them.
+    """
+    return sorted(
+        (repo_root / "core/mcp").glob("*_server.py"),
+    ) + sorted(
+        (repo_root / "core/integrations").glob("*/*_server.py"),
+    )
+
+
 def discover_engines(repo_root: Path) -> list[Engine]:
     engines: list[Engine] = []
-    for path in sorted((repo_root / "core/mcp").glob("*_server.py")):
+    for path in _server_sources(repo_root):
         source = path.read_text(encoding="utf-8")
         try:
             tree = ast.parse(source, filename=str(path))

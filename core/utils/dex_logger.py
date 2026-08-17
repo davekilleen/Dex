@@ -26,6 +26,10 @@ from typing import Any, Dict, Optional
 STALE_ERROR_DAYS = 30
 MAX_ERROR_ENTRIES = 50
 _SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+_MISSING_MODULE_RE = re.compile(
+    r"No module named\s+['\"](?P<module>[A-Za-z0-9_.-]+)['\"]",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +82,19 @@ def _installed_dex_version() -> Optional[str]:
 # Error-to-human message mapping
 # ---------------------------------------------------------------------------
 
+
+def missing_module_name(value: object) -> str | None:
+    """Return the named missing module, including from embedded subprocess output."""
+    if isinstance(value, ModuleNotFoundError) and isinstance(value.name, str) and value.name:
+        return value.name
+    match = _MISSING_MODULE_RE.search(str(value))
+    return match.group("module") if match else None
+
+
+def is_dex_module(module: str | None) -> bool:
+    """Whether a missing import belongs to Dex itself rather than a dependency."""
+    return module == "core" or (isinstance(module, str) and module.startswith("core."))
+
 _ERROR_PATTERNS = [
     ("ModuleNotFoundError", "{source} can't start: missing Python package"),
     ("No module named", "{source} can't start: missing Python package"),
@@ -95,6 +112,15 @@ _ERROR_PATTERNS = [
 
 def _generate_human_message(source: str, message: str) -> str:
     """Map technical error to plain-language description."""
+    missing_module = missing_module_name(message)
+    if is_dex_module(missing_module):
+        return (
+            f"{source} can't start: Dex's own code could not be loaded "
+            f"(missing module {missing_module!r}); this is a Dex fault, "
+            "not a missing Python package"
+        )
+    if missing_module:
+        return f"{source} can't start: missing Python package {missing_module!r}"
     for pattern, template in _ERROR_PATTERNS:
         if pattern.lower() in message.lower():
             return template.format(source=source)

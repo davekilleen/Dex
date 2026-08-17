@@ -233,6 +233,49 @@ def test_invalid_weekly_priority_lists_available_ids_without_writing(task_vault)
     assert task_vault["tasks"].read_text(encoding="utf-8") == before
 
 
+@pytest.mark.parametrize(
+    "leaked_context",
+    [
+        "Use the customer call notes.</context>",
+        '<parameter name="account">05-Areas/Accounts/Acme_Corp.md</parameter>',
+    ],
+)
+def test_create_task_rejects_each_leaked_tool_call_delimiter_without_writing(
+    task_vault, leaked_context
+):
+    before = task_vault["tasks"].read_text(encoding="utf-8")
+
+    result = _call_tool(
+        "create_task",
+        {
+            "title": "Prepare the Acme Corp account follow-up",
+            "pillar": "pillar_2",
+            "context": leaked_context,
+        },
+    )
+
+    assert result.get("success") is False
+    assert "malformed" in result["error"].lower()
+    assert "structured account and source fields" in result["suggestion"]
+    assert task_vault["tasks"].read_text(encoding="utf-8") == before
+
+
+def test_create_task_preserves_ordinary_angle_bracket_context(task_vault):
+    context = "Document the <draft> state and compare 2 < 3 before publishing."
+
+    result = _call_tool(
+        "create_task",
+        {
+            "title": "Document the example state",
+            "pillar": "pillar_1",
+            "context": context,
+        },
+    )
+
+    assert result["success"] is True
+    assert context in task_vault["tasks"].read_text(encoding="utf-8")
+
+
 def test_find_linked_tasks_keeps_old_same_line_links(task_vault):
     priority_id = "week-2026-W28-p1"
     task_vault["tasks"].write_text(

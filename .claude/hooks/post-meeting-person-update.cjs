@@ -53,7 +53,33 @@ function isWithin(candidate, directory) {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+function configuredNotesDirectory() {
+  const profilePath = path.join(vaultRoot, 'System', 'user-profile.yaml');
+  try {
+    const profile = yaml.load(fs.readFileSync(profilePath, 'utf8'));
+    const folder = profile?.meeting_sources?.notes_folder;
+    if (typeof folder !== 'string' || !folder.trim() || path.isAbsolute(folder)) return null;
+    const parts = folder.trim().split(/[\\/]+/);
+    if (parts.includes('..')) return null;
+    const candidate = path.resolve(vaultRoot, folder.trim());
+    if (candidate === path.resolve(vaultRoot) || !isWithin(candidate, vaultRoot)) return null;
+    const realVault = fs.realpathSync(vaultRoot);
+    const realCandidate = fs.realpathSync(candidate);
+    return isWithin(realCandidate, realVault) ? realCandidate : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+const configuredNotesDir = configuredNotesDirectory();
+let realFilePath = filePath;
+try {
+  realFilePath = fs.realpathSync(filePath);
+} catch (_) {
+  // The ordinary not-found check below owns missing or unreadable paths.
+}
 if (!isWithin(filePath, meetingsDir)
+    && !(configuredNotesDir && isWithin(realFilePath, configuredNotesDir))
     && !filePath.includes('Meeting_Intel')
     && !filePath.includes('Meeting_Notes')) {
   skip('not-a-meeting-note');
@@ -125,10 +151,27 @@ if (fallbackNames.length === 0) skip('no-person-references-found');
 
 const relativeMeetingPath = path.relative(vaultRoot, filePath).split(path.sep).join('/');
 const date = meetingDate(metadata);
-const granolaId = typeof metadata.granola_id === 'string'
-  ? metadata.granola_id.trim()
-  : '';
-const sourceId = granolaId || path.basename(relativeMeetingPath, '.md');
+function captureSourceId(frontmatter) {
+  const candidates = Object.entries(frontmatter)
+    .filter(([key, value]) => key.endsWith('_id')
+      && (typeof value === 'string' || typeof value === 'number')
+      && String(value).trim())
+    .map(([key, value]) => [key, String(value).trim()]);
+  const source = typeof frontmatter.source === 'string'
+    ? frontmatter.source.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')
+    : '';
+  if (source) {
+    const matched = candidates.find(([key]) => key.toLowerCase() === `${source}_id`);
+    if (matched) return matched[1];
+    return '';
+  }
+  return candidates.length === 1 ? candidates[0][1] : '';
+}
+
+// Capture ids are globally stable when unambiguous. The fallback must be the
+// normalized vault-relative Markdown path (POSIX separators, `.md` retained):
+// basenames collide as soon as configured and default folders share a title.
+const sourceId = captureSourceId(metadata) || relativeMeetingPath;
 const interaction = `- [${meetingTitle(metadata)}](${relativeMeetingPath}) — ${date}`;
 const seen = new Set();
 const ops = [];

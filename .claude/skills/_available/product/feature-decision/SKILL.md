@@ -14,12 +14,45 @@ time_investment: "15-20 minutes per decision"
 
 Make and document feature prioritization decisions with a structured framework. Ensures key factors are considered, stakeholders are consulted, and rationale is preserved for future reference.
 
+## Evidence, authority, and recovery
+
+Treat this skill as decision support: a recommendation is analysis, while the decision belongs to an identified human authority.
+
+- Attach a source ID or path, source date, and as-of date to every material claim, quote, estimate, stakeholder input, and roadmap fact. Keep the evidence date separate from the date the human confirms a decision.
+- Expose unknown effort and unknown evidence as first-class values. `Unknown` effort is not Small, and missing evidence is not evidence of no impact; name the missing input or assumption instead of choosing a convenient rating. Preserve contradictory evidence with both sources and dates rather than reconciling it silently.
+- Never invent absent customer names, user counts, revenue, effort estimates, dates, stakeholder alignment, owners, quotes, or dependencies. If a field is not supported, record `unknown` or `not provided` and explain what would resolve it.
+- Keep the recommendation separate from the decision authority: label the output `Recommendation` and `Human decision authority` separately. Recommendations are not human decisions; only the human authority may choose or confirm Go, No-Go, or Defer.
+- Before creating or updating a decision document, search for existing decisions for the feature and show an exact preview: target path, create/update operation, and complete proposed contents or diff. Require explicit confirmation from the human authority before any change.
+- Preserve each earlier decision. Never overwrite it silently: append a dated decision entry when extending the record, or explicitly supersede the earlier decision with the human authority, reason, and link recorded.
+- After an approved write, read back the target and compare it with the confirmed preview. If the write fails or the read-back differs, report the exact failure, leave the earlier decision intact, do not claim the document was created or updated, and recover by re-reading the current file and presenting a new preview for explicit confirmation.
+
 ## Usage
 
 - `/feature-decision [feature-name]` - Make a decision on a specific feature
 - `/feature-decision` - Start decision process with guided questions
 
 ---
+
+## Method
+
+Define the decision question, options, constraints, planning horizon, and named
+human decision authority. Gather dated customer, strategic, delivery, design,
+commercial, and dependency evidence into a source ledger. Use only a configured
+or user-confirmed sizing scale; if no scale or estimate exists, preserve effort
+as `Unknown`. Compare options and trade-offs, expose assumptions and conflicting
+evidence, and produce a recommendation without converting it into a decision.
+Search prior decision records before proposing any save, preserving their history
+and requiring separate confirmation for a new or superseding entry.
+
+## Output contract
+
+Return the decision question, authority, scope and evidence coverage, options,
+source-backed impact and effort assessment, unknowns, contradictions, trade-offs,
+recommendation, and an explicitly separate `Human decision` field. Every rating
+must cite its configured scale and evidence; unsupported values remain unknown.
+If a decision is confirmed, include its date and rationale. End with the proposed
+record operation or verified read-back receipt. Never label a recommendation,
+preview, tool response, or unconfirmed draft as an accepted decision.
 
 ## Step 1: Define the Feature
 
@@ -83,7 +116,7 @@ Guide the user through these questions:
 ### Effort Questions
 
 4. **Engineering Effort**
-   - Size estimate? (Small: <1 week, Medium: 1-4 weeks, Large: 1-3 months, XL: 3+ months)
+   - Size estimate using the team's configured or user-confirmed sizing scale? If none exists, record `Unknown` rather than supplying generic duration bands.
    - Technical complexity? (Low / Medium / High)
    - Dependencies on other systems?
    - Risk level? (Low / Medium / High)
@@ -108,6 +141,8 @@ Guide the user through these questions:
    - Lost customers?
    - Competitive risk?
    - Team morale?
+
+Keep unsupported answers as `unknown`; do not turn absent evidence into a low impact, low effort, or low risk rating.
 
 ---
 
@@ -150,11 +185,15 @@ Based on the framework, present a recommendation:
 - [Key factor 2]
 - [Key factor 3]
 
+State `Recommendation` and `Human decision authority` as separate fields. The recommendation is not the decision; wait for the human authority to explicitly choose Go, No-Go, or Defer.
+
 Ask user: "Does this recommendation make sense? Want to adjust the decision?"
 
 ---
 
 ## Step 6: Document the Decision
+
+Before creating a decision document, search `04-Projects/` for an existing decision for the feature. Show the exact target path, whether this is a new document or an append/supersede operation, and the complete proposed document or diff. Ask for explicit confirmation from the human authority, then create only the confirmed version.
 
 Create a decision document in 04-Projects/:
 
@@ -273,6 +312,8 @@ Create a decision document in 04-Projects/:
 This decision is logged for future reference. Run `/decision-log` to see all major product decisions.
 ```
 
+If an earlier decision exists, preserve its content and provenance. Append a new dated entry when the decision is revisited, or explicitly mark the earlier decision as superseded with the replacement decision, reason, human authority, and source evidence. Do not replace an earlier decision merely because the latest recommendation differs.
+
 Save to: `04-Projects/Decision_[Feature-Name]_[Date].md`
 
 ---
@@ -298,110 +339,42 @@ Offer to help with next steps:
 
 ---
 
-## Example: Real-time Dashboards Decision
+## Example: Evidence-bounded decision template
+
+This is a decision-record schema, not a worked fictional case. A recommendation
+must remain separate from the human decision, and missing inputs remain `Unknown`.
 
 ```markdown
-# Feature Decision: Real-time Dashboards
+# Feature Decision: [Feature name]
 
-**Date:** 2026-01-28
-**Decision:** Go - Q1 Priority
-**Owner:** You
+**As-of date:** [As-of date]
+**Status:** Proposed — awaiting human decision
+**Decision authority:** [Named human or Unknown]
 
----
+## Source ledger
+| Source ID | Source date | Claim supported | Limits / contradiction |
+|---|---|---|---|
+| [Source ID] | [Source date] | [Customer need, strategy, effort, or capacity] | [Limit or Unknown] |
 
-## Overview
+## Assessment
+- Customer impact: [Evidence and denominator, or Unknown]
+- Business impact: [Sourced value, or Unknown — never estimated here]
+- Strategic fit: [Goal source and date, or Unknown]
+- Engineering effort: [Owner-supplied estimate and confidence, or Unknown]
+- Capacity: [Canonical planning source and date, or Unknown]
+- Contradictory evidence: [Source IDs, or None observed]
 
-**Feature:** Real-time dashboards that auto-refresh every 5 minutes, eliminating manual report compilation
-**Origin:** Customer request (repeated pattern from 4 customers)
-**Requested by:** Acme Corp (Sarah), TechStart (Mike), GlobalCo (Lisa), DataFlow
+## Recommendation
+[Recommend Go / No-Go / More evidence, with cited rationale.]
 
----
+## Human decision
+**Decision:** [Not yet made / human-entered decision]
+**Decided by:** [Name]
+**Decision date:** [Date]
+**Trade-offs accepted:** [Human-confirmed text or Unknown]
 
-## Decision Framework
-
-### Impact Assessment
-
-**Customer Impact:** High
-- Who benefits: All customers with reporting workflows (60% of user base)
-- Problem solved: Manual report compilation taking 2 days/month per customer
-- Users affected: ~500 users across our customer base
-
-**Business Impact:** High
-- Revenue effect: Unblocks 2 pending deals (TechStart, NewCorp) - $180K ARR
-- Competitive position: ProductX has this, we don't - closing gap
-- Deal impact: Sales team reports dashboards are #3 objection in demos
-
-**Strategic Fit:** High
-- Pillar: Product Quality
-- Quarterly goal: Q1-2 (Reduce customer effort)
-- Long-term value: Platform capability, enables future dashboard types
-
-### Effort Assessment
-
-**Engineering:** Medium (3-4 weeks)
-- Size: 3-4 weeks
-- Complexity: Medium (real-time data pipeline + UI refresh)
-- Dependencies: Data infrastructure team (capacity confirmed)
-- Risk: Medium (performance at scale needs testing)
-
-**Design:** Small (1 week) - using existing components
-**GTM/Support:** Medium - training needed, support documentation
-
----
-
-## Decision Rationale
-
-**Why Go:**
-
-1. **Strong customer signal** - 4 customers in 30 days, increasing trend, 2 called it blocker
-2. **Business impact** - Unblocks $180K in pipeline, closes competitive gap
-3. **Strategic alignment** - Directly advances Q1 goal (reduce customer effort)
-4. **Feasible scope** - 3-4 weeks, no major blockers, team has capacity
-
-**Trade-offs accepted:**
-- Deprioritizing: Mobile app performance improvements slide from Feb to March
-- Risk: Need to validate performance at scale during beta
-
----
-
-## Supporting Evidence
-
-**Customer quotes:**
-- "Takes 2 days/month to compile reports manually. Need real-time dashboards." - Sarah (Acme), Jan 24
-- "Reporting pain is my team's #1 complaint. They avoid the system because of it." - Lisa (GlobalCo), Jan 15
-
-**Competitive intel:**
-- "ProductX's dashboards are way ahead of yours. We're evaluating a switch." - Mike (TechStart), Jan 20
-
-**Related conversations:**
-- 00-Inbox/Meetings/2026-01-24_Acme_Quarterly_Review.md
-- People/External/Sarah_Chen_Acme.md
-
----
-
-## Stakeholder Alignment
-
-**Consulted:**
-- Mike (Engineering Lead) - Feasible, 3-4 weeks, needs data team sync
-- Sarah (Design Lead) - Can use existing components, 1 week effort
-- John (Sales VP) - Would unblock 2 deals, closes demo objection
-
-**Concerns raised:**
-- Performance at scale (Mike) - Addressed: Beta test with 3 high-volume customers before general launch
-
----
-
-## Next Steps
-
-- [x] Create project in 04-Projects/Real_Time_Dashboards.md
-- [ ] Add to roadmap (Q1 priority)
-- [ ] Schedule kickoff for Feb 1
-- [ ] Update stakeholders (Acme, TechStart, GlobalCo, NewCorp)
-- [ ] Communicate timeline to sales team
-
----
-
-## Decision Log
-
-This decision is logged for future reference. Run `/decision-log` to see all major product decisions.
+## Controlled save
+- Exact target and diff: [preview]
+- Explicit confirmation: [human / timestamp]
+- Read-back: [matched preview or failed; recovery action]
 ```

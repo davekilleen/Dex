@@ -105,11 +105,11 @@ def _catalog_document(manifest: bytes) -> dict[str, object]:
         )
     return with_catalog_identity(
         {
-            "catalog_version": 1,
+            "catalog_version": 2,
             "release": {
                 "version": "1.67.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.67.0-0123456",
+                "immutable_distribution_tag_pattern": "dist/release/v1.67.0-<release-commit-prefix>",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",

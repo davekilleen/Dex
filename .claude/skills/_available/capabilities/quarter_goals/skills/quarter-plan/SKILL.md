@@ -14,6 +14,28 @@ Set 3-5 strategic goals for the quarter. Runs at the start of each quarter (or m
 
 ---
 
+## Method
+
+Verify the Quarter Goals room, fiscal start-month source, and target-quarter
+boundaries before gathering context. Build a dated ledger from pillars, prior
+goals, current commitments, and user input; preserve conflicts and keep missing
+capacity or outcomes unknown. Help the user choose three to five goals without
+turning suggestions into decisions. Define each goal's source-backed outcome,
+milestones, owner, and review signal. Preview configuration, archive, and goal
+mutations independently, preserve existing bytes on conflict, obtain explicit
+confirmation for each operation, and read back every confirmed destination.
+
+## Output contract
+
+Return room readiness, fiscal-quarter calculation with source and `as-of` time,
+context coverage, unresolved carry-over items, and the user's chosen goals with
+pillars, success criteria, milestones, owners, and unknowns. Do not invent
+capacity, dates, percentages, or alignment. End with a per-operation mutation
+ledger covering profile configuration, any archive, and the active goals file.
+Only read-back-matched paths may be labelled verified; conflicts, declined writes,
+and partial failures remain explicit and must not be summarized as a completed
+quarter plan.
+
 ## Step 0: Confirm the Quarter Goals room is enabled
 
 Read `System/user-profile.yaml`:
@@ -35,11 +57,18 @@ Read `System/user-profile.yaml`:
 > 4. Other month
 > 5. I don't want quarterly planning"
 
-**Capture response:**
-- If 1-4: Save month to config
-- If 5: Set `enabled: false` and end
+**Interpret the response:** Treat the selected month as the first month of the
+configured fiscal year, not as a calendar-quarter preference.
 
-**Calculate quarter dates:**
+- **Before saving:** preview the exact `System/user-profile.yaml` bytes or patch,
+  obtain explicit confirmation from the human user, then write and read back the
+  configuration.
+
+**Capture response:**
+- If 1-4: propose saving the month to config after the preview and confirmation
+- If 5: preview setting `enabled: false`, obtain confirmation, then apply it and end
+
+**Calculate quarter dates using fiscal-quarter boundaries:**
 ```
 If Q1 starts in January:
   Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec
@@ -49,9 +78,15 @@ If Q1 starts in February:
   
 If Q1 starts in April:
   Q1: Apr-Jun, Q2: Jul-Sep, Q3: Oct-Dec, Q4: Jan-Mar
+
+For any configured start month, each fiscal quarter is exactly three calendar
+months starting on the first day of its first month and ending on the last day of
+its third month. Handle year rollover explicitly (for example, a November Q1
+ends in January of the following year). Show the resulting start and end dates
+and the calculation `as-of` date; do not silently substitute calendar quarters.
 ```
 
-**Save to `System/user-profile.yaml`:**
+**Proposed config for `System/user-profile.yaml` (write only after preview and confirmation):**
 ```yaml
 quarterly_planning:
   enabled: true
@@ -78,6 +113,9 @@ Store:
 - `target_quarter`: "Q1 2026"
 - `quarter_start`: "2026-01-01"
 - `quarter_end`: "2026-03-31"
+
+Confirm that the stored dates follow the configured fiscal-quarter boundaries
+before using them in prompts, archive names, or MCP payloads.
 
 ---
 
@@ -138,10 +176,10 @@ Look for `05-Areas/Career/Growth_Goals.md`:
 
 ### Review Last Quarter (if available)
 
-> "Last quarter (Q4 2025) goals were:
-> 1. [Goal 1] — ✅ Completed
-> 2. [Goal 2] — 🔄 In progress (80%)
-> 3. [Goal 3] — ❌ Didn't finish
+> "Last quarter ([quarter from canonical source]) goals were:
+> 1. [Goal from source] — [observed status; source ID: [source ID]; source date: [source date]; as-of: [as-of date]]
+> 2. [Goal from source] — [observed status or Unknown, with the same provenance fields]
+> 3. [Goal from source] — [observed status or Unknown, with the same provenance fields]
 > 
 > Anything to carry forward into this quarter?"
 
@@ -218,14 +256,26 @@ Allow adjustment.
 
 **If `01-Quarter_Goals/Quarter_Goals.md` exists:**
 1. Determine the quarter it represents
-2. Move to `07-Archives/Reviews/[old-quarter]-goals.md`
+2. Preview the exact source bytes and destination
+   `07-Archives/Reviews/[old-quarter]-goals.md`, then obtain explicit human
+   confirmation before moving it
 3. Note: This preserves what was PLANNED vs what ACTUALLY happened (from review)
+
+If the archive destination already exists, stop on the conflict and preserve the
+existing bytes; do not overwrite, merge, or delete either version without a new
+user decision and preview.
 
 ---
 
 ## Step 5: Generate Quarter Goals
 
 Use the `create_quarterly_goal` MCP tool for each goal collected in Step 3.
+
+Before every mutation, preview every mutation: the exact MCP payload, target
+quarter, destination path(s), and any archive or goal-file bytes that will change.
+Obtain explicit confirmation from the human user before each call or an explicitly
+enumerated batch. A recommendation about a goal is not a human decision or
+authority to create it.
 
 **For each goal, call the tool with:**
 - `title`: Goal title
@@ -352,7 +402,7 @@ created: [timestamp]
 
 Display summary:
 
-> "Q1 2026 goals set and saved to `01-Quarter_Goals/Quarter_Goals.md`
+> "Q1 2026 goals set and verified in `01-Quarter_Goals/Quarter_Goals.md`
 > 
 > **Your focus this quarter:**
 > 1. [Goal 1]
@@ -404,9 +454,35 @@ Display summary:
 
 ---
 
+## Evidence, authority, and recovery
+
+- For the configured quarter, record the source of the fiscal setting, the source
+  date, and the calculation `as-of` date/time. For every goal, pillar, success
+  criterion, and milestone, preserve the source path or user statement and its
+  date. If a value is absent, label it `unknown`; if sources contradict, show the
+  contradiction and ask the user which value to use. Never invent goals, dates,
+  metrics, owners, or completion facts.
+- Preview every mutation: configuration changes, archive moves, MCP goal creation,
+  generated goal files, usage-log updates, and analytics actions. Show exact paths,
+  payloads, and new bytes, then obtain explicit confirmation from the human user;
+  recommendations are not human decisions.
+- On conflict, preserve existing bytes. If a source, destination, MCP record, or
+  expected quarter differs from the preview, stop without overwriting or silently
+  reconciling it and ask for a new choice.
+- After each confirmed mutation, read back the affected configuration, archive,
+  MCP record, and goal file and compare it with the confirmed result before saying
+  it was saved. If a write, tool call, or read back fails, surface the exact
+  failure, preserve existing bytes, and do not claim completion. List any partial
+  results and offer a fresh preview to resume; retry only after explicit human
+  confirmation.
+
+---
+
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark quarterly planning as used.
+"Silent" does not bypass the mutation boundary: include the exact
+`System/usage_log.md` patch in the preview, honor analytics opt-in, obtain human
+confirmation, read it back, and surface any failure before claiming it was updated.
 
 **Analytics (Silent):**
 

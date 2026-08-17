@@ -15,11 +15,23 @@ Usage in skills:
 """
 
 import hashlib
+import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from core.analytics_events import (
+    REDACTED_ANALYTICS_EVENT_NAME,
+    is_safe_analytics_event_name,
+)
+from core.lifecycle import service as lifecycle_service
 
 try:
     import requests
@@ -32,6 +44,20 @@ except ImportError:
 DEFAULT_PENDO_ENDPOINT = "https://app.pendo.io/data/track"
 ANALYTICS_MODE_DIRECT = "direct"
 ANALYTICS_MODE_PROXY = "proxy"
+_CONNECTION_TEST_EVENT = "dex_analytics_test"
+_CONNECTION_TEST_VISITOR_ID = "dex-analytics-test"
+_CONNECTION_TEST_ACCOUNT_ID = "dex-analytics-test"
+_DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
+
+
+def _bounded_request_timeout_seconds(value: object) -> float:
+    """Return a finite delivery-only timeout without affecting receipt writes."""
+    if (
+        type(value) in (int, float)
+        and 0 < value <= _DEFAULT_REQUEST_TIMEOUT_SECONDS
+    ):
+        return float(value)
+    return _DEFAULT_REQUEST_TIMEOUT_SECONDS
 
 
 def get_vault_path() -> Path:
@@ -338,7 +364,41 @@ def get_visitor_info() -> Dict[str, str]:
     }
 
 
-def fire_event(event_name: str, properties: Dict[str, Any] = None) -> Dict[str, Any]:
+def _with_attempt_receipt(
+    result: Dict[str, Any],
+    *,
+    event_name: str,
+    outcome: str,
+    reason: str,
+) -> Dict[str, Any]:
+    """Return the delivery result with its one safe, local receipt outcome.
+
+    Receipt failures are deliberately visible but never include the underlying
+    filesystem error: that text can carry a user path or transport detail.
+    """
+    try:
+        lifecycle_service._append_analytics_attempt_receipt(
+            get_vault_path(),
+            event_name=event_name,
+            outcome=outcome,
+            reason=reason,
+        )
+    except Exception:
+        return {
+            **result,
+            'receipt_written': False,
+            'receipt_reason': 'receipt_write_failed',
+        }
+    return {**result, 'receipt_written': True}
+
+
+def fire_event(
+    event_name: str,
+    properties: Dict[str, Any] = None,
+    *,
+    _connection_test: bool = False,
+    _request_timeout_seconds: float | None = None,
+) -> Dict[str, Any]:
     """
     Fire an analytics event to Pendo.
     
@@ -347,61 +407,134 @@ def fire_event(event_name: str, properties: Dict[str, Any] = None) -> Dict[str, 
     Args:
         event_name: Name of the event (e.g., 'daily_plan_completed')
         properties: Additional event properties (counts, categories only - no content!)
+        _request_timeout_seconds: Private delivery-only timeout for callers
+            such as session start. It never interrupts the local receipt.
     
     Returns:
         Result dict with success status
     """
-    if not is_analytics_enabled():
-        return {'fired': False, 'reason': 'analytics_disabled'}
+    request_timeout_seconds = _bounded_request_timeout_seconds(
+        _request_timeout_seconds
+    )
+    if not is_safe_analytics_event_name(event_name):
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': 'invalid_event_name'},
+            event_name=REDACTED_ANALYTICS_EVENT_NAME,
+            outcome='not_sent',
+            reason='invalid_event_name',
+        )
+
+    if _connection_test and event_name != _CONNECTION_TEST_EVENT:
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': 'invalid_event_name'},
+            event_name=REDACTED_ANALYTICS_EVENT_NAME,
+            outcome='not_sent',
+            reason='invalid_event_name',
+        )
+
+    try:
+        analytics_enabled = is_analytics_enabled()
+    except Exception:
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': 'request_failed'},
+            event_name=event_name,
+            outcome='not_sent',
+            reason='request_failed',
+        )
+
+    if not analytics_enabled:
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': 'analytics_disabled'},
+            event_name=event_name,
+            outcome='not_sent',
+            reason='analytics_disabled',
+        )
     
     if not HAS_REQUESTS:
-        return {'fired': False, 'reason': 'requests_not_installed'}
-    
-    transport = get_analytics_transport()
-    if not transport.get('configured'):
-        return {'fired': False, 'reason': transport.get('reason', 'transport_not_configured')}
-    
-    visitor_info = get_visitor_info()
-    journey = calculate_journey_metadata()
-    profile = load_user_profile()
-    
-    # Build properties with journey context
-    event_props = {
-        'journey_stage': journey['journey_stage'],
-        'days_since_setup': journey['days_since_setup'],
-        'feature_adoption_score': journey['feature_adoption_score'],
-        'most_active_area': journey['most_active_area'],
-        'role': profile.get('role_group', 'unknown'),
-        'company_size': profile.get('company_size', 'unknown'),
-        **(properties or {})
-    }
-    
-    payload = {
-        'type': 'track',
-        'event': event_name,
-        'visitorId': visitor_info['visitor_id'],
-        'accountId': visitor_info['account_id'],
-        'timestamp': int(datetime.now(timezone.utc).timestamp() * 1000),
-        'properties': event_props
-    }
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': 'requests_not_installed'},
+            event_name=event_name,
+            outcome='not_sent',
+            reason='requests_not_installed',
+        )
     
     try:
+        transport = get_analytics_transport()
+        if not transport.get('configured'):
+            transport_reason = transport.get('reason')
+            if transport_reason not in {'no_analytics_endpoint', 'no_pendo_secret'}:
+                transport_reason = 'no_analytics_endpoint'
+            return _with_attempt_receipt(
+                {'fired': False, 'reason': transport_reason},
+                event_name=event_name,
+                outcome='not_sent',
+                reason=transport_reason,
+            )
+
+        if _connection_test:
+            # A connection check must prove only that the transport works. It
+            # must never read or send a person's identity, profile, journey
+            # metadata, or caller-supplied properties.
+            visitor_info = {
+                'visitor_id': _CONNECTION_TEST_VISITOR_ID,
+                'account_id': _CONNECTION_TEST_ACCOUNT_ID,
+            }
+            event_props = {'connection_test': True}
+        else:
+            visitor_info = get_visitor_info()
+            journey = calculate_journey_metadata()
+            profile = load_user_profile()
+
+            # Build properties with journey context.
+            event_props = {
+                'journey_stage': journey['journey_stage'],
+                'days_since_setup': journey['days_since_setup'],
+                'feature_adoption_score': journey['feature_adoption_score'],
+                'most_active_area': journey['most_active_area'],
+                'role': profile.get('role_group', 'unknown'),
+                'company_size': profile.get('company_size', 'unknown'),
+                **(properties or {})
+            }
+
+        payload = {
+            'type': 'track',
+            'event': event_name,
+            'visitorId': visitor_info['visitor_id'],
+            'accountId': visitor_info['account_id'],
+            'timestamp': int(datetime.now(timezone.utc).timestamp() * 1000),
+            'properties': event_props
+        }
+
         response = requests.post(
             transport['endpoint'],
             json=payload,
             headers=transport['headers'],
-            timeout=10
+            timeout=request_timeout_seconds,
         )
         if response.status_code == 200:
-            return {'fired': True, 'event': event_name, 'mode': transport['mode']}
-        else:
-            return {
+            return _with_attempt_receipt(
+                {'fired': True, 'event': event_name, 'mode': transport['mode']},
+                event_name=event_name,
+                outcome='sent',
+                reason='sent',
+            )
+        return _with_attempt_receipt(
+            {
                 'fired': False,
                 'mode': transport['mode'],
-                'error': f'HTTP {response.status_code}'
-            }
-    except Exception as e:
-        return {'fired': False, 'error': str(e)}
+                'reason': 'http_error',
+            },
+            event_name=event_name,
+            outcome='not_sent',
+            reason='http_error',
+        )
+    except Exception:
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': 'request_failed'},
+            event_name=event_name,
+            outcome='not_sent',
+            reason='request_failed',
+        )
 
 
 def update_consent(decision: str):
@@ -469,7 +602,6 @@ class Events:
     # Lifecycle
     SESSION_STARTED = 'session_started'
     ONBOARDING_COMPLETED = 'onboarding_completed'
-    ANALYTICS_CONSENT_GIVEN = 'analytics_consent_given'
     
     # Core Skills
     DAILY_PLAN_COMPLETED = 'daily_plan_completed'
@@ -496,8 +628,28 @@ class Events:
 
 
 if __name__ == '__main__':
-    # Test the helper
-    print("Consent status:", check_consent())
-    print("\nJourney metadata:")
-    for k, v in calculate_journey_metadata().items():
-        print(f"  {k}: {v}")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Fire one Dex analytics event safely.")
+    parser.add_argument("--event", help="Built-in event name to record")
+    parser.add_argument(
+        "--request-timeout-seconds",
+        type=float,
+        help="Delivery-only limit for a caller that must remain responsive",
+    )
+    args = parser.parse_args()
+    if args.event:
+        print(
+            json.dumps(
+                fire_event(
+                    args.event,
+                    _request_timeout_seconds=args.request_timeout_seconds,
+                ),
+                sort_keys=True,
+            )
+        )
+    else:
+        print("Consent status:", check_consent())
+        print("\nJourney metadata:")
+        for k, v in calculate_journey_metadata().items():
+            print(f"  {k}: {v}")

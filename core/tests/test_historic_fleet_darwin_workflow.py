@@ -77,6 +77,7 @@ def test_release_version_bump_triggers_the_pr_canary() -> None:
 
 def test_twelve_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     workflow = _workflow()
+    triggers = workflow.get("on", workflow.get(True))
     canary = workflow["jobs"]["historic-fleet-darwin-pr-canary"]
     assert canary["if"] == "github.event_name == 'pull_request'"
     assert any(
@@ -115,6 +116,9 @@ def test_twelve_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
         "v1.81.11",
     )
     assert "build-release.sh --source candidate --target release" in source
+    assert "check-release-catalog-tag-identity.py" in source
+    assert "--release-ref release --source-ref candidate" in source
+    assert 'if [ -z "$CANDIDATE_IDENTITY" ]' in source
     assert "build-vault-bundle.sh" in source
     assert source.count("--controlled-approvals") == 1
     assert source.count("--follow-up-cache") == 1
@@ -122,6 +126,9 @@ def test_twelve_start_pr_canary_is_release_shaped_and_cannot_publish() -> None:
     assert "git push" not in source
     assert "gh release" not in source
     assert "GH_TOKEN" not in WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "scripts/check-release-catalog-tag-identity.py" in triggers[
+        "pull_request"
+    ]["paths"]
 
 
 def test_one_canary_start_runs_the_bridge_as_a_top_level_process() -> None:

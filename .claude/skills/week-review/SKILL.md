@@ -252,11 +252,14 @@ Review meeting notes from the week:
 - Action items created
 - Follow-ups that might have slipped
 
-### 5.5 Email Communication Stats (if Gmail connected)
+### 5.5 Email Communication Stats (if connected)
 
-Check `System/integrations/config.yaml` for `google-workspace.enabled: true`.
+Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. Also treat a
+registered `apple-mail-mcp` server as connected. Before querying a connected email source,
+run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`mail.apple-search` check reports `OK` / `feature_status: ok`.
 
-If enabled and Google Workspace MCP is healthy:
+If connected and healthy:
 - **Emails sent this week** — count of sent messages in the review period
 - **Average response time** — how quickly you replied to incoming emails
 - **Threads still open** — conversations with no resolution (back-and-forth still active)
@@ -275,7 +278,10 @@ Surface in the review:
 >
 > **Observation:** You have 3 emails waiting for replies longer than 48 hours. Consider clearing those early next week."
 
-If unhealthy or not enabled: skip this section silently.
+For Apple Mail, never interpret an empty search as "no matching mail" unless that check is OK.
+If a connected source is broken or could not be checked, **do not silently skip**: include one
+calm "Email review omitted" line with Doctor's `user_message` or fix path. If the source is not
+connected (`OFF`), omit the section without noise.
 
 ### 6. Learning Compilation & Pattern Detection
 

@@ -28,7 +28,7 @@ from core.tests.lifecycle_test_helpers import (
     write_manifest,
 )
 from core.transaction.engine import PlanRejected
-from core.utils import doctor, release_channel
+from core.utils import automation_ownership, doctor, release_channel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCTOR_PATH = Path(__file__).resolve().parents[1] / "utils" / "doctor.py"
@@ -175,6 +175,32 @@ def _write_plist(context, label):
     return plist
 
 
+def _write_solo_automation_claim(context, plist, label):
+    relative = plist.relative_to(context.home).as_posix()
+    sidecar = context.vault_root / automation_ownership.SIDECAR_RELATIVE
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "claims": [
+                    {
+                        "automation_id": label,
+                        "owner_id": "dex-solo",
+                        "plist_relative_path": relative,
+                        "plist_sha256": hashlib.sha256(plist.read_bytes()).hexdigest(),
+                    }
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return sidecar
+
+
 def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     runtime = context.vault_root / "System" / ".dex"
     runtime.mkdir(parents=True, exist_ok=True)
@@ -195,23 +221,29 @@ def _write_entity_probe_files(context, *, mode="auto", unresolved=None):
     }))
 
 
-def _write_release_catalog(context, *, content=b"release skill\n"):
+def _write_release_catalog(context, *, content=b"release skill\n", catalog_version=2):
     item_path = ".claude/skills/fixture-item/SKILL.md"
     manifest = write_manifest(context.vault_root, [item_path])
     write_file(context.vault_root, item_path, content)
-    document = with_catalog_identity(
-        {
-            "catalog_version": 1,
-            "release": {
+    release_identity = {
                 "version": "1.64.0",
                 "channel": "release",
-                "immutable_distribution_tag": "dist/release/v1.64.0-0123456",
                 "source_commit": SOURCE_COMMIT,
                 "manifest": {
                     "path": "System/.installed-files.manifest",
                     "sha256": hashlib.sha256(manifest).hexdigest(),
                 },
-            },
+            }
+    if catalog_version == 1:
+        release_identity["immutable_distribution_tag"] = "dist/release/v1.64.0-0123456"
+    else:
+        release_identity["immutable_distribution_tag_pattern"] = (
+            "dist/release/v1.64.0-<release-commit-prefix>"
+        )
+    document = with_catalog_identity(
+        {
+            "catalog_version": catalog_version,
+            "release": release_identity,
             "items": [
                 {
                     "id": "fixture-item",
@@ -770,8 +802,11 @@ def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
     assert "normal for older Dex releases" in result.detail
 
 
-def test_release_catalog_probe_reports_valid_version_without_writing(context):
-    _write_release_catalog(context)
+@pytest.mark.parametrize("catalog_version", (1, 2))
+def test_release_catalog_probe_reports_valid_version_without_writing(
+    context, catalog_version
+):
+    _write_release_catalog(context, catalog_version=catalog_version)
     before = _tree_snapshot(context.vault_root)
 
     result = doctor._probe_release_catalog(context)
@@ -1252,13 +1287,28 @@ def test_raising_probe_becomes_unknown_and_main_still_returns_valid_json(monkeyp
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "guidance"),
     [
-        ModuleNotFoundError("No module named 'yaml'"),
-        RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'EventKit'"),
+        (
+            ModuleNotFoundError("No module named 'yaml'"),
+            "Python packages not installed (missing module 'yaml') — run /dex-update "
+            "(or pip install -r requirements.txt) then re-run /dex-doctor",
+        ),
+        (
+            RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'EventKit'"),
+            "Python packages not installed (missing module 'EventKit') — run /dex-update "
+            "(or pip install -r requirements.txt) then re-run /dex-doctor",
+        ),
+        (
+            RuntimeError("subprocess failed: ModuleNotFoundError: No module named 'core.paths'"),
+            "Dex's own code could not be loaded (missing module 'core.paths'). "
+            "This is a Dex checkup fault, not a missing Python package.",
+        ),
     ],
 )
-def test_missing_optional_packages_have_actionable_unknown_detail(monkeypatch, context, error):
+def test_missing_modules_have_truthful_actionable_unknown_detail(
+    monkeypatch, context, error, guidance
+):
     _stub_probes(monkeypatch)
 
     def missing_dependency(_context):
@@ -1268,12 +1318,9 @@ def test_missing_optional_packages_have_actionable_unknown_detail(monkeypatch, c
 
     report = doctor.collect(context=context)
 
-    guidance = (
-        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
-        "then re-run /dex-doctor"
-    )
     assert _check(report, "vault.configs")["verdict"] == "UNKNOWN"
-    assert _check(report, "vault.configs")["detail"] == guidance + "."
+    expected_detail = guidance if guidance.endswith(".") else guidance + "."
+    assert _check(report, "vault.configs")["detail"] == expected_detail
     assert report["instruments"]["failed"] == [{"id": "vault.configs", "error": guidance}]
 
 
@@ -1291,7 +1338,8 @@ def test_probe_owned_unknown_missing_package_detail_is_actionable(monkeypatch, c
     report = doctor.collect(deep=True, context=context)
 
     assert _check(report, "calendar.access")["detail"] == (
-        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "Python packages not installed (missing module 'EventKit') — run /dex-update "
+        "(or pip install -r requirements.txt) "
         "then re-run /dex-doctor."
     )
     assert report["instruments"]["failed"] == []
@@ -1518,7 +1566,8 @@ def test_cli_still_emits_json_when_yaml_is_not_importable(tmp_path):
     assert result.returncode == 0
     report = json.loads(result.stdout)
     guidance = (
-        "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
+        "Python packages not installed (missing module 'yaml') — run /dex-update "
+        "(or pip install -r requirements.txt) "
         "then re-run /dex-doctor."
     )
     for check_id in ("vault.configs", "customizations.skills", "customizations.mcp"):
@@ -1645,9 +1694,13 @@ def test_doctor_heal_reconciles_room_assets_and_preserves_user_content(
     user_note = context.vault_root / "05-Areas/Career/private-review.md"
     user_note.parent.mkdir(parents=True, exist_ok=True)
     user_note.write_text("Keep this forever.\n", encoding="utf-8")
-    stale_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
-    stale_skill.parent.mkdir(parents=True, exist_ok=True)
-    stale_skill.write_text("---\nname: quarter-plan\n---\n", encoding="utf-8")
+    existing_skill = context.vault_root / ".claude/skills/quarter-plan/SKILL.md"
+    existing_skill.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        REPO_ROOT
+        / ".claude/skills/_available/capabilities/quarter_goals/skills/quarter-plan/SKILL.md",
+        existing_skill,
+    )
     context.paths_json_path.parent.mkdir(parents=True, exist_ok=True)
     context.paths_json_path.write_text(
         json.dumps(doctor._paths_export_for(context)),
@@ -1935,6 +1988,67 @@ def test_jobs_loaded_distinguishes_not_installed_from_unloaded(monkeypatch, cont
     assert result.heal.tier == 2
 
 
+def test_doctor_treats_valid_solo_claim_as_app_owned_and_offloaded(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    def launchctl_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Core must not inspect launchd state for an offloaded job")
+
+    monkeypatch.setattr(doctor, "_launchctl_status", launchctl_must_not_run)
+
+    loaded = doctor._probe_jobs_loaded(context)
+    fresh = doctor._probe_jobs_fresh(context)
+
+    assert loaded.verdict == "OK"
+    assert "owned by Dex Solo and offloaded from Core" in loaded.detail
+    assert fresh.verdict == "OFF"
+    assert "owned by Dex Solo and offloaded from Core" in fresh.detail
+
+
+def test_doctor_does_not_call_valid_solo_claim_broken_or_stale(monkeypatch, context):
+    former_vault = context.home.parent / "old-vault"
+    _write_breadcrumb(context, former_vault)
+    plist = _write_plist(context, "com.dex.example-job")
+    with plist.open("wb") as handle:
+        plistlib.dump(
+            {
+                "Label": "com.dex.example-job",
+                "ProgramArguments": ["/bin/bash", str(former_vault / ".scripts/job.sh")],
+            },
+            handle,
+        )
+    _write_solo_automation_claim(context, plist, "com.dex.example-job")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+    assert "offloaded" in result.detail
+    assert "old location" not in result.detail
+
+
+def test_doctor_rejects_stale_solo_plist_evidence(monkeypatch, context):
+    plist = _write_plist(context, "com.dex.meeting-intel")
+    _write_solo_automation_claim(context, plist, "com.dex.meeting-intel")
+    plist.write_bytes(plist.read_bytes() + b"\n")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": False, "last_exit_status": None},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "not loaded" in result.detail
+    assert "offloaded" not in result.detail
+
+
 def test_jobs_loaded_skips_foreign_product_plists(monkeypatch, context, foreign_launch_agents):
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
 
@@ -2097,6 +2211,39 @@ def test_jobs_loaded_checks_interpreter_exit_status_and_healthy_state(monkeypatc
     assert doctor._probe_jobs_loaded(context).verdict == "UNKNOWN"
 
 
+def test_jobs_loaded_treats_a_live_pid_as_authoritative_over_a_previous_exit(monkeypatch, context):
+    _write_plist(context, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": True, "pid": 5266, "last_exit_status": -15},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "OK"
+
+
+def test_jobs_loaded_does_not_treat_pid_zero_as_a_running_service(monkeypatch, context):
+    _write_plist(context, "com.dex.meeting-intel")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_launchctl_domain_check", lambda: None)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda _plist: "/bin/bash")
+    monkeypatch.setattr(
+        doctor,
+        "_launchctl_status",
+        lambda _label: {"loaded": True, "pid": 0, "last_exit_status": -15},
+    )
+
+    result = doctor._probe_jobs_loaded(context)
+
+    assert result.verdict == "BROKEN"
+    assert "last exited with status -15" in result.detail
+
+
 def test_jobs_loaded_maps_invalid_or_unsubstituted_plist_to_broken_t2(monkeypatch, context):
     plist = _write_plist(context, "com.dex.meeting-intel")
     with plist.open("wb") as handle:
@@ -2150,8 +2297,9 @@ def test_jobs_loaded_reports_missing_program_script_as_broken_t2(monkeypatch, co
 
 
 def test_launchctl_domain_failure_is_an_unknown_instrument(monkeypatch, context):
-    _write_plist(context, "com.dex.meeting-intel")
+    plist = _write_plist(context, "com.dex.meeting-intel")
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(doctor, "_plist_interpreter", lambda candidate: "/bin/bash" if candidate == plist else None)
     monkeypatch.setattr(
         doctor,
         "_launchctl_domain_check",
@@ -2189,14 +2337,18 @@ def test_empty_plutil_failure_is_unknown_not_malformed(monkeypatch, context):
 
 
 def test_launchctl_status_adapter_parses_last_exit_status(monkeypatch):
-    output = '{\n    "LastExitStatus" = 7;\n}\n'
+    output = '{\n    "PID" = 5266;\n    "LastExitStatus" = 7;\n}\n'
     monkeypatch.setattr(
         doctor.subprocess,
         "run",
         lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, stdout=output, stderr=""),
     )
 
-    assert doctor._launchctl_status("com.dex.test") == {"loaded": True, "last_exit_status": 7}
+    assert doctor._launchctl_status("com.dex.test") == {
+        "loaded": True,
+        "pid": 5266,
+        "last_exit_status": 7,
+    }
 
     monkeypatch.setattr(
         doctor.subprocess,
@@ -2208,7 +2360,11 @@ def test_launchctl_status_adapter_parses_last_exit_status(monkeypatch):
             stderr="Could not find service",
         ),
     )
-    assert doctor._launchctl_status("com.dex.missing") == {"loaded": False, "last_exit_status": None}
+    assert doctor._launchctl_status("com.dex.missing") == {
+        "loaded": False,
+        "pid": None,
+        "last_exit_status": None,
+    }
 
 
 def test_jobs_loaded_degrades_to_unknown_off_macos(monkeypatch, context):
@@ -3711,6 +3867,43 @@ def test_smoke_harness_exit_two_becomes_an_unknown_failed_instrument(monkeypatch
     assert _check(report, "doctor.self")["verdict"] == "BROKEN"
 
 
+def test_collect_preserves_smokes_missing_dex_module_diagnosis(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"smoke.journeys"})
+    payload = {
+        "schema_version": 1,
+        "generated_at": NOW.isoformat(),
+        "journeys": [
+            {
+                "id": "configs",
+                "verdict": "UNKNOWN",
+                "detail": "Dex's own code could not be loaded (No module named 'core'). "
+                "This is a Dex checkup fault, not a missing Python package.",
+                "duration_ms": 1,
+            }
+        ],
+        "summary": {"ok": 0, "broken": 0, "unknown": 1, "off": 0},
+    }
+    monkeypatch.setattr(
+        doctor.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload),
+            stderr="",
+        ),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "smoke.journeys")["detail"] == (
+        "configs [UNKNOWN]: Dex's own code could not be loaded (No module named 'core'). "
+        "This is a Dex checkup fault, not a missing Python package."
+    )
+    assert report["instruments"]["failed"] == []
+    assert _check(report, "doctor.self")["verdict"] == "OK"
+
+
 def test_granola_no_key_is_off_and_api_400_is_broken(monkeypatch, context):
     monkeypatch.setattr(doctor, "_granola_api_key", lambda _context: None)
     monkeypatch.setattr(
@@ -3932,116 +4125,42 @@ def test_calendar_sandbox_failure_is_unknown(monkeypatch, context):
     assert doctor._probe_calendar_access(context).verdict == "UNKNOWN"
 
 
-def _register_apple_mail_user_scope(context, name="user-apple-mail"):
-    (context.home / ".claude.json").write_text(
-        json.dumps({"mcpServers": {name: {"command": "apple-mail-mcp", "args": ["serve"]}}})
-    )
+def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
+    monkeypatch,
+    context,
+):
+    assert "mail.apple-search" in DEEP_IDS
+    definition = next(check for check in doctor.DEEP_CHECKS if check.id == "mail.apple-search")
+    assert definition.probe == "_probe_apple_mail_search"
 
+    observed = {}
 
-def _write_apple_mail_index(context, *, age_days=0.0, size=4096):
-    index = context.home / ".apple-mail-mcp" / "index.db"
-    index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_bytes(b"x" * size)
-    built = (context.now - timedelta(days=age_days)).timestamp()
-    os.utime(index, (built, built))
-    return index
+    def probe(adapter_context):
+        observed["context"] = adapter_context
+        return doctor.apple_mail_health.Result(
+            "BROKEN",
+            "Index cannot answer searches",
+            action="Rebuild it",
+            feature_status="broken",
+            user_message="Mail search needs attention.",
+        )
 
-
-def test_apple_mail_search_is_off_when_no_server_is_registered(context):
-    result = doctor._probe_apple_mail_search(context)
-
-    assert result.verdict == "OFF"
-    assert result.feature_status == "off"
-    assert result.heal is None
-
-
-def test_apple_mail_search_detects_registration_at_either_scope(context):
-    _register_apple_mail_user_scope(context)
-    assert doctor._apple_mail_registered(context) is True
-
-    (context.home / ".claude.json").unlink()
-    assert doctor._apple_mail_registered(context) is False
-
-    (context.vault_root / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"mail": {"command": "pipx", "args": ["run", "apple-mail-mcp"]}}})
-    )
-    assert doctor._apple_mail_registered(context) is True
-
-
-def test_apple_mail_search_is_unknown_off_macos(monkeypatch, context):
-    _register_apple_mail_user_scope(context)
-    monkeypatch.setattr(doctor, "_is_macos", lambda: False)
-
-    result = doctor._probe_apple_mail_search(context)
-
-    assert result.verdict == "UNKNOWN"
-    assert result.feature_status == "unknown"
-
-
-def test_apple_mail_search_is_broken_when_the_command_is_missing(monkeypatch, context):
-    _register_apple_mail_user_scope(context)
+    monkeypatch.setattr(doctor.apple_mail_health, "probe", probe)
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
-    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: False)
+    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
 
     result = doctor._probe_apple_mail_search(context)
 
     assert result.verdict == "BROKEN"
+    assert result.detail == "Index cannot answer searches"
     assert result.feature_status == "broken"
-    assert "pipx install apple-mail-mcp" in result.heal.action
-
-
-def test_apple_mail_search_is_broken_when_the_index_was_never_built(monkeypatch, context):
-    """The silent failure from #446: list/read work, so search looks healthy while returning nothing."""
-    _register_apple_mail_user_scope(context)
-    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
-    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
-
-    result = doctor._probe_apple_mail_search(context)
-
-    assert result.verdict == "BROKEN"
-    assert result.feature_status == "broken"
-    assert "apple-mail-mcp index" in result.heal.action
-    assert "Full Disk Access" in result.heal.action
-    assert "returns nothing" in result.user_message
-
-
-def test_apple_mail_search_is_broken_when_the_index_is_empty(monkeypatch, context):
-    _register_apple_mail_user_scope(context)
-    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
-    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
-    _write_apple_mail_index(context, size=0)
-
-    result = doctor._probe_apple_mail_search(context)
-
-    assert result.verdict == "BROKEN"
-    assert "empty" in result.detail
-
-
-def test_apple_mail_search_is_broken_when_the_index_has_gone_stale(monkeypatch, context):
-    """Startup sync silently no-ops without Full Disk Access, so a built index quietly stales."""
-    _register_apple_mail_user_scope(context)
-    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
-    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
-    _write_apple_mail_index(context, age_days=30)
-
-    result = doctor._probe_apple_mail_search(context)
-
-    assert result.verdict == "BROKEN"
-    assert "30 days ago" in result.detail
-    assert "apple-mail-mcp index" in result.heal.action
-
-
-def test_apple_mail_search_is_ok_with_a_fresh_index(monkeypatch, context):
-    _register_apple_mail_user_scope(context)
-    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
-    monkeypatch.setattr(doctor, "_apple_mail_cli_present", lambda: True)
-    _write_apple_mail_index(context, age_days=1)
-
-    result = doctor._probe_apple_mail_search(context)
-
-    assert result.verdict == "OK"
-    assert result.feature_status == "ok"
-    assert result.heal is None
+    assert result.user_message == "Mail search needs attention."
+    assert result.heal.action == "Rebuild it"
+    assert observed["context"].home == context.home
+    assert observed["context"].vault_root == context.vault_root
+    assert observed["context"].project_config_path == context.vault_root / ".mcp.json"
+    assert observed["context"].macos is True
+    assert observed["context"].cli_present is True
 
 
 def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, context):
@@ -4131,6 +4250,61 @@ def test_qmd_respects_opt_in_and_reports_live_status_failures(monkeypatch, conte
 
     monkeypatch.setattr(doctor, "_qmd_status", lambda _binary: (True, "3 collections"))
     assert doctor._probe_qmd_live(context).verdict == "OK"
+
+
+def test_qmd_timeout_is_unknown_without_breaking_doctor_self(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"qmd.live"})
+    _write_mcp_config(context, {"qmd": {"command": "qmd", "args": ["mcp"]}})
+    monkeypatch.setattr(doctor, "_qmd_binary", lambda _context: "/tmp/qmd")
+
+    def time_out(_binary):
+        raise subprocess.TimeoutExpired(["/tmp/qmd", "status"], timeout=10)
+
+    monkeypatch.setattr(doctor, "_qmd_status", time_out)
+
+    report = doctor.collect(deep=True, context=context)
+
+    qmd = _check(report, "qmd.live")
+    assert qmd["verdict"] == "UNKNOWN"
+    assert "10 seconds" in qmd["detail"]
+    assert report["instruments"]["failed"] == []
+    assert _check(report, "doctor.self")["verdict"] == "OK"
+
+
+def test_qmd_unexpected_exception_still_breaks_doctor_self(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"qmd.live"})
+    _write_mcp_config(context, {"qmd": {"command": "qmd", "args": ["mcp"]}})
+    monkeypatch.setattr(doctor, "_qmd_binary", lambda _context: "/tmp/qmd")
+    monkeypatch.setattr(
+        doctor,
+        "_qmd_status",
+        lambda _binary: (_ for _ in ()).throw(RuntimeError("unexpected qmd adapter failure")),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "qmd.live")["verdict"] == "UNKNOWN"
+    assert report["instruments"]["failed"] == [
+        {"id": "qmd.live", "error": "unexpected qmd adapter failure"}
+    ]
+    assert _check(report, "doctor.self")["verdict"] == "BROKEN"
+
+
+def test_qmd_nonzero_status_is_broken_without_breaking_doctor_self(monkeypatch, context):
+    _stub_probes(monkeypatch, exclude={"qmd.live"})
+    _write_mcp_config(context, {"qmd": {"command": "qmd", "args": ["mcp"]}})
+    monkeypatch.setattr(doctor, "_qmd_binary", lambda _context: "/tmp/qmd")
+    monkeypatch.setattr(
+        doctor,
+        "_qmd_status",
+        lambda _binary: (False, "index metadata is corrupt"),
+    )
+
+    report = doctor.collect(deep=True, context=context)
+
+    assert _check(report, "qmd.live")["verdict"] == "BROKEN"
+    assert report["instruments"]["failed"] == []
+    assert _check(report, "doctor.self")["verdict"] == "OK"
 
 
 def test_qmd_adapters_use_existing_discovery_and_status_command(monkeypatch, context):
@@ -4321,14 +4495,45 @@ def test_mcp_importable_runs_registered_core_servers_in_subprocess(monkeypatch, 
     assert doctor._probe_mcp_importable(context).verdict == "OK"
     assert calls == [("core.mcp.work_server", sys.executable)]
 
+
+@pytest.mark.parametrize(
+    ("subprocess_detail", "expected_detail", "expected_heal"),
+    [
+        (
+            "ModuleNotFoundError: No module named 'core.paths'",
+            "Dex's own code could not be loaded (missing module 'core.paths')",
+            "Run /dex-update to restore Dex's own code, then re-run /dex-doctor.",
+        ),
+        (
+            "ModuleNotFoundError: No module named 'yaml'",
+            "missing module 'yaml'",
+            "Reinstall missing MCP dependency 'yaml' into the vault .venv, then re-run /dex-doctor.",
+        ),
+    ],
+)
+def test_mcp_importable_gives_truthful_missing_module_remediation(
+    monkeypatch, context, subprocess_detail, expected_detail, expected_heal
+):
+    mcp_dir = context.vault_root / "core" / "mcp"
+    mcp_dir.mkdir(parents=True)
+    server = mcp_dir / "work_server.py"
+    server.touch()
+    _write_mcp_config(
+        context,
+        {"work-mcp": {"command": sys.executable, "args": [str(server)]}},
+    )
     monkeypatch.setattr(
         doctor,
         "_mcp_import_check",
-        lambda _context, _module, _interpreter: (False, "ImportError: missing package"),
+        lambda _context, _module, _interpreter: (False, subprocess_detail),
     )
+
     result = doctor._probe_mcp_importable(context)
+
     assert result.verdict == "BROKEN"
-    assert "ImportError" in result.detail
+    assert expected_detail in result.detail
+    assert result.heal is not None
+    assert result.heal.action == expected_heal
 
 
 def test_mcp_import_subprocess_uses_an_ephemeral_vault(monkeypatch, context):
@@ -4471,7 +4676,7 @@ def test_meeting_sources_probe_is_ok_for_api_sources_without_folders(context):
 
 
 def _pipedrive_module():
-    from core.mcp import pipedrive_server
+    from core.integrations.pipedrive import pipedrive_server
 
     return pipedrive_server
 

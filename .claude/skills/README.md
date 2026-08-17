@@ -226,7 +226,7 @@ Built specifically for personal knowledge management and productivity workflows 
 
 **Career Development:**
 - `/career-setup` - Initialize career system
-- `/career-coach` - Career reflections and assessments *(auto-captures career evidence)*
+- `/career-coach` - Career reflections and assessments *(suggests sourced evidence and asks before saving)*
 - `/resume-builder` - Build resume through guided interview
 
 **Projects:**
