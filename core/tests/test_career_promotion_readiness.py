@@ -47,6 +47,12 @@ Company ladder used by career-setup.
 - Run an exec review
 """
 
+COMPETENCY_HEADINGS = [
+    "Product Strategy",
+    "Technical Depth",
+    "Stakeholder Leadership",
+]
+
 
 def _decode(result) -> dict:
     return json.loads(result[0].text)
@@ -79,6 +85,18 @@ def _write_evidence(path: Path, title: str) -> None:
     )
 
 
+def _write_mapped_evidence(path: Path, title: str, competency: str) -> None:
+    path.write_text(
+        f"# {title}\n\n"
+        "**Category:** Achievements\n\n"
+        "## Skills Demonstrated\n"
+        f"- {competency}\n\n"
+        "## Ladder Alignment\n\n"
+        f"**Maps to:** {competency}\n",
+        encoding="utf-8",
+    )
+
+
 def _score(arguments: dict | None = None) -> dict:
     return _decode(
         asyncio.run(
@@ -98,6 +116,20 @@ def _skills_gap(arguments: dict | None = None) -> dict:
                 arguments or {"target_level": "Senior PM"},
             )
         )
+    )
+
+
+def _parse_ladder() -> dict:
+    return _decode(
+        asyncio.run(career_server.handle_call_tool("parse_ladder", {}))
+    )
+
+
+def _required_skill_names(payload: dict) -> list[str]:
+    return (
+        list(payload.get("skills_gap") or [])
+        + [item["skill"] for item in payload.get("actively_developed") or []]
+        + [item["skill"] for item in payload.get("stale_skills") or []]
     )
 
 
@@ -144,6 +176,40 @@ def test_promotion_score_counts_evidence_files_sitting_in_the_evidence_folder(
     assert coverage["score"] == 3
 
 
+def test_promotion_score_uses_real_coverage_for_a_populated_skills_folder(
+    tmp_path, monkeypatch
+):
+    vault = _enable_career_room(tmp_path, monkeypatch)
+    career_dir = vault / "05-Areas" / "Career"
+    evidence_dir = career_dir / "Evidence"
+    (career_dir / "Career_Ladder.md").write_text(STRUCTURED_LADDER, encoding="utf-8")
+    _write_mapped_evidence(
+        evidence_dir / "2026-01-10 - Strategy memo.md",
+        "Strategy memo",
+        "Product Strategy",
+    )
+    _write_mapped_evidence(
+        evidence_dir / "2026-02-11 - Design review.md",
+        "Design review",
+        "Technical Depth",
+    )
+    _write_mapped_evidence(
+        evidence_dir / "2026-03-12 - Exec review.md",
+        "Exec review",
+        "Stakeholder Leadership",
+    )
+
+    payload = _score()
+    skills = payload["score_breakdown"]["skills_coverage"]
+
+    # One matching file per competency is "weak" coverage: 0.3 * 25 = 8.
+    # A leftover placeholder would still return 15 here.
+    assert skills["score"] != 15
+    assert skills["score"] == 8
+    assert skills["required_competencies"] == 3
+    assert skills["coverage"] == {"weak": 3}
+
+
 def test_skills_gap_reads_a_career_setup_ladder_with_competency_subheadings(
     tmp_path, monkeypatch
 ):
@@ -155,13 +221,22 @@ def test_skills_gap_reads_a_career_setup_ladder_with_competency_subheadings(
 
     assert payload["required_skills_count"] == 3
     assert payload["success"] is True
-    required = (
-        payload["skills_gap"]
-        + [item["skill"] for item in payload.get("actively_developed", [])]
-        + [item["skill"] for item in payload.get("stale_skills", [])]
-    )
-    assert required == [
-        "Product Strategy",
-        "Technical Depth",
-        "Stakeholder Leadership",
+    assert _required_skill_names(payload) == COMPETENCY_HEADINGS
+
+
+def test_skills_gap_and_parse_ladder_agree_on_heading_names(
+    tmp_path, monkeypatch
+):
+    vault = _enable_career_room(tmp_path, monkeypatch)
+    ladder = vault / "05-Areas" / "Career" / "Career_Ladder.md"
+    ladder.write_text(STRUCTURED_LADDER, encoding="utf-8")
+
+    gap = _skills_gap()
+    parsed = _parse_ladder()
+
+    assert parsed["success"] is True
+    assert parsed["target_level"] == "Senior PM"
+    assert [item["category"] for item in parsed["competencies"]] == COMPETENCY_HEADINGS
+    assert _required_skill_names(gap) == [
+        item["category"] for item in parsed["competencies"]
     ]
