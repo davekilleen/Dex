@@ -19,7 +19,8 @@ sources:
   calendar:         {half_life: 30m}
   email:            {half_life: 30m}
   ci:               {half_life: 10m, note: "pull request and build state"}
-  meetings:         {half_life: 1h,  note: "captures from a meeting recorder"}
+  meetings:         {half_life: 1h,  note: "whether new captures exist"}
+  transcripts:      {half_life: never, note: "a finalised capture is a record of what was said; superseded by a later meeting, never aged out"}
   tasks:            {half_life: 4h}
   timesheet:        {half_life: 8h}
 
