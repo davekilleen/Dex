@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.7] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-20)
+
+After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.
+
+**What this fixes for you:**
+
+* **Your profile stays after an update.** Dex rereads the settings you already filled in and puts your name, role, company size, working style, and focus areas back into the main instructions. It no longer pretends you never finished setup.
+* **A brand-new folder still starts blank.** Until you finish the first setup, those lines stay empty. Dex does not invent a profile.
+* **The notes you added for yourself still survive.** The personal-instructions block is unchanged.
+* **Mail search checkup no longer calls a current index broken.** If the index is up to date and only the checkup helper cannot see Mail, Dex says it does not know, instead of telling you Mail search is broken.
+
+Amit Godbole caught the profile wipe by reading the update preview. Chris Jackson found the Mail false alarm.
+
 ## [1.96.6] — 🧰 Your promotion score uses real evidence, and Mail search checkup tells the truth (2026-08-17)
 
 The promotion score could look confident while using made-up points. Skills were always 15. Growth was always 5. Evidence sitting in the Evidence folder — the place career setup itself uses — counted as nothing. Separately, Mail search checkup could look healthy when it could not actually see Mail, or when the search index was missing, empty, or unreadable. And if you record meetings with Wispr, Dex already understood those notes, but settings still refused the word Wispr.
