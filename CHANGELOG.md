@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.8] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-21)
+
+After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.
+
+**What this fixes for you:**
+
+* **Your profile stays after an update.** Dex rereads the settings you already filled in and puts your name, role, company size, working style, and focus areas back into the main instructions. It no longer pretends you never finished setup.
+* **A brand-new folder still starts blank.** Until you finish the first setup, those lines stay empty. Dex does not invent a profile.
+* **The notes you added for yourself still survive.** The personal-instructions block is unchanged.
+* **Mail search checkup no longer calls a current index broken.** If the index is up to date and only the checkup helper cannot see Mail, Dex says it does not know, instead of telling you Mail search is broken.
+
+Amit Godbole caught the profile wipe by reading the update preview. Chris Jackson found the Mail false alarm. v1.96.7 never shipped a Mac file; this is the first download with these fixes.
+
 ## [1.96.7] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-20)
 
 After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.
