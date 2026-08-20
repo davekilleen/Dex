@@ -1331,6 +1331,242 @@ process.stdout.write(Buffer.from(migrator.regenerateClaude(template, custom), 'u
     assert apply_update._regenerate_claude(template, custom) == expected
 
 
+_PROFILE_TEMPLATE = (
+    b"# Dex\n\n"
+    b"## User Profile\n\n"
+    b"<!-- Updated during onboarding -->\n"
+    b"**Name:** Not yet configured\n"
+    b"**Role:** Not yet configured\n"
+    b"**Company Size:** Not yet configured\n"
+    b"**Working Style:** Not yet configured\n"
+    b"**Pillars:**\n"
+    b"- Not yet configured\n\n"
+    b"---\n\n"
+    b"## USER_EXTENSIONS_START\n"
+    b"## USER_EXTENSIONS_END\n\n"
+    b"After.\n"
+)
+_POPULATED_PROFILE = (
+    "name: Maya Chen\n"
+    "role: Head of Product\n"
+    "company_size: scaling (100-1000)\n"
+    "working_style: Plain words. Skip the pep talk.\n"
+    "communication:\n"
+    "  formality: professional_casual\n"
+    "pillars:\n"
+    "  - name: Revenue\n"
+    "  - name: Product\n"
+)
+_TEMPLATE_DEFAULT_PROFILE = (
+    "name: \"\"\n"
+    "role: \"\"\n"
+    "company_size: \"\"\n"
+    "working_style: \"\"\n"
+    "communication:\n"
+    "  formality: professional_casual\n"
+    "pillars: []\n"
+)
+
+
+def _write_profile(vault: Path, content: str) -> None:
+    _write(vault, "System/user-profile.yaml", content.encode("utf-8"))
+
+
+def test_compose_claude_rewrites_user_profile_on_the_shipped_template(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_profile(vault, _POPULATED_PROFILE)
+
+    composed = apply_update._compose_claude(
+        (REPO_ROOT / "CLAUDE.md").read_bytes(),
+        vault,
+    ).decode("utf-8")
+
+    assert "**Name:** Maya Chen" in composed
+    assert "**Name:** Not yet configured" not in composed
+    assert "## USER_EXTENSIONS_START" in composed
+
+
+def test_compose_claude_rewrites_user_profile_from_populated_yaml(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_profile(vault, _POPULATED_PROFILE)
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert "**Name:** Maya Chen" in composed
+    assert "**Role:** Head of Product" in composed
+    assert "**Company Size:** scaling (100-1000)" in composed
+    assert "**Working Style:** Plain words. Skip the pep talk." in composed
+    assert "- Revenue\n- Product\n" in composed
+    assert "Not yet configured" not in composed
+    assert "## USER_EXTENSIONS_START" in composed
+    assert "After." in composed
+
+
+@pytest.mark.parametrize(
+    "profile_bytes",
+    [
+        None,
+        b"",
+        _TEMPLATE_DEFAULT_PROFILE.encode("utf-8"),
+        b"updates:\n  channel: stable\n",
+    ],
+    ids=["missing", "empty-file", "template-defaults", "channel-only"],
+)
+def test_compose_claude_keeps_placeholders_when_profile_is_unconfigured(
+    tmp_path: Path,
+    profile_bytes: bytes | None,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    if profile_bytes is not None:
+        _write(vault, "System/user-profile.yaml", profile_bytes)
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault)
+
+    assert composed == _PROFILE_TEMPLATE
+
+
+def test_compose_claude_splices_custom_block_and_populated_profile(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_profile(vault, _POPULATED_PROFILE)
+    _write(vault, "CLAUDE-custom.md", b"Always explain decisions plainly.\n")
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert "**Name:** Maya Chen" in composed
+    assert "Always explain decisions plainly." in composed
+    assert "USER_EXTENSIONS_START" not in composed
+    assert composed.endswith("After.\n")
+
+
+def test_compose_claude_does_not_rewrite_user_profile_heading_inside_custom_block(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_profile(vault, _POPULATED_PROFILE)
+    _write(
+        vault,
+        "CLAUDE-custom.md",
+        b"## User Profile\n\nThis is mine. Leave it.\n",
+    )
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert composed.count("## User Profile") == 2
+    assert "**Name:** Maya Chen" in composed
+    assert "This is mine. Leave it." in composed
+
+
+def test_compose_claude_uses_formality_when_working_style_is_blank(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_profile(
+        vault,
+        "name: Maya Chen\n"
+        "working_style: \"\"\n"
+        "communication:\n"
+        "  formality: casual\n",
+    )
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert "**Name:** Maya Chen" in composed
+    assert "**Working Style:** casual" in composed
+
+
+def test_apply_update_keeps_populated_user_profile_when_release_template_resets_it(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    _write_profile(vault, _POPULATED_PROFILE)
+    _write(vault, "CLAUDE-custom.md", b"<!-- Add your personal customizations here. -->\n")
+    _retarget_release(split_release_fixture, "CLAUDE.md", _PROFILE_TEMPLATE)
+    current = (
+        b"# Old instructions\n\n"
+        b"## User Profile\n\n"
+        b"**Name:** Maya Chen\n"
+        b"**Role:** Head of Product\n\n"
+        b"---\n"
+    )
+    _write(vault, "CLAUDE.md", current)
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    composed = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    assert result["committed"] is True
+    assert "**Name:** Maya Chen" in composed
+    assert "**Role:** Head of Product" in composed
+    assert "Not yet configured" not in composed
+    assert "<!-- Add your personal customizations here. -->" in composed
+    assert "CLAUDE.md" in result["regenerated"]
+
+
+def test_apply_update_keeps_placeholders_for_unconfigured_profile(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    _write_profile(vault, _TEMPLATE_DEFAULT_PROFILE)
+    _retarget_release(split_release_fixture, "CLAUDE.md", _PROFILE_TEMPLATE)
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert result["committed"] is True
+    assert (vault / "CLAUDE.md").read_bytes() == apply_update._compose_claude(
+        _PROFILE_TEMPLATE, vault
+    )
+    assert b"**Name:** Not yet configured" in (vault / "CLAUDE.md").read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("unsafe_profile", "reason"),
+    [
+        ("directory", "System/user-profile.yaml is not a regular file"),
+        ("symlink", "System/user-profile.yaml is not a regular file"),
+        ("invalid-yaml", "System/user-profile.yaml is not valid YAML"),
+    ],
+)
+def test_unsafe_user_profile_keeps_current_claude_file(
+    split_release_fixture: dict[str, object],
+    unsafe_profile: str,
+    reason: str,
+) -> None:
+    vault = split_release_fixture["vault"]
+    current = (
+        b"# Current instructions\n\n"
+        b"## User Profile\n\n"
+        b"**Name:** Maya Chen\n\n"
+        b"---\n"
+    )
+    _write(vault, "CLAUDE.md", current)
+    _retarget_release(split_release_fixture, "CLAUDE.md", _PROFILE_TEMPLATE)
+    profile = vault / "System/user-profile.yaml"
+    profile.unlink(missing_ok=True)
+    if unsafe_profile == "directory":
+        profile.mkdir()
+    elif unsafe_profile == "symlink":
+        _write(vault, "System/profile-target.yaml", b"name: must-not-follow\n")
+        profile.symlink_to(vault / "System/profile-target.yaml")
+    else:
+        _write(vault, "System/user-profile.yaml", b"name: [unterminated\n")
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert (vault / "CLAUDE.md").read_bytes() == current
+    assert result["kept_reasons"]["CLAUDE.md"] == reason
+
+
 def test_apply_update_verification_failure_restores_every_release_file(
     monkeypatch: pytest.MonkeyPatch,
     split_release_fixture: dict[str, object],

@@ -443,7 +443,7 @@
       "path": "CLAUDE.md",
       "kind": "file",
       "ownership": "generated",
-      "note": "composed from the shipped template plus vault-owned CLAUDE-custom.md"
+      "note": "composed from the shipped template plus vault-owned CLAUDE-custom.md and System/user-profile.yaml"
     },
     {
       "id": "brain-commercial-license",

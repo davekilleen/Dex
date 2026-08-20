@@ -21,6 +21,8 @@ from pathlib import Path
 from time import monotonic as _monotonic
 from typing import Any, Callable
 
+import yaml
+
 from core import portable_contract
 from core.transaction.engine import PlanEntry, Transaction
 from core.utils import release_channel
@@ -50,6 +52,20 @@ START_MARKER = re.compile(
 END_MARKER = re.compile(
     rb"^## USER_EXTENSIONS_END[^\r\n]*(?:\r?\n|$)",
     re.MULTILINE,
+)
+USER_PROFILE_RELATIVE = Path("System/user-profile.yaml")
+USER_PROFILE_HEADING = "## User Profile"
+USER_PROFILE_PLACEHOLDER = "Not yet configured"
+USER_PROFILE_SECTION = re.compile(
+    r"^## User Profile\b.*?(?=^---\s*\r?$)",
+    re.MULTILINE | re.DOTALL,
+)
+_UNCONFIGURED_PROFILE_LABELS = frozenset(
+    {
+        "",
+        "not configured",
+        "not yet configured",
+    }
 )
 
 
@@ -90,11 +106,141 @@ def _regenerate_claude(template: bytes, custom_content: bytes) -> bytes:
     return before + custom_content + separator + after
 
 
+def _configured_profile_text(value: object) -> str | None:
+    """Return a non-placeholder profile string, or None when unset."""
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.split())
+    if text.casefold() in _UNCONFIGURED_PROFILE_LABELS:
+        return None
+    return text
+
+
+def _pillar_names(value: object) -> tuple[str, ...]:
+    """Accept the string or ``{name: ...}`` shapes provision already writes."""
+    if not isinstance(value, list):
+        return ()
+    names: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            name = _configured_profile_text(item)
+        elif isinstance(item, dict):
+            name = _configured_profile_text(item.get("name"))
+        else:
+            name = None
+        if name:
+            names.append(name)
+    return tuple(names)
+
+
+def _read_user_profile(vault_root: Path) -> dict[str, Any] | None:
+    """Load ``System/user-profile.yaml`` as a mapping, or None when absent.
+
+    A missing file is a fresh install. A present file that cannot be proved
+    as a regular UTF-8 YAML object fails closed so composition cannot replace
+    a populated User Profile section with placeholders.
+    """
+    path = vault_root / USER_PROFILE_RELATIVE
+    if not path.exists() and not path.is_symlink():
+        return None
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise CompositionError("System/user-profile.yaml is not a regular file")
+        raw = path.read_bytes()
+    except OSError as error:
+        raise CompositionError("System/user-profile.yaml is unreadable") from error
+    if not raw.strip():
+        return None
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("System/user-profile.yaml is not UTF-8") from error
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise CompositionError("System/user-profile.yaml is not valid YAML") from error
+    if parsed is None:
+        return None
+    if not isinstance(parsed, dict):
+        raise CompositionError("System/user-profile.yaml is not an object")
+    return parsed
+
+
+def _profile_from_yaml(profile: dict[str, Any]) -> dict[str, object] | None:
+    """Collect identity fields only when onboarding has actually written them."""
+    name = _configured_profile_text(profile.get("name"))
+    role = _configured_profile_text(profile.get("role"))
+    company_size = _configured_profile_text(profile.get("company_size"))
+    working_style = _configured_profile_text(profile.get("working_style"))
+    communication = profile.get("communication")
+    formality = None
+    if isinstance(communication, dict):
+        formality = _configured_profile_text(communication.get("formality"))
+    pillars = _pillar_names(profile.get("pillars"))
+    if not any((name, role, company_size, working_style, pillars)):
+        return None
+    return {
+        "name": name or USER_PROFILE_PLACEHOLDER,
+        "role": role or USER_PROFILE_PLACEHOLDER,
+        "company_size": company_size or USER_PROFILE_PLACEHOLDER,
+        "working_style": working_style or formality or USER_PROFILE_PLACEHOLDER,
+        "pillars": pillars,
+    }
+
+
+def _render_user_profile_section(profile: dict[str, object]) -> str:
+    pillars = profile["pillars"]
+    names = pillars if isinstance(pillars, tuple) and pillars else (USER_PROFILE_PLACEHOLDER,)
+    pillar_lines = "\n".join(f"- {name}" for name in names)
+    return (
+        f"{USER_PROFILE_HEADING}\n\n"
+        "<!-- Updated during onboarding -->\n"
+        f"**Name:** {profile['name']}\n"
+        f"**Role:** {profile['role']}\n"
+        f"**Company Size:** {profile['company_size']}\n"
+        f"**Working Style:** {profile['working_style']}\n"
+        f"**Pillars:**\n"
+        f"{pillar_lines}\n\n"
+    )
+
+
+def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
+    """Rewrite the release User Profile section from ``user-profile.yaml``.
+
+    The yaml file is the source of truth. An unconfigured or missing profile
+    leaves the shipped placeholders untouched. The custom-instructions block
+    is not part of this rewrite — markers stay in the template so the
+    existing splice can still run.
+    """
+    profile = _read_user_profile(vault_root)
+    if profile is None:
+        return template
+    overlay = _profile_from_yaml(profile)
+    if overlay is None:
+        return template
+    try:
+        text = template.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("release CLAUDE.md template is not UTF-8") from error
+    if USER_PROFILE_HEADING not in text:
+        return template
+    if USER_PROFILE_SECTION.search(text) is None:
+        raise CompositionError(
+            "release template User Profile section is missing its closing divider"
+        )
+    return USER_PROFILE_SECTION.sub(
+        _render_user_profile_section(overlay),
+        text,
+        count=1,
+    ).encode("utf-8")
+
+
 def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
     _extension_block(release_blob)
+    templated = _apply_user_profile(release_blob, vault_root)
     custom_path = vault_root / "CLAUDE-custom.md"
     if not custom_path.exists() and not custom_path.is_symlink():
-        return release_blob
+        return templated
     try:
         if custom_path.is_symlink() or not custom_path.is_file():
             raise CompositionError("CLAUDE-custom.md is not a regular file")
@@ -102,8 +248,8 @@ def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
     except OSError as error:
         raise CompositionError("CLAUDE-custom.md is unreadable") from error
     if not custom_content:
-        return release_blob
-    return _regenerate_claude(release_blob, custom_content)
+        return templated
+    return _regenerate_claude(templated, custom_content)
 
 
 GITIGNORE_SECTION_BEGIN = "# >>> dex-vault-mode (managed by Dex updates) >>>"

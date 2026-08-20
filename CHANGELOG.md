@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.96.7] — 🧰 Dex still knows who you are after an update (2026-08-20)
+
+After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you.
+
+**What this fixes for you:**
+
+* **Your profile stays after an update.** Dex rereads the settings you already filled in and puts your name, role, company size, working style, and focus areas back into the main instructions. It no longer pretends you never finished setup.
+* **A brand-new folder still starts blank.** Until you finish the first setup, those lines stay empty. Dex does not invent a profile.
+* **The notes you added for yourself still survive.** The personal-instructions block is unchanged.
+
+Amit Godbole caught this by reading the update preview before approving it.
+
 ## [1.96.6] — 🧰 Your promotion score uses real evidence, and Mail search checkup tells the truth (2026-08-17)
 
 The promotion score could look confident while using made-up points. Skills were always 15. Growth was always 5. Evidence sitting in the Evidence folder — the place career setup itself uses — counted as nothing. Separately, Mail search checkup could look healthy when it could not actually see Mail, or when the search index was missing, empty, or unreadable. And if you record meetings with Wispr, Dex already understood those notes, but settings still refused the word Wispr.

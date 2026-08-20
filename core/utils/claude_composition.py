@@ -1,18 +1,18 @@
 """Keep CLAUDE.md in step with CLAUDE-custom.md between updates.
 
 `CLAUDE.md` is composed from the release template plus the user's
-`CLAUDE-custom.md`. Until now that composition ran only inside the
-delivered-release transaction, so an instruction written into the custom block
-did nothing until the next update applied. On a vault already at the newest
-release that is indefinite, and it is silent: the file saves, the content is
-correct, and the instruction simply never loads.
+`CLAUDE-custom.md` and `System/user-profile.yaml`. Until now that composition
+ran only inside the delivered-release transaction, so an instruction written
+into the custom block did nothing until the next update applied. On a vault
+already at the newest release that is indefinite, and it is silent: the file
+saves, the content is correct, and the instruction simply never loads.
 
 The trust problem is worse than the latency one. Dex confirms the customisation
 has been made and the user reasonably believes it is in force. Recomposing
 between updates makes that confirmation true.
 
 Nothing here is new state. The output is exactly what the next update would
-produce from the same two inputs, so this is the same result arriving earlier.
+produce from the same inputs, so this is the same result arriving earlier.
 The write still takes the shared vault mutation lock — or refuses when an
 update already holds it — so a hook cannot compose from a stale activation
 tag and overwrite a mid-apply CLAUDE.md.
