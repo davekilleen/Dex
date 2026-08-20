@@ -340,3 +340,48 @@ test('H6: credential writes fail closed when any credentials path is already git
     fs.rmSync(cleanVault, { recursive: true, force: true });
   }
 });
+
+test("H6b: the guard's own .gitignore and README may be tracked without blocking writes", () => {
+  const storePath = path.join(__dirname, 'token-store.cjs');
+  const command = `require(${JSON.stringify(storePath)}).saveApiKey('h6b-test',{apiKey:'FAKE-H6B-KEY'})`;
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-cm-h6b-'));
+  const credentials = path.join(vault, 'System', 'credentials');
+  try {
+    const init = spawnSync('git', ['init', '-q', vault], { encoding: 'utf8' });
+    assert.equal(init.status, 0, init.stderr);
+    fs.mkdirSync(credentials, { recursive: true });
+    // Exactly what ensureCredentialsGitignore() installs — committing these is the point:
+    // the '*' rule is what keeps every real credential out of Git.
+    fs.writeFileSync(path.join(credentials, '.gitignore'), '*\n!.gitignore\n!README.md\n');
+    fs.writeFileSync(path.join(credentials, 'README.md'), 'Credentials live here.\n');
+    const add = spawnSync(
+      'git',
+      ['-C', vault, 'add', '-f', 'System/credentials/.gitignore', 'System/credentials/README.md'],
+      { encoding: 'utf8' }
+    );
+    assert.equal(add.status, 0, add.stderr);
+
+    const result = spawnSync(process.execPath, ['-e', command], {
+      env: { ...process.env, DEX_VAULT: vault, DEX_CM_NO_KEYCHAIN: '1' },
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.existsSync(path.join(credentials, 'tokens', 'h6b-test.json')), true);
+
+    // A genuine credential file alongside them must still fail closed.
+    fs.writeFileSync(path.join(credentials, 'oauth-apps.json'), '{"leaked":true}\n');
+    const addLeak = spawnSync('git', ['-C', vault, 'add', '-f', 'System/credentials/oauth-apps.json'], {
+      encoding: 'utf8',
+    });
+    assert.equal(addLeak.status, 0, addLeak.stderr);
+    const blocked = spawnSync(process.execPath, ['-e', command], {
+      env: { ...process.env, DEX_VAULT: vault, DEX_CM_NO_KEYCHAIN: '1' },
+      encoding: 'utf8',
+    });
+    assert.notEqual(blocked.status, 0);
+    assert.match(blocked.stderr, /oauth-apps\.json/);
+    assert.doesNotMatch(blocked.stderr, /\.gitignore|README\.md/);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});

@@ -98,6 +98,9 @@ function ensureCredentialsGitignore(dir) {
   }
 }
 
+// Files the credential guard installs on purpose; tracking these in Git is correct, not a leak.
+const GUARD_FILES = new Set(['.gitignore', 'README.md']);
+
 const _gitSafeCredentialDirs = new Set();
 
 function assertCredentialsNotTracked() {
@@ -123,17 +126,27 @@ function assertCredentialsNotTracked() {
   const relativeCredentialRoot = path.relative(repoRoot, credentialRoot).split(path.sep).join('/');
   let tracked;
   try {
-    tracked = execFileSync('git', ['-C', repoRoot, 'ls-files', '--', relativeCredentialRoot], {
+    // -z keeps unusual path characters verbatim; git would otherwise quote-escape them
+    // and the exact-path comparison below would silently stop matching.
+    tracked = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z', '--', relativeCredentialRoot], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
+    });
   } catch (error) {
     throw new Error(`Cannot verify whether System/credentials is tracked by Git: ${error.message}`);
   }
-  if (tracked) {
+  // The guard files this module installs itself (.gitignore + README.md) are *meant* to be
+  // committed — the .gitignore is what keeps every real credential out of Git. Only genuine
+  // credential material counts as a tracking violation.
+  const allowed = new Set(Array.from(GUARD_FILES, (name) => `${relativeCredentialRoot}/${name}`));
+  const trackedOffenders = tracked
+    .split('\0')
+    .filter(Boolean)
+    .filter((entry) => !allowed.has(entry));
+  if (trackedOffenders.length) {
     throw new Error(
-      `Credential write refused because Git already tracks path(s) under System/credentials:\n${tracked}\n` +
-        `Remove them from Git's index without deleting local files, for example: git rm --cached -r -- ${relativeCredentialRoot}`
+      `Credential write refused because Git already tracks credential path(s) under System/credentials:\n${trackedOffenders.join('\n')}\n` +
+        `Remove them from Git's index without deleting local files, for example: git rm --cached -- ${trackedOffenders.join(' ')}`
     );
   }
   _gitSafeCredentialDirs.add(credentialRoot);
