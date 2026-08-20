@@ -1467,6 +1467,36 @@ def test_compose_claude_does_not_rewrite_user_profile_heading_inside_custom_bloc
     assert "This is mine. Leave it." in composed
 
 
+@pytest.mark.parametrize(
+    ("setup", "message"),
+    [
+        ("directory", "System/user-profile.yaml is not a regular file"),
+        ("symlink", "System/user-profile.yaml is not a regular file"),
+        ("invalid-yaml", "System/user-profile.yaml is not valid YAML"),
+    ],
+)
+def test_compose_claude_refuses_an_unreadable_user_profile(
+    tmp_path: Path,
+    setup: str,
+    message: str,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    profile = vault / "System/user-profile.yaml"
+    profile.parent.mkdir()
+    if setup == "directory":
+        profile.mkdir()
+    elif setup == "symlink":
+        target = vault / "System/profile-target.yaml"
+        target.write_bytes(b"name: must-not-follow\n")
+        profile.symlink_to(target)
+    else:
+        profile.write_bytes(b"name: [unterminated\n")
+
+    with pytest.raises(apply_update.CompositionError, match=message):
+        apply_update._compose_claude(_PROFILE_TEMPLATE, vault)
+
+
 def test_compose_claude_uses_formality_when_working_style_is_blank(
     tmp_path: Path,
 ) -> None:
@@ -1551,6 +1581,9 @@ def test_unsafe_user_profile_keeps_current_claude_file(
     )
     _write(vault, "CLAUDE.md", current)
     _retarget_release(split_release_fixture, "CLAUDE.md", _PROFILE_TEMPLATE)
+    # Channel proof reads the same settings file, so verify while it is still
+    # a regular YAML object, then break it before composition runs.
+    release = _verified(split_release_fixture)
     profile = vault / "System/user-profile.yaml"
     profile.unlink(missing_ok=True)
     if unsafe_profile == "directory":
@@ -1561,7 +1594,7 @@ def test_unsafe_user_profile_keeps_current_claude_file(
     else:
         _write(vault, "System/user-profile.yaml", b"name: [unterminated\n")
 
-    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+    result = apply_update.apply_verified_release(vault, release)
 
     assert (vault / "CLAUDE.md").read_bytes() == current
     assert result["kept_reasons"]["CLAUDE.md"] == reason
