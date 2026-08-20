@@ -1142,6 +1142,47 @@ def test_smoke_history_reports_latest_healthy_run(context):
     assert result.detail == f"last verified {(NOW - timedelta(hours=1)).isoformat()} (1 journeys OK)"
 
 
+def test_smoke_history_reports_a_stopped_ledger_rather_than_its_last_verdict(context):
+    """A ledger that stopped must say so, not replay the verdict it stopped on."""
+    stopped_at = NOW - timedelta(days=8)
+    _write_smoke_history(context, _smoke_entry(stopped_at))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "have not run since" in result.detail
+    assert "8 days ago" in result.detail
+    assert "not the system now" in result.detail
+
+
+def test_smoke_history_staleness_outranks_a_stale_broken_verdict(context):
+    """Staleness is the finding. An old BROKEN is not evidence about now either.
+
+    Reporting the old verdict here would send someone chasing a failure that may
+    have been fixed days ago, while the live problem is that nothing is checking.
+    """
+    _write_smoke_history(
+        context,
+        _smoke_entry(NOW - timedelta(days=10)),
+        _smoke_entry(NOW - timedelta(days=9), broken=1),
+    )
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "have not run since" in result.detail
+
+
+def test_smoke_history_still_reports_a_recent_run_normally(context):
+    """The bound must not swallow a ledger that is simply current."""
+    _write_smoke_history(context, _smoke_entry(NOW - timedelta(hours=20)))
+
+    result = doctor._probe_smoke_history(context)
+
+    assert result.verdict == "OK"
+    assert "have not run since" not in result.detail
+
+
 def test_smoke_history_attributes_config_mtime(context):
     good_at = NOW - timedelta(hours=2)
     broken_at = NOW - timedelta(hours=1)

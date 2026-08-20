@@ -270,9 +270,10 @@ def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_is_miss
 
     result = apple_mail_health.probe(context)
 
-    assert result.verdict == "BROKEN"
-    assert result.feature_status == "broken"
+    assert result.verdict == "UNKNOWN"
+    assert result.feature_status == "unknown"
     assert "Mail store" in result.detail
+    assert "could not be determined" in result.detail
     assert "Full Disk Access" in result.action
     assert "Dex, Claude, or Cursor" in result.action
     assert "not only the terminal" in result.action
@@ -290,8 +291,8 @@ def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_lists_e
 
     result = apple_mail_health.probe(context)
 
-    assert result.verdict == "BROKEN"
-    assert result.feature_status == "broken"
+    assert result.verdict == "UNKNOWN"
+    assert result.feature_status == "unknown"
     assert "listed no files" in result.detail
     assert "Full Disk Access" in result.action
     assert "not only the terminal" in result.action
@@ -311,8 +312,8 @@ def test_apple_mail_search_freshness_alone_does_not_pass_when_mail_store_is_unre
 
     result = apple_mail_health.probe(context)
 
-    assert result.verdict == "BROKEN"
-    assert result.feature_status == "broken"
+    assert result.verdict == "UNKNOWN"
+    assert result.feature_status == "unknown"
     assert "cannot read the Mail store" in result.detail
     assert "Full Disk Access" in result.action
     assert "not only the terminal" in result.user_message

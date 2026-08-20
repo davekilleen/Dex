@@ -49,6 +49,10 @@ from core.utils import (
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
 DOCTOR_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
 QMD_STATUS_TIMEOUT_SECONDS = 10
+
+# The nightly ledger is written once a night, so two days tolerates a single
+# missed run before the ledger is treated as stopped rather than merely quiet.
+SMOKE_LEDGER_STALE_AFTER = timedelta(days=2)
 MISSING_PACKAGES_DETAIL = (
     "Python packages not installed — run /dex-update (or pip install -r requirements.txt) "
     "then re-run /dex-doctor"
@@ -5605,6 +5609,19 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
 
     latest = entries[-1]
     latest_timestamp = _smoke_timestamp(latest)
+    if latest_timestamp is not None and context.now - latest_timestamp > SMOKE_LEDGER_STALE_AFTER:
+        # Report the ledger having stopped, not the verdict it stopped on. Without
+        # this the newest entry is presented as the current state however old it
+        # is, so a ledger that stopped weeks ago reads exactly like last night's
+        # run and the one fact worth knowing -- that these checks are no longer
+        # running -- is the only one never stated.
+        days = (context.now - latest_timestamp).days
+        return ProbeResult(
+            "UNKNOWN",
+            f"nightly checks have not run since {latest_timestamp.isoformat()} "
+            f"({days} days ago), so the last recorded verdict describes that run "
+            "and not the system now",
+        )
     journeys = latest["journeys"]
     broken = [journey for journey in journeys if journey["verdict"] == "BROKEN"]
     unknown = [journey for journey in journeys if journey["verdict"] == "UNKNOWN"]

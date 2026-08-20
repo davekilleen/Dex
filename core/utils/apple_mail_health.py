@@ -363,31 +363,48 @@ def read_mail_store(home: Path) -> None:
 
 
 def _mail_store_result(home: Path) -> Result | None:
+    """Report that this process cannot read the Mail store, without overclaiming.
+
+    Only reached once the index has been PROVEN fresh by the sync-age check
+    above, so mail search is demonstrably answering from current data right now.
+    What this cannot establish is whether it will keep doing so: that depends on
+    whichever process refreshes the index, and this checkup measures its own
+    access, not that one's. The two are the same process in some setups and not
+    in others (an external indexer on a timer, a manual `apple-mail-mcp index`
+    from a granted terminal, a checkup running outside the server's process).
+
+    So the verdict is UNKNOWN, not BROKEN. Calling a working search broken is
+    the same category of untruth as calling a frozen one healthy, and a check
+    that cries wolf on a healthy setup is one users learn to ignore. The
+    remedy is unchanged, because it is still the fix when the inference holds.
+    """
     store = mail_store_path(home)
     try:
         read_mail_store(home)
     except FileNotFoundError:
         return Result(
-            "BROKEN",
-            f"The serving process cannot see the Mail store at {store}, so a fresh-looking index can still be frozen",
+            "UNKNOWN",
+            f"The index is current, but this process cannot see the Mail store at {store}, "
+            "so whether it will keep syncing could not be determined",
             action=APPLE_MAIL_SERVING_FDA_FIX,
-            feature_status="broken",
+            feature_status="unknown",
             user_message=(
-                "Mail search's index looks current, but this process cannot read your Mail "
-                "folder. The app that launches the Mail server needs Full Disk Access, not "
-                "only the terminal that built the index. " + APPLE_MAIL_SERVING_FDA_FIX
+                "Mail search is answering from a current index, but this process cannot read "
+                "your Mail folder, so Dex cannot confirm it will keep updating. If the same "
+                "process refreshes the index, it needs Full Disk Access. " + APPLE_MAIL_SERVING_FDA_FIX
             ),
         )
     except OSError as error:
         return Result(
-            "BROKEN",
-            f"The serving process cannot read the Mail store at {store}: {_one_line(error)}",
+            "UNKNOWN",
+            f"The index is current, but this process cannot read the Mail store at {store} "
+            f"({_one_line(error)}), so whether it will keep syncing could not be determined",
             action=APPLE_MAIL_SERVING_FDA_FIX,
-            feature_status="broken",
+            feature_status="unknown",
             user_message=(
-                "Mail search's index looks current, but this process cannot read your Mail "
-                "folder. The app that launches the Mail server needs Full Disk Access, not "
-                "only the terminal that built the index. " + APPLE_MAIL_SERVING_FDA_FIX
+                "Mail search is answering from a current index, but this process cannot read "
+                "your Mail folder, so Dex cannot confirm it will keep updating. If the same "
+                "process refreshes the index, it needs Full Disk Access. " + APPLE_MAIL_SERVING_FDA_FIX
             ),
         )
     return None
