@@ -2073,6 +2073,56 @@ def test_composed_gitignore_refuses_non_utf8_release_bytes() -> None:
         apply_update._compose_gitignore(b"\xff\xfe", Path("/unused"))
 
 
+_NO_PYYAML_COMPOSE_GITIGNORE_PROGRAM = r"""
+import sys
+from pathlib import Path
+
+class _BlockYaml:
+    def find_spec(self, name, path=None, target=None):
+        if name == "yaml" or name.startswith("yaml."):
+            raise ImportError("No module named 'yaml' (blocked to reproduce bare python3)")
+        return None
+
+sys.meta_path.insert(0, _BlockYaml())
+
+try:
+    import yaml  # noqa: F401
+except ImportError:
+    pass
+else:
+    raise SystemExit("yaml was importable; the no-pyyaml precondition is not met")
+
+from core.update.apply_update import _compose_gitignore
+
+composed = _compose_gitignore(b"# rules\n", Path("/unused"))
+if not composed.startswith(b"# rules\n"):
+    raise SystemExit("compose-gitignore returned unexpected bytes")
+print("ok")
+"""
+
+
+def test_compose_gitignore_import_does_not_require_pyyaml() -> None:
+    """Mac release builds compose .gitignore with a python3 that has no PyYAML.
+
+    User Profile composition needs yaml. Gitignore composition does not, and
+    scripts/compose-vault-gitignore.py imports _compose_gitignore from this
+    module. A top-level yaml import breaks that job.
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(REPO_ROOT), env.get("PYTHONPATH", "")])
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", _NO_PYYAML_COMPOSE_GITIGNORE_PROGRAM],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
 def test_vault_section_assumes_direct_child_exceptions_only() -> None:
     """Guard the contract shape the generator relies on.
 

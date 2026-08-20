@@ -21,8 +21,6 @@ from pathlib import Path
 from time import monotonic as _monotonic
 from typing import Any, Callable
 
-import yaml
-
 from core import portable_contract
 from core.transaction.engine import PlanEntry, Transaction
 from core.utils import release_channel
@@ -155,6 +153,8 @@ def _read_user_profile(vault_root: Path) -> dict[str, Any] | None:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as error:
         raise CompositionError("System/user-profile.yaml is not UTF-8") from error
+    import yaml  # lazy: gitignore composition must import this module without PyYAML
+
     try:
         parsed = yaml.safe_load(text)
     except yaml.YAMLError as error:
