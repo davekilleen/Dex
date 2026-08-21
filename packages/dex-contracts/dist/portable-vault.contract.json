@@ -667,6 +667,19 @@
       "note": "SR1 #150: tracked reference-schema templates carrying env-var references; installed if absent, never overwritten once user-owned"
     },
     {
+      "id": "seed-half-life-example",
+      "path": "System/knowledge-half-life.example.yaml",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-half-life-live",
+      "path": "System/knowledge-half-life.yaml",
+      "kind": "file",
+      "ownership": "seed",
+      "note": "per-vault decay assumptions; user tuning is never overwritten"
+    },
+    {
       "id": "seed-pillars-example",
       "path": "System/pillars.example.yaml",
       "kind": "file",
