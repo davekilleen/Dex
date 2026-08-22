@@ -1,6 +1,9 @@
 'use strict';
 
-const ORIGIN_KINDS = new Set(['authorization', 'token', 'refresh', 'api', 'verification']);
+// 'registration' is where a public client registers itself. It is pinned like
+// every other origin: dynamic client registration decides WHO the client is,
+// never WHERE it may talk.
+const ORIGIN_KINDS = new Set(['authorization', 'token', 'refresh', 'registration', 'api', 'verification']);
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
@@ -9,6 +12,18 @@ function deepFreeze(value) {
 }
 
 const REVIEWED_PROVIDERS = deepFreeze({
+  // Wispr Flow exposes meetings over a remote MCP server. It issues no client
+  // secret, so the client id is obtained by dynamic registration at connect
+  // time; the origins below are still fixed here, at review time.
+  wispr: {
+    authorizationOrigin: 'https://mcp-auth.wisprflow.com',
+    tokenOrigin: 'https://mcp-auth.wisprflow.com',
+    refreshOrigin: 'https://mcp-auth.wisprflow.com',
+    registrationOrigin: 'https://mcp-auth.wisprflow.com',
+    apiOrigins: ['https://api.wisprflow.ai'],
+    verificationOrigin: 'https://api.wisprflow.ai',
+    tenant: null,
+  },
   google: {
     authorizationOrigin: 'https://accounts.google.com',
     tokenOrigin: 'https://oauth2.googleapis.com',
