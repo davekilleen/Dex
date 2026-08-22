@@ -1878,6 +1878,21 @@ def _journey_configs(vault: Path, _release_root: Path) -> dict[str, str]:
 
     if errors:
         return {"verdict": "BROKEN", "detail": "; ".join(errors)}
+    # Name what was not checked. The capability registry lives outside ``core``
+    # and this runner is materialised core-only by design, so the room-name
+    # cross-check cannot run here. That is a bounded gap in an otherwise valid
+    # pass, not a failure: reporting BROKEN would call a healthy configuration
+    # invalid, and reporting UNKNOWN would stop the health snapshot completing
+    # on every vault that uses capability rooms.
+    if validators.capability_room_ids() is None:
+        return {
+            "verdict": "OK",
+            "detail": (
+                f"parsed and validated {checked} configuration files; "
+                "capability room names were not cross-checked because the registry "
+                "is outside the core-only smoke runner"
+            ),
+        }
     return {"verdict": "OK", "detail": f"parsed and validated {checked} configuration files"}
 
 
