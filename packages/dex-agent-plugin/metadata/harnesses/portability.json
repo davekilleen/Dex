@@ -359,8 +359,14 @@
       "reason": "no host-only body command or broken local reference"
     },
     "granola-setup": {
+      "body_replacements": [
+        {
+          "pattern": "(?m)^- \\*\\*Official API is the only data source\\.\\*\\*.*$",
+          "replacement": "- **Official API is the only data source.** Do not read local cache files or use spoofed client headers or unofficial crypto helpers. Use only the documented endpoints below with the `Authorization: Bearer` header."
+        }
+      ],
       "classification": "portable",
-      "reason": "no host-only body command or broken local reference"
+      "reason": "official API guidance has a host-neutral portable wording"
     },
     "identity-snapshot": {
       "classification": "portable",

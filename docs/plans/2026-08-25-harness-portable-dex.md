@@ -9,8 +9,9 @@
 
 Make Dex a portable personal-intelligence layer that can sit behind more than one agent
 harness. A user should be able to bring the same vault, core tools, and named journeys to
-Claude Code/Cowork, Codex, GitHub Copilot CLI, Pi, a generic Agent Plugin client, or BB and
-receive a precise account of what is automatic, guided, or unavailable in that host.
+Claude Code/Cowork/Desktop, Codex, ChatGPT desktop, Cursor, Gemini CLI, GitHub Copilot CLI,
+Pi, a generic Agent Plugin client, or BB and receive a precise account of what is automatic,
+guided, or unavailable in that host.
 
 The build stops before merge, publication, marketplace submission, installation for another
 user, or release.
@@ -61,8 +62,9 @@ Each harness descriptor states support, adapter location, and delivery mode:
 - `guided`: Dex supplies a visible fallback journey;
 - `unavailable`: Dex must not imply the behavior happens.
 
-Initial descriptors cover Claude Code, Claude Cowork, Codex, GitHub Copilot CLI, Pi,
-generic Agent Plugin v1 clients, ChatGPT Work companion mode, and BB.
+Initial descriptors cover Claude Code, Claude Cowork, Claude Desktop, Codex, Cursor,
+Gemini CLI, GitHub Copilot CLI, Pi, generic Agent Plugin v1 clients, ChatGPT Work
+companion mode, and BB.
 
 ### 2. Shared services
 
@@ -173,7 +175,10 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | --- | --- |
 | Claude Code | Existing hook behavior still works through shared services |
 | Claude Cowork | Plugin/skill discovery plus explicit hook/cloud limitations |
+| Claude Desktop | Validated MCPB manifest and built `.mcpb`; read-only MCP round trip with explicit no-hook result |
 | Codex | Portable skill and MCP discovery; supported hooks call shared entry points |
+| Cursor | Native manifest, shared MCP/skills, and translated local session/safety hooks |
+| Gemini CLI | Generated complete extension, shared MCP/skills, and translated lifecycle/safety hooks |
 | Copilot CLI | Plugin/skill/MCP discovery plus an explicit unavailable result for the unbundled Copilot-specific hook contract |
 | Pi | Agent Skill discovery plus guided/MCP-less tool path or extension adapter |
 | Agent Plugin client | v1 manifest/schema and relocatable plugin-root behavior |
@@ -186,7 +191,10 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | --- | --- | --- |
 | Codex | Repo marketplace resolved the package; a temporary isolated Codex home installed and enabled version `1.0.0`; MCP and hook harness tests pass. | No public marketplace submission; Codex IDE is unsupported by the host. |
 | Claude Code | `claude plugin validate packages/dex-agent-plugin` passes; shared hook tests pass. | No marketplace install or Cowork upload performed. |
+| Claude Desktop | The official MCPB validator accepts the generated manifest; the builder emits an installable `.mcpb`; its staged read-only MCP runtime completes a real round trip. | The headless Devbox cannot exercise the Desktop install UI; live installation remains a release-candidate check. |
 | ChatGPT | Uses the same validated OpenAI package and local repo marketplace. | Desktop UI install was not exercised on this headless Devbox; web needs a secured HTTPS MCP endpoint. |
+| Cursor | Native plugin manifest, shared skills/MCP, local hook schemas, context injection, and destructive-action refusal pass golden tests. | A live trusted-workspace install remains a release-candidate check; cloud agents do not run `sessionStart`. |
+| Gemini CLI | The generated extension archive contains the full shared runtime and skills; staged MCP and translated hook journeys pass. | A live CLI install and trust prompt remain release-candidate checks. |
 | Copilot CLI | Root manifest follows the Open Plugin Spec accepted by Copilot; package and schema tests pass. Its incompatible hook schema is now explicitly unavailable rather than overclaimed. | The Copilot binary is not installed on this Devbox, so live CLI installation remains a release-candidate check. |
 | Pi | Existing native `dex-pi/extensions/dex/package.json` and lifecycle extension are present in the Pi repository. | The dirty shared Pi checkout was inspected read-only; no Pi package was changed or released. |
 | Agent Plugin | v1 schema, Node-to-Python launcher, tools, resources, dependency closure, and Linux deferred-runtime journey pass golden tests. A mandatory macOS/Windows CI matrix is wired. | Native macOS and Windows CI results plus mandatory Fable reviews are still required before the branch can be called release-ready. Client-specific hooks remain outside the v1 floor. |

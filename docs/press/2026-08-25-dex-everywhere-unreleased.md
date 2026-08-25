@@ -9,7 +9,7 @@ a marketplace, deployed, or available to customers yet.
 
 # Dex brings your working memory to the AI agent you choose
 
-## One personal intelligence system now adapts to Codex, ChatGPT, Claude, Copilot, Pi, BB, and compatible agent harnesses—without trapping the user in one interface
+## One personal intelligence system now adapts to Codex, ChatGPT, Claude, Cursor, Gemini, Copilot, Pi, BB, and compatible agent harnesses—without trapping the user in one interface
 
 **LONDON — Future release date** — Dex today announced Dex Everywhere, a new
 way for people to bring the same goals, tasks, relationships, meetings, working
@@ -33,13 +33,15 @@ onto that understanding, not the place it gets trapped.”
 
 With Dex Everywhere, a Codex user can install a native plugin containing Dex's
 work skills, read-only context tools, and trusted lifecycle hooks. Claude Code
-and Cowork users receive the same shared package through Claude's plugin model.
-GitHub Copilot CLI and compatible clients use the open Agent Plugin skills and
-MCP contract; Copilot's separate lifecycle-hook format is not claimed. Pi
-uses its native Dex extension. BB users receive a local, read-only plugin with a
-Dex panel, tools, and command-line briefing. ChatGPT desktop can use the same
-OpenAI plugin package; web access to a private local vault remains behind a
-separate secure-connection milestone.
+and Cowork users receive the same shared package through Claude's plugin model,
+while Claude Desktop receives a validated local MCP bundle. Cursor uses a native
+manifest over the same package. Gemini CLI receives a generated complete
+extension from the same canonical sources. GitHub Copilot CLI and compatible
+clients use the open Agent Plugin skills and MCP contract; Copilot's separate
+lifecycle-hook format is not claimed. Pi uses its native Dex extension. BB users
+receive a local, read-only plugin with a Dex panel, tools, and command-line
+briefing. ChatGPT desktop can use the same OpenAI plugin package; web access to a
+private local vault remains behind a separate secure-connection milestone.
 
 The result is continuity without false sameness. Claude Code remains Dex's
 complete reference experience. Other hosts receive native experiences backed by
@@ -131,6 +133,9 @@ host's real lifecycle and interface. The registry labels every capability as
 - Codex CLI and Codex in the ChatGPT desktop app: native OpenAI plugin.
 - ChatGPT desktop: the same universal OpenAI plugin package.
 - Claude Code and Claude Cowork: native Claude plugin.
+- Claude Desktop: validated local MCP bundle with read-only tools and no hook claim.
+- Cursor: native local plugin with shared skills, MCP, and trusted hooks.
+- Gemini CLI: generated native extension with shared skills, MCP, and trusted hooks.
 - GitHub Copilot CLI: Agent Plugins/Open Plugin Spec skills and MCP package;
   Copilot-specific lifecycle hooks are not included in this release.
 - Compatible Agent Plugins v1 clients: the open skills-and-MCP floor.

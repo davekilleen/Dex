@@ -82,6 +82,25 @@ def expected_manifest(repo_root: Path = ROOT) -> dict:
                 "classification": "claude-only",
                 "reason": "bundled font licences contain third-party personal contact details",
             }
+        elif key == "granola-setup":
+            # The canonical skill explicitly prohibits obsolete local-cache
+            # techniques. Portable copies keep the safety boundary without
+            # repeating legacy filenames that repository-wide truth gates ban.
+            entry = {
+                "classification": "portable",
+                "reason": "official API guidance has a host-neutral portable wording",
+                "body_replacements": [
+                    {
+                        "pattern": r"(?m)^- \*\*Official API is the only data source\.\*\*.*$",
+                        "replacement": (
+                            "- **Official API is the only data source.** Do not read local cache "
+                            "files or use spoofed client headers or unofficial crypto helpers. "
+                            "Use only the documented endpoints below with the "
+                            "`Authorization: Bearer` header."
+                        ),
+                    }
+                ],
+            }
         elif broken:
             entry = {"classification": "broken", "reason": broken}
         elif host:

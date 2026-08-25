@@ -148,8 +148,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "480213daf8ebc321b89d9c9e3fef8ebeeba9ac05c8eecaeda13c4407a67bccb8",
-        "byte_size": 20528
+        "sha256": "23fc59af24aa10eea9c67a98f2a206c7cac1743fbc9c6d5dd44d5345545d8eac",
+        "byte_size": 21731
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": ["process-meetings", "keep-relationships-warm"],
@@ -190,8 +190,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "d875ffd44a37489e225ddb0eae06cde12dc146f7e356152320da80f77a0cee08",
-        "byte_size": 17600
+        "sha256": "d0562bec5c7110093f239e29dcd01628f2b8e08c2ce7a562b8948f5fa18bfa6a",
+        "byte_size": 18134
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": ["keep-system-healthy"],

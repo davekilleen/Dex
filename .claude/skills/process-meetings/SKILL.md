@@ -134,7 +134,10 @@ notes. Other primaries do not inherit a direct reader from this setting.
 
 ### Step 1: Check Source and Sync Status
 
-Resolve the configured local folder using the rules above. Then check whether
+Resolve `meeting_sources.notes_folder` using the rules above: only a valid
+vault-relative folder is accepted; missing or malformed config, an absolute
+path, `..`, the vault root, or a symlink escape falls back safely. The configured
+primary does not grant access to an external service. Then check whether
 Granola background sync has left its optional state file:
 
 ```bash
@@ -194,7 +197,8 @@ For each meeting file, skip notes containing `<!-- dex:skip-processing -->`:
    key matching a string `source`; if that key is absent, report the mismatch
    and use the note path. When `source` is absent, use an id only when exactly
    one non-empty scalar candidate is present. `granola_id` and `wispr_id` are
-   examples, not a closed list. Multiple ids fall back to note-path identity.
+   examples, not a closed list. Empty or non-scalar values do not count;
+   multiple ids fall back to note-path identity.
    The path identity is the normalized vault-relative Markdown path, with `/`
    separators and the `.md` extension retained; never reduce it to a basename
 2. Check if person/company pages need updating

@@ -55,6 +55,7 @@ exit 0
         """#!/bin/sh
 if [ "$1" = "-v" ]; then echo "v22.0.0"; exit 0; fi
 printf '%s\n' "$*" >> "$DEX_TEST_NODE_LOG"
+if [ "$1" = "-e" ]; then exec /usr/bin/node "$@"; fi
 case "$DEX_TEST_SCENARIO:$2" in
   resume:--auto)
     if [ ! -f "$DEX_TEST_RESUME_SENTINEL" ]; then
@@ -85,6 +86,10 @@ exit 0
         shim_dir / "python3",
         """#!/bin/sh
 if [ "$1" = "--version" ]; then echo "Python 3.12.0"; exit 0; fi
+if [ "$1" = "-m" ] && [ "$2" = "core.harnesses.registry" ]; then
+  printf '%s\n' "$DEX_TEST_HARNESSES_JSON"
+  exit 0
+fi
 if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
   mkdir -p "$3/bin"
   printf '#!/bin/sh\nexit 0\n' > "$3/bin/pip"
@@ -107,6 +112,10 @@ exit 0
             "DEX_TEST_NODE_LOG": str(tmp_path / "node.log"),
             "DEX_TEST_RESUME_SENTINEL": str(tmp_path / "resume.once"),
             "DEX_TEST_SCENARIO": scenario,
+            "DEX_TEST_HARNESSES_JSON": {
+                "claude": '[{"display_name":"Claude Code"}]',
+                "cursor": '[{"display_name":"Cursor"}]',
+            }.get(chat_app, "[]"),
         }
     )
     return root, environment
@@ -204,18 +213,20 @@ def test_install_points_claude_code_users_at_the_install_folder(tmp_path: Path) 
     result, _ = _run_install(tmp_path, "zip", chat_app="claude")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Open Claude Code in this folder" in result.stdout
+    assert "Dex detected: Claude Code" in result.stdout
+    assert "Open one of these apps in this folder: Claude Code" in result.stdout
     assert "the folder you just installed into" in result.stdout
-    assert "In Claude Code chat, type: /setup" in result.stdout
+    assert "In that app's chat, type: /setup" in result.stdout
     # Detection must name one app only, never leak the other.
-    assert "In Cursor chat, type: /setup" not in result.stdout
+    assert "Dex detected: Cursor" not in result.stdout
 
 
 def test_install_points_cursor_users_at_the_install_folder(tmp_path: Path) -> None:
     result, _ = _run_install(tmp_path, "zip", chat_app="cursor")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Open Cursor in this folder" in result.stdout
+    assert "Dex detected: Cursor" in result.stdout
+    assert "Open one of these apps in this folder: Cursor" in result.stdout
     assert "the folder you just installed into" in result.stdout
-    assert "In Cursor chat, type: /setup" in result.stdout
-    assert "In Claude Code chat, type: /setup" not in result.stdout
+    assert "In that app's chat, type: /setup" in result.stdout
+    assert "Dex detected: Claude Code" not in result.stdout

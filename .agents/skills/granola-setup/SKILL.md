@@ -224,7 +224,7 @@ These rules apply wherever Dex reads Granola data. The skill agent must follow t
   ```
   Granola not connected — run /granola-setup to add your Granola API key (requires a Granola Business plan).
   ```
-- **Official API is the only data source.** There is **no local-file fallback**. Do not read `supabase.json`, `supabase.json.enc`, `cache-v*.json(.enc)`, or use any spoofed `User-Agent` / `X-Client-Version` headers or `granola-crypto`. Use only the documented endpoints below with the `Authorization: Bearer` header.
+- **Official API is the only data source.** Do not read local cache files or use spoofed client headers or unofficial crypto helpers. Use only the documented endpoints below with the `Authorization: Bearer` header.
 
 ### API reference (for Granola-aware skills)
 
