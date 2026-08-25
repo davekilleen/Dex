@@ -47,6 +47,17 @@ test('person context injector emits skip reason when file path missing', (t) => 
   assert.match(result.stderr, /\[dex-hook-skip] missing-file-path-or-recursive-person-file/);
 });
 
+test('person context injector fails open on a malformed file path value', (t) => {
+  const sandbox = createSandbox(t);
+  const result = runHook(
+    'person-context-injector.cjs',
+    JSON.stringify({ tool_input: { file_path: { path: 'not-a-string' } } }),
+    sandbox,
+  );
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /\[dex-hook-skip] invalid-file-path/);
+});
+
 test('company context injector emits skip reason on invalid JSON', (t) => {
   const sandbox = createSandbox(t);
   const result = runHook('company-context-injector.cjs', '{oops', sandbox);
