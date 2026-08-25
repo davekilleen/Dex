@@ -33,6 +33,10 @@ def test_manifest_classifies_every_canonical_skill() -> None:
         "claude-only",
         "broken",
     }
+    assert manifest["skills"]["anthropic-canvas-design"] == {
+        "classification": "claude-only",
+        "reason": "bundled font licences contain third-party personal contact details",
+    }
 
 
 def test_generator_copies_resources_and_rewrites_only_existing_paths(tmp_path: Path) -> None:
@@ -107,4 +111,3 @@ def test_generator_rejects_host_only_body_commands(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="host-only"):
         generator.write_adapters(repo)
-

@@ -73,6 +73,15 @@ def expected_manifest(repo_root: Path = ROOT) -> dict:
             # These source files intentionally contain founder-facing copy;
             # do not duplicate it into a cross-harness package by default.
             entry = {"classification": "claude-only", "reason": "contains founder-specific product copy"}
+        elif key == "anthropic-canvas-design":
+            # The bundled fonts must retain their licence files, and those
+            # licences contain third-party personal email addresses. Keep the
+            # complete skill in its native Claude distribution instead of
+            # duplicating personal contact details into portable packages.
+            entry = {
+                "classification": "claude-only",
+                "reason": "bundled font licences contain third-party personal contact details",
+            }
         elif broken:
             entry = {"classification": "broken", "reason": broken}
         elif host:

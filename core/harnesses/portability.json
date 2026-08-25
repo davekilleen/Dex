@@ -145,8 +145,8 @@
       "reason": "no host-only body command or broken local reference"
     },
     "anthropic-canvas-design": {
-      "classification": "portable",
-      "reason": "no host-only body command or broken local reference"
+      "classification": "claude-only",
+      "reason": "bundled font licences contain third-party personal contact details"
     },
     "anthropic-doc-coauthoring": {
       "classification": "portable",
