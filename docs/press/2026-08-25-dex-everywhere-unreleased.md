@@ -230,10 +230,11 @@ workflows behind that choice.
 Keep the final review head green on the native macOS/Windows matrix and complete
 the mandatory Fable reviews; run live release-candidate installs in ChatGPT
 desktop, Cowork, Copilot CLI, Pi, and BB; complete the final combined test and
-security gates; keep the private Build Card reconciled; choose a remote home for
-the standalone BB plugin and the later public packaging sequence; merge only
-with explicit founder approval; then build and verify a real release artifact.
-Linux remains a separate future delivery.
+security gates; keep the private Build Card reconciled; clear the private BB
+repository's Actions-budget block and run its native macOS review CI; decide the
+later public packaging sequence; merge only with explicit founder approval;
+then build and verify a real release artifact. Linux remains a separate future
+delivery.
 
 ## What is the release principle?
 
