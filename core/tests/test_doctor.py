@@ -51,6 +51,7 @@ QUICK_IDS = [
     "hooks.wired",
     "jobs.loaded",
     "jobs.fresh",
+    "learned-automations",
     "preflight.queue",
     "capabilities.rooms",
     "entity.engine",

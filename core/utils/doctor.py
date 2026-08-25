@@ -621,6 +621,11 @@ QUICK_CHECKS = (
     CheckDefinition("hooks.wired", "Claude hooks", "_probe_hooks_wired"),
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
+    CheckDefinition(
+        "learned-automations",
+        "Your own automations",
+        "_probe_learned_automations",
+    ),
     CheckDefinition("preflight.queue", "Preflight health", "_probe_preflight_queue"),
     CheckDefinition(
         "capabilities.rooms",
@@ -1046,6 +1051,7 @@ def collect(
     # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
     _begin_launch_agent_scan_scope(context)
     try:
+        _sweep_learned_automations(context)
         for definition in definitions:
             if definition.id == "doctor.self":
                 continue
@@ -1164,6 +1170,10 @@ def collect(
         "summary": _summary(checks),
         "adoption": adoption.to_dict(),
     }
+    learned_result = results.get("learned-automations")
+    if learned_result is not None and learned_result.structured_detail is not None:
+        report["learned_automations"] = learned_result.structured_detail
+
     if deep:
         assessment_result = results.get("customizations.assessment")
         if (
@@ -2907,6 +2917,22 @@ def _probe_jobs_loaded(context: DoctorContext) -> ProbeResult:
     )
 
 
+def _sweep_learned_automations(context: DoctorContext) -> None:
+    """Draft and refresh the user's learned promises once per Doctor run.
+
+    Rides the launch-agent classification pass already open around this call,
+    so it parses no plist twice.  Failure is never allowed to break a Doctor
+    run: the learned check reports what it can read, and reads nothing rather
+    than guessing.
+    """
+    try:
+        from core.health import learned as health_learned
+
+        health_learned.sweep(context, now=context.now, scan=_scan_launch_agents(context))
+    except Exception:  # noqa: BLE001 — watching must never break the checkup
+        return
+
+
 def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
     """Audit installed jobs against the health promise register.
 
@@ -2956,19 +2982,39 @@ def _probe_jobs_fresh(context: DoctorContext) -> ProbeResult:
             monitored_ids.add(promise.id)
             monitored.append(promise)
 
-    # Jobs with no receipt in the promise register cannot be freshness-
-    # audited. Say so plainly at every verdict instead of letting "OFF" read
-    # as "nothing to monitor" (issue #253).
-    coverage_note = ""
-    if unregistered:
-        count = len(unregistered)
+    # A user's own job used to end its story here. It now has a learned
+    # promise of its own (core/health/learned.py) and is audited by the
+    # learned-automations check, so this note keeps only the jobs that still
+    # genuinely cannot be judged — plus the two honest categories that are
+    # not failures: watching with no rhythm yet, and stopped at the user's
+    # request. Saying "OFF" alone would still read as "nothing to monitor"
+    # (issue #253), so every verdict still carries the note.
+    watched_labels, stopped_labels, rhythmless_labels = _learned_label_states(context)
+    unaudited = [label for label in unregistered if label not in watched_labels]
+
+    notes = []
+    if unaudited:
+        count = len(unaudited)
         noun = "launch agent" if count == 1 else "launch agents"
         verb = "is" if count == 1 else "are"
-        coverage_note = (
-            f"{count} {noun} referencing this vault ({', '.join(unregistered)}) "
+        notes.append(
+            f"{count} {noun} referencing this vault ({', '.join(unaudited)}) "
             f"{verb} checked for loading only, not freshness "
             "(no registered freshness receipt)"
         )
+    rhythmless = sorted(label for label in rhythmless_labels if label in unregistered)
+    if rhythmless:
+        notes.append(
+            f"{len(rhythmless)} of your own jobs ({', '.join(rhythmless)}) "
+            "are being watched but have shown no regular rhythm yet"
+        )
+    stopped = sorted(label for label in stopped_labels if label in unregistered)
+    if stopped:
+        notes.append(
+            f"{len(stopped)} of your own jobs ({', '.join(stopped)}) "
+            "are not watched, at your choice"
+        )
+    coverage_note = "; ".join(notes)
 
     def _with_coverage_note(detail: str) -> str:
         return f"{detail}; {coverage_note}" if coverage_note else detail
@@ -3147,6 +3193,91 @@ def _historical_error_summary(
     if dated:
         return f"{subject}{reason}, last on {max(dated)}"
     return f"{subject}{reason}, dates unavailable"
+
+
+def _learned_label_states(
+    context: DoctorContext,
+) -> tuple[set[str], set[str], set[str]]:
+    """Which of the user's own jobs Dex now watches, stopped, or cannot time yet.
+
+    Read-only and failure-tolerant: an unreadable learned register leaves the
+    freshness check saying exactly what it said before this build.
+    """
+    try:
+        from core.health import learned as health_learned
+
+        _register, audits = health_learned.audit_all(context.vault_root, now=context.now)
+    except Exception:  # noqa: BLE001 — a learned read must never break Doctor
+        return set(), set(), set()
+    watched = {
+        audit.label
+        for audit in audits
+        if audit.state in health_learned.JUDGEMENTS
+    }
+    stopped = {audit.label for audit in audits if audit.state == "stopped-by-user"}
+    rhythmless = {audit.label for audit in audits if audit.state == "no-rhythm-yet"}
+    return watched, stopped, rhythmless
+
+
+def _probe_learned_automations(context: DoctorContext) -> ProbeResult:
+    """Report on the person's own scheduled jobs — never on Dex's behalf.
+
+    The verdict answers "is Dex's watch working", not "is your job working".
+    That distinction is structural, not stylistic: the reporter contract has no
+    warning level and ``core/health/snapshot.py:_overall_status`` turns any
+    BROKEN into ``critical``, which is reserved for Dex's own health.  A user
+    job in trouble must never make Dex say it is broken, and must never fire
+    the mid-session pulse ahead of the disclosure.  So this check returns OK or
+    OFF only; the finding lives in ``detail`` and in the report's
+    ``learned_automations`` section, which the Doctor skill renders in full.
+    """
+    from core.health import learned as health_learned
+
+    try:
+        register, audits = health_learned.audit_all(context.vault_root, now=context.now)
+    except Exception as error:  # noqa: BLE001
+        # Even here: never UNKNOWN. Say plainly that the watch could not be
+        # read, and leave Dex's own health score alone.
+        return ProbeResult(
+            "OK",
+            "Dex could not read its notes about your own automations "
+            f"({_one_line(error)}); they are not being judged right now",
+            structured_detail={
+                "schema_version": 1,
+                "scope": health_learned.SCOPE_NOTE,
+                "readable": False,
+                "watched": 0,
+                "needs_attention": 0,
+                "findings": [],
+                "coverage": [],
+                "disclosure_required": True,
+                "disclosure_line": health_learned.DISCLOSURE_LINE,
+                "choices": [],
+            },
+        )
+
+    surface = health_learned.compose_surface(register, audits, now=context.now)
+    structured = {
+        "schema_version": 1,
+        "scope": health_learned.SCOPE_NOTE,
+        "readable": True,
+        "watched": surface.watched,
+        "needs_attention": surface.needs_attention,
+        "disclosure_required": surface.disclosure_leading,
+        "disclosure_line": health_learned.DISCLOSURE_LINE if surface.disclosure_leading else None,
+        "choices": [dict(choice, options=list(choice["options"])) for choice in surface.choices],
+        "findings": [audit.to_dict() for audit in audits if audit.surfaces()],
+        "coverage": list(surface.coverage_lines),
+        "lines": list(surface.lines),
+        "never_auto_heals": True,
+    }
+    if not audits:
+        return ProbeResult(
+            "OFF",
+            "No scheduled automations of your own were found to watch",
+            structured_detail=structured,
+        )
+    return ProbeResult("OK", surface.snapshot_detail, structured_detail=structured)
 
 
 def _probe_preflight_queue(context: DoctorContext) -> ProbeResult:

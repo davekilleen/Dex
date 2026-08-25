@@ -147,7 +147,7 @@ does not guess at a cause.
 
 ## Testing Doctor Inventory
 
-The quick doctor adds three always-visible checks:
+The quick doctor adds four always-visible checks:
 
 - `customizations.skills` validates every skill and identifies user-owned `-custom`
   failures separately from shipped failures.
@@ -155,6 +155,25 @@ The quick doctor adds three always-visible checks:
   syntax, and the same registry name/path/hash state without launching custom commands.
 - `core.drift` compares shipped files with the installed release while excluding
   sanctioned customization surfaces. Drift is `UNKNOWN`, never automatically broken.
+- `learned-automations` reports on the user's own launchd jobs, which acquire a learned
+  promise (`core/health/learned.py`) alongside the shipped register. Its verdict answers
+  "is Dex's watch working", not "is the user's job working", and is therefore `OK` or
+  `OFF` only — never `BROKEN` or `UNKNOWN`. That is a structural requirement, not a
+  stylistic one: the reporter contract has no warning severity and
+  `core/health/snapshot.py`'s `_overall_status` promotes any `BROKEN` to `critical`, which
+  is reserved for Dex's own health and is what the mid-session pulse interjects on. A
+  user's broken job must never make Dex report itself as critical, and must never reach
+  the person ahead of the watching disclosure. The finding therefore travels in the
+  check's bounded `detail` and in the report's top-level `learned_automations` object,
+  which `/dex-doctor` renders whatever the verdict.
+
+Two rules bind anything touching learned automations. Dex **never** repairs one of the
+user's jobs — it reports, and acting is theirs. And the only write to a user's own file is
+Lot 5's offered receipt line, which is shown as an exact diff, applied on an explicit yes,
+and hash-bound to the script the diff was computed from. Everything else in the discovery
+and audit path writes nothing outside `System/.dex/health/`, and every write there goes
+through the lifecycle transaction boundary. `core/tests/test_learned_automations.py` pins
+each of these, including the read-only invariant and the disclosure-before-alarm ordering.
 
 The deep doctor adds `smoke.journeys`, which runs the shipped smoke layer and preserves
 each journey's `OK`, `OFF`, `BROKEN`, or `UNKNOWN` result in the report.

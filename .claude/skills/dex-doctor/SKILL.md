@@ -253,6 +253,50 @@ activation state is a stop condition, not permission to repair Capsule files dir
 For interrupted staging, activation, or rewind, offer only the exact phase-specific
 `recovery_actions.action` returned by Doctor after a fresh explicit acknowledgement.
 
+### Step 3d: Render the person's own automations
+
+Every report carries a top-level `learned_automations` object. **Render it whatever the
+`learned-automations` check's verdict says.** That check answers "is Dex's watch working",
+not "is your job working", so it is `OK` even when one of the user's jobs is dead — and an
+`OK` check would otherwise be collapsed into the "N checks healthy" line and the finding
+lost. This section is the finding.
+
+If `readable` is `false`, say plainly that Dex could not read its notes about these jobs and
+that they are not being judged right now. Do not guess at their state.
+
+**Disclosure comes first, always.** If `disclosure_required` is `true`, your first sentence
+about these jobs is `disclosure_line`, verbatim. Then offer each entry in `choices` a
+genuine keep-or-stop:
+
+> "Keep an eye on it" / "Stop watching it"
+
+A **stop** is real. Set that job's `watch_state` to `stopped-by-user` via
+`core.health.learned.LearnedStore.set_watch_state`. It raises no further alarms and is
+listed from then on as *not watched, at your choice* — never silently dropped. A **keep**
+needs no action beyond recording the answer. Never alarm about a learned job before the
+disclosure has been shown.
+
+Then render, in this order:
+
+1. Each entry in `findings`, using its `evidence` line as written — it names the job in the
+   person's own terms with the date evidence ("nightly-backup was due Thursday at 9:00am and
+   has left no trace since 25 August"). Do not soften it and do not add a cause you cannot
+   see.
+2. Each line in `coverage` — these are the honest non-failures: jobs with no rhythm yet,
+   jobs Dex cannot audit at all, and jobs stopped at the user's request.
+3. `watched` and `needs_attention` as the summary counts.
+
+**Dex never fixes one of these jobs.** `never_auto_heals` is `true` and it is not a
+suggestion: report what you found, and let the person act. You may offer to add a receipt
+line to a receipt-poor job's script — show the exact diff first and apply it only on an
+explicit yes; that is the only file of theirs this ever touches.
+
+`scope` states the boundary out loud: launchd jobs on this Mac only. If the user asks about
+cron or systemd jobs, say Dex does not watch those yet rather than implying coverage.
+
+For a job whose receipt is `activity_only`, say "ran", never "succeeded" — a log that keeps
+growing proves the job started, not that it worked.
+
 ### Step 4: Heal, tiered
 
 - **Tier 1 (already applied by the collector):** report plainly — "Fixed automatically:
