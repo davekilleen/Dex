@@ -7,7 +7,6 @@ from pathlib import Path
 from core import portable_contract
 from core.utils.manifest import REQUIRED_LIFECYCLE_RELEASE_PATHS
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_AGENTS = REPO_ROOT / "AGENTS.md"
 PRODUCT_AGENTS_TEMPLATE = (
