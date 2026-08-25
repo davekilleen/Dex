@@ -125,6 +125,9 @@ def test_native_package_manifests_point_only_inside_the_package() -> None:
 
 def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -> None:
     guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
+    plan = (REPO_ROOT / "docs" / "plans" / "2026-08-25-harness-portable-dex.md").read_text(
+        encoding="utf-8"
+    )
     for label in (
         "Codex",
         "ChatGPT",
@@ -142,3 +145,9 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
     assert "Unreleased build" in guide
     assert "have not been merged, published" in guide
     assert "Do not run an actual destructive command" in guide
+    assert "`codex/harness-portable-dex-resume`" in guide
+    assert "**Branch:** `codex/harness-portable-dex-resume`" in plan
+    assert "| macOS | Native CI pending |" in guide
+    assert "| Windows | Native CI pending |" in guide
+    assert "| macOS | Release-ready |" not in guide
+    assert "| Windows | Release-ready |" not in guide

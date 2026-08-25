@@ -1,7 +1,7 @@
 # Harness-portable Dex and BB plugin — implementation plan
 
 **Status:** Built, final verification and review in progress; deliberately unreleased
-**Branch:** `codex/harness-portable-dex`
+**Branch:** `codex/harness-portable-dex-resume`
 **Decision owner:** Dave Killeen
 **Date:** 2026-08-25
 

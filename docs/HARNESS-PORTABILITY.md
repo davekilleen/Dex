@@ -1,7 +1,7 @@
 # Use Dex from another agent harness
 
 > **Unreleased build.** These packages are implemented and locally verified on
-> `codex/harness-portable-dex`. They have not been merged, published, submitted
+> `codex/harness-portable-dex-resume`. They have not been merged, published, submitted
 > to a marketplace, or released to users.
 
 Dex is the durable vault and capability layer; the harness is the application
@@ -13,15 +13,17 @@ reports the same receipt.
 
 ## Platform boundary for this release
 
-| Platform | Release state | Required runtime proof |
+| Platform | Current evidence state | Required runtime proof |
 | --- | --- | --- |
-| macOS | Release-ready | Native GitHub runner completes MCP initialization, tool discovery, SessionStart context, and PreToolUse refusal through the installed launcher shape. |
-| Windows | Release-ready | The same native runtime round trips pass with a Windows Python executable path. |
+| macOS | Native CI pending | A native GitHub runner must complete MCP initialization, tool discovery, SessionStart context, and PreToolUse refusal through the installed launcher shape before this platform can be called release-ready. |
+| Windows | Native CI pending | The same native runtime round trips must pass with a Windows Python executable path before this platform can be called release-ready. |
 | Linux | Deferred | The runtime is still exercised on the Devbox, but Linux packaging and live-host verification are explicitly outside this release. |
 
-The portable package requires Node 20+ and Python 3.11+. The release state lives
-in `core/harnesses/registry.json`, is copied into the package, and is reported
-by Doctor; this table is explanatory, not a second source of truth.
+The portable package requires Node 20+ and Python 3.11+. The supported-platform
+contract lives in `core/harnesses/registry.json`, is copied into the package,
+and is reported by Doctor. Native CI evidence lives in the workflow run for the
+exact commit; the registry's `release_ready` requirement does not mean an
+unrun branch has already passed that evidence gate.
 
 ## What is shared
 
