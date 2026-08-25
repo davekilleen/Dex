@@ -1,6 +1,6 @@
 # Harness-portable Dex and BB plugin — implementation plan
 
-**Status:** Active build, deliberately unreleased  
+**Status:** Built, final verification and review in progress; deliberately unreleased
 **Branch:** `codex/harness-portable-dex`  
 **Decision owner:** Dave Killeen  
 **Date:** 2026-08-25
@@ -85,8 +85,10 @@ host-specific runtime commands.
 
 Package the reviewed portable set as an [Agent Plugin v1.0.0](https://agent-plugins.org/specification)
 with root `plugin.json`, `skills/`, and a project-root-safe MCP launcher/config where the
-client supports stdio MCP. Add Codex, Claude/Cowork, Copilot, and Pi adapter metadata around
-this portable floor rather than forking the content.
+client supports stdio MCP. The same folder also carries native `.codex-plugin` and
+`.claude-plugin` manifests, shared trusted-hook wiring, and platform-correct MCP configs.
+Pi keeps its native extension; BB keeps its native package. No content fork owns the shared
+context or safety truth.
 
 ### 4. Onboarding and Doctor
 
@@ -174,10 +176,35 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | ChatGPT Work | Local companion reads files; no claim that web ChatGPT runs local hooks |
 | BB | Local install/build, native status panel/tool/CLI, no write or provider claim |
 
+### Evidence captured in this unreleased build
+
+| Surface | Evidence | Remaining release boundary |
+| --- | --- | --- |
+| Codex | Repo marketplace resolved the package; a temporary isolated Codex home installed and enabled version `1.0.0`; MCP and hook harness tests pass. | No public marketplace submission; Codex IDE is unsupported by the host. |
+| Claude Code | `claude plugin validate packages/dex-agent-plugin` passes; shared hook tests pass. | No marketplace install or Cowork upload performed. |
+| ChatGPT | Uses the same validated OpenAI package and local repo marketplace. | Desktop UI install was not exercised on this headless Devbox; web needs a secured HTTPS MCP endpoint. |
+| Copilot CLI | Root manifest follows the Open Plugin Spec accepted by Copilot; package/schema/hook tests pass. | The Copilot binary is not installed on this Devbox, so live CLI installation remains a release-candidate check. |
+| Pi | Existing native `dex-pi/extensions/dex/package.json` and lifecycle extension are present in the Pi repository. | The dirty shared Pi checkout was inspected read-only; no Pi package was changed or released. |
+| Agent Plugin | v1 schema, relocatable launcher, tools, resources, and dependency closure pass golden tests. | Client-specific hooks remain outside the v1 floor. |
+| BB | Standalone commit `e17badee5dcb57cda6ea5b3d2f66b07b83f6d145`; TypeScript, Vitest, official build engine, official SDK backend/frontend harness, package audit, and tarball checks pass. | `bb` CLI is unavailable here; live path install and marketplace release remain undone. |
+
 ## Research decisions and sources
 
 - Agent Plugins standardizes skills and MCP, not every host's hooks/UI/distribution:
   [Agent Plugins specification](https://agent-plugins.org/specification).
+- OpenAI's universal plugin package supports ChatGPT and Codex surfaces, including
+  lifecycle hooks after trust review, but not the Codex IDE extension:
+  [packaging](https://developers.openai.com/plugins/build/plugins),
+  [surfaces](https://learn.chatgpt.com/docs/plugins), and
+  [hooks](https://learn.chatgpt.com/docs/hooks).
+- Claude plugins provide skills, hooks, MCP, and other components in Claude Code; Cowork
+  accepts Claude plugins but external connectors require a public endpoint:
+  [Claude plugin reference](https://code.claude.com/docs/en/plugins-reference) and
+  [Cowork guide](https://claude.com/docs/cowork/guide/plugins).
+- GitHub Copilot CLI supports plugins and the Open Plugin Spec additively:
+  [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference).
+- Pi's native extension/skill model is documented separately from MCP:
+  [Pi documentation](https://pi.dev/docs/latest).
 - BB plugins are full-trust TypeScript packages with skills, tools, CLI, UI, storage, and
   lifecycle surfaces: [BB plugin guide](https://github.com/get-bb/bb/blob/main/packages/templates/src/templates/bb-guide-plugins.md)
   and [plugin SDK](https://github.com/get-bb/bb/blob/main/packages/plugin-sdk/README.md).

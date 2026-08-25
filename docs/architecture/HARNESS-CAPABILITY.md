@@ -11,10 +11,10 @@ does not revive `/ai-setup`.
 | **Harness agnosticism** | Packaging: skills, hooks, MCP config | Mostly a packaging problem |
 | **Model agnosticism** | Which LLM does the reasoning | Quality / instruction adherence. Not solved by a config flag. |
 
-Claude Code is the **Tier 3 reference implementation**. That is a stated
-position: the full hook / injector / self-learning surface may stay
-Claude-only. Other harnesses get a documented, tested slice — not a silent
-subset, and not a promise of parity.
+Claude Code remains the **Tier 3 reference implementation** for Dex's complete,
+mature hook / injector / self-learning surface. The portable plugin now gives
+other hook-capable hosts a tested subset of automatic behavior from the same
+source modules. That is not a promise that every host has every Claude hook.
 
 ## Capability tiers
 
@@ -23,7 +23,7 @@ subset, and not a promise of parity.
 | **Tier 0 Vault** | Markdown + PARA | Notes, people, projects, tasks as files. No agent required. | Any editor |
 | **Tier 1 Core** | MCP + scheduled jobs | Tasks, people index, meeting sync, search. Background jobs already run on a schedule. | Any MCP-capable harness |
 | **Tier 2 Skills** | Agent Skills + journeys | Named `/commands` generated into `.agents/skills/` from canonical `.claude/skills/`. | Any harness that reads Agent Skills / `AGENTS.md` |
-| **Tier 3 Full** | Hooks, injectors, self-learning | Session context, inject-on-read, pre-tool-use gates, mid-session health, session-end snapshot. | Claude Code today |
+| **Tier 3 Full** | Hooks, injectors, self-learning | Session context, inject-on-read, pre-tool-use gates, mid-session health, session-end snapshot. | Claude Code is the complete reference; other native adapters expose named subsets only |
 
 Layers 1–2 of the repo (`core/`, MCP servers, `.scripts/`, including
 `.scripts/lib/llm-client.cjs`) already qualify as Tier 1. Do not rewrite them
@@ -37,6 +37,11 @@ They fail CI when:
 - a generated `.agents/` adapter is missing or still carries Claude-only frontmatter
 - a Tier ≤2 code surface imports Claude hooks or opens `.claude/settings.json` at import time
 
+The executable source of truth is `core/harnesses/registry.json`. Every capability
+has an explicit delivery mode: `automatic`, `on_demand`, `guided`, or `unavailable`.
+Onboarding records the selected profiles in `System/.dex/harness-profile.json`, and
+Doctor reports that receipt without upgrading a guided fallback into an automatic claim.
+
 ## Skill adapters (Tier 2)
 
 Canonical skills live under `.claude/skills/`. `.agents/skills/` is generated
@@ -49,11 +54,11 @@ adding or editing a canonical skill; CI’s `--check` mode refuses drift.
 
 ## Hooks split: in-turn vs scheduled
 
-Hooks are the reason Tier 3 is Claude-only today. Cursor, Codex, and Gemini
-CLI do not run `.claude/settings.json` hooks. The question that decides
-whether Tier 2 is a real product or a consolation prize is: **which of those
-hooks are actually hooks, and which are scheduled work wearing a hook’s
-clothes?**
+Hooks remain the reason full Tier 3 is host-specific. Codex, Claude plugins,
+Copilot CLI, and Pi expose different lifecycle contracts; none of them should
+be treated as if they ran `.claude/settings.json`. The portable package maps
+only the shared SessionStart and destructive-action gate onto compatible host
+events. The rest stays where its real host contract lives.
 
 ### Already OS-scheduled (Tier 1 — harness-neutral today)
 
@@ -72,7 +77,7 @@ Meeting sync lives in `.scripts/meeting-intel/` and is installed by
 
 None of these need a harness hook. They already do not have one.
 
-### Synchronous in-turn (Tier 3 — stays on Claude)
+### Synchronous in-turn (mature Claude remainder)
 
 These must run **during a turn**, on a specific tool call or prompt. An
 OS timer cannot substitute without changing the product.
@@ -89,9 +94,9 @@ OS timer cannot substitute without changing the product.
 | `career-evidence-capture.cjs` | skill-scoped `PostToolUse` | Surfaces a sourced evidence candidate after a write |
 | `daily-plan-quick-ref.cjs` | skill-scoped `Stop` | Writes the daily quickref when `/daily-plan` finishes |
 
-This is the genuinely un-portable remainder. Reimplementing it on another
-harness means that harness growing an equivalent hook model, not Dex
-rewriting the jobs as cron.
+This is the genuinely host-specific remainder. Reimplementing an item on
+another harness requires a real equivalent lifecycle event and a conformance
+test, not a renamed cron job or an optimistic registry row.
 
 ### Session-bound (tied to chat lifecycle, not a clock)
 
@@ -121,7 +126,7 @@ The three-bucket inventory (scheduled / in-turn inject / gates), including
 session-end writers left out of those buckets, is in
 [`HOOK-INVENTORY.md`](./HOOK-INVENTORY.md).
 
-### First slice: shared payloads and an advisory gate, not a hook rewrite
+### Portable native slice: shared payloads, tools, and verified hooks
 
 Two in-turn context payloads now live in `core/context/`, and the destructive
 command/path decision lives in `core/gates/`. They are exposed as Work MCP
@@ -134,27 +139,35 @@ functions — no behaviour fork.
 | Person inject-on-read | `core/context/person_context.py` | `get_person_context` | `person-context-injector.cjs` |
 | Destructive command / unsafe path decision | `core/gates/safety.py` | `check_safety_gate` | `dex-safety-guard.sh` (enforcing wrapper) |
 
-Cursor, ChatGPT, and Codex call those tools at session start / when a
-person is mentioned, and should call the advisory safety check before a risky
-action. Claude Code still auto-fires context and enforces the safety decision.
-An MCP result alone is not an interceptor: a harness must verify that it
-invokes the tool before the action and honours `refused=true`.
+The generated `packages/dex-agent-plugin/` package vendors those exact source
+modules and exposes them through a dependency-free, read-only MCP server. It
+contains native manifests for Codex and Claude, the Agent Plugins v1 root
+contract used by Copilot CLI and compatible clients, and shared SessionStart /
+PreToolUse hook wiring. Codex and Claude hooks require user trust before they
+run. An MCP result alone is still not an interceptor: a host must verify that
+it invokes the check before the action and honours `refused=true`.
+
+OpenAI's package works in Codex CLI/desktop and supported ChatGPT surfaces, but
+not the Codex IDE extension. ChatGPT web and Cowork external connectors cannot
+reach this local stdio server without a separately secured public endpoint.
+Pi uses its native Dex extension rather than pretending to be an MCP client.
+BB uses the separate read-only `bb-plugin-dex` package.
 
 ### What this change does not do
 
-Not migrated: no hook is moved to launchd, and the remaining 40+ hook
-files stay Claude-only. **Do not mass-migrate hooks.** The scheduled slice
-is already harness-neutral. The in-turn slice is why Tier 3 stays Claude
-Code for automatic behaviour. Session sweeps stay on SessionStart until a
-harness-neutral injector exists that can still show the user the notice.
+Not migrated: no hook is moved to launchd, and the remaining 40+ hook files
+stay on their proven host paths. **Do not mass-migrate hooks.** Session sweeps,
+company context, learning capture, and skill-scoped post/stop behavior are not
+part of the portable package merely because two lifecycle events now map.
 
 ## Non-goals (do not revive)
 
 - Multi-model routing, per-task model selection, or a “bring your own model”
   config surface. That was `/ai-setup`, deleted in #115 because it reported
   success on a harness that could not deliver.
-- Claiming Cursor, Codex, or Gemini CLI is “the same Dex”. They are Tier 2
-  unless they grow hooks.
+- Claiming any harness is “the same Dex” without reading its registry rows.
+  Codex now has selected native hooks, while Claude Code still owns the full
+  mature Tier 3 surface.
 - Hand-maintaining a 3-skill `.agents/` mirror. Generation is the contract.
 
 ## Related

@@ -2,7 +2,7 @@
 
 [![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE) [![Built for non-engineers](https://img.shields.io/badge/coding%20required-none-ff69b4)](https://heydex.ai/help/)
 
-**A personal operating system for your work.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. Claude Code is the full-experience reference; other assistants run the same vault and a documented slice of Dex. No coding required.
+**A personal operating system for your work.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. Claude Code remains the full-experience reference; the unreleased portability build adds native, capability-aware packages for more agent harnesses without pretending every host is identical. No coding required.
 
 <p align="center">
   <img src="docs/assets/dex-hero.gif" alt='Dex in action: "plan my day" scans your calendar, Slack, Salesforce, Granola and goals, then protects your morning — "what do I owe people?" finds every open promise and drafts the replies.' width="960">
@@ -49,6 +49,16 @@ Dex is the vault and the tools. The app you talk to is a **harness**. What you g
 | **Tier 3 Full** | Automatic in-chat behavior | Person context when you open a file, safety gates, session learning, and the mid-session health pulse. | **Claude Code today** — the reference implementation |
 
 Cursor, Codex, Gemini CLI, and other Agent Skills harnesses are Tier 2. The vault is always Tier 0. Cursor, ChatGPT, and Codex should call `boot_today` at session start and `get_person_context` when a person is mentioned. `check_safety_gate` is an advisory MCP check; only a verified pre-tool interceptor can enforce a refusal. The longer split is in [`docs/architecture/HARNESS-CAPABILITY.md`](docs/architecture/HARNESS-CAPABILITY.md) and [`docs/architecture/HOOK-INVENTORY.md`](docs/architecture/HOOK-INVENTORY.md).
+
+> **Unreleased portability preview:** this branch contains one portable plugin package for
+> Codex CLI/desktop, ChatGPT desktop, Claude Code/Cowork, Copilot CLI, and compatible
+> Agent Plugin clients; a native BB plugin is built separately; and Pi keeps its native
+> extension. The package shares Dex's read-only session context, person context, and
+> safety decision code. It has not been merged, published, submitted to a marketplace,
+> or released. Codex IDE extensions do not currently load plugins, and ChatGPT web/Cowork
+> connectors need a separately secured public endpoint before they can reach a local vault.
+> The developer-preview journeys and exact boundaries are in
+> [`docs/HARNESS-PORTABILITY.md`](docs/HARNESS-PORTABILITY.md).
 
 ---
 

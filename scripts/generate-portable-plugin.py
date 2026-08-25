@@ -124,6 +124,27 @@ def _hooks_json() -> dict:
     }
 
 
+def _marketplace_json() -> dict:
+    return {
+        "name": "dex-unreleased",
+        "interface": {"displayName": "Dex (unreleased local build)"},
+        "plugins": [
+            {
+                "name": "dex",
+                "source": {
+                    "source": "local",
+                    "path": "./packages/dex-agent-plugin",
+                },
+                "policy": {
+                    "installation": "AVAILABLE",
+                    "authentication": "ON_INSTALL",
+                },
+                "category": "Productivity",
+            }
+        ],
+    }
+
+
 def _json_bytes(payload: dict) -> bytes:
     return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
 
@@ -143,6 +164,7 @@ def expected_plugin_files(repo_root: Path = REPO_ROOT) -> dict[Path, bytes]:
     skills_source = repo_root / ".agents" / "skills"
     metadata_source = repo_root / "core" / "harnesses"
     expected: dict[Path, bytes] = {
+        Path(".agents/plugins/marketplace.json"): _json_bytes(_marketplace_json()),
         Path("packages/dex-agent-plugin/plugin.json"): _json_bytes(_plugin_json()),
         Path("packages/dex-agent-plugin/mcp.json"): _json_bytes(_mcp_json()),
         Path("packages/dex-agent-plugin/.codex-plugin/plugin.json"): _json_bytes(

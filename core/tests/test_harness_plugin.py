@@ -120,6 +120,27 @@ def test_native_codex_and_claude_manifests_share_one_package() -> None:
     assert "CLAUDE_PLUGIN_ROOT" in hook_text
 
 
+def test_repo_marketplace_exposes_the_unreleased_local_openai_plugin() -> None:
+    marketplace = json.loads(
+        (REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text()
+    )
+    assert marketplace["interface"]["displayName"] == "Dex (unreleased local build)"
+    assert marketplace["plugins"] == [
+        {
+            "name": "dex",
+            "source": {
+                "source": "local",
+                "path": "./packages/dex-agent-plugin",
+            },
+            "policy": {
+                "installation": "AVAILABLE",
+                "authentication": "ON_INSTALL",
+            },
+            "category": "Productivity",
+        }
+    ]
+
+
 def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
     for relative in (
         "core/__init__.py",

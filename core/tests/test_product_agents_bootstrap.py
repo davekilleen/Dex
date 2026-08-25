@@ -49,3 +49,6 @@ def test_builders_materialize_the_same_template_before_manifest() -> None:
         assert "chmod 0644" in script
         assert "cmp -s" in script
         assert "installed-files.manifest" in script
+    release_builder = (REPO_ROOT / "scripts" / "build-release.sh").read_text()
+    assert "PRODUCT_AGENTS_TEMPLATE_MODE" in release_builder
+    assert '!= "100644"' in release_builder

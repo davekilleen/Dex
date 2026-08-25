@@ -1,9 +1,9 @@
 {
   "adapter": {
     "install_guide": "core/harnesses/adapters/pi.json",
-    "kind": "install-guide",
-    "manifest": null,
-    "status": "supported"
+    "kind": "pi-extension",
+    "manifest": "dex-pi/extensions/dex/package.json",
+    "status": "native"
   },
   "capabilities": [
     {

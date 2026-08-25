@@ -128,6 +128,11 @@ if ! git cat-file -e "$SOURCE_SHA:$PRODUCT_AGENTS_TEMPLATE_PATH"; then
     echo "Error: selected source '$SOURCE_BRANCH' is missing $PRODUCT_AGENTS_TEMPLATE_PATH." >&2
     exit 1
 fi
+PRODUCT_AGENTS_TEMPLATE_MODE=$(git ls-tree "$SOURCE_SHA" -- "$PRODUCT_AGENTS_TEMPLATE_PATH" | awk '{print $1}')
+if [ "$PRODUCT_AGENTS_TEMPLATE_MODE" != "100644" ]; then
+    echo "Error: $PRODUCT_AGENTS_TEMPLATE_PATH must be a regular 0644 file in selected source '$SOURCE_BRANCH'." >&2
+    exit 1
+fi
 if ! git show "$SOURCE_SHA:$PRODUCT_AGENTS_TEMPLATE_PATH" > "$PRODUCT_AGENTS_TEMPLATE"; then
     echo "Error: could not read $PRODUCT_AGENTS_TEMPLATE_PATH from selected source '$SOURCE_BRANCH'." >&2
     exit 1

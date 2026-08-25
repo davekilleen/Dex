@@ -168,7 +168,7 @@
       "display_name": "Pi",
       "vendor": "Pi coding agent",
       "summary": "Local coding agent with workspace files, Agent Skills, and lifecycle events, but no built-in Dex MCP or scheduler promise.",
-      "adapter": {"kind": "install-guide", "status": "supported", "manifest": null, "install_guide": "core/harnesses/adapters/pi.json"},
+      "adapter": {"kind": "pi-extension", "status": "native", "manifest": "dex-pi/extensions/dex/package.json", "install_guide": "core/harnesses/adapters/pi.json"},
       "support_level": "supported",
       "capabilities": [
         {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The workspace is available to Pi extensions and skills."},

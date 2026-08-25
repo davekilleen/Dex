@@ -4,15 +4,13 @@ This is the #506 follow-up inventory. It classifies every file under
 `.claude/hooks/` so the next slices know what to move, what to wrap, and
 what to leave. **Do not mass-migrate hooks.**
 
-The harness is not the product. Claude Code hooks stay the best path for
-automatic in-chat behaviour (**Tier 3 Full**). The *guarantees* that other
-clients need — session boot context and person inject-on-read — now live in
-`core/context/` and are exposed as Work MCP tools (`boot_today`,
-`get_person_context`) so Cursor, ChatGPT, and Codex can call them (**Tier 1
-Core**). `check_safety_gate` is also available as a **Tier 1 advisory**; it
-only blocks when a verified pre-tool interceptor calls it and honours the
-refusal. Claude Code still auto-fires the context functions and enforces the
-same safety decision via the wrappers below.
+The harness is not the product. Claude Code remains the reference for Dex's
+complete automatic in-chat behaviour (**Tier 3 Full**). The shared guarantees
+other clients need — session boot context, person context, and destructive-action
+decisions — live in `core/context/` and `core/gates/`. They are available both
+as Work MCP tools and through the generated portable plugin. Codex and Claude
+plugin hosts can run the shared SessionStart and PreToolUse adapters after the
+user trusts them; other MCP clients receive an advisory decision only.
 
 Capability contract: [`HARNESS-CAPABILITY.md`](./HARNESS-CAPABILITY.md).
 
@@ -58,14 +56,17 @@ without a harness that can still show the user the notice.
 | `career-evidence-capture.cjs` | `PostToolUse` Write/Edit | Surfaces a sourced evidence candidate |
 | `daily-plan-quick-ref.cjs` | skill-scoped `Stop` | Writes the daily quickref |
 
-**This slice:** `session-start.sh` (strategic payload only) and
-`person-context-injector.cjs` share one Python implementation with MCP.
-Nothing else in this bucket is migrated.
+**Portable slice:** `session-start.sh` (strategic payload only) and
+`person-context-injector.cjs` share one Python implementation with MCP. The
+portable plugin vendors those exact modules and maps SessionStart. Person
+context remains on-demand outside Claude's Read interceptor. Nothing else in
+this bucket is silently treated as portable.
 
 ## 3. Gates
 
-These block or redirect a call **before** it runs. Reimplementing them on
-another harness means that harness growing an equivalent hook model.
+These block or redirect a call **before** it runs. The shared destructive-action
+gate is mapped to verified PreToolUse events in the Codex/Claude plugin; every
+other gate still needs a host-specific equivalent before Dex can claim it.
 
 | File | Event | Why it is a gate |
 | --- | --- | --- |
@@ -93,6 +94,6 @@ Tests live in `tests/`. The observation layer is intentionally absent.
 | --- | --- | --- | --- |
 | `boot_today` | `dex-work-mcp` | Session start | `session-start.sh` auto-fires the same function |
 | `get_person_context` | `dex-work-mcp` | When a person is mentioned | `person-context-injector.cjs` auto-fires the same function |
-| `check_safety_gate` | `dex-work-mcp` | Before a risky shell/path action; advisory unless an interceptor enforces it | `dex-safety-guard.sh` enforces the same decision |
+| `check_safety_gate` | `dex-work-mcp` and portable plugin | Before a risky shell/path action; advisory unless an interceptor enforces it | `dex-safety-guard.sh` and trusted portable PreToolUse hooks enforce the same decision |
 
 Shared implementation: `core/context/session_boot.py`, `core/context/person_context.py`, and `core/gates/safety.py`.
