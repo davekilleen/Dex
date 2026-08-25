@@ -3,8 +3,10 @@
   "mcpServers": {
     "dex-core": {
       "type": "stdio",
-      "command": "./bin/dex-mcp",
+      "command": "node",
       "args": [
+        "${PLUGIN_ROOT}/bin/dex-python.mjs",
+        "mcp",
         "--stdio"
       ],
       "env": {

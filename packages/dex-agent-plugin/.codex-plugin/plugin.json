@@ -4,5 +4,5 @@
   "description": "Portable Dex context, safety, and work skills.",
   "skills": "./skills/",
   "mcpServers": "./.codex-mcp.json",
-  "hooks": "./hooks/hooks.json"
+  "hooks": "./hooks/codex.json"
 }

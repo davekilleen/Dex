@@ -6,11 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PLUGIN_ROOT}/bin/dex-python.mjs",
-              "hook"
-            ]
+            "command": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook",
+            "commandWindows": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook"
           }
         ]
       }
@@ -21,11 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PLUGIN_ROOT}/bin/dex-python.mjs",
-              "hook"
-            ]
+            "command": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook",
+            "commandWindows": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook"
           }
         ]
       }

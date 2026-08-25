@@ -13,7 +13,6 @@ from core.onboarding.harness_receipt import (
     summarize_receipt,
 )
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
 EXPECTED_IDS = (
@@ -81,7 +80,8 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
 
     copilot = _rows("copilot-cli")
     assert copilot["agent-plugins"]["status"] == "native"
-    assert copilot["hooks"]["mode"] == "guided"
+    assert copilot["hooks"]["status"] == "not-verified"
+    assert copilot["hooks"]["mode"] == "unavailable"
 
     cowork = _rows("cowork")
     assert cowork["agent-skills"]["status"] == "native"

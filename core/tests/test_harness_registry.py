@@ -10,10 +10,11 @@ import pytest
 from core.harnesses.registry import (
     REGISTRY_PATH,
     detect_harnesses,
+    get_platform_release,
     get_profile,
+    get_release_contract,
     list_profiles,
 )
-
 
 EXPECTED_IDS = {
     "claude-code",
@@ -39,6 +40,20 @@ def test_registry_is_versioned_and_contains_the_supported_harnesses() -> None:
         for profile in payload["profiles"]
         for row in profile["capabilities"]
     )
+
+
+def test_registry_names_release_ready_platforms_and_linux_deferral() -> None:
+    release = get_release_contract()
+    assert release["status"] == "unreleased"
+    assert set(release["platforms"]) == {"linux", "macos", "windows"}
+    assert release["platforms"]["macos"]["readiness"] == "release_ready"
+    assert release["platforms"]["windows"]["readiness"] == "release_ready"
+    assert release["platforms"]["linux"]["readiness"] == "deferred"
+    assert release["platforms"]["linux"]["included_in_release"] is False
+
+    assert get_platform_release("Darwin")["id"] == "macos"
+    assert get_platform_release("win32")["id"] == "windows"
+    assert get_platform_release("linux")["readiness"] == "deferred"
 
 
 def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
@@ -69,6 +84,9 @@ def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
     assert cowork["mcp"]["mode"] == "guided"
     bb = {row["id"]: row for row in get_profile("bb").capability_rows()}
     assert bb["agent-plugins"]["status"] == "native"
+    copilot = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
+    assert copilot["hooks"]["status"] == "not-verified"
+    assert copilot["hooks"]["mode"] == "unavailable"
 
 
 def test_every_profile_has_a_reviewable_adapter_descriptor() -> None:

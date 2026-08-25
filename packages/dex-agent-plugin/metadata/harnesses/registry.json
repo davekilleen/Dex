@@ -1,5 +1,31 @@
 {
   "schema_version": "1.0.0",
+  "release": {
+    "status": "unreleased",
+    "platforms": {
+      "linux": {
+        "label": "Linux",
+        "readiness": "deferred",
+        "included_in_release": false,
+        "runtime": {"node": ">=20", "python": ">=3.11"},
+        "notes": "Linux packaging and live-host verification are deferred; the portable runtime remains testable but is outside this release."
+      },
+      "macos": {
+        "label": "macOS",
+        "readiness": "release_ready",
+        "included_in_release": true,
+        "runtime": {"node": ">=20", "python": ">=3.11"},
+        "notes": "The relocatable plugin runtime is gated on a native macOS runner before release."
+      },
+      "windows": {
+        "label": "Windows",
+        "readiness": "release_ready",
+        "included_in_release": true,
+        "runtime": {"node": ">=20", "python": ">=3.11"},
+        "notes": "The relocatable plugin runtime is gated on a native Windows runner before release."
+      }
+    }
+  },
   "profiles": [
     {
       "id": "agent-plugin",
@@ -121,14 +147,14 @@
       "name": "GitHub Copilot CLI",
       "display_name": "GitHub Copilot CLI",
       "vendor": "GitHub",
-      "summary": "Native Open Plugin Spec package for Copilot CLI with skills, MCP, and shared hooks.",
+      "summary": "Native Open Plugin Spec package for Copilot CLI with skills and MCP; lifecycle hooks are not claimed until Copilot's distinct hook contract is packaged and verified.",
       "adapter": {"kind": "open-plugin-spec", "status": "native", "manifest": "plugin.json", "install_guide": "core/harnesses/adapters/copilot-cli.json"},
       "support_level": "supported",
       "capabilities": [
         {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The current working directory is available to the CLI."},
         {"id": "mcp", "status": "native", "tier": 1, "mode": "on_demand", "notes": "The Open Plugin Spec package includes a relocatable stdio MCP server."},
         {"id": "agent-skills", "status": "native", "tier": 2, "mode": "on_demand", "notes": "Copilot CLI loads skills from the installed plugin."},
-        {"id": "hooks", "status": "native", "tier": 3, "mode": "guided", "notes": "The installed CLI must support and trust Open Plugin hooks."},
+        {"id": "hooks", "status": "not-verified", "tier": 3, "mode": "unavailable", "notes": "Copilot's native hook schema differs from the Claude and Codex files in this package, so no Copilot hook is claimed."},
         {"id": "session-lifecycle", "status": "partial", "tier": 3, "mode": "guided", "notes": "Available lifecycle events depend on the installed Copilot CLI version."},
         {"id": "background-jobs", "status": "none", "tier": 1, "mode": "unavailable", "notes": "No Dex scheduler contract is assumed."},
         {"id": "interactive-prompts", "status": "native", "tier": 2, "mode": "on_demand", "notes": "CLI interaction is host-native."},
@@ -136,7 +162,7 @@
       ],
       "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
       "detection": {"env": ["COPILOT_CLI", "GH_COPILOT", "GITHUB_COPILOT"], "paths": ["/.copilot/", "/copilot/"]},
-      "limitations": ["Hook behavior must be checked against the installed CLI version before claiming automatic enforcement."],
+      "limitations": ["Copilot hooks are not included in this release; shared safety remains an explicit MCP check rather than automatic enforcement."],
       "evidence": ["https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference"]
     },
     {

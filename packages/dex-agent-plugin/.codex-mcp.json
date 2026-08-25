@@ -1,8 +1,9 @@
 {
   "dex-core": {
-    "command": "python3",
+    "command": "node",
     "args": [
-      "${PLUGIN_ROOT}/server.py"
+      "${PLUGIN_ROOT}/bin/dex-python.mjs",
+      "mcp"
     ]
   }
 }

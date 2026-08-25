@@ -11,15 +11,55 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform as platform_module
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = Path(__file__).with_name("registry.json")
 PROFILES_PATH = Path(__file__).with_name("profiles")
 REGISTRY_SCHEMA_VERSION = "1.0.0"
+
+
+def _load_registry_payload() -> Mapping[str, Any]:
+    try:
+        payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Cannot load harness registry: {REGISTRY_PATH}") from error
+    if not isinstance(payload, Mapping) or payload.get("schema_version") != REGISTRY_SCHEMA_VERSION:
+        raise RuntimeError(f"Unsupported harness registry schema: {REGISTRY_PATH}")
+    return payload
+
+
+def get_release_contract() -> dict[str, Any]:
+    """Return the unreleased build's explicit per-platform delivery boundary."""
+    release = _load_registry_payload().get("release")
+    if not isinstance(release, Mapping) or not isinstance(release.get("platforms"), Mapping):
+        raise RuntimeError("Harness registry release contract must name its platforms")
+    return copy_json(release)
+
+
+def get_platform_release(platform_name: str | None = None) -> dict[str, Any]:
+    """Return the release record for a Python or Node platform name."""
+    raw = platform_name if platform_name is not None else platform_module.system()
+    normalized = raw.strip().lower() if isinstance(raw, str) else ""
+    platform_id = {
+        "darwin": "macos",
+        "mac": "macos",
+        "macos": "macos",
+        "win32": "windows",
+        "windows": "windows",
+        "cygwin": "windows",
+        "linux": "linux",
+    }.get(normalized)
+    if platform_id is None:
+        raise KeyError(raw)
+    platforms = get_release_contract()["platforms"]
+    row = platforms.get(platform_id)
+    if not isinstance(row, Mapping):
+        raise RuntimeError(f"Harness registry has no release record for {platform_id}")
+    return {"id": platform_id, **copy_json(row)}
 
 
 @dataclass(frozen=True)
@@ -172,12 +212,7 @@ def _profile_from_dict(payload: Mapping[str, Any]) -> CapabilityProfile:
 
 
 def _load_profiles() -> tuple[CapabilityProfile, ...]:
-    try:
-        payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"Cannot load harness registry: {REGISTRY_PATH}") from error
-    if not isinstance(payload, Mapping) or payload.get("schema_version") != REGISTRY_SCHEMA_VERSION:
-        raise RuntimeError(f"Unsupported harness registry schema: {REGISTRY_PATH}")
+    payload = _load_registry_payload()
     entries = payload.get("profiles")
     if not isinstance(entries, list):
         raise RuntimeError("Harness registry profiles must be an array")

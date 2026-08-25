@@ -805,7 +805,8 @@ def test_harness_capability_probe_is_calmly_off_before_selection(context):
     assert "onboarding" in result.detail.lower()
 
 
-def test_harness_capability_probe_reports_modes_without_overclaiming(context):
+def test_harness_capability_probe_reports_modes_without_overclaiming(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
     receipt = build_receipt(
         [
             {
@@ -834,6 +835,8 @@ def test_harness_capability_probe_reports_modes_without_overclaiming(context):
     assert "1 on demand" in result.detail
     assert "1 guided" in result.detail
     assert "fully automatic" not in result.detail.lower()
+    assert "Linux" in result.detail
+    assert "deferred" in result.detail
     assert result.structured_detail == {
         "selected": ["codex"],
         "modes": {
@@ -843,6 +846,14 @@ def test_harness_capability_probe_reports_modes_without_overclaiming(context):
             "unavailable": 0,
         },
         "fully_automatic": False,
+        "platform": {
+            "id": "linux",
+            "included_in_release": False,
+            "label": "Linux",
+            "notes": "Linux packaging and live-host verification are deferred; the portable runtime remains testable but is outside this release.",
+            "readiness": "deferred",
+            "runtime": {"node": ">=20", "python": ">=3.11"},
+        },
     }
 
 

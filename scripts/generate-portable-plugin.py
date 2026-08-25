@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
 SKILLS_SOURCE = REPO_ROOT / ".agents" / "skills"
@@ -61,8 +60,8 @@ def _mcp_json() -> dict:
         "mcpServers": {
             "dex-core": {
                 "type": "stdio",
-                "command": "./bin/dex-mcp",
-                "args": ["--stdio"],
+                "command": "node",
+                "args": ["${PLUGIN_ROOT}/bin/dex-python.mjs", "mcp", "--stdio"],
                 "env": {"DEX_PLUGIN_DATA": "${PLUGIN_DATA}"},
                 "cwd": "${PLUGIN_ROOT}",
             }
@@ -73,8 +72,8 @@ def _mcp_json() -> dict:
 def _native_mcp_json(root_variable: str, *, wrapped: bool) -> dict:
     servers = {
         "dex-core": {
-            "command": "python3",
-            "args": [f"${{{root_variable}}}/server.py"],
+            "command": "node",
+            "args": [f"${{{root_variable}}}/bin/dex-python.mjs", "mcp"],
         }
     }
     return {"mcpServers": servers} if wrapped else servers
@@ -87,7 +86,7 @@ def _codex_plugin_json() -> dict:
         "description": "Portable Dex context, safety, and work skills.",
         "skills": "./skills/",
         "mcpServers": "./.codex-mcp.json",
-        "hooks": "./hooks/hooks.json",
+        "hooks": "./hooks/codex.json",
     }
 
 
@@ -104,20 +103,47 @@ def _claude_plugin_json() -> dict:
 
 
 def _hooks_json() -> dict:
-    root = "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}"
-    command = f'python3 "{root}/hook.py"'
+    command = {
+        "type": "command",
+        "command": "node",
+        "args": ["${CLAUDE_PLUGIN_ROOT}/bin/dex-python.mjs", "hook"],
+    }
     return {
         "hooks": {
             "SessionStart": [
                 {
                     "matcher": "startup|resume|clear|compact",
-                    "hooks": [{"type": "command", "command": command}],
+                    "hooks": [command],
                 }
             ],
             "PreToolUse": [
                 {
                     "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
-                    "hooks": [{"type": "command", "command": command}],
+                    "hooks": [command],
+                }
+            ],
+        }
+    }
+
+
+def _codex_hooks_json() -> dict:
+    command = {
+        "type": "command",
+        "command": 'node "${PLUGIN_ROOT}/bin/dex-python.mjs" hook',
+        "commandWindows": 'node "${PLUGIN_ROOT}/bin/dex-python.mjs" hook',
+    }
+    return {
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "startup|resume|clear|compact",
+                    "hooks": [command],
+                }
+            ],
+            "PreToolUse": [
+                {
+                    "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
+                    "hooks": [command],
                 }
             ],
         }
@@ -180,11 +206,16 @@ def expected_plugin_files(repo_root: Path = REPO_ROOT) -> dict[Path, bytes]:
             _native_mcp_json("CLAUDE_PLUGIN_ROOT", wrapped=True)
         ),
         Path("packages/dex-agent-plugin/hooks/hooks.json"): _json_bytes(_hooks_json()),
+        Path("packages/dex-agent-plugin/hooks/codex.json"): _json_bytes(
+            _codex_hooks_json()
+        ),
     }
     # Static launcher and bridge are source-controlled; include their exact
     # bytes in the golden map so --check detects a hard-coded path regression.
     for relative in (
         Path("bin/dex-mcp"),
+        Path("bin/dex-python.mjs"),
+        Path("bin/dex-launcher-lib.mjs"),
         Path("server.py"),
         Path("hook.py"),
         Path("README.md"),

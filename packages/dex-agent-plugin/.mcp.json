@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "dex-core": {
-      "command": "python3",
+      "command": "node",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/server.py"
+        "${CLAUDE_PLUGIN_ROOT}/bin/dex-python.mjs",
+        "mcp"
       ]
     }
   }

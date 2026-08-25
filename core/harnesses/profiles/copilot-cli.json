@@ -29,9 +29,9 @@
     },
     {
       "id": "hooks",
-      "mode": "guided",
-      "notes": "The installed CLI must support and trust Open Plugin hooks.",
-      "status": "native",
+      "mode": "unavailable",
+      "notes": "Copilot's native hook schema differs from the Claude and Codex files in this package, so no Copilot hook is claimed.",
+      "status": "not-verified",
       "tier": 3
     },
     {
@@ -80,7 +80,7 @@
   ],
   "id": "copilot-cli",
   "limitations": [
-    "Hook behavior must be checked against the installed CLI version before claiming automatic enforcement."
+    "Copilot hooks are not included in this release; shared safety remains an explicit MCP check rather than automatic enforcement."
   ],
   "modes": [
     "tier-0-vault",
@@ -88,7 +88,7 @@
     "tier-2-skills"
   ],
   "name": "GitHub Copilot CLI",
-  "summary": "Native Open Plugin Spec package for Copilot CLI with skills, MCP, and shared hooks.",
+  "summary": "Native Open Plugin Spec package for Copilot CLI with skills and MCP; lifecycle hooks are not claimed until Copilot's distinct hook contract is packaged and verified.",
   "support_level": "supported",
   "vendor": "GitHub"
 }

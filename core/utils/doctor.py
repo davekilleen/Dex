@@ -1252,6 +1252,7 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
 
 def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
     """Report the saved host contract without promoting guided work to automatic."""
+    from core.harnesses.registry import get_platform_release
     from core.onboarding.harness_receipt import (
         HarnessReceiptError,
         read_receipt,
@@ -1277,6 +1278,8 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
         )
 
     summary = summarize_receipt(receipt)
+    platform_release = get_platform_release()
+    summary["platform"] = platform_release
     display_names = [
         str(profile["display_name"])
         for profile in receipt["profiles"]
@@ -1289,7 +1292,8 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
         f"{modes['automatic']} automatic, "
         f"{modes['on_demand']} on demand, "
         f"{modes['guided']} guided, and "
-        f"{modes['unavailable']} unavailable capability assignments"
+        f"{modes['unavailable']} unavailable capability assignments; "
+        f"{platform_release['label']} is {platform_release['readiness'].replace('_', ' ')}"
     )
     return ProbeResult("OK", detail, structured_detail=summary)
 

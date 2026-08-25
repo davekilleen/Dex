@@ -5,12 +5,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import jsonschema
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
@@ -72,9 +71,10 @@ def test_plugin_manifest_and_mcp_config_match_agent_plugins_v1() -> None:
     }
     server = mcp["mcpServers"]["dex-core"]
     assert server["type"] == "stdio"
-    assert server["command"].startswith("./")
+    assert server["command"] == "node"
+    assert server["args"][:2] == ["${PLUGIN_ROOT}/bin/dex-python.mjs", "mcp"]
     assert "${PLUGIN_ROOT}" in server["cwd"]
-    assert not str(PLUGIN_ROOT) in json.dumps(mcp)
+    assert str(PLUGIN_ROOT) not in json.dumps(mcp)
 
 
 def test_plugin_contains_skills_resources_registry_and_relocatable_launcher() -> None:
@@ -92,10 +92,13 @@ def test_plugin_contains_skills_resources_registry_and_relocatable_launcher() ->
         "cowork",
         "pi",
     }
-    launcher = PLUGIN_ROOT / "bin" / "dex-mcp"
-    assert launcher.stat().st_mode & 0o111
-    text = launcher.read_text(encoding="utf-8")
-    assert "PLUGIN_ROOT" in text
+    launcher = PLUGIN_ROOT / "bin" / "dex-python.mjs"
+    launcher_lib = PLUGIN_ROOT / "bin" / "dex-launcher-lib.mjs"
+    assert launcher.is_file()
+    assert launcher_lib.is_file()
+    text = launcher.read_text(encoding="utf-8") + launcher_lib.read_text(encoding="utf-8")
+    assert "DEX_PYTHON" in text
+    assert "win32" in text
     assert "/srv/" not in text
 
 
@@ -109,15 +112,54 @@ def test_native_codex_and_claude_manifests_share_one_package() -> None:
     assert codex["name"] == claude["name"] == "dex"
     assert codex["skills"] == "./skills/"
     assert codex["mcpServers"] == "./.codex-mcp.json"
-    assert codex["hooks"] == "./hooks/hooks.json"
-    assert "${PLUGIN_ROOT}/server.py" in json.dumps(codex_mcp)
-    assert "${CLAUDE_PLUGIN_ROOT}/server.py" in json.dumps(claude_mcp)
+    assert codex["hooks"] == "./hooks/codex.json"
+    assert codex_mcp["dex-core"]["command"] == "node"
+    assert codex_mcp["dex-core"]["args"][:2] == [
+        "${PLUGIN_ROOT}/bin/dex-python.mjs",
+        "mcp",
+    ]
+    assert claude_mcp["mcpServers"]["dex-core"]["command"] == "node"
+    assert claude_mcp["mcpServers"]["dex-core"]["args"][:2] == [
+        "${CLAUDE_PLUGIN_ROOT}/bin/dex-python.mjs",
+        "mcp",
+    ]
     assert set(codex_mcp) == {"dex-core"}
     assert set(claude_mcp) == {"mcpServers"}
     assert set(hooks["hooks"]) == {"SessionStart", "PreToolUse"}
     hook_text = json.dumps(hooks)
-    assert "PLUGIN_ROOT" in hook_text
     assert "CLAUDE_PLUGIN_ROOT" in hook_text
+    assert '"command": "node"' in hook_text
+
+    codex_hooks = json.loads((PLUGIN_ROOT / "hooks" / "codex.json").read_text())
+    codex_hook_text = json.dumps(codex_hooks)
+    assert "PLUGIN_ROOT" in codex_hook_text
+    assert "commandWindows" in codex_hook_text
+
+
+def test_launcher_selects_platform_specific_python_candidates() -> None:
+    script = """
+      import { pythonCandidates } from './packages/dex-agent-plugin/bin/dex-launcher-lib.mjs';
+      const result = {
+        mac: pythonCandidates('darwin', {}),
+        win: pythonCandidates('win32', {}),
+        override: pythonCandidates('win32', {DEX_PYTHON: 'C:/Dex Python/python.exe'}),
+      };
+      process.stdout.write(JSON.stringify(result));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    candidates = json.loads(completed.stdout)
+    assert candidates["mac"][0] == {"command": "python3", "args": []}
+    assert candidates["win"][0] == {"command": "py", "args": ["-3"]}
+    assert candidates["override"][0] == {
+        "command": "C:/Dex Python/python.exe",
+        "args": [],
+    }
 
 
 def test_repo_marketplace_exposes_the_unreleased_local_openai_plugin() -> None:
@@ -157,7 +199,7 @@ def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
 def _mcp_roundtrip(messages: list[dict], *, cwd: Path | None = None) -> list[dict]:
     payload = "".join(json.dumps(message) + "\n" for message in messages)
     completed = subprocess.run(
-        [sys.executable, str(PLUGIN_ROOT / "server.py")],
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "mcp"],
         input=payload,
         text=True,
         capture_output=True,
@@ -237,7 +279,7 @@ def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path
         encoding="utf-8",
     )
     session = subprocess.run(
-        [sys.executable, str(PLUGIN_ROOT / "hook.py")],
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook"],
         input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(vault)}),
         text=True,
         capture_output=True,
@@ -248,7 +290,7 @@ def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path
     assert "Customer" in injected["hookSpecificOutput"]["additionalContext"]
 
     blocked = subprocess.run(
-        [sys.executable, str(PLUGIN_ROOT / "hook.py")],
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook"],
         input=json.dumps(
             {
                 "hook_event_name": "PreToolUse",
@@ -267,3 +309,12 @@ def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path
 def test_plugin_generator_check_is_clean() -> None:
     generator = _load_generator()
     assert generator.check_plugin(REPO_ROOT) == 0
+
+
+def test_ci_runs_the_runtime_verifier_on_macos_and_windows() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "portable-plugin-platforms:" in workflow
+    job = workflow.split("portable-plugin-platforms:", 1)[1]
+    assert "macos-latest" in job
+    assert "windows-latest" in job
+    assert "verify-portable-plugin-runtime.py --require-release-ready" in job

@@ -126,6 +126,30 @@ jobs:
       - name: Path consistency check
         run: bash scripts/check-path-consistency.sh
 
+  # Full Dex Everywhere ships only when the same relocatable runtime completes
+  # real MCP and hook round trips on both release operating systems. Linux is
+  # deliberately absent from this matrix and remains marked deferred in the
+  # versioned harness registry.
+  portable-plugin-platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: setup-python
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Verify portable plugin runtime and release boundary
+        env:
+          DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: python scripts/verify-portable-plugin-runtime.py --require-release-ready
+
   # The Python suite, dealt across three runners by recorded test durations
   # (.ci/test-durations.json, regenerated from CI's own junit output when balance
   # drifts). Within each runner, pytest-xdist spreads tests across cores and
