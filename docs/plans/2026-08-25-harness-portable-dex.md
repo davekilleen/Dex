@@ -16,9 +16,12 @@ guided, or unavailable in that host.
 The build stops before merge, publication, marketplace submission, installation for another
 user, or release.
 
-This release targets macOS and Windows. Linux remains deliberately deferred. A platform is
-not called release-ready until the same launcher completes real MCP and hook round trips on
-that operating system's CI runner. Node 20+ and Python 3.11+ are explicit prerequisites.
+Dex Core's portable distribution targets macOS and native Windows. Linux remains deliberately
+deferred. The standalone BB adapter is narrower: BB 0.39.0 has no native Windows host and
+documents WSL2 instead, so this BB release targets macOS while Windows/WSL stays in the
+deferred Linux lane. A platform is not called release-ready until the same launcher completes
+real round trips on that operating system's CI runner. Node 20+ and Python 3.11+ are explicit
+Core prerequisites.
 
 ## Product position
 
@@ -198,7 +201,7 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | Copilot CLI | Root manifest follows the Open Plugin Spec accepted by Copilot; package and schema tests pass. Its incompatible hook schema is now explicitly unavailable rather than overclaimed. | The Copilot binary is not installed on this Devbox, so live CLI installation remains a release-candidate check. |
 | Pi | Existing native `dex-pi/extensions/dex/package.json` and lifecycle extension are present in the Pi repository. | The dirty shared Pi checkout was inspected read-only; no Pi package was changed or released. |
 | Agent Plugin | v1 schema, Node-to-Python launcher, tools, resources, dependency closure, and Linux deferred-runtime journey pass golden tests. A mandatory macOS/Windows CI matrix is wired. | Exact-commit macOS and Windows evidence belongs to the draft pull request and must be green on the final review head. Mandatory Fable reviews remain required; client-specific hooks stay outside the v1 floor. |
-| BB | Standalone head `1b4a93f5ffdf05a52f375a467fffcbcbebb5ab30`; TypeScript, Vitest, official build engine, current stable plugin SDK `0.4.17`, official SDK backend/frontend harness, package audit, and tarball checks pass. | The workspace has no remote yet and `bb` CLI is unavailable here; native macOS/Windows CI, live path install, and marketplace release remain undone. |
+| BB | Standalone head `75161c93f53f4fe55109e3421d576060ba9b1cbb`; TypeScript, Vitest, current stable plugin SDK `0.4.17`, SDK backend/frontend harness, package audit, and tarball checks pass. Its manifest now truthfully scopes this release to macOS. | The workspace has no remote yet and `bb` CLI is unavailable here; native macOS CI, live path install, and marketplace release remain undone. BB has no native Windows host; its WSL2 route stays deferred with Linux. |
 
 ## Research decisions and sources
 

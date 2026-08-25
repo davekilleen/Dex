@@ -70,7 +70,10 @@
       ],
       "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
       "detection": {"env": ["BB_HARNESS", "BB_RUNNER"], "paths": ["/.bb/", "/.bb/worktrees/", "/bb-plugins/"]},
-      "limitations": ["The package is read-only and unreleased; live bb CLI installation has not yet been verified."],
+      "limitations": [
+        "The package is read-only and unreleased; live bb CLI installation has not yet been verified.",
+        "The standalone package currently targets macOS. BB's documented Windows route uses WSL2, which remains in Dex's deferred Linux lane."
+      ],
       "evidence": ["https://getbb.app/docs/plugins"]
     },
     {

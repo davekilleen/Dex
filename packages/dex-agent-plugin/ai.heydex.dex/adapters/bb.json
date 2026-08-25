@@ -6,6 +6,6 @@
   "native_paths": ["bb-plugin.json", "skills/", "server/tools/", "src/app.tsx"],
   "example": {
     "manifest": "bb-plugin-dex/bb-plugin.json",
-    "install_guide": "Install the unreleased standalone bb-plugin-dex package from a reviewed local path. Select the Dex vault in plugin settings; the first release is read-only."
+    "install_guide": "On macOS, install the unreleased standalone bb-plugin-dex package from a reviewed local path. Select the Dex vault in plugin settings; the first release is read-only. BB's Windows route uses WSL2 and remains in Dex's deferred Linux lane."
   }
 }

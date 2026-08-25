@@ -141,7 +141,8 @@ host's real lifecycle and interface. The registry labels every capability as
   Copilot-specific lifecycle hooks are not included in this release.
 - Compatible Agent Plugins v1 clients: the open skills-and-MCP floor.
 - Pi: native Dex Pi extension.
-- BB: standalone native BB plugin.
+- BB on macOS: standalone native BB plugin. BB currently documents Windows
+  through WSL2, so BB-on-Windows remains in this release's deferred Linux lane.
 
 ## What does not work through these packages?
 
@@ -153,6 +154,9 @@ host's real lifecycle and interface. The registry labels every capability as
 - Pi does not have a built-in MCP client; Dex uses its native extension model.
 - The BB v1 package is deliberately read-only and does not add jobs, vault
   writes, remote relay, or an experimental provider/host bridge.
+- The BB v1 package currently targets macOS. BB does not offer a native Windows
+  host; its WSL2 route is deferred with Linux rather than being mislabelled as
+  native Windows support.
 - Claude Code's complete set of mature Dex hooks is not magically reproduced in
   every host. Only the shared, verified subset is portable.
 
@@ -212,11 +216,12 @@ workflows behind that choice.
 - MCP initialize/list/call, SessionStart injection, PreToolUse refusal, runtime
   byte identity, registry, onboarding, receipt, Doctor, provisioning, skills,
   hooks, and distribution tests pass on the feature branch.
-- The release contract names macOS and Windows as the only release platforms.
-  Exact-commit native round-trip evidence lives on the draft pull request and
-  must be repeated for every review head; Linux remains deliberately deferred.
-- The BB package passes TypeScript, Vitest, BB's official build engine, official
-  SDK backend and frontend harnesses, package audit, and tarball checks.
+- Dex Core's release contract names macOS and native Windows as its release
+  platforms. Exact-commit native round-trip evidence lives on the draft pull
+  request and must be repeated for every review head; Linux remains deliberately
+  deferred. The BB package is macOS-only because BB's Windows route is WSL2.
+- The BB package passes TypeScript, Vitest, current-stable SDK backend and
+  frontend harnesses, package audit, and tarball checks.
 - Release and vault bundle builders include byte-identical product-facing
   `AGENTS.md` instructions in their installed-files manifests.
 

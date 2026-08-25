@@ -80,7 +80,8 @@
   ],
   "id": "bb",
   "limitations": [
-    "The package is read-only and unreleased; live bb CLI installation has not yet been verified."
+    "The package is read-only and unreleased; live bb CLI installation has not yet been verified.",
+    "The standalone package currently targets macOS. BB's documented Windows route uses WSL2, which remains in Dex's deferred Linux lane."
   ],
   "modes": [
     "tier-0-vault",
