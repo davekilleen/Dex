@@ -984,9 +984,9 @@ def test_the_applied_receipt_makes_the_job_genuinely_auditable(context):
 
 
 def _snapshot_with_learned(detail, verdict="OK"):
+    from core.health.doctor_reporter import DOCTOR_REPORTER_IDENTITY
     from core.health.reporter import CheckResult, ReporterEnvelope
     from core.health.snapshot import HealthSnapshot
-    from core.health.doctor_reporter import DOCTOR_REPORTER_IDENTITY
 
     envelope = ReporterEnvelope(
         contract="dex.health.reporter/v1",
@@ -1078,9 +1078,9 @@ def test_session_start_says_nothing_when_there_is_nothing_to_watch():
 
 def test_a_snapshot_from_before_this_build_is_read_without_complaint():
     """An older snapshot has no learned check at all. That is silence, not a fault."""
+    from core.health.doctor_reporter import DOCTOR_REPORTER_IDENTITY
     from core.health.reporter import CheckResult, ReporterEnvelope
     from core.health.snapshot import HealthSnapshot
-    from core.health.doctor_reporter import DOCTOR_REPORTER_IDENTITY
     from core.utils import health_session
 
     envelope = ReporterEnvelope(
