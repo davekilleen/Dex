@@ -110,11 +110,12 @@ context and safety runtime, native OpenAI and Claude manifests, the Agent
 Plugins v1/Copilot package, a local OpenAI marketplace entry, release-time
 product instructions for Codex, and golden journey tests.
 
-A separate unreleased `bb-plugin-dex` repository contains BB-native status,
-capabilities, and brief tools; `bb dex` commands; a sidebar panel; bundled
-skills; Core catalogue readers; and package tests. Pi's existing native Dex
-extension remains the Pi path. The public website installer branch has also
-been changed to acquire the supported `release` branch rather than `main`.
+A separate unreleased standalone `dex-bb-plugin` workspace contains BB-native
+status, capabilities, and brief tools; `bb dex` commands; a sidebar panel;
+bundled skills; Core catalogue readers; and package tests. Its remote repository
+has not been chosen yet. Pi's existing native Dex extension remains the Pi path.
+The public website installer branch has also been changed to acquire the
+supported `release` branch rather than `main`.
 
 ## Is any of this live?
 
@@ -211,9 +212,9 @@ workflows behind that choice.
 - MCP initialize/list/call, SessionStart injection, PreToolUse refusal, runtime
   byte identity, registry, onboarding, receipt, Doctor, provisioning, skills,
   hooks, and distribution tests pass on the feature branch.
-- The release contract names macOS and Windows as the only release platforms,
-  with a required native CI round trip for each; Linux functionality remains a
-  tested but deliberately deferred path.
+- The release contract names macOS and Windows as the only release platforms.
+  Exact-commit native round-trip evidence lives on the draft pull request and
+  must be repeated for every review head; Linux remains deliberately deferred.
 - The BB package passes TypeScript, Vitest, BB's official build engine, official
   SDK backend and frontend harnesses, package audit, and tarball checks.
 - Release and vault bundle builders include byte-identical product-facing
@@ -221,13 +222,13 @@ workflows behind that choice.
 
 ## What still has to happen before release?
 
-Complete the native macOS/Windows matrix and mandatory Fable reviews; run live
-release-candidate installs in ChatGPT desktop, Cowork, Copilot CLI, Pi, and BB;
-complete the final combined test and security gates; reconcile the private
-Build Card; push review branches and open draft pull requests; choose the public
-packaging and marketplace sequence; merge only with explicit founder approval;
-then build and verify a real release artifact. Linux remains a separate future
-delivery.
+Keep the final review head green on the native macOS/Windows matrix and complete
+the mandatory Fable reviews; run live release-candidate installs in ChatGPT
+desktop, Cowork, Copilot CLI, Pi, and BB; complete the final combined test and
+security gates; keep the private Build Card reconciled; choose a remote home for
+the standalone BB plugin and the later public packaging sequence; merge only
+with explicit founder approval; then build and verify a real release artifact.
+Linux remains a separate future delivery.
 
 ## What is the release principle?
 
