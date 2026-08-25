@@ -205,3 +205,148 @@ def test_the_registered_tool_reports_an_unknown_feature_rather_than_failing(vaul
     )
 
     assert payload["status"] == "not_found"
+
+
+# --- the safety properties the direct write did not have ---
+#
+# Requested in review of #590. Each of these fails against a plain
+# write_text + os.replace, which is what this file used to do.
+
+
+def test_a_symlinked_system_directory_cannot_redirect_the_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A vault whose System directory is a symlink must not write outside it.
+
+    The direct implementation resolved the path through the symlink and wrote
+    to the target, which puts a vault mutation anywhere the link points.
+    """
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "usage_log.md").write_text(LOG_WITH_CONSENT, encoding="utf-8")
+    before = (outside / "usage_log.md").read_text(encoding="utf-8")
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "System").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    result = analytics_helper.mark_feature_used("meeting-prep")
+
+    assert result["status"] == "unavailable"
+    assert (outside / "usage_log.md").read_text(encoding="utf-8") == before
+
+
+def test_a_symlinked_log_file_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outside = tmp_path / "elsewhere.md"
+    outside.write_text(LOG_WITH_CONSENT, encoding="utf-8")
+    before = outside.read_text(encoding="utf-8")
+
+    vault = tmp_path / "vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "usage_log.md").symlink_to(outside)
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    result = analytics_helper.mark_feature_used("meeting-prep")
+
+    assert result["status"] == "unavailable"
+    assert outside.read_text(encoding="utf-8") == before
+
+
+def test_a_tightened_file_mode_survives_a_write(vault: Path) -> None:
+    """A 0600 log must not become 0644 because the umask said so.
+
+    write_text on a fresh temporary file takes the process umask, and a rename
+    over the original carries that mode with it. The plan re-states the mode.
+    """
+    log = vault / "System" / "usage_log.md"
+    log.chmod(0o600)
+
+    assert analytics_helper.mark_feature_used("meeting-prep")["status"] == "marked"
+
+    assert log.stat().st_mode & 0o777 == 0o600
+
+
+def test_an_unusual_but_legitimate_mode_is_also_preserved(vault: Path) -> None:
+    log = vault / "System" / "usage_log.md"
+    log.chmod(0o640)
+
+    analytics_helper.mark_feature_used("meeting-prep")
+
+    assert log.stat().st_mode & 0o777 == 0o640
+
+
+def test_a_feature_tick_and_a_consent_update_do_not_lose_each_other(
+    vault: Path,
+) -> None:
+    """The race the fixed .tmp sibling allowed, driven deterministically.
+
+    Both mutators used to read the whole file, modify it, and write it back.
+    Interleaved, the second writer's copy is built from pre-first-writer text,
+    so one whole-file change disappears. Here the consent update lands from
+    inside the feature tick's transform, which is exactly that interleaving.
+    """
+    log = vault / "System" / "usage_log.md"
+    original_rewrite = analytics_helper._rewrite_usage_log_safely
+    fired: list[str] = []
+
+    def racing_rewrite(transform):
+        def wrapped(current: str):
+            if not fired:
+                fired.append("consent")
+                analytics_helper.update_consent("opted-out")
+            return transform(current)
+
+        return original_rewrite(wrapped)
+
+    analytics_helper._rewrite_usage_log_safely = racing_rewrite
+    try:
+        result = analytics_helper.mark_feature_used("meeting-prep")
+    finally:
+        analytics_helper._rewrite_usage_log_safely = original_rewrite
+
+    updated = log.read_text(encoding="utf-8")
+
+    assert fired == ["consent"]
+    assert result["status"] == "marked"
+    # Neither change was lost: the tick landed AND the consent decision stuck.
+    assert "- [x] Meeting prep (`/meeting-prep`)" in updated
+    assert "**Consent decision:** opted-out" in updated
+
+
+def test_consent_updates_also_go_through_the_guarded_writer(
+    vault: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dave's point: the guarantee is only real if both mutators use one door."""
+    seen: list[str] = []
+    original = analytics_helper._rewrite_usage_log_safely
+
+    def recording(transform):
+        seen.append("used")
+        return original(transform)
+
+    monkeypatch.setattr(analytics_helper, "_rewrite_usage_log_safely", recording)
+
+    analytics_helper.update_consent("opted-out")
+
+    assert seen == ["used"]
+    assert analytics_helper.check_consent() == "opted-out"
+
+
+def test_the_operation_may_write_only_the_usage_log() -> None:
+    """The contract, not the caller, is what bounds this operation."""
+    from core import portable_contract
+
+    allowed = portable_contract.update_write_verdict(
+        portable_contract.USAGE_LOG_RELATIVE, exists=True, operation="usage-log"
+    )
+    refused = portable_contract.update_write_verdict(
+        "03-Tasks/Tasks.md", exists=True, operation="usage-log"
+    )
+
+    assert allowed.allowed is True
+    assert allowed.action == "write-usage-log"
+    assert refused.allowed is False
+    assert refused.action == "outside-usage-log"
