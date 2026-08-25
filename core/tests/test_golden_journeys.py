@@ -264,7 +264,9 @@ async def main():
     results["start"] = await call("start_onboarding_session", {"force_new": True})
     results["resume"] = await call("start_onboarding_session")
 
-    selected_harnesses = results["resume"]["data"]["harness_setup"]["selected"]
+    # This is the user-confirmed branch of onboarding, so make the choice
+    # deterministic instead of depending on the CI runner's installed harness.
+    selected_harnesses = ["claude-code", "codex"]
     results["harness_preview"] = await call(
         "inspect_harnesses",
         {"harnesses": selected_harnesses},

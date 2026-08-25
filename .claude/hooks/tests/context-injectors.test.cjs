@@ -7,6 +7,23 @@ const path = require('node:path');
 
 const FIXTURE_VAULT = path.resolve(__dirname, '../../../core/tests/fixtures/vault');
 
+function findPython() {
+  const candidates = process.platform === 'win32'
+    ? [['py', ['-3']], ['python', []], ['python3', []]]
+    : [['python3', []], ['python', []]];
+  for (const [command, prefix] of candidates) {
+    const result = spawnSync(
+      command,
+      [...prefix, '-c', 'import sys; print(sys.executable)'],
+      { encoding: 'utf-8' },
+    );
+    if (result.status === 0 && result.stdout.trim()) return result.stdout.trim();
+  }
+  throw new Error('Python is required for the shared context hook tests');
+}
+
+const PYTHON = findPython();
+
 function createSandbox(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-context-hook-'));
   const vault = path.join(root, 'vault');
@@ -26,6 +43,7 @@ function runHook(scriptName, stdin, sandbox) {
       CLAUDE_HOOK_CONTEXT: '{}',
       CLAUDE_PROJECT_DIR: sandbox.vault,
       DEX_HOOK_DEBUG: '1',
+      DEX_PYTHON: PYTHON,
       HOME: sandbox.home,
       PATH: '/usr/bin:/bin',
       VAULT_PATH: sandbox.vault,

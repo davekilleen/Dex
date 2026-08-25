@@ -21,6 +21,9 @@ def _install_fixture(
     scenario: str,
     chat_app: str | None = None,
 ) -> tuple[Path, dict[str, str]]:
+    real_node = shutil.which("node")
+    if real_node is None:
+        raise RuntimeError("Node is required for the install convergence fixture")
     root = tmp_path / "dex-install"
     root.mkdir()
     shutil.copy2(REPO_ROOT / "install.sh", root / "install.sh")
@@ -55,7 +58,7 @@ exit 0
         """#!/bin/sh
 if [ "$1" = "-v" ]; then echo "v22.0.0"; exit 0; fi
 printf '%s\n' "$*" >> "$DEX_TEST_NODE_LOG"
-if [ "$1" = "-e" ]; then exec /usr/bin/node "$@"; fi
+if [ "$1" = "-e" ]; then exec "$DEX_TEST_REAL_NODE" "$@"; fi
 case "$DEX_TEST_SCENARIO:$2" in
   resume:--auto)
     if [ ! -f "$DEX_TEST_RESUME_SENTINEL" ]; then
@@ -110,6 +113,7 @@ exit 0
         {
             "PATH": f"{shim_dir}:/usr/bin:/bin",
             "DEX_TEST_NODE_LOG": str(tmp_path / "node.log"),
+            "DEX_TEST_REAL_NODE": real_node,
             "DEX_TEST_RESUME_SENTINEL": str(tmp_path / "resume.once"),
             "DEX_TEST_SCENARIO": scenario,
             "DEX_TEST_HARNESSES_JSON": {
