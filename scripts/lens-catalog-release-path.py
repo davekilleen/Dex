@@ -17,6 +17,8 @@ EXACT_DEPENDENCIES = frozenset(
         "core/portable_contract.py",
         "package.json",
         "packages/dex-contracts/dist/portable-vault.contract.json",
+        "scripts/check-lens-catalog-change-stamps.py",
+        "scripts/check-lens-catalog-release-asset.py",
         "scripts/generate-dex-lens-catalog.py",
         "scripts/lens-catalog-release-path.py",
     }

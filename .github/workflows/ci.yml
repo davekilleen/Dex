@@ -87,6 +87,11 @@ jobs:
       - name: Documentation drift gate
         if: github.event_name == 'pull_request'
         run: bash scripts/check-doc-drift.sh
+      - name: Lens catalogue change-stamp gate
+        # An entry that changes without moving its changed_in_release stamp tells
+        # every fresh Lens machine nothing changed. Caught on the PR that causes it.
+        if: github.event_name == 'pull_request'
+        run: python scripts/check-lens-catalog-change-stamps.py
       - name: Release-tag uniqueness gate
         run: bash scripts/check-release-tag-uniqueness.sh
       - name: Old-version release-tag reachability gate
@@ -361,6 +366,28 @@ jobs:
           test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json.sha256"
           test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json"
           test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json.sha256"
+      # The release gate refuses a release whose catalogue does not verify, so the
+      # gate itself has to be exercised somewhere a failure is cheap. This signs
+      # with a throwaway key generated in the runner and thrown away with it: the
+      # release key stays in its secret and is never used on a pull request.
+      - name: Dry-run the Lens catalogue release gate
+        if: steps.changes.outputs.should_run == 'true'
+        run: |
+          SIGNED_DIR="$RUNNER_TEMP/dex-lens-catalog-dry-run-signed"
+          KEYGEN='import base64;from cryptography.hazmat.primitives import serialization as s;from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as K;print(base64.b64encode(K.generate().private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption())).decode())'
+          DEX_LENS_DRY_RUN_KEY="$(.lens-venv/bin/python -c "$KEYGEN")"
+          export DEX_LENS_DRY_RUN_KEY
+          echo "::add-mask::$DEX_LENS_DRY_RUN_KEY"
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
+            --release-root "$PWD" \
+            --output-dir "$SIGNED_DIR" \
+            --sign \
+            --signing-key-env DEX_LENS_DRY_RUN_KEY
+          .lens-venv/bin/python scripts/check-lens-catalog-release-asset.py \
+            --version "$VERSION" \
+            --dist "$SIGNED_DIR" \
+            --signing-key-env DEX_LENS_DRY_RUN_KEY
 
   build-release:
     needs: [quality, test-results]
@@ -441,11 +468,16 @@ jobs:
       - name: Build self-contained vault bundle
         if: steps.release_guard.outputs.already_published != 'true'
         run: bash scripts/build-vault-bundle.sh
+      # Every release must carry the signed Lens catalogue: heydex.ai pulls and
+      # signature-verifies it within fifteen minutes of a release, so a release
+      # that ships without it strands every Lens user on the previous catalogue
+      # with nothing to say why. This step and the two proofs below are therefore
+      # unconditional -- there is no repository variable that turns them off. The
+      # rule and its failure modes are written up in
+      # docs/dex-lens-catalog-release-contract.md.
       - name: Generate signed Dex Lens catalog
-        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        if: steps.release_guard.outputs.already_published != 'true'
         env:
-          # Front Desk release review and Lens M1 verifier confirmation are required before
-          # setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
           # The value must be a base64-encoded Ed25519 PEM private key stored as an
           # environment secret; no generated private key belongs in the repo.
           DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
@@ -465,8 +497,23 @@ jobs:
             --output-dir dist \
             --sign \
             --key-id dex-core-lens-1
+      # The release-blocking half of the rule: the built asset must parse, match
+      # its checksum sidecar, satisfy the vendored wire schema, name this exact
+      # release, and carry a signature that verifies under the release key. This
+      # runs before anything is attached, so a catalogue that would fail
+      # verification on heydex.ai stops the release rather than shipping.
+      - name: Prove the signed Lens catalogue before anything is attached
+        if: steps.release_guard.outputs.already_published != 'true'
+        env:
+          DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          .lens-venv/bin/python scripts/check-lens-catalog-release-asset.py \
+            --version "$VERSION" \
+            --dist dist \
+            --key-id dex-core-lens-1
       - name: Upload Dex Lens catalog for Pages
-        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        if: steps.release_guard.outputs.already_published != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: dex-lens-catalog-pages
@@ -495,20 +542,31 @@ jobs:
         if: steps.release_guard.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          LENS_CATALOG_ENABLED: ${{ vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          EXTRA=()
-          if [ "$LENS_CATALOG_ENABLED" = "true" ]; then
-            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json")
-            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json.sha256")
-          fi
           python3 scripts/release_publish.py publish \
             --version "$VERSION" \
             --channel stable \
             --dist dist \
             --target "$GITHUB_SHA" \
-            "${EXTRA[@]}"
+            --extra-asset "dist/dex-lens-catalog-v$VERSION.json" \
+            --extra-asset "dist/dex-lens-catalog-v$VERSION.json.sha256"
+      # Proof from the serving side, on the bytes GitHub actually hands out: the
+      # catalogue is attached to the published release and still verifies. The
+      # step above already read every asset back and compared it to the build
+      # before flipping the release public; this is the same claim made against
+      # the released artefact rather than the local one.
+      - name: Prove the published release serves the signed Lens catalogue
+        if: steps.release_guard.outputs.already_published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          .lens-venv/bin/python scripts/check-lens-catalog-release-asset.py \
+            --version "$VERSION" \
+            --from-release \
+            --key-id dex-core-lens-1
 
   build-release-beta:
     needs: [quality, test-results]
@@ -586,7 +644,7 @@ jobs:
           name: release-health-inputs
           path: .
       - name: Download Dex Lens latest catalog
-        if: needs['build-release'].outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
+        if: needs['build-release'].outputs.already_published != 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: dex-lens-catalog-pages

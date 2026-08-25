@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -150,6 +151,7 @@ def _registry(root: Path) -> None:
                         "docs_url": "https://github.com/davekilleen/Dex",
                         "since_release": "1.80.0",
                         "changed_in": [],
+                        "changed_in_release": "1.94.0",
                     }
                 ],
             },
@@ -205,6 +207,9 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert capability["docs_url"] == "https://github.com/davekilleen/Dex"
     assert capability["since_release"] == "1.80.0"
     assert capability["changed_in"] == []
+    # The stamp a fresh Lens machine reads: no local fingerprint history needed to
+    # know this entry last materially changed in 1.94.0, not when it first shipped.
+    assert capability["changed_in_release"] == "1.94.0"
     assert capability["release_provenance"] == "core-release"
     assert capability["evidence"][0]["level"] == "verified"
     assert capability["compatibility"]["minimum_lens_contract"] == "0.1.0"
@@ -589,6 +594,22 @@ def _corrupt_unreleased_since_version(data: dict) -> str:
     return "since_release has no shipped source in CHANGELOG.md"
 
 
+def _corrupt_unreleased_changed_in_release(data: dict) -> str:
+    data["entries"][0]["changed_in_release"] = "99.0.0"
+    return "changed_in_release has no shipped source in CHANGELOG.md"
+
+
+def _corrupt_changed_in_release_before_since_release(data: dict) -> str:
+    data["entries"][0]["since_release"] = "1.94.0"
+    data["entries"][0]["changed_in_release"] = "1.80.0"
+    return "changed_in_release 1.80.0 predates since_release 1.94.0"
+
+
+def _corrupt_missing_changed_in_release(data: dict) -> str:
+    del data["entries"][0]["changed_in_release"]
+    return "missing changed_in_release"
+
+
 def _lens_artifacts(root: Path) -> list[str]:
     """Every file the release workflow would publish for the Lens catalogue."""
     dist = root / "dist"
@@ -658,6 +679,9 @@ def test_signed_release_path_publishes_when_the_registry_is_sound(tmp_path: Path
         (_corrupt_unknown_job_reference, "unknown-job-reference"),
         (_corrupt_unknown_foundation_reference, "unknown-foundation-reference"),
         (_corrupt_unreleased_since_version, "unreleased-since-version"),
+        (_corrupt_unreleased_changed_in_release, "unreleased-changed-in-release"),
+        (_corrupt_changed_in_release_before_since_release, "changed-in-release-before-since"),
+        (_corrupt_missing_changed_in_release, "missing-changed-in-release"),
     ],
 )
 def test_broken_registry_entry_fails_closed_before_signing_or_publication(
@@ -727,7 +751,10 @@ def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> Non
     registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     wave3 = registry["entries"][-len(WAVE3_IDS) :]
 
-    assert registry["catalog_version"] == 3
+    # 4 since every entry gained a changed_in_release stamp and the wire entry
+    # gained the field to carry it; the number tells a consumer this is a new
+    # catalogue revision rather than a re-publish of the same one.
+    assert registry["catalog_version"] == 4
     assert len(registry["jobs"]) == 11
     assert [job["job_id"] for job in registry["jobs"][-2:]] == [
         "run-my-role",
@@ -856,6 +883,34 @@ def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_k
     assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
         entry["id"] for entry in registry["entries"]
     ]
+
+
+def test_real_registry_stamps_every_entry_with_the_release_it_last_changed_in() -> None:
+    """Lens reads these stamps on machines with no history of their own.
+
+    The producer already refuses a stamp that names an unshipped version or one
+    older than the entry's introduction. This checks the property that matters to
+    a reader: every shipped entry actually carries a stamp, so no capability shows
+    up in Lens with nothing to say about when it last moved.
+    """
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    released = set(
+        re.findall(
+            r"^## \[([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?)\]",
+            (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+    )
+
+    unstamped = [entry["id"] for entry in registry["entries"] if not entry.get("changed_in_release")]
+    assert not unstamped, f"registry entries carry no change stamp: {', '.join(unstamped)}"
+
+    wrong = [
+        f"{entry['id']} ({entry['changed_in_release']})"
+        for entry in registry["entries"]
+        if entry["changed_in_release"] not in released
+    ]
+    assert not wrong, f"change stamps name versions CHANGELOG.md never shipped: {', '.join(wrong)}"
 
 
 def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> None:

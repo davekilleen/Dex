@@ -118,6 +118,18 @@ def _semver(value: object, *, context: str) -> str:
     return text
 
 
+def _version_key(version: str) -> tuple[object, ...]:
+    """Order two shipped release versions, prereleases before their release."""
+    core, _, prerelease = version.partition("-")
+    numbers = tuple(int(part) for part in core.split("."))
+    if not prerelease:
+        return (*numbers, 1, ())
+    identifiers = tuple(
+        (0, int(part), "") if part.isdigit() else (1, 0, part) for part in prerelease.split(".")
+    )
+    return (*numbers, 0, identifiers)
+
+
 def _text_tuple(value: object, *, context: str, max_length: int = 512) -> tuple[str, ...]:
     if not isinstance(value, list) or not value:
         raise LensCatalogError(f"{context} must be a non-empty array")
@@ -404,6 +416,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "docs_url",
                 "since_release",
                 "changed_in",
+                "changed_in_release",
             },
             context=context,
         )
@@ -438,6 +451,24 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
         for version in changed:
             if version not in released_versions:
                 raise LensCatalogError(f"{context} changed_in has no shipped source in CHANGELOG.md: {version}")
+        # The stamp Lens reads on a machine with no local history: the release this
+        # entry last materially changed in. It is authored, not derived, so it must
+        # be checked against the entry's own release facts -- an entry cannot have
+        # last changed before it existed, nor before a release changed_in records.
+        changed_in_release = _semver(entry.get("changed_in_release"), context=f"{context} changed_in_release")
+        if changed_in_release not in released_versions:
+            raise LensCatalogError(
+                f"{context} changed_in_release has no shipped source in CHANGELOG.md: {changed_in_release}"
+            )
+        if _version_key(changed_in_release) < _version_key(since_release):
+            raise LensCatalogError(
+                f"{context} changed_in_release {changed_in_release} predates since_release {since_release}"
+            )
+        for version in changed:
+            if _version_key(changed_in_release) < _version_key(version):
+                raise LensCatalogError(
+                    f"{context} changed_in_release {changed_in_release} predates changed_in entry {version}"
+                )
         compatibility = _compatibility(entry.get("compatibility"), context=context)
         entries.append(
             {
@@ -458,6 +489,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "docs_url": _text(entry.get("docs_url"), context=f"{context} docs_url", max_length=256),
                 "since_release": since_release,
                 "changed_in": changed,
+                "changed_in_release": changed_in_release,
                 "source": source,
                 "version_hash": f"sha256:{source['sha256']}",
                 "core_release": f"v{release_version}",
@@ -481,6 +513,7 @@ def _build_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
                 "docs_url": entry["docs_url"],
                 "since_release": entry["since_release"],
                 "changed_in": entry["changed_in"],
+                "changed_in_release": entry["changed_in_release"],
                 "release_provenance": entry["release_provenance"],
                 "portable_brief": entry["portable_brief"],
             }

@@ -198,6 +198,11 @@
           "type": "array",
           "uniqueItems": true
         },
+        "changed_in_release": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Changed In Release",
+          "type": "string"
+        },
         "compatibility": {
           "$ref": "#/$defs/CapabilityCompatibilityV2"
         },
@@ -290,6 +295,7 @@
         "docs_url",
         "since_release",
         "changed_in",
+        "changed_in_release",
         "release_provenance",
         "portable_brief"
       ],

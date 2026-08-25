@@ -83,6 +83,17 @@ only when a host or credential change genuinely needs it.
 - **Generated files are never hand-edited**: `docs/architecture/INVENTORY.md`,
   `core/paths.json`, `packages/dex-contracts/dist/*`, `System/.release-catalog.json`.
   Change the source, re-run the generator (`scripts/generate-*.{py,mjs}`).
+- **Every release attaches the signed Dex Lens catalogue.** A stable release MUST
+  carry `dex-lens-catalog-v<version>.json` (plus its `.sha256`), signed with the
+  `DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64` CI secret. heydex.ai pulls and
+  signature-verifies that asset within ~15 minutes of every release, so a missing
+  or unverifiable one silently strands Lens users on the previous catalogue. CI
+  refuses the release if the asset is absent or its signature does not verify
+  (`scripts/check-lens-catalog-release-asset.py`); there is no variable that turns
+  this off. The private key stays in the CI secret — never in the repo, a build
+  artifact, or a log. Editing a catalogue entry means restamping its
+  `changed_in_release`, which a PR gate enforces. Full contract:
+  `docs/dex-lens-catalog-release-contract.md`.
 - **New top-level paths must be classified** in `core/portable_contract.py`
   (brain/seed/generated/vault/runtime) or CI fails — this is deliberate.
 - **No PII, no founder-machine content** — CI gates (`scripts/check-pii.sh`,
@@ -114,6 +125,7 @@ only when a host or credential change genuinely needs it.
 - Customization migration: `docs/customization-migration-threat-model.md`,
   `docs/plans/2026-07-24-customization-migration-mcp.md`
 - Doctor: `docs/dex-doctor-spec.md` · Merge gates: `docs/merge-gates.md`
+- Lens catalogue release contract: `docs/dex-lens-catalog-release-contract.md`
 - Distribution: `DISTRIBUTION_READY.md`, `docs/Dex_System/Distribution_Checklist.md`
 - Past root causes and runbooks: `docs/solutions/`
 - System docs canon: `docs/Dex_System/` is canonical; the copies under

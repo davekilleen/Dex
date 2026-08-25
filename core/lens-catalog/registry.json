@@ -1,6 +1,6 @@
 {
   "registry_version": 1,
-  "catalog_version": 3,
+  "catalog_version": 4,
   "jobs": [
     {
       "job_id": "plan-my-work",
@@ -99,7 +99,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.2"
     },
     {
       "id": "week-plan",
@@ -141,7 +142,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.2"
     },
     {
       "id": "process-meetings",
@@ -183,7 +185,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.2"
     },
     {
       "id": "dex-doctor",
@@ -225,7 +228,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "relationship-radar",
@@ -267,7 +271,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "save-insight",
@@ -309,7 +314,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "daily-review",
@@ -357,7 +363,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.2"
     },
     {
       "id": "week-review",
@@ -405,7 +412,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.2"
     },
     {
       "id": "meeting-prep",
@@ -459,7 +467,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.2"
     },
     {
       "id": "meeting-closeout",
@@ -501,7 +510,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "commitments",
@@ -543,7 +553,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "delegate-check",
@@ -585,7 +596,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "triage",
@@ -621,7 +633,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "project-health",
@@ -657,7 +670,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "decision-log",
@@ -699,7 +713,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "initiative-kickoff",
@@ -741,7 +756,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "product-brief",
@@ -777,7 +793,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "industry-truths",
@@ -813,7 +830,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "identity-snapshot",
@@ -849,7 +867,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "weekly-reflection",
@@ -891,7 +910,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "enable-semantic-search",
@@ -927,7 +947,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "xray",
@@ -963,7 +984,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.80.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "backup-setup",
@@ -1016,7 +1038,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.95.1",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "backup-now",
@@ -1058,7 +1081,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.95.1",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "backup-restore",
@@ -1105,7 +1129,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.95.1",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.95.2"
     },
     {
       "id": "account-plan",
@@ -1151,7 +1176,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "call-prep",
@@ -1197,7 +1223,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "deal-review",
@@ -1243,7 +1270,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "pipeline-health",
@@ -1289,7 +1317,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "pipeline-sync",
@@ -1337,7 +1366,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.1"
     },
     {
       "id": "customer-intel",
@@ -1383,7 +1413,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "feature-decision",
@@ -1429,7 +1460,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "roadmap",
@@ -1475,7 +1507,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.1"
     },
     {
       "id": "audience-intel",
@@ -1521,7 +1554,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "campaign-review",
@@ -1567,7 +1601,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "content-calendar",
@@ -1613,7 +1648,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "messaging-audit",
@@ -1659,7 +1695,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "architecture-decision",
@@ -1705,7 +1742,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "incident-review",
@@ -1751,7 +1789,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "tech-debt",
@@ -1797,7 +1836,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "board-prep",
@@ -1843,7 +1883,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "close-status",
@@ -1889,7 +1930,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "variance-analysis",
@@ -1935,7 +1977,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "expansion-opportunities",
@@ -1981,7 +2024,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "health-score",
@@ -2027,7 +2071,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "renewal-prep",
@@ -2073,7 +2118,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "metrics-review",
@@ -2119,7 +2165,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "process-audit",
@@ -2165,7 +2212,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "design-review",
@@ -2211,7 +2259,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "design-system-audit",
@@ -2257,7 +2306,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "career-setup",
@@ -2304,7 +2354,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "career-coach",
@@ -2351,7 +2402,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "resume-builder",
@@ -2398,7 +2450,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.0"
     },
     {
       "id": "quarter-plan",
@@ -2445,7 +2498,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.1"
     },
     {
       "id": "quarter-review",
@@ -2492,7 +2546,8 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.96.0",
-      "changed_in": []
+      "changed_in": [],
+      "changed_in_release": "1.96.1"
     }
   ]
 }

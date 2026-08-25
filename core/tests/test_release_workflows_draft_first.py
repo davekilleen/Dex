@@ -262,6 +262,79 @@ def test_lens_catalog_is_generated_before_the_immutable_release_tag_is_pushed() 
     )
 
 
+def test_every_release_must_carry_the_signed_lens_catalogue() -> None:
+    """No repository variable may make the catalogue optional.
+
+    While one existed, a release could ship with no catalogue at all and nothing
+    said so — heydex.ai simply kept serving the previous release's capabilities.
+    The rule is written up in docs/dex-lens-catalog-release-contract.md.
+    """
+    workflow = _load(CI_WORKFLOW)
+    stable = workflow["jobs"]["build-release"]
+    catalogue_steps = [
+        step
+        for step in stable["steps"]
+        if "Lens catalog" in step.get("name", "") or "Lens catalogue" in step.get("name", "")
+    ]
+    assert catalogue_steps, "the stable lane no longer builds the Lens catalogue at all"
+    for step in catalogue_steps:
+        assert "vars." not in step.get("if", ""), (
+            f"{step['name']} is gated on a repository variable; the catalogue is not optional"
+        )
+
+    publish = next(
+        step for step in stable["steps"] if step.get("name", "").startswith("Attach assets")
+    )
+    assert "vars." not in publish.get("if", "")
+    assert "--extra-asset \"dist/dex-lens-catalog-v$VERSION.json\"" in publish["run"]
+    assert "--extra-asset \"dist/dex-lens-catalog-v$VERSION.json.sha256\"" in publish["run"]
+
+
+def test_the_catalogue_signature_is_proved_before_publishing_and_after() -> None:
+    """A catalogue that would fail verification must stop the release, not ship."""
+    stable = _load(CI_WORKFLOW)["jobs"]["build-release"]
+    steps = [step["name"] for step in stable["steps"] if "name" in step]
+    by_name = {step["name"]: step for step in stable["steps"] if "name" in step}
+
+    before = "Prove the signed Lens catalogue before anything is attached"
+    after = "Prove the published release serves the signed Lens catalogue"
+    assert steps.index("Generate signed Dex Lens catalog") < steps.index(before)
+    assert steps.index(before) < steps.index("Attach assets, verify them, then make the release public")
+    assert steps.index("Attach assets, verify them, then make the release public") < steps.index(after)
+
+    assert "scripts/check-lens-catalog-release-asset.py" in by_name[before]["run"]
+    assert "--dist dist" in by_name[before]["run"]
+    assert "scripts/check-lens-catalog-release-asset.py" in by_name[after]["run"]
+    assert "--from-release" in by_name[after]["run"]
+    # Verification needs a key. It is derived from the signing secret in memory;
+    # no public key is committed and no private key leaves the secret.
+    for name in (before, after):
+        assert "DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64" in by_name[name]["env"]
+
+
+def test_the_pull_request_dry_run_exercises_the_release_gate_with_a_throwaway_key() -> None:
+    """The gate must be exercised where failing is cheap, never with the release key."""
+    dry_run = _load(CI_WORKFLOW)["jobs"]["lens-catalog-release-dry-run"]
+    step = next(
+        s for s in dry_run["steps"] if s.get("name") == "Dry-run the Lens catalogue release gate"
+    )
+    run = step["run"]
+    assert step["if"] == "steps.changes.outputs.should_run == 'true'"
+    assert "scripts/check-lens-catalog-release-asset.py" in run
+    assert "--signing-key-env DEX_LENS_DRY_RUN_KEY" in run
+    assert "DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64" not in run
+    assert "secrets." not in run
+    assert "::add-mask::" in run
+
+
+def test_a_registry_change_without_a_restamp_fails_the_pull_request() -> None:
+    quality = _load(CI_WORKFLOW)["jobs"]["quality"]
+    step = next(s for s in quality["steps"] if s.get("name") == "Lens catalogue change-stamp gate")
+
+    assert step["if"] == "github.event_name == 'pull_request'"
+    assert "scripts/check-lens-catalog-change-stamps.py" in step["run"]
+
+
 def test_the_draft_explains_the_queue_when_the_fleet_proof_holds_the_lock() -> None:
     """A release waiting hours behind the proof must say so, not look stalled."""
     source = PUBLISH_SCRIPT.read_text(encoding="utf-8")
