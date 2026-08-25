@@ -23,7 +23,6 @@ if str(_REPO_ROOT) not in sys.path:
 
 from core.path_safety import unsafe_existing_parent
 
-
 DECISION_BLOCK = "block"
 DECISION_ALLOW = "allow"
 

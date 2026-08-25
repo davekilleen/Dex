@@ -143,6 +143,13 @@ deep total, because the check registry can change.
 For each BROKEN item: what it means for the user in one plain sentence (what stopped
 working, since when if known), then the fix path.
 
+For **Agent harness capabilities**, use the saved receipt as the authority. Name every
+selected harness and keep the collector's four delivery labels exact: `automatic`,
+`on_demand`, `guided`, and `unavailable`. Explain `on_demand` as "available when asked".
+Never describe a guided MCP safety check as an automatic block; only a verified pre-tool
+interceptor earns that claim. If the check is OFF, calmly offer `/setup` to detect or choose
+harnesses. If it is BROKEN, do not guess from installed commands—use the returned repair.
+
 For the **Entity engine** check, keep the rendering short and plain: say whether entity
 creation is working, off, or needs attention, include the contact/observation counts,
 and call out unresolved verification results or quarantined pages. Mention stale

@@ -16,7 +16,6 @@ if str(_REPO_ROOT) not in sys.path:
 
 from core.entity_engine import parse_entity_page
 
-
 PEOPLE_SUBDIRS = ("Internal", "External", "CPO_Network")
 SKIP_EXTS = {
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".svg",
@@ -168,7 +167,13 @@ def find_people_in_file(vault: str | Path | None, file_path: str | Path | None) 
         target = Path(file_path)
     except (TypeError, ValueError, OSError):
         return {"skip": "invalid-file-path", "matches": []}
-    if not raw_path.strip() or "/People/" in raw_path.replace("\\", "/"):
+    normalised_raw_path = raw_path.replace("\\", "/")
+    if (
+        not raw_path.strip()
+        or normalised_raw_path == "People"
+        or normalised_raw_path.startswith("People/")
+        or "/People/" in normalised_raw_path
+    ):
         return {"skip": "missing-file-path-or-recursive-person-file", "matches": []}
     if target.suffix.lower() in SKIP_EXTS:
         return {"skip": f"unsupported-extension:{target.suffix.lower()}", "matches": []}

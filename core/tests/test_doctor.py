@@ -21,6 +21,7 @@ from core.lifecycle.bridge import activate_vault
 from core.lifecycle.catalog import with_catalog_identity
 from core.lifecycle.engine import AdoptionReceipt
 from core.lifecycle.ledger import record_adoption
+from core.onboarding.harness_receipt import build_receipt, canonical_receipt_bytes
 from core.tests.lifecycle_test_helpers import (
     SOURCE_COMMIT,
     write_bridge_release,
@@ -47,6 +48,7 @@ QUICK_IDS = [
     "smoke.history",
     "mcp.registered",
     "mcp.orphans",
+    "harness.capabilities",
     "python.env",
     "hooks.wired",
     "jobs.loaded",
@@ -794,6 +796,67 @@ def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS
     assert doctor.VERDICTS == frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
+
+
+def test_harness_capability_probe_is_calmly_off_before_selection(context):
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OFF"
+    assert "onboarding" in result.detail.lower()
+
+
+def test_harness_capability_probe_reports_modes_without_overclaiming(context):
+    receipt = build_receipt(
+        [
+            {
+                "id": "codex",
+                "display_name": "Codex",
+                "capabilities": [
+                    {"id": "vault", "mode": "automatic"},
+                    {"id": "mcp", "mode": "on_demand"},
+                    {"id": "pre-tool", "mode": "guided"},
+                ],
+            }
+        ],
+        detected_ids=("codex",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "Codex" in result.detail
+    assert "1 automatic" in result.detail
+    assert "1 on demand" in result.detail
+    assert "1 guided" in result.detail
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail == {
+        "selected": ["codex"],
+        "modes": {
+            "automatic": 1,
+            "guided": 1,
+            "on_demand": 1,
+            "unavailable": 0,
+        },
+        "fully_automatic": False,
+    }
+
+
+def test_harness_capability_probe_reports_malformed_receipt_as_broken(context):
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text("not JSON\n", encoding="utf-8")
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "BROKEN"
+    assert "harness" in result.detail.lower()
+    assert result.heal is not None
+    assert result.heal.applied is False
 
 
 def test_release_catalog_probe_is_calmly_off_for_older_installs(context):

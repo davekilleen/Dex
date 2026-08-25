@@ -617,6 +617,11 @@ QUICK_CHECKS = (
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
+    CheckDefinition(
+        "harness.capabilities",
+        "Agent harness capabilities",
+        "_probe_harness_capabilities",
+    ),
     CheckDefinition("python.env", "Python environment", "_probe_python_env"),
     CheckDefinition("hooks.wired", "Claude hooks", "_probe_hooks_wired"),
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
@@ -1243,6 +1248,50 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
             Heal(tier=1, action=f"Create the missing directories: {', '.join(missing)}.", applied=False),
         )
     return ProbeResult("OK", "All standard PARA directories exist")
+
+
+def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
+    """Report the saved host contract without promoting guided work to automatic."""
+    from core.onboarding.harness_receipt import (
+        HarnessReceiptError,
+        read_receipt,
+        summarize_receipt,
+    )
+
+    try:
+        receipt = read_receipt(context.vault_root)
+    except HarnessReceiptError as error:
+        return ProbeResult(
+            "BROKEN",
+            f"The saved agent harness profile is invalid: {_one_line(error)}",
+            Heal(
+                tier=3,
+                action="Run /setup and confirm the agent harness selection again.",
+                applied=False,
+            ),
+        )
+    if receipt is None:
+        return ProbeResult(
+            "OFF",
+            "Agent harness capabilities have not been recorded by onboarding yet; run /setup to detect or choose them",
+        )
+
+    summary = summarize_receipt(receipt)
+    display_names = [
+        str(profile["display_name"])
+        for profile in receipt["profiles"]
+        if isinstance(profile, dict)
+    ]
+    modes = summary["modes"]
+    assert isinstance(modes, dict)
+    detail = (
+        f"Selected {', '.join(display_names)}: "
+        f"{modes['automatic']} automatic, "
+        f"{modes['on_demand']} on demand, "
+        f"{modes['guided']} guided, and "
+        f"{modes['unavailable']} unavailable capability assignments"
+    )
+    return ProbeResult("OK", detail, structured_detail=summary)
 
 
 @dataclass(frozen=True)

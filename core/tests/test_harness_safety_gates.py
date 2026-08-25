@@ -11,7 +11,6 @@ from pathlib import Path
 from core.gates.safety import evaluate_safety_gate
 from core.mcp import work_server
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude" / "hooks" / "dex-safety-guard.sh"
 

@@ -15,7 +15,6 @@ from core.context.person_context import (
 from core.context.session_boot import build_session_boot
 from core.mcp import work_server
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SESSION_START = REPO_ROOT / ".claude" / "hooks" / "session-start.sh"
 PERSON_HOOK = REPO_ROOT / ".claude" / "hooks" / "person-context-injector.cjs"
@@ -194,6 +193,35 @@ def test_person_context_rejects_file_outside_vault(tmp_path: Path) -> None:
     outside.write_text("Meeting with Alice Smith", encoding="utf-8")
     result = inject_person_context_for_file(vault, outside)
     assert result.get("skip", "").startswith("target-file-outside-vault")
+
+
+def test_person_context_skips_relative_person_pages_to_prevent_recursion(
+    tmp_path: Path,
+) -> None:
+    vault = _write_vault(tmp_path)
+    relative = "People/Internal/Alice_Smith.md"
+
+    shared = inject_person_context_for_file(vault, relative)
+    hook = subprocess.run(
+        ["node", str(PERSON_HOOK)],
+        input=json.dumps({"tool_input": {"file_path": relative}}),
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env={
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(vault),
+            "VAULT_PATH": str(vault),
+            "DEX_HOOK_DEBUG": "1",
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        },
+        check=False,
+    )
+
+    assert shared == {"skip": "missing-file-path-or-recursive-person-file"}
+    assert hook.returncode == 0
+    assert "missing-file-path-or-recursive-person-file" in hook.stderr
+    assert hook.stdout == ""
 
 
 def test_work_mcp_advertises_context_tools() -> None:

@@ -38,7 +38,13 @@ try {
 
 const filePath = input?.tool_input?.path || input?.tool_input?.file_path || '';
 if (typeof filePath !== 'string') skip('invalid-file-path');
-if (!filePath || filePath.includes('/People/')) {
+const normalizedFilePath = filePath.replaceAll('\\', '/');
+if (
+  !filePath ||
+  normalizedFilePath === 'People' ||
+  normalizedFilePath.startsWith('People/') ||
+  normalizedFilePath.includes('/People/')
+) {
   skip('missing-file-path-or-recursive-person-file');
 }
 

@@ -18,7 +18,7 @@ def test_first_run_entrypoints_share_the_canonical_completion_marker() -> None:
     assert f"If `{COMPLETION_MARKER}` doesn't exist, this is a fresh setup." in claude_md
     assert f"If `{COMPLETION_MARKER}` already exists, setup is complete." in setup_skill
     assert "start_onboarding_session()" in setup_skill
-    assert ".claude/flows/onboarding.md" in setup_skill
+    assert "core/onboarding/FLOW.md" in setup_skill
 
 
 def test_first_run_entrypoints_do_not_use_seeded_folder_existence() -> None:

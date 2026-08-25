@@ -197,6 +197,101 @@ def test_fresh_provision_enables_companies_and_creates_its_room(tmp_path: Path) 
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_dry_run_then_saves_confirmed_harness_receipt_transactionally(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    profile = tmp_path / "profile.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "name": "Portable User",
+                "pillars": [{"name": "Build"}],
+                "harnesses": ["codex", "cowork"],
+                "harness_detected": ["codex"],
+                "harness_source": "user-confirmed",
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt_path = vault / "System/.dex/harness-profile.json"
+
+    preview = _invoke_provision(
+        vault,
+        "--onboard",
+        "--profile",
+        str(profile),
+        "--dry-run",
+    )
+
+    assert preview.returncode == 0, preview.stderr
+    preview_summary = json.loads(preview.stdout)
+    assert "System/.dex/harness-profile.json" in set(
+        preview_summary["mutation_receipt"]["declared_paths"]
+    )
+    assert not receipt_path.exists()
+
+    applied = _invoke_provision(
+        vault,
+        "--onboard",
+        "--profile",
+        str(profile),
+    )
+
+    assert applied.returncode == 0, applied.stderr
+    applied_summary = json.loads(applied.stdout)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema_version"] == 1
+    assert receipt["source"] == "user-confirmed"
+    assert receipt["selected"] == ["codex", "cowork"]
+    assert receipt["detected"] == ["codex"]
+    assert {profile["id"] for profile in receipt["profiles"]} == {
+        "codex",
+        "cowork",
+    }
+    assert "System/.dex/harness-profile.json" in set(
+        applied_summary["mutation_receipt"]["declared_paths"]
+    )
+    saved_profile = yaml.safe_load(
+        (vault / "System/user-profile.yaml").read_text(encoding="utf-8")
+    )
+    assert "harnesses" not in saved_profile
+    assert "harness_detected" not in saved_profile
+    assert "harness_source" not in saved_profile
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_onboarding_rejects_unknown_harness_before_any_vault_mutation(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(tmp_path)
+    profile = tmp_path / "profile.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "name": "Portable User",
+                "harnesses": ["imaginary-harness"],
+                "harness_source": "user-confirmed",
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = _snapshot_tree(vault)
+
+    completed = _invoke_provision(
+        vault,
+        "--onboard",
+        "--profile",
+        str(profile),
+    )
+
+    assert completed.returncode != 0
+    errors = " ".join(json.loads(completed.stdout)["errors"]).lower()
+    assert "unknown harness" in errors
+    assert _snapshot_tree(vault) == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_onboarding_refuses_room_source_drift_before_any_vault_mutation(
     tmp_path: Path,
 ) -> None:

@@ -12,6 +12,7 @@ const portableContract = require('../packages/dex-contracts/dist/portable-vault.
 const PROFILE_KEYS = new Set([
   'name', 'role', 'company', 'company_size', 'email_domain', 'work_email',
   'obsidian_mode', 'pillars', 'working_week', 'communication', 'capabilities',
+  'harnesses', 'harness_detected', 'harness_source',
 ]);
 
 const CAPABILITY_CATALOG = path.join(
@@ -394,12 +395,25 @@ function loadProfileOverlay(profilePath) {
       }
     }
   }
+  for (const key of ['harnesses', 'harness_detected']) {
+    if (overlay[key] !== undefined && (
+      !Array.isArray(overlay[key])
+      || overlay[key].length === 0 && key === 'harnesses'
+      || overlay[key].some(value => typeof value !== 'string' || !value)
+      || new Set(overlay[key]).size !== overlay[key].length
+    )) throw new Error(`Profile JSON ${key} must be a unique array of harness ids`);
+  }
+  if (
+    overlay.harness_source !== undefined
+    && !['user-confirmed', 'detected', 'migrated'].includes(overlay.harness_source)
+  ) throw new Error('Profile JSON harness_source is invalid');
   return overlay;
 }
 
 function buildFreshProfile(template, overlay) {
   const profile = structuredClone(template || {});
   for (const [key, value] of Object.entries(overlay)) {
+    if (['harnesses', 'harness_detected', 'harness_source'].includes(key)) continue;
     if (key === 'communication') {
       profile.communication = { ...(profile.communication || {}), ...value };
     } else if (key === 'capabilities') {
@@ -633,6 +647,7 @@ function provisionMutationTargets(vaultRoot, options) {
       ['System/pillars.yaml', 'file'],
       ['System/.onboarding-complete', 'file'],
       ['System/.dex', 'directory'],
+      ...(options.onboard ? [['System/.dex/harness-profile.json', 'file']] : []),
       ['CLAUDE.md', 'file'],
       ['.mcp.json', 'file'],
       ['core/paths.json', 'file'],
@@ -748,6 +763,51 @@ function routeProvisionTransaction(
     return parsed;
   } catch (_) {
     throw new Error('Provision transaction service returned an invalid response');
+  }
+}
+
+function buildHarnessReceipt(overlay) {
+  if (!Array.isArray(overlay.harnesses) || overlay.harnesses.length === 0) return null;
+  const python = process.env.DEX_HARNESS_PYTHON
+    || process.env.DEX_PYTHON
+    || (process.platform === 'win32' ? 'python' : 'python3');
+  const repoRoot = path.resolve(__dirname, '..');
+  const separator = process.platform === 'win32' ? ';' : ':';
+  const result = childProcess.spawnSync(
+    python,
+    [
+      '-m',
+      'core.onboarding.harness_receipt',
+      '--selected-json',
+      JSON.stringify(overlay.harnesses),
+      '--detected-json',
+      JSON.stringify(overlay.harness_detected || []),
+      '--source',
+      overlay.harness_source || 'detected',
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PYTHONPATH: process.env.PYTHONPATH
+          ? `${repoRoot}${separator}${process.env.PYTHONPATH}`
+          : repoRoot,
+      },
+    },
+  );
+  if (result.error) {
+    throw new Error(`Harness receipt authority could not start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`Harness receipt authority refused provisioning: ${(result.stderr || result.stdout).trim()}`);
+  }
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (!parsed || parsed.schema_version !== 1) throw new Error('unsupported schema');
+    return `${JSON.stringify(parsed, null, 2)}\n`;
+  } catch (_) {
+    throw new Error('Harness receipt authority returned an invalid response');
   }
 }
 
@@ -1326,6 +1386,16 @@ function provision(options) {
     );
 
     const markerPath = path.join(vaultRoot, 'System', '.onboarding-complete');
+    const harnessReceiptContent = options.onboard ? buildHarnessReceipt(overlay) : null;
+    if (harnessReceiptContent !== null) {
+      writeIfChanged(
+        path.join(vaultRoot, 'System', '.dex', 'harness-profile.json'),
+        harnessReceiptContent,
+        reporter,
+        options.dryRun,
+        provisionTransaction,
+      );
+    }
     const packagePath = path.join(vaultRoot, 'package.json');
     let version = null;
     try { version = JSON.parse(fs.readFileSync(packagePath, 'utf8')).version || null; } catch (_) { /* optional */ }

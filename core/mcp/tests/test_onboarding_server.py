@@ -222,6 +222,196 @@ def test_onboarding_flow_requires_context_preview_and_explicit_approval() -> Non
     )
 
 
+def test_onboarding_flow_previews_and_confirms_multi_harness_selection() -> None:
+    flow = (REPO_ROOT / ".claude/flows/onboarding.md").read_text(encoding="utf-8")
+    selection = flow.split("### Choose where Dex should work", 1)[1].split(
+        "### Question UI detection",
+        1,
+    )[0]
+
+    assert "inspect_harnesses" in selection
+    assert "save_harness_selection" in selection
+    assert "Allow multiple choices" in selection
+    assert "automatic" in selection
+    assert "on demand" in selection
+    assert "guided" in selection
+    assert "unavailable" in selection
+    assert selection.index("capability preview") < selection.index("confirmed=true")
+
+
+class _FakeHarnessProfile:
+    def __init__(self, profile_id: str, *, pre_tool: str = "unavailable"):
+        self.id = profile_id
+        self._payload = {
+            "id": profile_id,
+            "display_name": profile_id.replace("-", " ").title(),
+            "capabilities": [
+                {"id": "vault", "mode": "automatic"},
+                {"id": "mcp", "mode": "on_demand"},
+                {"id": "pre-tool", "mode": pre_tool},
+            ],
+        }
+
+    def to_dict(self):
+        return dict(self._payload)
+
+    def capability_rows(self):
+        return list(self._payload["capabilities"])
+
+
+class TestHarnessSelection:
+    def test_start_detects_harnesses_without_confirming_for_the_user(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "detect_harnesses",
+            lambda **_kwargs: (
+                _FakeHarnessProfile("codex", pre_tool="automatic"),
+                _FakeHarnessProfile("pi"),
+            ),
+        )
+
+        payload = _call_tool("start_onboarding_session", {"force_new": True})
+
+        setup = payload["data"]["harness_setup"]
+        assert setup == {
+            "detected": ["codex", "pi"],
+            "selected": ["codex", "pi"],
+            "confirmed": False,
+        }
+        assert payload["data"]["harness_capabilities"][0]["id"] == "codex"
+
+    def test_selection_supports_multiple_harnesses_and_requires_confirmation(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        profiles = {
+            "codex": _FakeHarnessProfile("codex", pre_tool="automatic"),
+            "pi": _FakeHarnessProfile("pi"),
+        }
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "get_profile",
+            profiles.__getitem__,
+        )
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        refused = _call_tool(
+            "save_harness_selection",
+            {"harnesses": ["codex", "pi"], "confirmed": False},
+        )
+        accepted = _call_tool(
+            "save_harness_selection",
+            {"harnesses": ["codex", "pi"], "confirmed": True},
+        )
+
+        assert refused["success"] is False
+        assert accepted["success"] is True
+        assert onboarding_server.load_session()["harness_setup"] == {
+            "detected": [],
+            "selected": ["codex", "pi"],
+            "confirmed": True,
+        }
+        assert accepted["data"]["profiles"][0]["capabilities"][2] == {
+            "id": "pre-tool",
+            "mode": "automatic",
+        }
+
+    def test_selection_rejects_unknown_and_duplicate_harnesses(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "get_profile",
+            lambda profile_id: (
+                _FakeHarnessProfile(profile_id)
+                if profile_id == "codex"
+                else (_ for _ in ()).throw(KeyError(profile_id))
+            ),
+        )
+        onboarding_server.save_session(onboarding_server.create_new_session())
+
+        duplicate = _call_tool(
+            "save_harness_selection",
+            {"harnesses": ["codex", "codex"], "confirmed": True},
+        )
+        unknown = _call_tool(
+            "save_harness_selection",
+            {"harnesses": ["magic-agent"], "confirmed": True},
+        )
+
+        assert duplicate["success"] is False
+        assert "duplicate" in duplicate["error"].lower()
+        assert unknown["success"] is False
+        assert "unknown" in unknown["error"].lower()
+
+    def test_tool_catalog_exposes_inspection_and_selection(self):
+        tools = asyncio.run(onboarding_server.handle_list_tools())
+        by_name = {tool.name: tool for tool in tools}
+
+        assert "inspect_harnesses" in by_name
+        assert "save_harness_selection" in by_name
+        assert by_name["save_harness_selection"].inputSchema["required"] == [
+            "harnesses",
+            "confirmed",
+        ]
+
+    def test_new_portable_session_cannot_finalize_before_harness_confirmation(
+        self, tmp_path, monkeypatch
+    ):
+        session_file = tmp_path / "System/.onboarding-session.json"
+        monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "detect_harnesses",
+            lambda **_kwargs: (_FakeHarnessProfile("codex"),),
+        )
+        _call_tool("start_onboarding_session", {"force_new": True})
+        session = onboarding_server.load_session()
+        session["completed_steps"] = list(onboarding_server.REQUIRED_ONBOARDING_STEPS)
+        session["calendar_addressed"] = True
+        session["data"] = {
+            "name": "Jane",
+            "role": "Founder",
+            "company_size": "startup",
+            "email_domain": "acme.com",
+            "pillars": ["Build", "Learn"],
+            "communication": {},
+            "working_week": {"days": ["monday"]},
+        }
+        onboarding_server.save_session(session)
+
+        status = _call_tool("get_onboarding_status")
+        finalized = _call_tool("finalize_onboarding", {"dry_run": True})
+
+        assert status["data"]["harness_selection_confirmed"] is False
+        assert status["data"]["ready_to_finalize"] is False
+        assert finalized["success"] is False
+        assert "confirm where Dex should work" in finalized["error"]
+
+    def test_unconfirmed_detection_is_not_approved_for_provisioning(self):
+        session = onboarding_server.create_new_session()
+        session["harness_setup"] = {
+            "detected": ["codex"],
+            "selected": ["codex"],
+            "confirmed": False,
+        }
+
+        assert "harnesses" not in onboarding_server._approved_profile_session_data(session)
+
+        session["harness_setup"]["confirmed"] = True
+        approved = onboarding_server._approved_profile_session_data(session)
+        assert approved["harnesses"] == ["codex"]
+        assert approved["harness_source"] == "user-confirmed"
+
+
 class TestStepOrdering:
     def test_rejects_out_of_order_step_with_next_expected_step(
         self, tmp_path, monkeypatch

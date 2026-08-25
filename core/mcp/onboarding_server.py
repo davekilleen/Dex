@@ -47,6 +47,7 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
+from core.harnesses import registry as harness_registry
 from core.lifecycle import service as lifecycle_service
 from core.mcp.analytics_receipts import (
     surface_analytics_attempt,
@@ -264,6 +265,61 @@ def create_new_session() -> Dict:
     }
 
 
+def _harness_profile_payload(profile: object) -> Dict[str, Any]:
+    """Return only the stable, non-secret fields onboarding may display/save."""
+    payload = profile.to_dict()
+    capabilities = profile.capability_rows()
+    return {
+        "id": payload["id"],
+        "display_name": getattr(
+            profile,
+            "display_name",
+            payload.get("display_name", payload.get("name", payload["id"])),
+        ),
+        "capabilities": capabilities,
+    }
+
+
+def inspect_harnesses(explicit: List[str] | None = None) -> Dict[str, Any]:
+    """Return detected/selected profiles plus every manual choice."""
+    if explicit is None:
+        selected_profiles = harness_registry.detect_harnesses()
+        detected_ids = [profile.id for profile in selected_profiles]
+    else:
+        if not isinstance(explicit, list) or any(
+            not isinstance(profile_id, str) or not profile_id
+            for profile_id in explicit
+        ):
+            raise ValueError("harnesses must be a list of profile ids")
+        if not explicit:
+            raise ValueError("choose at least one harness")
+        if len(explicit) != len(set(explicit)):
+            raise ValueError("harness selection contains a duplicate profile")
+        try:
+            selected_profiles = tuple(
+                harness_registry.get_profile(profile_id) for profile_id in explicit
+            )
+        except KeyError as error:
+            raise ValueError(f"unknown harness profile: {error.args[0]}") from error
+        detected_ids = []
+
+    return {
+        "detected": sorted(detected_ids),
+        "selected": sorted(profile.id for profile in selected_profiles),
+        "profiles": [
+            _harness_profile_payload(profile)
+            for profile in sorted(selected_profiles, key=lambda item: item.id)
+        ],
+        "available": [
+            {
+                "id": profile.id,
+                "display_name": profile.display_name,
+            }
+            for profile in harness_registry.list_profiles()
+        ],
+    }
+
+
 def _calendar_addressed(session: Dict[str, Any]) -> bool:
     """Return whether calendar setup was validated or explicitly skipped."""
     return session.get("calendar_addressed") is True or bool(
@@ -271,11 +327,31 @@ def _calendar_addressed(session: Dict[str, Any]) -> bool:
     )
 
 
+def _harness_selection_confirmed(session: Dict[str, Any]) -> bool:
+    """Require confirmation for new portable sessions, while allowing legacy resumes."""
+    if "harness_setup" not in session:
+        return True
+    setup = session.get("harness_setup")
+    return isinstance(setup, dict) and setup.get("confirmed") is True
+
+
 def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
     """Exclude context that requires a separate explicit lifecycle approval."""
     data = dict(session["data"])
     for field in ("calendar", "calendar_source", "work_email", "working_context"):
         data.pop(field, None)
+    harness_setup = session.get("harness_setup", {})
+    if isinstance(harness_setup, dict) and harness_setup.get("confirmed") is True:
+        selected = harness_setup.get("selected")
+        if isinstance(selected, list) and selected:
+            data["harnesses"] = selected
+            detected = harness_setup.get("detected", [])
+            data["harness_detected"] = detected if isinstance(detected, list) else []
+            data["harness_source"] = (
+                "user-confirmed"
+                if harness_setup.get("confirmed") is True
+                else "detected"
+            )
     return data
 
 
@@ -1639,6 +1715,49 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="inspect_harnesses",
+            description=(
+                "Detect installed agent harnesses or preview an explicit selection, "
+                "including what Dex can deliver automatically, on demand, with guidance, "
+                "or not at all in each host. This does not write anything."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "harnesses": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "uniqueItems": True,
+                        "minItems": 1,
+                        "description": "Optional profile ids to preview instead of auto-detection",
+                    }
+                },
+            },
+        ),
+        types.Tool(
+            name="save_harness_selection",
+            description=(
+                "Save the user's confirmed one-or-more harness selection in the resumable "
+                "onboarding session. The final receipt is written only by provisioning."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "harnesses": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "uniqueItems": True,
+                        "minItems": 1,
+                    },
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "True only after the user has seen the capability preview",
+                    },
+                },
+                "required": ["harnesses", "confirmed"],
+            },
+        ),
+        types.Tool(
             name="validate_and_save_step",
             description="Validate and save data for a specific onboarding step. Enforces validation rules.",
             inputSchema={
@@ -1901,12 +2020,70 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
+        elif name == "inspect_harnesses":
+            explicit = arguments.get("harnesses")
+            try:
+                inspected = inspect_harnesses(explicit)
+            except ValueError as error:
+                result = create_error_response(str(error))
+            else:
+                result = create_success_response(
+                    inspected,
+                    "Review which Dex behaviors are automatic, on demand, guided, or unavailable before confirming.",
+                )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "save_harness_selection":
+            session = load_session()
+            if not session:
+                result = create_error_response(
+                    "No active session",
+                    suggestion="Call start_onboarding_session first",
+                )
+            elif arguments.get("confirmed") is not True:
+                result = create_error_response(
+                    "Harness selection requires explicit confirmation after the capability preview",
+                    suggestion="Call inspect_harnesses, show the preview, then set confirmed=true",
+                )
+            else:
+                try:
+                    inspected = inspect_harnesses(arguments.get("harnesses"))
+                except ValueError as error:
+                    result = create_error_response(str(error))
+                else:
+                    previous = session.get("harness_setup", {})
+                    detected = previous.get("detected", []) if isinstance(previous, dict) else []
+                    session["harness_setup"] = {
+                        "detected": detected if isinstance(detected, list) else [],
+                        "selected": inspected["selected"],
+                        "confirmed": True,
+                    }
+                    session["harness_capabilities"] = inspected["profiles"]
+                    save_session(session)
+                    result = create_success_response(
+                        {
+                            "harness_setup": session["harness_setup"],
+                            "profiles": inspected["profiles"],
+                        },
+                        "Harness selection confirmed. Doctor will preserve the same capability truth.",
+                    )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
         elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
             
             session = load_session()
             
             if session and not force_new:
+                if "harness_setup" not in session:
+                    inspected = inspect_harnesses()
+                    session["harness_setup"] = {
+                        "detected": inspected["detected"],
+                        "selected": inspected["selected"],
+                        "confirmed": False,
+                    }
+                    session["harness_capabilities"] = inspected["profiles"]
+                    save_session(session)
                 result = create_success_response(
                     session,
                     f"Resuming onboarding session. Completed steps: {len(session['completed_steps'])}/{ONBOARDING_STEPS}"
@@ -1916,6 +2093,13 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     logger.info("Creating new session (force_new=True)")
                 
                 session = create_new_session()
+                inspected = inspect_harnesses()
+                session["harness_setup"] = {
+                    "detected": inspected["detected"],
+                    "selected": inspected["selected"],
+                    "confirmed": False,
+                }
+                session["harness_capabilities"] = inspected["profiles"]
                 save_session(session)
                 result = create_success_response(
                     session,
@@ -2343,6 +2527,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 len(completed_required) / len(REQUIRED_ONBOARDING_STEPS) * 100
             )
             calendar_addressed = _calendar_addressed(session)
+            harness_confirmed = _harness_selection_confirmed(session)
             
             status = {
                 "completed_steps": completed,
@@ -2351,8 +2536,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 "current_step": session['current_step'],
                 "progress_percent": round(progress, 1),
                 "calendar_addressed": calendar_addressed,
-                "ready_to_finalize": len(missing) == 0 and calendar_addressed,
-                "session_data": session['data']
+                "harness_selection_confirmed": harness_confirmed,
+                "ready_to_finalize": (
+                    len(missing) == 0 and calendar_addressed and harness_confirmed
+                ),
+                "session_data": session['data'],
+                "harness_setup": session.get(
+                    "harness_setup",
+                    {"detected": [], "selected": [], "confirmed": False},
+                ),
+                "harness_capabilities": session.get("harness_capabilities", []),
             }
             
             result = create_success_response(status)
@@ -2439,6 +2632,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
             if not _calendar_addressed(session):
                 result = create_error_response(CALENDAR_REQUIRED_ERROR)
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if not _harness_selection_confirmed(session):
+                result = create_error_response(
+                    "Cannot finalize: confirm where Dex should work first",
+                    suggestion=(
+                        "Call inspect_harnesses, show the capability preview, then call "
+                        "save_harness_selection with confirmed=true"
+                    ),
+                )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Verify all required steps completed
