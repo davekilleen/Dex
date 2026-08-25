@@ -173,7 +173,7 @@ Perfect. Your morning journal is saved. Ready to build your daily plan around th
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark journaling as used.
+Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `Journaling`. This ticks the feature's box in `System/usage_log.md`, which is what `/dex-level-up` reads to recommend features that have not been tried. It writes locally and sends nothing, so it runs whether or not analytics is enabled. (Named by label rather than by `/journal`, because that command appears against both `Journaling` and `Journaling setup` and the tool refuses to guess between them.)
 
 **Analytics (Silent):**
 
