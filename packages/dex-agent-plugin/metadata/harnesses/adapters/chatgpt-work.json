@@ -1,0 +1,12 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "chatgpt-work",
+  "status": "guide",
+  "kind": "companion-guide",
+  "native_paths": [],
+  "example": {
+    "manifest": null,
+    "install_guide": "Use a user-approved ChatGPT Work companion bridge. It must expose the vault and MCP explicitly before Dex can claim Tier 1 or Tier 2 behavior.",
+    "portable_surface": [".agents/skills/", "AGENTS.md"]
+  }
+}

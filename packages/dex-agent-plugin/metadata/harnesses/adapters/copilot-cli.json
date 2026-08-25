@@ -1,0 +1,12 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "copilot-cli",
+  "status": "supported",
+  "kind": "install-guide",
+  "native_paths": [".agents/skills/", "AGENTS.md", "mcp.json"],
+  "example": {
+    "manifest": null,
+    "install_guide": "Copy the generated .agents/skills tree and AGENTS.md into the workspace, then register the MCP server using the Copilot CLI's documented MCP command. Do not assume Claude settings hooks.",
+    "portable_surface": [".agents/skills/", "AGENTS.md"]
+  }
+}

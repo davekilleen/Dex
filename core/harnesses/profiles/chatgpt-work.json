@@ -1,0 +1,80 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/chatgpt-work.json",
+    "kind": "companion-guide",
+    "manifest": null,
+    "status": "guide"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "A local vault bridge must be explicitly supplied by the companion.",
+      "status": "not-verified",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "ChatGPT Work connectors are not the same as a local MCP client.",
+      "status": "not-verified",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "No local Agent Skills loader is assumed.",
+      "status": "not-verified",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "No Dex hook lifecycle is exposed by this descriptor.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "Lifecycle is controlled by the ChatGPT product.",
+      "status": "not-verified",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "Dex cannot promise a local scheduler here.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "Conversation prompts are host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "Do not install a local plugin unless the client explicitly supports Agent Plugins v1.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "CHATGPT_WORK",
+      "OPENAI_WORK",
+      "CHATGPT_WORK_COMPANION"
+    ],
+    "paths": [
+      "/.chatgpt-work/"
+    ]
+  },
+  "display_name": "ChatGPT Work companion",
+  "id": "chatgpt-work",
+  "limitations": [
+    "This descriptor intentionally avoids promising local filesystem, MCP, or plugin parity."
+  ],
+  "modes": [
+    "tier-0-vault"
+  ],
+  "name": "ChatGPT Work companion",
+  "summary": "A ChatGPT Work companion can provide a conversational front end, but local Dex vault and plugin loading are not assumed.",
+  "support_level": "companion",
+  "vendor": "OpenAI"
+}

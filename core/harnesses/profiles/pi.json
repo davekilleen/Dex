@@ -1,0 +1,85 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/pi.json",
+    "kind": "install-guide",
+    "manifest": null,
+    "status": "supported"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "The workspace is available to Pi extensions and skills.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "Pi does not provide a built-in MCP client in this descriptor; use an explicit bridge.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "AGENTS.md and Agent Skills are the portable instruction surface.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "Pi events are not the Claude hook contract.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "Pi extensions can observe lifecycle events.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "No Dex scheduler is assumed.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "Pi exposes interactive conversation input.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "Install only if the Pi host adds an Agent Plugins loader.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "PI_CLI",
+      "PI_CODING_AGENT",
+      "PI_SESSION"
+    ],
+    "paths": [
+      "/.pi/",
+      "/pi/"
+    ]
+  },
+  "display_name": "Pi",
+  "evidence": [
+    "https://pi.dev"
+  ],
+  "id": "pi",
+  "limitations": [
+    "MCP and scheduling require a separately installed bridge or host integration."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-2-skills"
+  ],
+  "name": "Pi",
+  "summary": "Local coding agent with workspace files, Agent Skills, and lifecycle events, but no built-in Dex MCP or scheduler promise.",
+  "support_level": "supported",
+  "vendor": "Pi coding agent"
+}

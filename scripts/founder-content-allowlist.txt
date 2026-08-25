@@ -51,6 +51,8 @@
 ^\.claude/hooks/.*:.*:cursor$
 ^\.claude/skills/.*:.*:cursor$
 ^\.agents/skills/.*:.*:cursor$
+# The Agent Plugin is the generated portable mirror of the supported skills.
+^packages/dex-agent-plugin/skills/.*:.*:cursor$
 ^\.claude/reference/.*:.*:cursor$
 ^\.claude/flows/onboarding\.md:.*:cursor$
 ^\.claude/plugins/.*:.*:cursor$

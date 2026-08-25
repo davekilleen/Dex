@@ -1,0 +1,83 @@
+{
+  "adapter": {
+    "directory": ".codex-plugin",
+    "kind": "codex-plugin-example",
+    "manifest": ".codex-plugin/plugin.json",
+    "status": "example"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "The active workspace is available to the agent.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "MCP servers can be registered by the host.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "AGENTS.md and the generated .agents/skills surface are portable.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "Claude settings hooks are not assumed.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "Codex lifecycle behavior is host-defined, not Dex hook-compatible.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "Dex does not assume a Codex scheduler.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "Conversation input is host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "Use the generic Agent Plugin package only when the client advertises v1 support.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "CODEX_CLI",
+      "CODEX_HOME",
+      "CODEX_THREAD_ID"
+    ],
+    "paths": [
+      "/.codex/",
+      "/codex/"
+    ]
+  },
+  "display_name": "Codex",
+  "id": "codex",
+  "limitations": [
+    "No Claude-only hook parity is claimed."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Codex",
+  "summary": "MCP-capable coding harness with AGENTS.md and generated Agent Skills, without Claude hook semantics.",
+  "support_level": "supported",
+  "vendor": "OpenAI"
+}

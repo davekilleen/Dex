@@ -1,0 +1,11 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "bb",
+  "status": "internal",
+  "kind": "internal-descriptor",
+  "native_paths": [".bb/dex-harness.json", ".agents/skills/"],
+  "example": {
+    "manifest": {"harness": "bb", "skills_root": ".agents/skills", "mcp": "provided-by-runner"},
+    "install_guide": "Use the BB runner's workspace setup; do not copy host credentials into the vault."
+  }
+}

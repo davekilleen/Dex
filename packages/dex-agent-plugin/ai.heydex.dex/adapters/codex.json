@@ -1,0 +1,17 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "codex",
+  "status": "example",
+  "kind": "codex-plugin-example",
+  "native_paths": [".codex-plugin/plugin.json", ".agents/skills/", "AGENTS.md"],
+  "example": {
+    "manifest": {
+      "name": "dex",
+      "version": "1.0.0",
+      "skills": ".agents/skills/",
+      "instructions": "AGENTS.md",
+      "mcp": "mcp.json"
+    },
+    "note": "Treat this as an adapter example until the installed Codex build advertises a stable .codex-plugin schema."
+  }
+}

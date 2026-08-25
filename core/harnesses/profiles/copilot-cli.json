@@ -1,0 +1,86 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/copilot-cli.json",
+    "kind": "install-guide",
+    "manifest": null,
+    "status": "supported"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "The current working directory is available to the CLI.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "Copilot CLI can use configured MCP servers.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "Use the Agent Skills surface when the installed CLI version advertises it.",
+      "status": "portable",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "Claude hooks are not portable to Copilot CLI.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "Lifecycle events are client-defined.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "No Dex scheduler contract is assumed.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "CLI interaction is host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "Install the generic package only after checking client support.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "COPILOT_CLI",
+      "GH_COPILOT",
+      "GITHUB_COPILOT"
+    ],
+    "paths": [
+      "/.copilot/",
+      "/copilot/"
+    ]
+  },
+  "display_name": "GitHub Copilot CLI",
+  "evidence": [
+    "https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli"
+  ],
+  "id": "copilot-cli",
+  "limitations": [
+    "The descriptor is intentionally version-neutral where Copilot CLI behavior changes by release."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "GitHub Copilot CLI",
+  "summary": "CLI harness with local files, MCP, and portable instructions; lifecycle and scheduling remain host-owned.",
+  "support_level": "supported",
+  "vendor": "GitHub"
+}

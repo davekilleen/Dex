@@ -1,0 +1,88 @@
+{
+  "adapter": {
+    "directory": ".claude-plugin",
+    "kind": "claude-plugin-example",
+    "manifest": ".claude-plugin/plugin.json",
+    "status": "reference"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "Local filesystem access is available in the active project.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "Project and user MCP configuration are supported.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "Canonical .claude/skills are loaded by Claude Code.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "PreToolUse, prompt-submit, session, and post-tool hooks are available.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "SessionStart and SessionEnd surfaces are available.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "Dex's OS-scheduled jobs are independent of the chat harness.",
+      "status": "scheduled",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "AskUserQuestion is available when the client provides it.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "The portable Agent Plugins package remains the compatibility floor.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "CLAUDE_CODE",
+      "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_PROJECT_DIR",
+      "CLAUDE_CODE_VERSION"
+    ],
+    "paths": [
+      "/.claude/",
+      "/claude-code/"
+    ]
+  },
+  "display_name": "Claude Code",
+  "evidence": [
+    "https://code.claude.com/docs/en/hooks-guide"
+  ],
+  "id": "claude-code",
+  "limitations": [
+    "Claude-only hooks are not copied into harness-neutral adapters."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills",
+    "tier-3-full"
+  ],
+  "name": "Claude Code",
+  "summary": "Dex's Tier 3 reference harness with native skills, MCP, hooks, and session lifecycle support.",
+  "support_level": "reference",
+  "vendor": "Anthropic"
+}

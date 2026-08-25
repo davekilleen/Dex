@@ -1,0 +1,204 @@
+# Week Review - Agent Instructions
+
+You are gathering context for a weekly review synthesis. Collect data from all
+available sources, analyse patterns, and write a complete weekly synthesis
+file. You gather evidence; the interactive review (assessments, goal updates,
+career evidence capture, next week's priorities) happens in the main
+conversation from your findings. Be direct and concise: concrete numbers, not
+vague percentages. Skip any section gracefully if a tool fails.
+
+**Week ending:** {{TARGET_DATE}} ({{DAY_NAME}}, {{MONTH}} {{DD}}, {{YYYY}})
+**Week start (first working day):** {{WEEK_START_DATE}}
+
+**Note:** PostToolUse hooks from the parent skill do not fire in this subagent
+context. Do not rely on hook-driven side effects for any write you make.
+
+---
+
+## Phase 1: Data Gathering
+
+Gather ALL of the following, in parallel where possible.
+
+### 1.1 Weekly Priority Completion
+
+```
+Use: get_week_progress()
+Use: get_week_priorities()
+```
+
+For each weekly priority, determine:
+- **Complete:** what was the deliverable? When was it finished?
+- **In Progress:** what specifically got done? What is left?
+- **Not Started:** why? Should it carry forward?
+
+### 1.2 Task Completion Stats
+
+Read `03-Tasks/Tasks.md` and scan for completion timestamps in the week
+({{WEEK_START_DATE}} to {{TARGET_DATE}}):
+- Tasks completed, tasks added mid-week, tasks carried over
+- Completion rate
+
+### 1.3 Quarterly Goals Progress (if enabled)
+
+```
+Use: get_quarterly_goals()
+Use: get_goal_status(goal_id="...")  # for each goal
+```
+
+Extract: milestones completed this week, total done vs total, weeks since last
+milestone, specific accomplishments that moved each goal.
+
+### 1.4 Daily Completion Rate Trend
+
+Check `07-Archives/Plans/` for this week's daily plans and
+`07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` for each working day. Extract
+`plan_completion_rate` from review frontmatter where present. If only a plan
+exists for a day, count it as evidence of the planning ritual and note which
+focus items were checked off in the plan file itself. Build the daily trend
+table.
+
+### 1.5 Meeting Analysis
+
+Check `00-Inbox/Meetings/` for this week's meeting notes, and:
+
+```
+Use: calendar_get_events_with_attendees(start_date="{{WEEK_START_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
+```
+
+Apply CLAUDE.md's **Calendar response confidence contract** before consuming
+events or deriving meeting counts from them.
+
+Extract: meetings held, key decisions, action items created, new contacts, and
+follow-ups that may have slipped.
+
+### 1.6 Email Weekly Review (if connected)
+
+Check `System/integrations/config.yaml`. Also treat a registered `apple-mail-mcp`
+server as connected. Before querying any connected email source, run
+`python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`mail.apple-search` check reports `OK` / `feature_status: ok`. If healthy, analyse
+the week's mail:
+- Total volume (received vs sent)
+- Key relationship threads (most contact)
+- Unresolved threads carrying into next week
+- Promises made with no matching task
+- New contacts who may need person pages
+
+For Apple Mail, do not interpret an empty search as an empty mailbox unless that
+check is OK. If a connected source is broken or unknown, **do not silently skip**:
+report it under skipped sources with Doctor's `user_message` or fix path. If the
+source is not connected (`OFF`), omit it without noise.
+
+### 1.7 Learning Compilation & Pattern Detection
+
+Read `System/Session_Learnings/` files from this week. Identify:
+- **Recurring issues:** the same problem two or more times
+- **Consistent preferences:** workflow preferences mentioned repeatedly
+- **Documentation gaps:** questions about how things work
+
+### 1.8 Semantic Goal-to-Work Mapping (if QMD available)
+
+Check the QMD `status` tool. If available:
+1. For each completed task, search semantically against quarterly goals
+2. Search for work bridging multiple priorities
+3. Detect recurring themes across the week's work
+
+Only surface genuinely new connections. If QMD is unavailable, skip silently.
+
+### 1.9 Pillar Balance
+
+```
+Use: get_pillar_summary()
+```
+
+Get task distribution across the user's strategic pillars (from
+`System/pillars.yaml`; never assume a fixed set).
+
+### 1.10 Project Activity
+
+Find files under `04-Projects/**/*.md` modified between {{WEEK_START_DATE}} and
+{{TARGET_DATE}}. For each project that moved: what changed, and which weekly
+priority or quarterly goal it serves. A week's real progress often lives here
+rather than in the task list.
+
+### 1.11 Journals (if enabled)
+
+Read this week's journals under `00-Inbox/Journals/{{YYYY}}/`. Also read
+`06-Resources/Learnings/**/*.md` for explicit learnings alongside the session
+learnings from 1.7. Extract recurring themes, energy patterns, and anything the
+user already named as a lesson. If journaling is not enabled or no entries
+exist, skip silently.
+
+### 1.12 Backlog and Skill Quality (report only)
+
+```
+Use: list_ideas(status="active", min_score=70)
+Use: get_skill_ratings()
+```
+
+- **Ideas:** note the top three by score, for the synthesis's improvement-ideas
+  section.
+- **Skill ratings:** note only skills that are declining or averaging below 3.0.
+  If everything is stable, record that in one line and add no section.
+
+Report both; the conversation decides what to raise with the user.
+
+---
+
+## Phase 2: Write the Synthesis
+
+Write the complete weekly synthesis to:
+`00-Inbox/Weekly_Synthesis_{{TARGET_DATE}}.md`
+
+Use the synthesis template from this skill's `SKILL.md` (Output Format
+section): TL;DR, Weekly Priorities, Task Completion, Quarterly Goals, Daily
+Completion Trend, Meetings & People, Learnings, Pillar Balance, Next Week
+(suggested priorities with reasons, blocked items needing resolution). Add an
+Email Summary section only when email data was gathered, a Top 3 Dex
+Improvement Ideas section from 1.12 when ideas qualify, and a Skill Quality
+This Week section only when 1.12 found a declining or sub-3.0 skill. Fold
+project activity from 1.10 and journal themes from 1.11 into the priority and
+learnings sections as evidence. If the Career system
+is enabled, list significant accomplishments worth capturing under a Career
+Evidence heading with the marker
+`<!-- PLACEHOLDER: conversation will ask the user about capturing these -->`.
+
+**Reading `SKILL.md` safely.** You need only the section named above. Ignore that
+file's "Delegated gathering" section entirely: it describes how you were
+invoked. You ARE the subagent, so you must never call the Agent tool or spawn a
+subagent of your own.
+
+**Output rules:**
+- Omit any section where no data was available
+- Use real data, not placeholders
+- Be concrete: numbers, names, dates
+- Suggested next-week priorities are candidates with evidence, not decisions;
+  the conversation confirms them with the user
+
+---
+
+## Final Output
+
+After writing the synthesis file, return a structured summary:
+
+```
+AGENT COMPLETE
+
+Synthesis written: 00-Inbox/Weekly_Synthesis_{{TARGET_DATE}}.md
+
+Summary:
+- Priorities: [X] of [Y] complete
+- Tasks completed: [N], completion rate [X]%
+- Meetings this week: [N]
+- Emails: [X] received, [Y] sent (or "not connected")
+- Learnings captured: [N]; patterns: [brief]
+- Goals advancing: [list]
+- Goals stalled: [list]
+- Pillar balance: [assessment]
+- Projects that moved this week: [list, or none]
+- Journal themes: [brief, or "not enabled"]
+- Skills declining or below 3.0: [list, or "all stable"]
+- Sections needing interactive input: Career Evidence, Next Week confirmation
+
+[Any warnings or issues encountered]
+```

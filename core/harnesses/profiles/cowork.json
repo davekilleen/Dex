@@ -1,0 +1,83 @@
+{
+  "adapter": {
+    "directory": ".claude-plugin",
+    "kind": "claude-plugin-example",
+    "manifest": ".claude-plugin/plugin.json",
+    "status": "partial"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "Folder access depends on the desktop permission granted by the user.",
+      "status": "partial",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "MCP availability is product/version dependent; verify before promising a server.",
+      "status": "partial",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "Portable skills can be supplied when the Cowork build supports Agent Skills.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "Claude Code settings hooks are not assumed in Cowork.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "The desktop session lifecycle is client-owned.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "Dex's local scheduler is not provided by Cowork.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "Desktop conversation prompts are host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "Use Agent Plugins v1 only if the installed client advertises it.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "COWORK",
+      "CLAUDE_COWORK",
+      "CLAUDE_DESKTOP_COWORK"
+    ],
+    "paths": [
+      "/.cowork/",
+      "/cowork/"
+    ]
+  },
+  "display_name": "Claude Cowork",
+  "id": "cowork",
+  "limitations": [
+    "Cowork is not treated as Claude Code; hooks and settings.json are not portable assumptions."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Claude Cowork",
+  "summary": "Desktop Cowork companion with skills and interactive work; local hooks and scheduling are not assumed.",
+  "support_level": "partial",
+  "vendor": "Anthropic"
+}

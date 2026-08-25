@@ -1,0 +1,185 @@
+{
+  "schema_version": "1.0.0",
+  "profiles": [
+    {
+      "id": "agent-plugin",
+      "name": "Generic Agent Plugin",
+      "display_name": "Generic Agent Plugin",
+      "vendor": "Agent Plugins",
+      "summary": "Portable Agent Plugins v1 floor: Agent Skills plus MCP, without host lifecycle guarantees.",
+      "adapter": {"kind": "agent-plugin-v1", "status": "native", "manifest": "plugin.json", "mcp_config": "mcp.json"},
+      "support_level": "portable",
+      "capabilities": [
+        {"id": "vault", "status": "portable", "tier": 0, "notes": "A client may expose a vault directory; the plugin format does not own it."},
+        {"id": "mcp", "status": "native", "tier": 1, "notes": "The v1 package format defines stdio and Streamable HTTP configuration."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "notes": "Skills are discovered from the fixed skills/ directory."},
+        {"id": "hooks", "status": "none", "tier": 3, "notes": "Hooks are outside the Agent Plugins v1 core contract."},
+        {"id": "session-lifecycle", "status": "none", "tier": 3, "notes": "Session events are client-specific."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "notes": "Scheduling is client-owned, not portable plugin behavior."},
+        {"id": "interactive-prompts", "status": "partial", "tier": 2, "notes": "Prompt UX is defined by the host client."},
+        {"id": "agent-plugins", "status": "native", "tier": 2, "notes": "This descriptor describes the v1 package contract itself."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
+      "detection": {"env": ["AGENT_PLUGIN_ROOT", "AGENT_PLUGIN"], "paths": ["/plugin.json", ".agents/plugins/"]},
+      "limitations": ["The package format does not define hooks, commands, agents, UI, permissions, or updates."],
+      "evidence": ["https://agent-plugins.org/specification"]
+    },
+    {
+      "id": "bb",
+      "name": "BB",
+      "display_name": "BB",
+      "vendor": "Dex",
+      "summary": "Dex's internal build/batch harness; portable core and skills are supported, while host lifecycle details remain internal.",
+      "adapter": {"kind": "internal-descriptor", "status": "internal", "manifest": ".bb/dex-harness.json", "install_guide": "core/harnesses/adapters/bb.json"},
+      "support_level": "internal",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "notes": "Runs against a local Dex vault."},
+        {"id": "mcp", "status": "native", "tier": 1, "notes": "Can launch Dex MCP servers from the repository."},
+        {"id": "agent-skills", "status": "partial", "tier": 2, "notes": "Uses the generated .agents skill surface where available."},
+        {"id": "hooks", "status": "partial", "tier": 3, "notes": "Internal lifecycle behavior is not a public portability promise."},
+        {"id": "session-lifecycle", "status": "partial", "tier": 3, "notes": "Session behavior depends on the BB runner."},
+        {"id": "background-jobs", "status": "scheduled", "tier": 1, "notes": "Fleet jobs may run outside a chat turn."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "notes": "The runner supplies a prompt channel."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "No public BB plugin loader contract is claimed."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
+      "detection": {"env": ["BB_HARNESS", "BB_RUNNER"], "paths": ["/.bb/", "/.bb/worktrees/"]},
+      "limitations": ["BB is an internal harness label, not a public client compatibility guarantee."]
+    },
+    {
+      "id": "chatgpt-work",
+      "name": "ChatGPT Work companion",
+      "display_name": "ChatGPT Work companion",
+      "vendor": "OpenAI",
+      "summary": "A ChatGPT Work companion can provide a conversational front end, but local Dex vault and plugin loading are not assumed.",
+      "adapter": {"kind": "companion-guide", "status": "guide", "manifest": null, "install_guide": "core/harnesses/adapters/chatgpt-work.json"},
+      "support_level": "companion",
+      "capabilities": [
+        {"id": "vault", "status": "not-verified", "tier": 0, "notes": "A local vault bridge must be explicitly supplied by the companion."},
+        {"id": "mcp", "status": "not-verified", "tier": 1, "notes": "ChatGPT Work connectors are not the same as a local MCP client."},
+        {"id": "agent-skills", "status": "not-verified", "tier": 2, "notes": "No local Agent Skills loader is assumed."},
+        {"id": "hooks", "status": "none", "tier": 3, "notes": "No Dex hook lifecycle is exposed by this descriptor."},
+        {"id": "session-lifecycle", "status": "not-verified", "tier": 3, "notes": "Lifecycle is controlled by the ChatGPT product."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "notes": "Dex cannot promise a local scheduler here."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "notes": "Conversation prompts are host-native."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "Do not install a local plugin unless the client explicitly supports Agent Plugins v1."}
+      ],
+      "modes": ["tier-0-vault"],
+      "detection": {"env": ["CHATGPT_WORK", "OPENAI_WORK", "CHATGPT_WORK_COMPANION"], "paths": ["/.chatgpt-work/"]},
+      "limitations": ["This descriptor intentionally avoids promising local filesystem, MCP, or plugin parity."]
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "display_name": "Claude Code",
+      "vendor": "Anthropic",
+      "summary": "Dex's Tier 3 reference harness with native skills, MCP, hooks, and session lifecycle support.",
+      "adapter": {"kind": "claude-plugin-example", "status": "reference", "directory": ".claude-plugin", "manifest": ".claude-plugin/plugin.json"},
+      "support_level": "reference",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "notes": "Local filesystem access is available in the active project."},
+        {"id": "mcp", "status": "native", "tier": 1, "notes": "Project and user MCP configuration are supported."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "notes": "Canonical .claude/skills are loaded by Claude Code."},
+        {"id": "hooks", "status": "native", "tier": 3, "notes": "PreToolUse, prompt-submit, session, and post-tool hooks are available."},
+        {"id": "session-lifecycle", "status": "native", "tier": 3, "notes": "SessionStart and SessionEnd surfaces are available."},
+        {"id": "background-jobs", "status": "scheduled", "tier": 1, "notes": "Dex's OS-scheduled jobs are independent of the chat harness."},
+        {"id": "interactive-prompts", "status": "native", "tier": 3, "notes": "AskUserQuestion is available when the client provides it."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "The portable Agent Plugins package remains the compatibility floor."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills", "tier-3-full"],
+      "detection": {"env": ["CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_PROJECT_DIR", "CLAUDE_CODE_VERSION"], "paths": ["/.claude/", "/claude-code/"]},
+      "limitations": ["Claude-only hooks are not copied into harness-neutral adapters."],
+      "evidence": ["https://code.claude.com/docs/en/hooks-guide"]
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "display_name": "Codex",
+      "vendor": "OpenAI",
+      "summary": "MCP-capable coding harness with AGENTS.md and generated Agent Skills, without Claude hook semantics.",
+      "adapter": {"kind": "codex-plugin-example", "status": "example", "directory": ".codex-plugin", "manifest": ".codex-plugin/plugin.json"},
+      "support_level": "supported",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "notes": "The active workspace is available to the agent."},
+        {"id": "mcp", "status": "native", "tier": 1, "notes": "MCP servers can be registered by the host."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "notes": "AGENTS.md and the generated .agents/skills surface are portable."},
+        {"id": "hooks", "status": "none", "tier": 3, "notes": "Claude settings hooks are not assumed."},
+        {"id": "session-lifecycle", "status": "partial", "tier": 3, "notes": "Codex lifecycle behavior is host-defined, not Dex hook-compatible."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "notes": "Dex does not assume a Codex scheduler."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "notes": "Conversation input is host-native."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "Use the generic Agent Plugin package only when the client advertises v1 support."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
+      "detection": {"env": ["CODEX_CLI", "CODEX_HOME", "CODEX_THREAD_ID"], "paths": ["/.codex/", "/codex/"]},
+      "limitations": ["No Claude-only hook parity is claimed."]
+    },
+    {
+      "id": "copilot-cli",
+      "name": "GitHub Copilot CLI",
+      "display_name": "GitHub Copilot CLI",
+      "vendor": "GitHub",
+      "summary": "CLI harness with local files, MCP, and portable instructions; lifecycle and scheduling remain host-owned.",
+      "adapter": {"kind": "install-guide", "status": "supported", "manifest": null, "install_guide": "core/harnesses/adapters/copilot-cli.json"},
+      "support_level": "supported",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "notes": "The current working directory is available to the CLI."},
+        {"id": "mcp", "status": "native", "tier": 1, "notes": "Copilot CLI can use configured MCP servers."},
+        {"id": "agent-skills", "status": "portable", "tier": 2, "notes": "Use the Agent Skills surface when the installed CLI version advertises it."},
+        {"id": "hooks", "status": "none", "tier": 3, "notes": "Claude hooks are not portable to Copilot CLI."},
+        {"id": "session-lifecycle", "status": "partial", "tier": 3, "notes": "Lifecycle events are client-defined."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "notes": "No Dex scheduler contract is assumed."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "notes": "CLI interaction is host-native."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "Install the generic package only after checking client support."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
+      "detection": {"env": ["COPILOT_CLI", "GH_COPILOT", "GITHUB_COPILOT"], "paths": ["/.copilot/", "/copilot/"]},
+      "limitations": ["The descriptor is intentionally version-neutral where Copilot CLI behavior changes by release."],
+      "evidence": ["https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli"]
+    },
+    {
+      "id": "cowork",
+      "name": "Claude Cowork",
+      "display_name": "Claude Cowork",
+      "vendor": "Anthropic",
+      "summary": "Desktop Cowork companion with skills and interactive work; local hooks and scheduling are not assumed.",
+      "adapter": {"kind": "claude-plugin-example", "status": "partial", "directory": ".claude-plugin", "manifest": ".claude-plugin/plugin.json"},
+      "support_level": "partial",
+      "capabilities": [
+        {"id": "vault", "status": "partial", "tier": 0, "notes": "Folder access depends on the desktop permission granted by the user."},
+        {"id": "mcp", "status": "partial", "tier": 1, "notes": "MCP availability is product/version dependent; verify before promising a server."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "notes": "Portable skills can be supplied when the Cowork build supports Agent Skills."},
+        {"id": "hooks", "status": "none", "tier": 3, "notes": "Claude Code settings hooks are not assumed in Cowork."},
+        {"id": "session-lifecycle", "status": "partial", "tier": 3, "notes": "The desktop session lifecycle is client-owned."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "notes": "Dex's local scheduler is not provided by Cowork."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "notes": "Desktop conversation prompts are host-native."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "Use Agent Plugins v1 only if the installed client advertises it."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
+      "detection": {"env": ["COWORK", "CLAUDE_COWORK", "CLAUDE_DESKTOP_COWORK"], "paths": ["/.cowork/", "/cowork/"]},
+      "limitations": ["Cowork is not treated as Claude Code; hooks and settings.json are not portable assumptions."]
+    },
+    {
+      "id": "pi",
+      "name": "Pi",
+      "display_name": "Pi",
+      "vendor": "Pi coding agent",
+      "summary": "Local coding agent with workspace files, Agent Skills, and lifecycle events, but no built-in Dex MCP or scheduler promise.",
+      "adapter": {"kind": "install-guide", "status": "supported", "manifest": null, "install_guide": "core/harnesses/adapters/pi.json"},
+      "support_level": "supported",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "notes": "The workspace is available to Pi extensions and skills."},
+        {"id": "mcp", "status": "none", "tier": 1, "notes": "Pi does not provide a built-in MCP client in this descriptor; use an explicit bridge."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "notes": "AGENTS.md and Agent Skills are the portable instruction surface."},
+        {"id": "hooks", "status": "partial", "tier": 3, "notes": "Pi events are not the Claude hook contract."},
+        {"id": "session-lifecycle", "status": "native", "tier": 3, "notes": "Pi extensions can observe lifecycle events."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "notes": "No Dex scheduler is assumed."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "notes": "Pi exposes interactive conversation input."},
+        {"id": "agent-plugins", "status": "not-verified", "tier": 2, "notes": "Install only if the Pi host adds an Agent Plugins loader."}
+      ],
+      "modes": ["tier-0-vault", "tier-2-skills"],
+      "detection": {"env": ["PI_CLI", "PI_CODING_AGENT", "PI_SESSION"], "paths": ["/.pi/", "/pi/"]},
+      "limitations": ["MCP and scheduling require a separately installed bridge or host integration."],
+      "evidence": ["https://pi.dev"]
+    }
+  ]
+}

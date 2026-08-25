@@ -1,0 +1,16 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "claude-code",
+  "status": "reference",
+  "kind": "claude-plugin-example",
+  "native_paths": [".claude-plugin/plugin.json", ".claude/skills/", ".claude/settings.json"],
+  "example": {
+    "manifest": {
+      "name": "dex",
+      "version": "1.0.0",
+      "skills": ".claude/skills/",
+      "mcp": ".mcp.json"
+    },
+    "note": "Claude Code is the Tier 3 reference. The portable Agent Plugin package remains the cross-client floor."
+  }
+}

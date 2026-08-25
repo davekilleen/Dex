@@ -203,6 +203,21 @@ For each meeting file, skip notes containing `<!-- dex:skip-processing -->`:
 Report findings:
 > "Found X waiting meetings from the last 7 days. Y need person page updates, Z have unextracted tasks."
 
+#### Match capture identity to Calendar
+
+For a synced note with an aware ISO `capture_started_at`, call
+`calendar_get_events_with_attendees` for that date after applying CLAUDE.md's
+**Calendar response confidence contract**, then call the Work MCP
+`match_capture_to_calendar` tool with the capture title, start time, attendees,
+and the Calendar response's `events` array as `calendar_events` (not the whole
+response object). Use a matched result's **identity only** (title, normalized
+start, attendees); if the safe title differs, carry it into the note. Leave an
+unmatched or ambiguous capture unchanged, and continue unchanged when Calendar
+is unavailable. The matcher owns the hard five-minute limit, timezone parsing,
+tie order, poor-title rule, and ambiguity decision—never redo or stretch them.
+Never copy join URLs, dial-ins, access codes, location, notes, descriptions,
+conferencing fields, or any other invite payload.
+
 ### Step 2.5: Consume Queued Meetings (manual mode)
 
 If `00-Inbox/Meetings/queue/*.json` files exist, consume each queued meeting

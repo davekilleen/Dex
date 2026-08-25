@@ -1,0 +1,12 @@
+#!/bin/sh
+# Relocatable Agent Plugins v1 MCP launcher. No checkout or home path is baked in.
+set -eu
+
+if [ -n "${PLUGIN_ROOT:-}" ]; then
+    root=$PLUGIN_ROOT
+else
+    root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+fi
+
+python_bin=${DEX_PYTHON:-python3}
+exec "$python_bin" "$root/server.py" "$@"

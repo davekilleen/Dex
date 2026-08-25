@@ -1,0 +1,100 @@
+"""Golden tests for the generated Agent Skills adapters."""
+
+from __future__ import annotations
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+GENERATOR = REPO_ROOT / "scripts" / "generate-agents-skills.py"
+
+
+def _load_generator():
+    spec = importlib.util.spec_from_file_location("generate_agents_skills", GENERATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_generator_is_deterministic_and_copies_resources() -> None:
+    generator = _load_generator()
+    first = generator.expected_adapters(REPO_ROOT)
+    second = generator.expected_adapters(REPO_ROOT)
+    assert first == second
+    skill_paths = [path for path in first if path.name == "SKILL.md"]
+    assert skill_paths
+    assert any(path.parts[-2:] == ("getting-started", "SKILL.md") for path in skill_paths)
+    for relative, text in first.items():
+        if relative.name == "SKILL.md":
+            assert "Generated from" in text
+
+
+def test_strip_removes_nested_claude_frontmatter() -> None:
+    generator = _load_generator()
+    source = """---
+name: example
+description: A test skill.
+model_hint: balanced
+model_routing:
+  default: balanced
+hooks:
+  PostToolUse:
+    - matcher: Write
+      command: node .claude/hooks/example.cjs
+context: conversation
+---
+
+Body stays.
+"""
+    frontmatter, comment, body = generator.transform_skill_markdown(
+        source, source_relative=".claude/skills/example/SKILL.md"
+    )
+    assert "name: example" in frontmatter
+    assert "model_hint: balanced" in frontmatter
+    assert "hooks:" not in frontmatter
+    assert "model_routing:" not in frontmatter
+    assert "context:" not in frontmatter
+    assert "Generated from `.claude/skills/example/SKILL.md`" in comment
+    assert "Body stays." in body
+
+
+def test_custom_skill_directories_are_not_written_or_deleted(tmp_path: Path) -> None:
+    generator = _load_generator()
+    repo = tmp_path / "vault"
+    source = repo / ".claude" / "skills" / "demo"
+    source.mkdir(parents=True)
+    (source / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: Demo.\n---\n\nHello.\n", encoding="utf-8"
+    )
+    custom = repo / ".agents" / "skills" / "demo-custom"
+    custom.mkdir(parents=True)
+    marker = custom / "SKILL.md"
+    marker.write_text("user-owned\n", encoding="utf-8")
+    manifest = repo / "core" / "harnesses"
+    manifest.mkdir(parents=True)
+    (manifest / "portability.json").write_text(
+        '{"schema_version":"1.0.0","skills":{"demo":{"classification":"portable"}}}\n',
+        encoding="utf-8",
+    )
+    assert generator.write_adapters(repo) == 0
+    assert marker.read_text(encoding="utf-8") == "user-owned\n"
+    assert (repo / ".agents" / "skills" / "demo" / "SKILL.md").is_file()
+
+
+def test_cli_check_passes_on_the_committed_tree() -> None:
+    result = subprocess.run(
+        [sys.executable, str(GENERATOR), "--check"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "adapters are current" in result.stdout
+

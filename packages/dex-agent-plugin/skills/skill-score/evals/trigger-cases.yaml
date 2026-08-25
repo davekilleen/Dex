@@ -1,0 +1,45 @@
+# Trigger evals for /skill-score.
+# The canonical shape every shipped skill carries in evals/trigger-cases.yaml:
+#   3 positive paraphrases  — MUST fire this skill
+#   2 negative / collision  — MUST NOT fire; must route to the named neighbor
+#   1 ambiguous             — should ASK rather than silently fire
+#   1 missing-prerequisite  — should degrade honestly, not fake a result
+#   1 failure-recovery      — must not claim success when the underlying action failed
+#
+# `expect: fire` / `no-fire` / `ask` / `degrade` / `honest-failure`.
+# `route_to` names where a no-fire case should go instead.
+
+skill: skill-score
+
+positive:
+  - utterance: "I just finished writing this skill — is it any good, will it actually fire?"
+    expect: fire
+  - utterance: "Score my skill before I ship it."
+    expect: fire
+  - utterance: "create-skill just generated a package — grade it against the bar."
+    expect: fire
+
+negative:
+  - utterance: "Create a new skill for preparing board updates."
+    expect: no-fire
+    route_to: create-skill
+    why: authoring, not grading — skill-score judges an existing package.
+  - utterance: "My SKILL.md has a YAML error, fix the frontmatter."
+    expect: no-fire
+    route_to: create-skill
+    why: pure format repair is create-skill's validator; skill-score judges architecture.
+
+ambiguous:
+  - utterance: "Is this skill fine?"  # no target named, could be several
+    expect: ask
+    why: no target specified and none edited this session — ask which skill.
+
+missing_prerequisite:
+  - utterance: "Run skill-score on triage"  # in an env with no python3
+    expect: degrade
+    why: scoring script can't run — fall back to hand-scoring and SAY SO, never emit a fake number.
+
+failure_recovery:
+  - utterance: "Score all skills"  # --all where the skills dir is missing/empty
+    expect: honest-failure
+    why: no skills found — report that plainly; do not print an empty pass.

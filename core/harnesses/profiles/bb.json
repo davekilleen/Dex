@@ -1,0 +1,82 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/bb.json",
+    "kind": "internal-descriptor",
+    "manifest": ".bb/dex-harness.json",
+    "status": "internal"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "notes": "Runs against a local Dex vault.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "notes": "Can launch Dex MCP servers from the repository.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "notes": "Uses the generated .agents skill surface where available.",
+      "status": "partial",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "notes": "Internal lifecycle behavior is not a public portability promise.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "notes": "Session behavior depends on the BB runner.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "notes": "Fleet jobs may run outside a chat turn.",
+      "status": "scheduled",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "notes": "The runner supplies a prompt channel.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "notes": "No public BB plugin loader contract is claimed.",
+      "status": "not-verified",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "BB_HARNESS",
+      "BB_RUNNER"
+    ],
+    "paths": [
+      "/.bb/",
+      "/.bb/worktrees/"
+    ]
+  },
+  "display_name": "BB",
+  "id": "bb",
+  "limitations": [
+    "BB is an internal harness label, not a public client compatibility guarantee."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "BB",
+  "summary": "Dex's internal build/batch harness; portable core and skills are supported, while host lifecycle details remain internal.",
+  "support_level": "internal",
+  "vendor": "Dex"
+}

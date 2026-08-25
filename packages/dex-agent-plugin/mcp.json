@@ -1,0 +1,16 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "dex-core": {
+      "type": "stdio",
+      "command": "./bin/dex-mcp",
+      "args": [
+        "--stdio"
+      ],
+      "env": {
+        "DEX_PLUGIN_DATA": "${PLUGIN_DATA}"
+      },
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

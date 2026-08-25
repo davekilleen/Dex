@@ -1,0 +1,16 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "cowork",
+  "status": "partial",
+  "kind": "claude-plugin-example",
+  "native_paths": [".claude-plugin/plugin.json", ".agents/skills/"],
+  "example": {
+    "manifest": {
+      "name": "dex",
+      "version": "1.0.0",
+      "skills": ".agents/skills/",
+      "mcp": "mcp.json"
+    },
+    "note": "Cowork is not Claude Code: settings hooks and session injectors are not assumed. Verify the installed desktop build before enabling MCP."
+  }
+}
