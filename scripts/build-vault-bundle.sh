@@ -86,6 +86,11 @@ rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
 # the product bootstrap from the canonical template before building the
 # installed-files manifest so the archive and release branch agree byte-for-byte.
 cp -- "$PRODUCT_AGENTS_TEMPLATE" "$STAGING_DIR/AGENTS.md"
+chmod 0644 "$STAGING_DIR/AGENTS.md"
+if ! cmp -s "$PRODUCT_AGENTS_TEMPLATE" "$STAGING_DIR/AGENTS.md"; then
+  echo "Error: staged product AGENTS bootstrap does not match its canonical template." >&2
+  exit 1
+fi
 
 # Match the release branch exactly: historic updaters can write these bytes
 # before the replacement updater module has been installed.

@@ -209,6 +209,11 @@ done
 # product bootstrap is a separate, small template and must be materialized at
 # the distribution root before the installed-files manifest is generated.
 cp -- "$PRODUCT_AGENTS_TEMPLATE" AGENTS.md
+chmod 0644 AGENTS.md
+if ! cmp -s "$PRODUCT_AGENTS_TEMPLATE" AGENTS.md; then
+    echo "Error: product AGENTS bootstrap does not match its canonical template." >&2
+    exit 1
+fi
 git add -- AGENTS.md
 
 # Remove development-only package metadata that points at stripped files.

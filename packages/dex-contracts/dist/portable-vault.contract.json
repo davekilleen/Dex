@@ -423,7 +423,8 @@
       "id": "brain-agents-md",
       "path": "AGENTS.md",
       "kind": "file",
-      "ownership": "brain"
+      "ownership": "brain",
+      "note": "source checkout contains contributor guidance; distribution builders substitute the product bootstrap"
     },
     {
       "id": "brain-changelog",

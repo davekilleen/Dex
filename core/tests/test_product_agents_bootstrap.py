@@ -24,6 +24,8 @@ def test_source_contributor_guidance_and_product_template_are_distinct() -> None
     assert "AGENTS.md" in (REPO_ROOT / ".distignore").read_text(encoding="utf-8").splitlines()
 
     template = template_bytes.decode("utf-8")
+    assert "installed Dex vault" in template
+    assert "not the dex-core development checkout" in template
     assert "read the complete root `CLAUDE.md`" in template
     assert "CLAUDE.md" in template and "missing" in template
     assert "fail loudly" in template
@@ -44,4 +46,6 @@ def test_builders_materialize_the_same_template_before_manifest() -> None:
         script = (REPO_ROOT / "scripts" / script_name).read_text(encoding="utf-8")
         assert "core/harnesses/templates/product-AGENTS.md" in script
         assert "AGENTS.md" in script
+        assert "chmod 0644" in script
+        assert "cmp -s" in script
         assert "installed-files.manifest" in script
