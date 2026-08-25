@@ -147,7 +147,8 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
     assert "Do not run an actual destructive command" in guide
     assert "`codex/harness-portable-dex-resume`" in guide
     assert "**Branch:** `codex/harness-portable-dex-resume`" in plan
-    assert "| macOS | Native CI pending |" in guide
-    assert "| Windows | Native CI pending |" in guide
+    assert "| macOS | Native CI required on each review head |" in guide
+    assert "| Windows | Native CI required on each review head |" in guide
+    assert "Exact-commit native evidence belongs to the draft pull request" in guide
     assert "| macOS | Release-ready |" not in guide
     assert "| Windows | Release-ready |" not in guide

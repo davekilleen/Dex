@@ -13,11 +13,14 @@ reports the same receipt.
 
 ## Platform boundary for this release
 
-| Platform | Current evidence state | Required runtime proof |
+| Platform | Release contract | Required runtime proof |
 | --- | --- | --- |
-| macOS | Native CI pending | A native GitHub runner must complete MCP initialization, tool discovery, SessionStart context, and PreToolUse refusal through the installed launcher shape before this platform can be called release-ready. |
-| Windows | Native CI pending | The same native runtime round trips must pass with a Windows Python executable path before this platform can be called release-ready. |
+| macOS | Native CI required on each review head | A native GitHub runner must complete MCP initialization, tool discovery, SessionStart context, and PreToolUse refusal through the installed launcher shape before this platform can be called release-ready. |
+| Windows | Native CI required on each review head | The same native runtime round trips must pass with a Windows Python executable path before this platform can be called release-ready. |
 | Linux | Deferred | The runtime is still exercised on the Devbox, but Linux packaging and live-host verification are explicitly outside this release. |
+
+Exact-commit native evidence belongs to the draft pull request checks and release
+record, rather than becoming a timeless pass claim in this versioned guide.
 
 The portable package requires Node 20+ and Python 3.11+. The supported-platform
 contract lives in `core/harnesses/registry.json`, is copied into the package,

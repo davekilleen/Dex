@@ -32,9 +32,17 @@ function assertSafetyRouting(settings) {
 }
 
 function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = undefined) {
+  const env = { ...process.env };
+  if (cwd !== undefined) {
+    // The shared gate deliberately honours explicit harness vault variables
+    // ahead of cwd. Keep this fixture isolated from CI's global VAULT_PATH.
+    delete env.CLAUDE_PROJECT_DIR;
+    env.VAULT_PATH = cwd;
+  }
   return spawnSync('/bin/bash', [script], {
     encoding: 'utf8',
     cwd,
+    env,
     input: JSON.stringify({ tool_name: toolName, tool_input: command ? { command } : {} }),
   });
 }
