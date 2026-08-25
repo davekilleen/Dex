@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "9f98cdfcacfea8d79d1ed437e21b173fdae37329dce1fbcaf377c17f470e3e23",
-        "byte_size": 16511
+        "sha256": "89018c83c114c1a16dd4da8021216b41c93d20c8ea2a351a69ab1a0e2c90f9eb",
+        "byte_size": 16791
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -4692,8 +4692,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-level-up/SKILL.md",
-        "sha256": "7802c1abbe4d394cecfbb9782252b7725cff402ee804165b994c86c5327997e0",
-        "byte_size": 18888
+        "sha256": "1c8d0102e351c7ddc26eef8335aa68dd0bec88d8097cb3deff83304b72dff0ec",
+        "byte_size": 19733
       },
       "value": "Surface Dex features the user isn't using yet, based on their usage patterns.",
       "jobs_served": [

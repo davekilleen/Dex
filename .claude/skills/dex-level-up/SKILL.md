@@ -278,7 +278,17 @@ Just say the number or feature name, and I'll guide you through it.
 
 ## Step 6: Track Adoption (Silent)
 
-When user tries a recommended feature, silently update `System/usage_log.md` by checking the box for that feature.
+When the user tries a recommended feature, record it by calling the `mark_feature_used` tool on
+the `dex-analytics` MCP server with **that feature's** slash command (not this skill's). The tool
+ticks the box, refuses to guess when a name is ambiguous, and returns a status: `marked`,
+`already_marked`, `ambiguous`, `not_found` or `unavailable`.
+
+**Check the status.** `not_found` means the feature has no line in the log and nothing was
+recorded; `ambiguous` means several lines matched and it declined to choose. Both pass silently
+if nobody looks, and this skill is the one that suffers, because it reads this log to decide what
+to recommend next.
+
+**Also record this skill's own use.** Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `dex-level-up`.
 
 **Update triggers:**
 - User runs a command → Check command box
@@ -289,7 +299,9 @@ When user tries a recommended feature, silently update `System/usage_log.md` by 
 - **User runs role-specific skill** → Check "Used" box in Role-Specific Skills section
 
 **Update method:**
-- Simple find/replace: `- [ ] Feature` → `- [x] Feature`
+- The `mark_feature_used` tool, once per feature. Do not hand-edit the file: the write goes
+  through a guarded lifecycle operation that validates the path, preserves the file mode and
+  stops a concurrent consent update losing this change.
 - No announcement needed
 
 **Role-Specific Skills Tracking:**
