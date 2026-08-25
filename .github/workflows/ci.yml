@@ -145,10 +145,18 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
+          cache: npm
+      - name: Install pinned artifact tooling
+        run: npm ci --ignore-scripts
+      - name: Build and validate installable harness artifacts
+        run: python scripts/build-portable-harness-artifacts.py --output-dir build/portable-artifacts
       - name: Verify portable plugin runtime and release boundary
         env:
           DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-        run: python scripts/verify-portable-plugin-runtime.py --require-release-ready
+        run: |
+          python scripts/verify-portable-plugin-runtime.py --require-release-ready
+          python scripts/verify-portable-plugin-runtime.py --require-release-ready --plugin-root build/portable-artifacts/dex-gemini-extension
+          python scripts/verify-portable-plugin-runtime.py --require-release-ready --plugin-root build/portable-artifacts/dex-claude-desktop --skip-hooks
 
   # The Python suite, dealt across three runners by recorded test durations
   # (.ci/test-durations.json, regenerated from CI's own junit output when balance

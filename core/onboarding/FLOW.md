@@ -681,7 +681,7 @@ When you first connect Granola (or later via `/getting-started`), you'll choose:
 
 Want to connect Granola now with `/granola-setup`, then set up manual or automatic processing?"
 
-**If manual:** 
+**If manual:**
 1. Update `System/user-profile.yaml` with:
    ```yaml
    meeting_processing:
@@ -866,7 +866,7 @@ Present two choices: **Yes, add them** and **No thanks**.
 - Reuse the first-week context already shown; do not repeat it
 - Verify any artifact before saying it was created
 
-**If no:** 
+**If no:**
 "No problem! You can always run `/getting-started` later when you're ready.
 
 **Quick reference:**

@@ -34,7 +34,8 @@ onto that understanding, not the place it gets trapped.”
 With Dex Everywhere, a Codex user can install a native plugin containing Dex's
 work skills, read-only context tools, and trusted lifecycle hooks. Claude Code
 and Cowork users receive the same shared package through Claude's plugin model.
-GitHub Copilot CLI and compatible clients use the open Agent Plugin contract. Pi
+GitHub Copilot CLI and compatible clients use the open Agent Plugin skills and
+MCP contract; Copilot's separate lifecycle-hook format is not claimed. Pi
 uses its native Dex extension. BB users receive a local, read-only plugin with a
 Dex panel, tools, and command-line briefing. ChatGPT desktop can use the same
 OpenAI plugin package; web access to a private local vault remains behind a
@@ -64,9 +65,10 @@ changes continue through Dex's existing transaction-protected lifecycle rather
 than through plugin-specific shortcuts.
 
 Dex Everywhere will be available after the current private build passes
-release-candidate installation on every advertised host, security review, and
-Dex's normal release gates. Pricing, marketplace availability, and the release
-date will be announced separately.
+release-candidate installation on every advertised host, mandatory independent
+Fable review, security review, and Dex's normal release gates on macOS and
+Windows. Linux is deferred from this release. Pricing, marketplace availability,
+and the release date will be announced separately.
 
 ## Customer experience
 
@@ -129,7 +131,8 @@ host's real lifecycle and interface. The registry labels every capability as
 - Codex CLI and Codex in the ChatGPT desktop app: native OpenAI plugin.
 - ChatGPT desktop: the same universal OpenAI plugin package.
 - Claude Code and Claude Cowork: native Claude plugin.
-- GitHub Copilot CLI: Agent Plugins/Open Plugin Spec package.
+- GitHub Copilot CLI: Agent Plugins/Open Plugin Spec skills and MCP package;
+  Copilot-specific lifecycle hooks are not included in this release.
 - Compatible Agent Plugins v1 clients: the open skills-and-MCP floor.
 - Pi: native Dex Pi extension.
 - BB: standalone native BB plugin.
@@ -139,6 +142,8 @@ host's real lifecycle and interface. The registry labels every capability as
 - Codex IDE extensions do not currently load plugins.
 - ChatGPT web cannot directly start a local stdio server for a private vault.
 - Cowork external connectors require a public internet endpoint.
+- Copilot's lifecycle hooks use a different package contract and are not
+  included; its portable safety check is on demand, not automatic.
 - Pi does not have a built-in MCP client; Dex uses its native extension model.
 - The BB v1 package is deliberately read-only and does not add jobs, vault
   writes, remote relay, or an experimental provider/host bridge.
@@ -201,6 +206,9 @@ workflows behind that choice.
 - MCP initialize/list/call, SessionStart injection, PreToolUse refusal, runtime
   byte identity, registry, onboarding, receipt, Doctor, provisioning, skills,
   hooks, and distribution tests pass on the feature branch.
+- The release contract names macOS and Windows as the only release platforms,
+  with a required native CI round trip for each; Linux functionality remains a
+  tested but deliberately deferred path.
 - The BB package passes TypeScript, Vitest, BB's official build engine, official
   SDK backend and frontend harnesses, package audit, and tarball checks.
 - Release and vault bundle builders include byte-identical product-facing
@@ -208,11 +216,13 @@ workflows behind that choice.
 
 ## What still has to happen before release?
 
-Run live release-candidate installs in ChatGPT desktop, Cowork, Copilot CLI, Pi,
-and BB; complete the final combined test and security gates; review the complete
-diffs; reconcile the private Build Card; push review branches and open draft
-pull requests; choose the public packaging and marketplace sequence; merge only
-with explicit founder approval; then build and verify a real release artifact.
+Complete the native macOS/Windows matrix and mandatory Fable reviews; run live
+release-candidate installs in ChatGPT desktop, Cowork, Copilot CLI, Pi, and BB;
+complete the final combined test and security gates; reconcile the private
+Build Card; push review branches and open draft pull requests; choose the public
+packaging and marketplace sequence; merge only with explicit founder approval;
+then build and verify a real release artifact. Linux remains a separate future
+delivery.
 
 ## What is the release principle?
 

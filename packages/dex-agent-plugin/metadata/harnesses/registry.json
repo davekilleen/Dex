@@ -120,6 +120,29 @@
       "evidence": ["https://code.claude.com/docs/en/plugins", "https://code.claude.com/docs/en/hooks-guide"]
     },
     {
+      "id": "claude-desktop",
+      "name": "Claude Desktop",
+      "display_name": "Claude Desktop",
+      "vendor": "Anthropic",
+      "summary": "One-click MCP Bundle for Dex's local read-only tools in Claude Desktop on macOS and Windows.",
+      "adapter": {"kind": "mcpb", "status": "native-build", "manifest": "packages/dex-claude-desktop/manifest.json", "install_guide": "core/harnesses/adapters/claude-desktop.json"},
+      "support_level": "supported",
+      "capabilities": [
+        {"id": "vault", "status": "partial", "tier": 0, "mode": "guided", "notes": "The user selects a local Dex vault when installing the desktop extension."},
+        {"id": "mcp", "status": "native", "tier": 1, "mode": "on_demand", "notes": "A validated .mcpb artifact exposes Dex's read-only MCP tools locally."},
+        {"id": "agent-skills", "status": "partial", "tier": 2, "mode": "guided", "notes": "Claude plugins carry Dex skills; the MCPB artifact itself carries tools rather than skills."},
+        {"id": "hooks", "status": "none", "tier": 3, "mode": "unavailable", "notes": "Claude Desktop chat does not run plugin hooks; hooks remain available in Claude Code and Cowork."},
+        {"id": "session-lifecycle", "status": "none", "tier": 3, "mode": "unavailable", "notes": "The MCP Bundle is a tool surface, not a session lifecycle host."},
+        {"id": "background-jobs", "status": "scheduled", "tier": 1, "mode": "automatic", "notes": "Dex background jobs are installed by the operating-system adapter, independently of Claude Desktop."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "mode": "on_demand", "notes": "Desktop conversation prompts are host-native."},
+        {"id": "agent-plugins", "status": "none", "tier": 2, "mode": "unavailable", "notes": "Claude Desktop local tools use MCPB rather than the Agent Plugins package format."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core"],
+      "detection": {"env": ["CLAUDE_DESKTOP", "CLAUDE_DESKTOP_VERSION"], "paths": ["/Claude/", "/claude_desktop_config.json", "/Claude Desktop/"]},
+      "limitations": ["The desktop bundle requires Dex's supported Python runtime and exposes read-only MCP tools; Claude Desktop chat does not run Dex hooks."],
+      "evidence": ["https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop", "https://blog.modelcontextprotocol.io/posts/2025-11-20-adopting-mcpb/"]
+    },
+    {
       "id": "codex",
       "name": "Codex",
       "display_name": "Codex",
@@ -187,6 +210,52 @@
       "detection": {"env": ["COWORK", "CLAUDE_COWORK", "CLAUDE_DESKTOP_COWORK"], "paths": ["/.cowork/", "/cowork/"]},
       "limitations": ["The local stdio MCP bridge is not exposed as a Cowork external connector; that needs a separately secured public endpoint."],
       "evidence": ["https://claude.com/docs/cowork/guide/plugins", "https://support.claude.com/en/articles/13837440-use-plugins-in-claude"]
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "display_name": "Cursor",
+      "vendor": "Anysphere",
+      "summary": "Native Cursor plugin plus the open Agent Plugins package, with shared skills, MCP, context, and safety hooks.",
+      "adapter": {"kind": "cursor-plugin", "status": "native", "manifest": ".cursor-plugin/plugin.json", "install_guide": "core/harnesses/adapters/cursor.json"},
+      "support_level": "supported",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The open workspace is available to Cursor Agent."},
+        {"id": "mcp", "status": "native", "tier": 1, "mode": "on_demand", "notes": "Cursor loads the same relocatable MCP server from the plugin package."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "mode": "on_demand", "notes": "Cursor supports Agent Skills and the Agent Plugins open standard."},
+        {"id": "hooks", "status": "native", "tier": 3, "mode": "guided", "notes": "Native sessionStart and preToolUse hooks map to Dex's shared context and safety core after workspace trust."},
+        {"id": "session-lifecycle", "status": "partial", "tier": 3, "mode": "guided", "notes": "Local Cursor sessions inject context automatically; cloud agents intentionally do not run sessionStart."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "mode": "unavailable", "notes": "The plugin does not assume Cursor Automations; Dex uses its operating-system scheduler."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "mode": "on_demand", "notes": "Agent chat interaction is host-native."},
+        {"id": "agent-plugins", "status": "native", "tier": 2, "mode": "guided", "notes": "Cursor loads Agent Plugins directly and also accepts the included native Cursor manifest."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills", "tier-3-full"],
+      "detection": {"env": ["CURSOR_TRACE_ID", "CURSOR_AGENT", "CURSOR_VERSION"], "paths": ["/.cursor/", "/Cursor/", "/.cursor-plugin/"]},
+      "limitations": ["Cursor cloud agents do not run sessionStart; local safety hooks require workspace trust."],
+      "evidence": ["https://cursor.com/docs/plugins", "https://cursor.com/docs/hooks"]
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI",
+      "display_name": "Gemini CLI",
+      "vendor": "Google",
+      "summary": "Native Gemini CLI extension generated from Dex's shared skills, MCP, context, and safety core.",
+      "adapter": {"kind": "gemini-extension", "status": "native-build", "manifest": "gemini-extension.json", "install_guide": "core/harnesses/adapters/gemini-cli.json"},
+      "support_level": "supported",
+      "capabilities": [
+        {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The current Gemini workspace is available to the extension."},
+        {"id": "mcp", "status": "native", "tier": 1, "mode": "on_demand", "notes": "The extension declares Dex's relocatable stdio MCP server with extensionPath variables."},
+        {"id": "agent-skills", "status": "native", "tier": 2, "mode": "on_demand", "notes": "Gemini CLI extensions discover Agent Skills from skills/."},
+        {"id": "hooks", "status": "native", "tier": 3, "mode": "guided", "notes": "SessionStart and BeforeTool map to the shared Dex context and safety core after trust review."},
+        {"id": "session-lifecycle", "status": "native", "tier": 3, "mode": "automatic", "notes": "SessionStart injects current Dex context on startup, resume, and clear."},
+        {"id": "background-jobs", "status": "none", "tier": 1, "mode": "unavailable", "notes": "The extension does not assume a Gemini scheduler; Dex uses its operating-system scheduler."},
+        {"id": "interactive-prompts", "status": "native", "tier": 2, "mode": "on_demand", "notes": "CLI interaction is host-native."},
+        {"id": "agent-plugins", "status": "partial", "tier": 2, "mode": "guided", "notes": "Gemini uses its native extension format; the artifact is generated from the same canonical package sources."}
+      ],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills", "tier-3-full"],
+      "detection": {"env": ["GEMINI_CLI", "GEMINI_PROJECT_DIR", "GEMINI_SESSION_ID"], "paths": ["/.gemini/", "/gemini-cli/"]},
+      "limitations": ["Gemini uses a separately built extension artifact because its fixed hooks file has a different schema from Claude's."],
+      "evidence": ["https://github.com/google-gemini/gemini-cli/blob/main/docs/extensions/reference.md", "https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md"]
     },
     {
       "id": "pi",

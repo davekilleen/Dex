@@ -20,6 +20,13 @@ System/.installed-files.manifest text eol=lf
 .claude/skills-custom/** -text
 .claude/skills/*-custom/** -text
 
+# Portable skill trees are byte-for-byte generated mirrors. Some canonical
+# Markdown deliberately uses two trailing spaces for a hard line break, and a
+# few vendored scripts preserve upstream whitespace. Keep `git diff --check`
+# useful for authored code without rewriting those owned source bytes here.
+.agents/skills/** whitespace=-trailing-space
+packages/dex-agent-plugin/skills/** whitespace=-trailing-space
+
 # This fixture's CRLF bytes are the point of its test — never convert it.
 core/tests/fixtures/entity_pages/09-crlf.md -text
 

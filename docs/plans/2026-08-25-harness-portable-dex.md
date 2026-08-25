@@ -1,8 +1,8 @@
 # Harness-portable Dex and BB plugin — implementation plan
 
 **Status:** Built, final verification and review in progress; deliberately unreleased
-**Branch:** `codex/harness-portable-dex`  
-**Decision owner:** Dave Killeen  
+**Branch:** `codex/harness-portable-dex`
+**Decision owner:** Dave Killeen
 **Date:** 2026-08-25
 
 ## Outcome
@@ -14,6 +14,10 @@ receive a precise account of what is automatic, guided, or unavailable in that h
 
 The build stops before merge, publication, marketplace submission, installation for another
 user, or release.
+
+This release targets macOS and Windows. Linux remains deliberately deferred. A platform is
+not called release-ready until the same launcher completes real MCP and hook round trips on
+that operating system's CI runner. Node 20+ and Python 3.11+ are explicit prerequisites.
 
 ## Product position
 
@@ -170,7 +174,7 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | Claude Code | Existing hook behavior still works through shared services |
 | Claude Cowork | Plugin/skill discovery plus explicit hook/cloud limitations |
 | Codex | Portable skill and MCP discovery; supported hooks call shared entry points |
-| Copilot CLI | Plugin/skill/MCP discovery and hook-adapter truth |
+| Copilot CLI | Plugin/skill/MCP discovery plus an explicit unavailable result for the unbundled Copilot-specific hook contract |
 | Pi | Agent Skill discovery plus guided/MCP-less tool path or extension adapter |
 | Agent Plugin client | v1 manifest/schema and relocatable plugin-root behavior |
 | ChatGPT Work | Local companion reads files; no claim that web ChatGPT runs local hooks |
@@ -183,9 +187,9 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | Codex | Repo marketplace resolved the package; a temporary isolated Codex home installed and enabled version `1.0.0`; MCP and hook harness tests pass. | No public marketplace submission; Codex IDE is unsupported by the host. |
 | Claude Code | `claude plugin validate packages/dex-agent-plugin` passes; shared hook tests pass. | No marketplace install or Cowork upload performed. |
 | ChatGPT | Uses the same validated OpenAI package and local repo marketplace. | Desktop UI install was not exercised on this headless Devbox; web needs a secured HTTPS MCP endpoint. |
-| Copilot CLI | Root manifest follows the Open Plugin Spec accepted by Copilot; package/schema/hook tests pass. | The Copilot binary is not installed on this Devbox, so live CLI installation remains a release-candidate check. |
+| Copilot CLI | Root manifest follows the Open Plugin Spec accepted by Copilot; package and schema tests pass. Its incompatible hook schema is now explicitly unavailable rather than overclaimed. | The Copilot binary is not installed on this Devbox, so live CLI installation remains a release-candidate check. |
 | Pi | Existing native `dex-pi/extensions/dex/package.json` and lifecycle extension are present in the Pi repository. | The dirty shared Pi checkout was inspected read-only; no Pi package was changed or released. |
-| Agent Plugin | v1 schema, relocatable launcher, tools, resources, and dependency closure pass golden tests. | Client-specific hooks remain outside the v1 floor. |
+| Agent Plugin | v1 schema, Node-to-Python launcher, tools, resources, dependency closure, and Linux deferred-runtime journey pass golden tests. A mandatory macOS/Windows CI matrix is wired. | Native macOS and Windows CI results plus mandatory Fable reviews are still required before the branch can be called release-ready. Client-specific hooks remain outside the v1 floor. |
 | BB | Standalone commit `e17badee5dcb57cda6ea5b3d2f66b07b83f6d145`; TypeScript, Vitest, official build engine, official SDK backend/frontend harness, package audit, and tarball checks pass. | `bb` CLI is unavailable here; live path install and marketplace release remain undone. |
 
 ## Research decisions and sources
@@ -203,6 +207,9 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
   [Cowork guide](https://claude.com/docs/cowork/guide/plugins).
 - GitHub Copilot CLI supports plugins and the Open Plugin Spec additively:
   [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference).
+  Its hooks use a separate versioned, lower-camel-case contract with explicit
+  Bash/PowerShell commands, so this release does not reuse the Claude/Codex hook file:
+  [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
 - Pi's native extension/skill model is documented separately from MCP:
   [Pi documentation](https://pi.dev/docs/latest).
 - BB plugins are full-trust TypeScript packages with skills, tools, CLI, UI, storage, and

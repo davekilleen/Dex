@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node ./bin/dex-python.mjs hook --protocol cursor"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node ./bin/dex-python.mjs hook --protocol cursor",
+        "matcher": "Shell|Write|Delete",
+        "failClosed": true
+      }
+    ]
+  }
+}

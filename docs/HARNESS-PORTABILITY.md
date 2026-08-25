@@ -11,6 +11,18 @@ lets the user select more than one, previews the exact capability modes, and
 stores the confirmed selection at `System/.dex/harness-profile.json`. Doctor
 reports the same receipt.
 
+## Platform boundary for this release
+
+| Platform | Release state | Required runtime proof |
+| --- | --- | --- |
+| macOS | Release-ready | Native GitHub runner completes MCP initialization, tool discovery, SessionStart context, and PreToolUse refusal through the installed launcher shape. |
+| Windows | Release-ready | The same native runtime round trips pass with a Windows Python executable path. |
+| Linux | Deferred | The runtime is still exercised on the Devbox, but Linux packaging and live-host verification are explicitly outside this release. |
+
+The portable package requires Node 20+ and Python 3.11+. The release state lives
+in `core/harnesses/registry.json`, is copied into the package, and is reported
+by Doctor; this table is explanatory, not a second source of truth.
+
 ## What is shared
 
 `packages/dex-agent-plugin/` contains one generated package with:
@@ -21,7 +33,10 @@ reports the same receipt.
 - byte-identical vendored copies of the canonical context and safety modules;
 - SessionStart context and PreToolUse safety hooks for hosts that can genuinely
   run them;
-- native OpenAI and Claude manifests plus the Agent Plugins v1 root contract.
+- native OpenAI, Claude, and Cursor manifests plus the Agent Plugins v1 root
+  contract;
+- separate, generated Gemini CLI and Claude Desktop artifacts where their
+  package contracts cannot safely share the same hook manifest.
 
 The safety MCP result is advisory. It becomes an enforced refusal only where a
 trusted PreToolUse hook intercepts the action before it runs.
@@ -30,13 +45,28 @@ trusted PreToolUse hook intercepts the action before it runs.
 
 These are developer-preview journeys, not customer release instructions.
 
+Build the separate installable artifacts from the same canonical package:
+
+```sh
+npm ci --ignore-scripts
+python3 scripts/build-portable-harness-artifacts.py --output-dir build/portable-artifacts
+```
+
+The builder validates and packs `dex-claude-desktop.mcpb`, builds the complete
+`dex-gemini-extension/` install directory and deterministic archive, and writes
+`artifacts.json` with unreleased status, sizes, and SHA-256 checksums. It does
+not publish, install, or release anything.
+
 | Harness | Local package journey | Honest boundary |
 | --- | --- | --- |
 | Codex CLI / desktop | From the Dex root, run `codex plugin marketplace add .`, then `codex plugin add dex@dex-unreleased`. Review and trust the hooks, then start a new task. | Codex IDE extensions do not load plugins. |
 | ChatGPT desktop | Restart the app, open the Plugins Directory, choose **Dex (unreleased local build)**, install Dex, review its hooks, and start a new chat. | ChatGPT web cannot use this local stdio server; a secured HTTPS MCP service is separate future work. |
 | Claude Code | Run `claude plugin validate packages/dex-agent-plugin`, then test with `claude --plugin-dir ./packages/dex-agent-plugin` before creating a private marketplace entry. | The shared package maps two lifecycle guarantees; Claude's complete mature Dex hook suite remains the reference. |
+| Claude Desktop | Select `build/portable-artifacts/dex-claude-desktop.mcpb` in **Settings > Extensions > Advanced settings > Install Extension**, then select the Dex vault during configuration. | The officially validated desktop bundle exposes local read-only MCP tools. Chat does not run hooks, and Python 3.11+ remains required. |
 | Claude Cowork | Upload/install the reviewed Claude plugin package and grant the full Dex folder. | Cowork external connectors require a public internet endpoint, so the local stdio MCP server is not claimed. |
-| GitHub Copilot CLI | Run `copilot plugin install ./packages/dex-agent-plugin`, inspect the installed plugin, then open the full Dex folder. | Confirm hook support in the installed CLI version before relying on automatic enforcement. |
+| GitHub Copilot CLI | Run `copilot plugin install ./packages/dex-agent-plugin`, inspect the installed plugin, then open the full Dex folder. | Skills and MCP use the open package. Copilot's distinct hooks contract is not bundled or claimed in this release, so safety remains an explicit tool check. |
+| Cursor | Copy or link `packages/dex-agent-plugin` to `~/.cursor/plugins/local/dex`, reload Cursor, and approve the native hooks. | Local sessions get context and safety hooks. Cursor cloud agents do not run `sessionStart`, so that lifecycle guarantee is local-only. |
+| Gemini CLI | Run `gemini extensions install build/portable-artifacts/dex-gemini-extension`, approve its hooks, and restart Gemini CLI in the full Dex folder. | Gemini's fixed hook file uses a different schema, so Dex builds a separate complete artifact from the same canonical sources. |
 | Agent Plugins v1 client | Install the folder using root `plugin.json` and `mcp.json`. | The open specification standardizes skills and MCP, not every host lifecycle. |
 | Pi | Use the native `dex-pi/extensions/dex` package and open the full Dex folder. | Pi has no built-in MCP client; its extension supplies native tools and lifecycle events instead. |
 | BB | Install the separately built `bb-plugin-dex` package from a reviewed local path and select the vault in settings. | Version one is read-only: status, capabilities, brief, CLI, and panel; no jobs, writes, provider bridge, or marketplace release. |
@@ -49,8 +79,9 @@ After installation, verify these outcomes in a fresh task:
 2. `boot_today` reads the selected vault without writing anything.
 3. `get_person_context` returns a known person or a clean `found: false` result.
 4. `check_safety_gate` refuses a synthetic `rm -rf /` proposal.
-5. If hooks are supported and trusted, SessionStart injects current Dex context
-   and PreToolUse blocks that synthetic destructive proposal before execution.
+5. In a verified Codex, Claude, Cursor, or Gemini hook package, session start
+   injects current Dex context and the host's pre-tool event blocks that
+   synthetic destructive proposal before execution.
 6. Doctor reports the confirmed harness receipt and does not call a guided or
    unavailable feature automatic.
 
@@ -71,6 +102,13 @@ First-party references used for this build:
 - [OpenAI hook behavior and trust](https://learn.chatgpt.com/docs/hooks)
 - [Claude plugin reference](https://code.claude.com/docs/en/plugins-reference)
   and [Cowork plugin guide](https://claude.com/docs/cowork/guide/plugins)
+- [Claude Desktop local extensions](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
+  and [MCP Bundles](https://blog.modelcontextprotocol.io/posts/2025-11-20-adopting-mcpb/)
 - [GitHub Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+  and [Copilot's distinct hooks contract](https://docs.github.com/en/copilot/reference/hooks-reference)
+- [Cursor plugins](https://cursor.com/docs/plugins) and
+  [Cursor hooks](https://cursor.com/docs/hooks)
+- [Gemini CLI extensions](https://github.com/google-gemini/gemini-cli/blob/main/docs/extensions/reference.md)
+  and [Gemini hooks](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md)
 - [Agent Plugins v1 specification](https://agent-plugins.org/specification)
 - [Pi documentation](https://pi.dev/docs/latest) and [BB](https://getbb.app/)

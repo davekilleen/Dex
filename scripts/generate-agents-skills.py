@@ -14,11 +14,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shutil
 import sys
 from pathlib import Path
 from typing import Any, Mapping
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = REPO_ROOT / ".claude" / "skills"
@@ -34,9 +32,7 @@ HOST_ONLY_COMMAND = re.compile(
     r"|(?:^|[\s`])claude\s+mcp\s+\w+|\bAskUserQuestion\s*\(|\.claude/(?:hooks|flows)/|\.claude/settings\.json",
     re.IGNORECASE,
 )
-CLAUDE_SKILL_PATH = re.compile(
-    r"\.claude/skills/([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)"
-)
+CLAUDE_SKILL_PATH = re.compile(r"\.claude/skills/([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)")
 CLAUDE_SKILLS_ROOT = re.compile(r"\.claude/skills(?=[`'\" )\],]|$)")
 LOCAL_RESOURCE_PATH = re.compile(
     r"(?<![A-Za-z0-9_./-])((?:scripts|references|assets|evals)/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)"
@@ -47,12 +43,14 @@ def _is_custom_path(path: Path) -> bool:
     return any(part.endswith("-custom") for part in path.parts)
 
 
+def _is_python_cache(path: Path) -> bool:
+    return "__pycache__" in path.parts or path.suffix == ".pyc"
+
+
 def discover_canonical_skills(source_root: Path = SOURCE_ROOT) -> list[Path]:
     """Return every shipped ``SKILL.md`` except user-owned variants."""
     return [
-        path
-        for path in sorted(source_root.rglob("SKILL.md"))
-        if not _is_custom_path(path.relative_to(source_root))
+        path for path in sorted(source_root.rglob("SKILL.md")) if not _is_custom_path(path.relative_to(source_root))
     ]
 
 
@@ -143,9 +141,7 @@ def _validate_local_references(
         # A canonical path to a Claude-only skill cannot be left in a portable
         # adapter: it would point at a file the adapter intentionally omits.
         if len(relative.parts) >= 2 and relative.parts[1] == "SKILL.md":
-            raise ValueError(
-                f"portable skill references non-portable skill {target_key}: {source_skill}"
-            )
+            raise ValueError(f"portable skill references non-portable skill {target_key}: {source_skill}")
     for match in LOCAL_RESOURCE_PATH.finditer(text):
         relative = Path(match.group(1))
         target = (resource_root or source_skill.parent) / relative
@@ -246,7 +242,8 @@ def companion_files(skill_dir: Path) -> list[Path]:
     """Return every regular resource below a skill, including scripts/assets."""
     files: list[Path] = []
     for path in sorted(skill_dir.rglob("*")):
-        if not path.is_file() or _is_custom_path(path.relative_to(skill_dir)):
+        relative = path.relative_to(skill_dir)
+        if not path.is_file() or _is_custom_path(relative) or _is_python_cache(relative):
             continue
         if path.name == "SKILL.md":
             continue
@@ -312,7 +309,9 @@ def _existing_generated_files(dest_root: Path, repo_root: Path) -> set[Path]:
     return {
         path
         for path in dest_root.rglob("*")
-        if path.is_file() and not _is_custom_path(path.relative_to(dest_root))
+        if path.is_file()
+        and not _is_custom_path(path.relative_to(dest_root))
+        and not _is_python_cache(path.relative_to(dest_root))
     }
 
 

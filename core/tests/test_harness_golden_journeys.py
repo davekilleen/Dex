@@ -20,9 +20,12 @@ EXPECTED_IDS = (
     "bb",
     "chatgpt-work",
     "claude-code",
+    "claude-desktop",
     "codex",
     "copilot-cli",
     "cowork",
+    "cursor",
+    "gemini-cli",
     "pi",
 )
 
@@ -73,6 +76,10 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert claude["hooks"]["status"] == "native"
     assert claude["session-lifecycle"]["mode"] == "automatic"
 
+    desktop = _rows("claude-desktop")
+    assert desktop["mcp"]["status"] == "native"
+    assert desktop["hooks"]["mode"] == "unavailable"
+
     codex = _rows("codex")
     assert codex["hooks"]["status"] == "native"
     assert codex["hooks"]["mode"] == "guided"
@@ -87,6 +94,14 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert cowork["agent-skills"]["status"] == "native"
     assert cowork["mcp"]["mode"] == "guided"
     assert "public" in " ".join(get_profile("cowork").limitations).lower()
+
+    cursor = _rows("cursor")
+    assert cursor["agent-plugins"]["status"] == "native"
+    assert cursor["hooks"]["status"] == "native"
+
+    gemini = _rows("gemini-cli")
+    assert gemini["agent-skills"]["status"] == "native"
+    assert gemini["session-lifecycle"]["mode"] == "automatic"
 
     pi = _rows("pi")
     assert get_profile("pi").adapter["kind"] == "pi-extension"
@@ -114,8 +129,11 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
         "Codex",
         "ChatGPT",
         "Claude Code",
+        "Claude Desktop",
         "Claude Cowork",
         "GitHub Copilot CLI",
+        "Cursor",
+        "Gemini CLI",
         "Agent Plugins v1",
         "Pi",
         "BB",

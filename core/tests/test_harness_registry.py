@@ -18,9 +18,12 @@ from core.harnesses.registry import (
 
 EXPECTED_IDS = {
     "claude-code",
+    "claude-desktop",
     "cowork",
     "codex",
     "copilot-cli",
+    "cursor",
+    "gemini-cli",
     "pi",
     "agent-plugin",
     "chatgpt-work",
@@ -88,6 +91,18 @@ def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
     assert copilot["hooks"]["status"] == "not-verified"
     assert copilot["hooks"]["mode"] == "unavailable"
 
+    cursor = {row["id"]: row for row in get_profile("cursor").capability_rows()}
+    assert cursor["agent-plugins"]["status"] == "native"
+    assert cursor["hooks"]["status"] == "native"
+
+    gemini = {row["id"]: row for row in get_profile("gemini-cli").capability_rows()}
+    assert gemini["mcp"]["status"] == "native"
+    assert gemini["hooks"]["status"] == "native"
+
+    desktop = {row["id"]: row for row in get_profile("claude-desktop").capability_rows()}
+    assert desktop["mcp"]["status"] == "native"
+    assert desktop["hooks"]["mode"] == "unavailable"
+
 
 def test_every_profile_has_a_reviewable_adapter_descriptor() -> None:
     adapter_root = Path(__file__).resolve().parents[2] / "core" / "harnesses" / "adapters"
@@ -108,6 +123,8 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
     assert [profile.id for profile in detect_harnesses(explicit=["codex"])] == ["codex"]
     detected = detect_harnesses(env={"CODEX_CLI": "1"})
     assert [profile.id for profile in detected] == ["codex"]
+    assert [profile.id for profile in detect_harnesses(env={"CURSOR_TRACE_ID": "x"})] == ["cursor"]
+    assert [profile.id for profile in detect_harnesses(env={"GEMINI_CLI": "1"})] == ["gemini-cli"]
 
 
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:

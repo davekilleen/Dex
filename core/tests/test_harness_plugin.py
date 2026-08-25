@@ -7,6 +7,8 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
+import zipfile
 from pathlib import Path
 
 import jsonschema
@@ -14,6 +16,7 @@ import jsonschema
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
 GENERATOR_PATH = REPO_ROOT / "scripts" / "generate-portable-plugin.py"
+ARTIFACT_BUILDER = REPO_ROOT / "scripts" / "build-portable-harness-artifacts.py"
 PLUGIN_SCHEMA = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
@@ -87,9 +90,12 @@ def test_plugin_contains_skills_resources_registry_and_relocatable_launcher() ->
         "bb",
         "chatgpt-work",
         "claude-code",
+        "claude-desktop",
         "codex",
         "copilot-cli",
         "cowork",
+        "cursor",
+        "gemini-cli",
         "pi",
     }
     launcher = PLUGIN_ROOT / "bin" / "dex-python.mjs"
@@ -136,6 +142,179 @@ def test_native_codex_and_claude_manifests_share_one_package() -> None:
     assert "commandWindows" in codex_hook_text
 
 
+def test_cursor_manifest_uses_native_hooks_and_the_shared_package() -> None:
+    manifest = json.loads((PLUGIN_ROOT / ".cursor-plugin" / "plugin.json").read_text())
+    hooks = json.loads((PLUGIN_ROOT / "hooks" / "cursor.json").read_text())
+
+    assert manifest["name"] == "dex"
+    assert manifest["skills"] == "./skills/"
+    assert manifest["mcpServers"] == "./mcp.json"
+    assert manifest["hooks"] == "./hooks/cursor.json"
+    assert hooks["version"] == 1
+    assert set(hooks["hooks"]) == {"sessionStart", "preToolUse"}
+    assert "--protocol cursor" in json.dumps(hooks)
+    assert hooks["hooks"]["preToolUse"][0]["failClosed"] is True
+
+
+def test_hook_bridge_translates_cursor_protocol(tmp_path: Path) -> None:
+    vault = tmp_path / "cursor-vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        "pillars:\n  - id: portable\n    name: Cursor Portable\n    description: Verified\n",
+        encoding="utf-8",
+    )
+    session = subprocess.run(
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook", "--protocol", "cursor"],
+        input=json.dumps({"hook_event_name": "sessionStart", "workspace_roots": [str(vault)]}),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "Cursor Portable" in json.loads(session.stdout)["additional_context"]
+
+    blocked = subprocess.run(
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook", "--protocol", "cursor"],
+        input=json.dumps(
+            {
+                "hook_event_name": "preToolUse",
+                "cwd": str(vault),
+                "tool_name": "Shell",
+                "tool_input": {"command": "rm -rf /"},
+            }
+        ),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    denial = json.loads(blocked.stdout)
+    assert denial["permission"] == "deny"
+    assert denial["agent_message"]
+
+
+def test_gemini_extension_source_and_hook_protocol(tmp_path: Path) -> None:
+    source = REPO_ROOT / "packages" / "dex-gemini-extension"
+    manifest = json.loads((source / "gemini-extension.json").read_text())
+    hooks = json.loads((source / "hooks" / "hooks.json").read_text())
+    assert manifest["name"] == "dex"
+    assert manifest["mcpServers"]["dex-core"]["args"][-1] == "mcp"
+    assert "${extensionPath}" in json.dumps(manifest)
+    assert set(hooks["hooks"]) == {"SessionStart", "BeforeTool"}
+    assert "--protocol gemini" in json.dumps(hooks)
+
+    vault = tmp_path / "gemini-vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        "pillars:\n  - id: portable\n    name: Gemini Portable\n    description: Verified\n",
+        encoding="utf-8",
+    )
+    session = subprocess.run(
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook", "--protocol", "gemini"],
+        input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(vault), "source": "startup"}),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "Gemini Portable" in json.loads(session.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    blocked = subprocess.run(
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook", "--protocol", "gemini"],
+        input=json.dumps(
+            {
+                "hook_event_name": "BeforeTool",
+                "cwd": str(vault),
+                "tool_name": "run_shell_command",
+                "tool_input": {"command": "rm -rf /"},
+            }
+        ),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    denial = json.loads(blocked.stdout)
+    assert denial == {"decision": "deny", "reason": "Blocked: recursive delete targeting root, home, or /Users"}
+
+
+def test_claude_desktop_manifest_uses_the_official_mcpb_contract() -> None:
+    manifest = json.loads((REPO_ROOT / "packages" / "dex-claude-desktop" / "manifest.json").read_text())
+    assert manifest["manifest_version"] == "0.4"
+    assert manifest["name"] == "dex"
+    assert manifest["server"]["type"] == "node"
+    assert manifest["server"]["mcp_config"]["command"] == "node"
+    assert manifest["server"]["mcp_config"]["args"][-1] == "mcp"
+    assert "${__dirname}" in json.dumps(manifest)
+    assert manifest["server"]["mcp_config"]["env"]["DEX_VAULT_PATH"] == ("${user_config.vault_path}")
+    assert manifest["user_config"]["vault_path"]["type"] == "directory"
+    assert manifest["user_config"]["vault_path"]["required"] is True
+    assert set(manifest["compatibility"]["platforms"]) == {"darwin", "win32"}
+
+
+def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
+    tmp_path: Path,
+) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(ARTIFACT_BUILDER), "--output-dir", str(tmp_path)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "dex-gemini-extension" in completed.stdout
+    assert "dex-claude-desktop.mcpb" in completed.stdout
+
+    gemini = tmp_path / "dex-gemini-extension"
+    assert (gemini / "gemini-extension.json").is_file()
+    assert (gemini / "hooks" / "hooks.json").is_file()
+    assert (gemini / "bin" / "dex-python.mjs").is_file()
+    assert (gemini / "server.py").is_file()
+    assert "gemini extensions install" in (gemini / "README.md").read_text()
+    assert (gemini / "runtime" / "core" / "gates" / "safety.py").is_file()
+    assert any((gemini / "skills").glob("*/SKILL.md"))
+
+    with tarfile.open(tmp_path / "dex-gemini-extension.tar.gz", "r:gz") as archive:
+        names = set(archive.getnames())
+    assert "dex-gemini-extension/gemini-extension.json" in names
+    assert "dex-gemini-extension/skills/getting-started/SKILL.md" in names
+
+    mcpb = tmp_path / "dex-claude-desktop.mcpb"
+    with zipfile.ZipFile(mcpb) as archive:
+        names = set(archive.namelist())
+        bundled_manifest = json.loads(archive.read("manifest.json"))
+    assert bundled_manifest["manifest_version"] == "0.4"
+    assert "bin/dex-python.mjs" in names
+    assert "server.py" in names
+    assert "runtime/core/context/session_boot.py" in names
+    assert "Install Extension" in (
+        tmp_path / "dex-claude-desktop" / "README.md"
+    ).read_text()
+
+    artifact_index = json.loads((tmp_path / "artifacts.json").read_text())
+    assert artifact_index["release_status"] == "unreleased"
+    assert {row["name"] for row in artifact_index["artifacts"]} == {
+        "dex-claude-desktop.mcpb",
+        "dex-gemini-extension.tar.gz",
+    }
+    assert all(len(row["sha256"]) == 64 for row in artifact_index["artifacts"])
+
+    responses = _mcp_roundtrip(
+        [{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}],
+        cwd=gemini,
+        plugin_root=gemini,
+    )
+    assert {tool["name"] for tool in responses[0]["result"]["tools"]} == {
+        "dex_harness_profiles",
+        "boot_today",
+        "get_person_context",
+        "check_safety_gate",
+    }
+    desktop = tmp_path / "dex-claude-desktop"
+    desktop_responses = _mcp_roundtrip(
+        [{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}],
+        cwd=desktop,
+        plugin_root=desktop,
+    )
+    assert desktop_responses[0]["id"] == 2
+
+
 def test_launcher_selects_platform_specific_python_candidates() -> None:
     script = """
       import { pythonCandidates } from './packages/dex-agent-plugin/bin/dex-launcher-lib.mjs';
@@ -163,9 +342,7 @@ def test_launcher_selects_platform_specific_python_candidates() -> None:
 
 
 def test_repo_marketplace_exposes_the_unreleased_local_openai_plugin() -> None:
-    marketplace = json.loads(
-        (REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text()
-    )
+    marketplace = json.loads((REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text())
     assert marketplace["interface"]["displayName"] == "Dex (unreleased local build)"
     assert marketplace["plugins"] == [
         {
@@ -196,10 +373,15 @@ def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
         assert (PLUGIN_ROOT / "runtime" / relative).read_bytes() == (REPO_ROOT / relative).read_bytes()
 
 
-def _mcp_roundtrip(messages: list[dict], *, cwd: Path | None = None) -> list[dict]:
+def _mcp_roundtrip(
+    messages: list[dict],
+    *,
+    cwd: Path | None = None,
+    plugin_root: Path = PLUGIN_ROOT,
+) -> list[dict]:
     payload = "".join(json.dumps(message) + "\n" for message in messages)
     completed = subprocess.run(
-        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "mcp"],
+        ["node", str(plugin_root / "bin" / "dex-python.mjs"), "mcp"],
         input=payload,
         text=True,
         capture_output=True,
@@ -220,8 +402,7 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     person_dir = vault / "05-Areas" / "People" / "Internal"
     person_dir.mkdir(parents=True)
     (person_dir / "Ada_Lovelace.md").write_text(
-        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n"
-        "- [ ] Send the operating memo\n",
+        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n- [ ] Send the operating memo\n",
         encoding="utf-8",
     )
     responses = _mcp_roundtrip(
@@ -317,4 +498,7 @@ def test_ci_runs_the_runtime_verifier_on_macos_and_windows() -> None:
     job = workflow.split("portable-plugin-platforms:", 1)[1]
     assert "macos-latest" in job
     assert "windows-latest" in job
+    assert "build-portable-harness-artifacts.py" in job
     assert "verify-portable-plugin-runtime.py --require-release-ready" in job
+    assert "--plugin-root build/portable-artifacts/dex-gemini-extension" in job
+    assert "--plugin-root build/portable-artifacts/dex-claude-desktop --skip-hooks" in job

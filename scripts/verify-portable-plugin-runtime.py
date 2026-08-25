@@ -17,9 +17,6 @@ if str(ROOT) not in sys.path:
 
 from core.harnesses.registry import get_platform_release  # noqa: E402
 
-PLUGIN = ROOT / "packages" / "dex-agent-plugin"
-LAUNCHER = PLUGIN / "bin" / "dex-python.mjs"
-
 
 def _environment() -> dict[str, str]:
     return {
@@ -29,9 +26,16 @@ def _environment() -> dict[str, str]:
     }
 
 
-def _run(mode: str, payload: str, *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _run(
+    launcher: Path,
+    mode: str,
+    payload: str,
+    *,
+    cwd: Path,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["node", str(LAUNCHER), mode],
+        ["node", str(launcher), mode],
         input=payload,
         text=True,
         capture_output=True,
@@ -41,12 +45,20 @@ def _run(mode: str, payload: str, *, cwd: Path, check: bool = True) -> subproces
     )
 
 
-def verify_runtime() -> None:
+def verify_runtime(plugin_root: Path, *, verify_hooks: bool) -> None:
+    launcher = plugin_root / "bin" / "dex-python.mjs"
+    if not launcher.is_file():
+        raise RuntimeError(f"portable launcher is missing: {launcher}")
     messages = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
     ]
-    mcp = _run("mcp", "".join(json.dumps(row) + "\n" for row in messages), cwd=ROOT)
+    mcp = _run(
+        launcher,
+        "mcp",
+        "".join(json.dumps(row) + "\n" for row in messages),
+        cwd=plugin_root,
+    )
     responses = [json.loads(line) for line in mcp.stdout.splitlines() if line.strip()]
     if len(responses) != 2 or responses[0].get("id") != 1:
         raise RuntimeError("portable MCP bridge did not complete its initialize round trip")
@@ -54,6 +66,8 @@ def verify_runtime() -> None:
     if "check_safety_gate" not in {tool.get("name") for tool in tools}:
         raise RuntimeError("portable MCP bridge did not expose the shared safety tool")
 
+    if not verify_hooks:
+        return
     with tempfile.TemporaryDirectory(prefix="dex-plugin-runtime-") as temporary:
         vault = Path(temporary)
         system = vault / "System"
@@ -63,6 +77,7 @@ def verify_runtime() -> None:
             encoding="utf-8",
         )
         session = _run(
+            launcher,
             "hook",
             json.dumps({"hook_event_name": "SessionStart", "cwd": str(vault)}),
             cwd=vault,
@@ -70,6 +85,7 @@ def verify_runtime() -> None:
         if "Portable" not in session.stdout:
             raise RuntimeError("SessionStart hook did not inject shared Dex context")
         blocked = _run(
+            launcher,
             "hook",
             json.dumps(
                 {
@@ -93,10 +109,22 @@ def main() -> int:
         action="store_true",
         help="fail when the current platform is not included in this release",
     )
+    parser.add_argument(
+        "--plugin-root",
+        type=Path,
+        default=ROOT / "packages" / "dex-agent-plugin",
+        help="package or staged artifact root to execute",
+    )
+    parser.add_argument(
+        "--skip-hooks",
+        action="store_true",
+        help="verify only MCP for a host that does not support hooks",
+    )
     args = parser.parse_args()
-    verify_runtime()
+    plugin_root = args.plugin_root.expanduser().resolve()
+    verify_runtime(plugin_root, verify_hooks=not args.skip_hooks)
     release = get_platform_release()
-    print(f"Portable plugin runtime verified: {release['label']} ({release['readiness']}).")
+    print(f"Portable plugin runtime verified from {plugin_root.name}: {release['label']} ({release['readiness']}).")
     if args.require_release_ready and release["readiness"] != "release_ready":
         print(f"{release['label']} is outside this release: {release['notes']}", file=sys.stderr)
         return 2
