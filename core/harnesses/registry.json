@@ -74,7 +74,10 @@
         "The package is read-only and unreleased; live bb CLI installation has not yet been verified.",
         "The standalone package currently targets macOS. BB's documented Windows route uses WSL2, which remains in Dex's deferred Linux lane."
       ],
-      "evidence": ["https://getbb.app/docs/plugins"]
+      "evidence": [
+        "https://github.com/get-bb/bb/blob/main/docs/configuration.md#plugins",
+        "https://github.com/get-bb/bb/blob/main/packages/plugin-sdk/README.md"
+      ]
     },
     {
       "id": "chatgpt-work",

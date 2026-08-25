@@ -76,7 +76,8 @@
   },
   "display_name": "BB",
   "evidence": [
-    "https://getbb.app/docs/plugins"
+    "https://github.com/get-bb/bb/blob/main/docs/configuration.md#plugins",
+    "https://github.com/get-bb/bb/blob/main/packages/plugin-sdk/README.md"
   ],
   "id": "bb",
   "limitations": [
