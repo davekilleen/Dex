@@ -43,6 +43,7 @@
 ^\.claude/reference/beta-templates/analytics/README\.md:.*:pendo$
 ^06-Resources/Dex_System/.*:.*:pendo$
 ^\.claude/flows/onboarding\.md:.*:pendo$
+^core/onboarding/FLOW\.md:.*:pendo$
 ^core/tests/.*:.*:pendo$
 ^README\.md:.*:pendo$
 
