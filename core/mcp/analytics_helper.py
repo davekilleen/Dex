@@ -21,7 +21,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -157,9 +157,26 @@ def get_analytics_transport() -> Dict[str, Any]:
     }
 
 
+# One definition of where the adoption log lives, so the reader and the writer
+# below can never disagree about the file they are talking about.
+USAGE_LOG_RELATIVE_PARTS = ('System', 'usage_log.md')
+
+# A feature line looks like "- [ ] Daily planning (`/daily-plan`)". Group 2 is the
+# only character this module ever rewrites.
+_CHECKBOX_RE = re.compile(r'^(\s*-\s+\[)([ xX])(\]\s+)(\S.*?)\s*$')
+
+# The slash-command inside a label, e.g. "(`/daily-plan`)" -> "daily-plan".
+_COMMAND_RE = re.compile(r'`/([a-z0-9][a-z0-9-]*)`', re.IGNORECASE)
+
+
+def get_usage_log_path() -> Path:
+    """Absolute path to the adoption log."""
+    return get_vault_path().joinpath(*USAGE_LOG_RELATIVE_PARTS)
+
+
 def load_usage_log() -> Dict[str, Any]:
     """Parse usage_log.md into structured data."""
-    usage_path = get_vault_path() / 'System' / 'usage_log.md'
+    usage_path = get_usage_log_path()
     if not usage_path.exists():
         return {}
     
@@ -195,6 +212,105 @@ def load_usage_log() -> Dict[str, Any]:
                 data['metadata'][key] = value
     
     return data
+
+
+def _match_feature_lines(lines: List[str], feature: str) -> List[int]:
+    """Line indexes whose checkbox label identifies `feature`.
+
+    Matching is deliberately narrow and ordered, so a caller either gets one
+    obvious line or an honest report that it could not tell them apart:
+
+    1. the slash-command in the label ("/daily-plan" matches "(`/daily-plan`)")
+    2. the whole label, case-insensitively
+    3. the label with its command stripped, case-insensitively
+
+    A broader fuzzy fallback is deliberately absent: silently marking the wrong
+    milestone is worse than reporting that the name was ambiguous.
+    """
+    wanted = feature.strip().lstrip('/').strip()
+    if not wanted:
+        return []
+    wanted_lower = wanted.lower()
+
+    by_command: List[int] = []
+    by_label: List[int] = []
+    for index, line in enumerate(lines):
+        match = _CHECKBOX_RE.match(line)
+        if not match:
+            continue
+        label = match.group(4).strip()
+        commands = [c.lower() for c in _COMMAND_RE.findall(label)]
+        if wanted_lower in commands:
+            by_command.append(index)
+            continue
+        bare = _COMMAND_RE.sub('', label).strip(' ()').strip()
+        if label.lower() == wanted_lower or bare.lower() == wanted_lower:
+            by_label.append(index)
+
+    return by_command or by_label
+
+
+def mark_feature_used(feature: str) -> Dict[str, Any]:
+    """Tick one adoption checkbox in usage_log.md.
+
+    Local bookkeeping only. This never sends anything, and it is deliberately
+    NOT gated on analytics consent: the log records which Dex features this
+    vault has used so `/dex-level-up` can recommend the ones it has not, which
+    is useful whether or not the user shares anything.
+
+    Returns a status rather than raising, so a caller can record the outcome
+    without a failure interrupting the work the user actually asked for:
+
+      marked          - a box was unticked and is now ticked
+      already_marked  - the box was already ticked, nothing written
+      ambiguous       - several boxes match; candidates returned, nothing written
+      not_found       - no box matches that feature
+      unavailable     - the log is missing or could not be read
+    """
+    usage_path = get_usage_log_path()
+    try:
+        content = usage_path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return {'status': 'unavailable', 'feature': feature, 'reason': 'usage log not found'}
+    except OSError as exc:
+        return {'status': 'unavailable', 'feature': feature, 'reason': str(exc)}
+
+    lines = content.splitlines(keepends=True)
+    matches = _match_feature_lines(lines, feature)
+
+    if not matches:
+        return {'status': 'not_found', 'feature': feature}
+
+    if len(matches) > 1:
+        candidates = [_CHECKBOX_RE.match(lines[i]).group(4).strip() for i in matches]
+        return {'status': 'ambiguous', 'feature': feature, 'candidates': candidates}
+
+    index = matches[0]
+    match = _CHECKBOX_RE.match(lines[index])
+    label = match.group(4).strip()
+    if match.group(2).lower() == 'x':
+        return {'status': 'already_marked', 'feature': feature, 'label': label}
+
+    ending = ''
+    body = lines[index]
+    while body.endswith(('\n', '\r')):
+        ending = body[-1] + ending
+        body = body[:-1]
+    match = _CHECKBOX_RE.match(body)
+    lines[index] = f"{match.group(1)}x{match.group(3)}{match.group(4)}{ending}"
+
+    updated = ''.join(lines)
+    # Write via a sibling temp file and replace, so an interrupted write can
+    # never leave a half-written consent record behind.
+    temp_path = usage_path.with_name(usage_path.name + '.tmp')
+    try:
+        temp_path.write_text(updated, encoding='utf-8')
+        os.replace(temp_path, usage_path)
+    except OSError as exc:
+        temp_path.unlink(missing_ok=True)
+        return {'status': 'unavailable', 'feature': feature, 'reason': str(exc)}
+
+    return {'status': 'marked', 'feature': feature, 'label': label}
 
 
 def check_consent() -> str:
@@ -575,29 +691,6 @@ def update_consent(decision: str):
     
     with open(usage_path, 'w') as f:
         f.write(content)
-
-
-def mark_feature_used(feature_name: str):
-    """Mark a feature as used in usage_log.md."""
-    usage_path = get_vault_path() / 'System' / 'usage_log.md'
-    if not usage_path.exists():
-        return
-    
-    with open(usage_path, 'r') as f:
-        content = f.read()
-    
-    # Find and check the checkbox for this feature
-    # Pattern: - [ ] Feature name... → - [x] Feature name...
-    pattern = rf'- \[ \] ([^(\n]*{re.escape(feature_name)}[^(\n]*)'
-    
-    def replace_checkbox(match):
-        return f'- [x] {match.group(1)}'
-    
-    new_content = re.sub(pattern, replace_checkbox, content, flags=re.IGNORECASE)
-    
-    if new_content != content:
-        with open(usage_path, 'w') as f:
-            f.write(new_content)
 
 
 # Event name constants for consistency
