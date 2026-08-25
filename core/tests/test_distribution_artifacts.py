@@ -508,7 +508,23 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "core/lifecycle/contracts/api.schema.json" in manifest
     assert "core/update/journey-protocol-v1.json" in manifest
     assert "core/update/journey_protocol.py" in manifest
+    assert "AGENTS.md" in manifest
     assert "System/.dex/lifecycle/activation.json" not in manifest
+    release_agents = subprocess.run(
+        ["git", "show", "release:AGENTS.md"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+    ).stdout
+    source_agents = subprocess.run(
+        ["git", "show", "main:AGENTS.md"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+    ).stdout
+    product_agents = (REPO_ROOT / "core/harnesses/templates/product-AGENTS.md").read_bytes()
+    assert release_agents == product_agents
+    assert source_agents != product_agents
     catalog = _git_json(clone, "release:System/.release-catalog.json")
     package = _git_json(clone, "release:package.json")
     bridge_release = _git_json(
