@@ -733,6 +733,13 @@
       "note": "shared release-owned sync-provider table consumed by Python and CommonJS"
     },
     {
+      "id": "brain-product-agents-template",
+      "path": "core/harnesses/templates/product-AGENTS.md",
+      "kind": "file",
+      "ownership": "brain",
+      "note": "versionless root bootstrap copied into every release and vault bundle"
+    },
+    {
       "id": "vault-mcp-custom",
       "path": "core/mcp-custom",
       "kind": "dir",

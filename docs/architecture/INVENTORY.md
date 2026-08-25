@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 46bee1d43bc8abd483d1f6f395f4a431be58d7913200d713dda4082401fa1f8f -->
+<!-- Content SHA-256: 7ba8ec7109a89d06cdce1684e0845688e27cd7141fb9513c915c41f63bb70292 -->
 
 # Architecture Inventory
 
@@ -18,7 +18,7 @@ This inventory is derived only from repository code and shipped skill files.
 | `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 7 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_blob`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
 | `dex-granola-mcp` | `core/mcp/granola_server.py` | 6 | yes | `granola_check_available`, `granola_get_extent`, `granola_get_meeting_details`, `granola_get_recent_meetings`, `granola_get_today_meetings`, `granola_search_meetings` |
 | `dex-improvements-mcp` | `core/mcp/dex_improvements_server.py` | 9 | no | `capture_idea`, `enrich_idea`, `get_backlog_stats`, `get_idea_details`, `list_ideas`, `mark_implemented`, `synthesize_changelog`, `synthesize_learnings`, `validate_backlog` |
-| `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 15 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
+| `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 17 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `inspect_harnesses`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `save_harness_selection`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
 | `dex-pipedrive-mcp` | `core/integrations/pipedrive/pipedrive_server.py` | 15 | yes | `pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal` |
 | `dex-resume-mcp` | `core/mcp/resume_server.py` | 12 | yes | `add_role`, `compile_resume`, `export_resume`, `extract_achievements`, `generate_linkedin`, `generate_role_writeup`, `list_sessions`, `load_session`, `pull_career_evidence`, `save_session`, `start_session`, `validate_metrics` |
 | `dex-session-memory` | `core/mcp/session_memory_server.py` | 8 | no | `get_entity_timeline`, `get_observation_timeline`, `get_recent_decisions`, `get_recent_tool_usage`, `get_session_context`, `get_session_summary`, `search_observations`, `search_sessions` |
@@ -151,13 +151,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 45 | `replace` |
+| `brain` | 46 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 17 | `never` |
 | `runtime` | 15 | `never` |
 
-<details><summary><code>brain</code> declared paths (45)</summary>
+<details><summary><code>brain</code> declared paths (46)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -193,6 +193,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/README.md` (file; `brain-system-readme`)
 - `core` (dir; `brain-core`)
 - `core/data/sync-folder-markers.json` (file; `brain-sync-folder-markers`)
+- `core/harnesses/templates/product-AGENTS.md` (file; `brain-product-agents-template`)
 - `docs` (dir; `brain-docs`)
 - `install.sh` (file; `brain-install`)
 - `package-lock.json` (file; `brain-package-lock`)

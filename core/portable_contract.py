@@ -134,6 +134,13 @@ RULES: tuple[Rule, ...] = (
     _r("brain-dot-scripts", ".scripts", "dir", "brain"),
     _r("brain-packages", "packages", "dir", "brain",
        "package sources are brain; the committed dist/ views are generated (below)"),
+    _r(
+        "brain-product-agents-template",
+        "core/harnesses/templates/product-AGENTS.md",
+        "file",
+        "brain",
+        "versionless root bootstrap copied into every release and vault bundle",
+    ),
     _r("brain-claude", ".claude", "dir", "brain",
        "shipped skills/hooks/flows; user skills belong in .claude/skills-custom/ (vault)"),
     _r("brain-agents", ".agents", "dir", "brain"),

@@ -78,7 +78,8 @@ CATALOG_IDENTITY_CHECKER=$(mktemp)
 JOURNEY_PROTOCOL_CHECK=$(mktemp)
 GITIGNORE_COMPOSER=$(mktemp)
 MATCHES_FILE=$(mktemp)
-trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$CATALOG_IDENTITY_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$GITIGNORE_COMPOSER" "$MATCHES_FILE"' EXIT
+PRODUCT_AGENTS_TEMPLATE=$(mktemp)
+trap 'rm -f "$DISTIGNORE" "$TAU_CHECKER" "$CATALOG_GENERATOR" "$CATALOG_COVERAGE_CHECKER" "$CATALOG_IDENTITY_CHECKER" "$JOURNEY_PROTOCOL_CHECK" "$GITIGNORE_COMPOSER" "$MATCHES_FILE" "$PRODUCT_AGENTS_TEMPLATE"' EXIT
 if ! git show "$SOURCE_BRANCH:.distignore" > "$DISTIGNORE"; then
     echo "Error: .distignore not found in selected source '$SOURCE_BRANCH'." >&2
     exit 1
@@ -122,6 +123,20 @@ fi
 # --- Build release branch ---
 
 SOURCE_SHA=$(git rev-parse "$SOURCE_BRANCH")
+PRODUCT_AGENTS_TEMPLATE_PATH="core/harnesses/templates/product-AGENTS.md"
+if ! git cat-file -e "$SOURCE_SHA:$PRODUCT_AGENTS_TEMPLATE_PATH"; then
+    echo "Error: selected source '$SOURCE_BRANCH' is missing $PRODUCT_AGENTS_TEMPLATE_PATH." >&2
+    exit 1
+fi
+if ! git show "$SOURCE_SHA:$PRODUCT_AGENTS_TEMPLATE_PATH" > "$PRODUCT_AGENTS_TEMPLATE"; then
+    echo "Error: could not read $PRODUCT_AGENTS_TEMPLATE_PATH from selected source '$SOURCE_BRANCH'." >&2
+    exit 1
+fi
+PRODUCT_AGENTS_TEMPLATE_SIZE=$(wc -c < "$PRODUCT_AGENTS_TEMPLATE" | tr -d '[:space:]')
+if [ "$PRODUCT_AGENTS_TEMPLATE_SIZE" -eq 0 ] || [ "$PRODUCT_AGENTS_TEMPLATE_SIZE" -gt 4096 ]; then
+    echo "Error: $PRODUCT_AGENTS_TEMPLATE_PATH must be a non-empty file no larger than 4 KiB." >&2
+    exit 1
+fi
 git show "$SOURCE_SHA:scripts/generate-release-catalog.py" > "$CATALOG_GENERATOR"
 git show "$SOURCE_SHA:scripts/check-catalog-coverage.py" > "$CATALOG_COVERAGE_CHECKER"
 git show "$SOURCE_SHA:scripts/check-release-catalog-tag-identity.py" > "$CATALOG_IDENTITY_CHECKER"
@@ -189,6 +204,12 @@ for pattern in "${PATTERNS[@]}"; do
         REMOVED=$((REMOVED + count))
     fi
 done
+
+# The source AGENTS.md is contributor-only and is removed by .distignore. The
+# product bootstrap is a separate, small template and must be materialized at
+# the distribution root before the installed-files manifest is generated.
+cp -- "$PRODUCT_AGENTS_TEMPLATE" AGENTS.md
+git add -- AGENTS.md
 
 # Remove development-only package metadata that points at stripped files.
 node -e "
