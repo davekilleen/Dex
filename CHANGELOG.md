@@ -7,15 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-<!-- DRAFT — NOT APPROVED, NOT RELEASED.
-     Written for the founder's approval, per the 25 Aug ruling that all user-visible copy
-     is drafted, not shipped. The heading deliberately carries no [version] bracket, so
-     none of the release tooling can pick it up: scripts/generate-dex-lens-catalog.py,
-     scripts/release_publish.py and scripts/build-health-json.py all match on
-     `^## [X.Y.Z]`, and package.json is not bumped. On approval, replace this heading with
-     a real versioned one and bump the package version in the same commit. -->
-
-## DRAFT (awaiting approval) — 🩺 Dex tells you when one of your own automatic jobs quietly stops running
+## [1.97.0] — 🩺 Dex tells you when one of your own automatic jobs quietly stops running (2026-08-25)
 
 If you have set up something to run on a schedule — a nightly backup, a sync, a script that
 tidies a folder every morning — Dex could see that it was installed, but never whether it
@@ -50,6 +42,10 @@ set up had stopped firing on day one. Nothing had told her, because nothing was 
 
 This works for scheduled jobs on a Mac. Jobs set up other ways are not watched yet, and Dex
 says that rather than implying it has you covered.
+
+This one is Michelle's. She suggested that Dex ought to watch the jobs you set up with the
+same care it watches its own — and she was right. Not the first time her eye for what Dex
+was quietly getting wrong has turned into a release. Thank you, Michelle.
 
 ## [1.96.8] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-21)
 
