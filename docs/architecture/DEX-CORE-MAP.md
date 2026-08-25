@@ -29,6 +29,7 @@
 | Ritual intelligence | **PARKED** (code-complete, unwired) | `core/ritual_intelligence/*` | Meeting-intelligence pipeline built Mar 2026, tested in CI, but never wired to any skill/hook/MCP; its beta preview surface was explicitly retracted (see CHANGELOG) |
 | Hooks | **SHIPPED** (wired subset) | `.claude/hooks/`, `.claude/settings.json` | Small wired core (context injection, safety guards, release awareness, autocommit); the once-dead career-evidence hook is fixed (PR #180) |
 | Skills (74 on disk) | **SHIPPED** | `.claude/skills/` | `/command` workflows; the description-rewrite + `/skill-score` quality-gate pass landed (discoverability-risk 53 → 3) |
+| Proactive health + the two promise registers | **SHIPPED** register/snapshots/pulse; **LOCAL** learned-automation watch | `core/health/*`, `core/utils/doctor.py`, `.claude/hooks/health-pulse.sh` | Every recurring job declares a success receipt; Doctor audits them into immutable snapshots that session start and the mid-session pulse read. The shipped register covers Dex's own five jobs; the learned register extends the same discipline to the person's own launchd jobs |
 | Grounding suite (inventory + state + orient) | **SHIPPED** (v1.69+) | `docs/architecture/INVENTORY.md`, `STATE.md`, `scripts/dex_state.py`, `/dex-orient` | Code-derived inventory + CI drift gate, released-vs-LOCAL state snapshot, and a session orientation skill |
 
 ---
@@ -210,6 +211,20 @@ therefore remains false.
 ## 13. Ritual intelligence — PARKED (code-complete, unwired)
 
 **What it is.** A meeting-intelligence pipeline (transcript + calendar ingest, ritual matching, meeting reconciliation, brief generation, contact promotion) built March 2026 (#30) at `core/ritual_intelligence/` with a `python -m core.ritual_intelligence` entry point and its own CI-passing tests. **Nothing invokes it**: no skill, hook, MCP server, or the desktop app references it, and the CHANGELOG records the retraction of its beta preview surface ("an unwired ritual beta handout no longer tells testers that `/daily-plan` will surface recurring-meeting previews"). Its tests keep it green in CI, which makes it look alive from a coverage view — it is not. Treat as parked design capital, not a shipped subsystem; wire-or-retire is an open product decision.
+
+---
+
+## 14. Proactive health + the two promise registers — SHIPPED (shipped register) / LOCAL (learned watch)
+
+**What it is.** The answer to the v1.84.0 field incident, in which meeting sync failed silently for six days while its log kept growing and every check that asked "is it running?" stayed green. The lesson — **activity is not health** — is now a mechanism: every recurring job *declares* how often it succeeds and where a completed run writes its receipt, and the auditor judges receipts, not liveness.
+
+**Where it lives.** `core/health/promises.py` is the shipped register: a frozen tuple of Dex's five background jobs, each with a cadence, a `receipt_kind` (`json-timestamp` | `file-activity` | `daemon`), and an `activity_only` flag for receipts that prove only that a job ran. `scripts/generate-health-promises.py --check` is the CI gate: it infers jobs from the shipped launchd templates and installers and fails the build when one has no promise, and keeps the bash mirror in `.claude/hooks/session-start.sh` in step. `core/utils/doctor.py`'s `jobs.fresh` check audits it; `core/health/reporter.py` normalizes results under a strict versioned contract; `core/health/snapshot.py` writes immutable snapshots through the lifecycle transaction; `core/utils/health_session.py` and `.claude/hooks/health-pulse.sh` read the latest snapshot (the pulse reads only the pointer and the status — two file reads, no forks on the silent path).
+
+**The learned register (LOCAL, this branch).** `core/health/learned.py` extends the same discipline to the jobs *the person* installed. Discovery rides the launch-agent classification pass Doctor already performs; each vault-pointing job that is neither shipped nor claimed by Dex Solo gets a learned promise — cadence read from `StartCalendarInterval`/`StartInterval` (never guessed), receipt chosen best-first (the script's own outputs, then launchd's stdout/stderr as activity-only, then honestly none). The `learned-automations` check reports them. Records live in `System/.dex/health/learned-promises/`, written through the same transaction boundary; the shipped tuple stays frozen and a learned record can never satisfy the shipped gate. Build plan and its binding constraints: `docs/plans/2026-08-25-user-automation-health-watch.md`.
+
+**Two constraints worth knowing before touching it.** (1) The reporter contract has no warning severity, and `snapshot.py:_overall_status` turns any `BROKEN` into `critical` — so `learned-automations` returns `OK`/`OFF` only, and a user's broken job can never make Dex report *itself* as critical or fire the pulse. (2) Check ids in snapshots are validated against a static spec built from Doctor's check lists, so per-job dynamic ids are impossible; every learned verdict folds into one check's bounded `detail` plus the report's `learned_automations` section.
+
+**How it connects.** Doctor is the collector (§ the checkup surface); snapshots go through the transaction core (§2) under the portable contract's `generated-health-state` rule (§3); the Doctor skill renders the learned section; session start appends one line read straight from the snapshot.
 
 ---
 

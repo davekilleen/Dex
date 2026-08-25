@@ -7,6 +7,50 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+<!-- DRAFT — NOT APPROVED, NOT RELEASED.
+     Written for the founder's approval, per the 25 Aug ruling that all user-visible copy
+     is drafted, not shipped. The heading deliberately carries no [version] bracket, so
+     none of the release tooling can pick it up: scripts/generate-dex-lens-catalog.py,
+     scripts/release_publish.py and scripts/build-health-json.py all match on
+     `^## [X.Y.Z]`, and package.json is not bumped. On approval, replace this heading with
+     a real versioned one and bump the package version in the same commit. -->
+
+## DRAFT (awaiting approval) — 🩺 Dex tells you when one of your own automatic jobs quietly stops running
+
+If you have set up something to run on a schedule — a nightly backup, a sync, a script that
+tidies a folder every morning — Dex could see that it was installed, but never whether it
+had actually run. It said so honestly: those jobs were "checked for loading only." That
+honesty was cold comfort to the person who found out months later that a daily job she had
+set up had stopped firing on day one. Nothing had told her, because nothing was watching.
+
+**What this fixes for you:**
+
+* **Dex now notices when one of your own jobs stops running.** It learns how often each of
+  your scheduled jobs is meant to run, and what it leaves behind when it works. If a job was
+  due and left nothing behind twice in a row, Dex tells you — with the evidence: which job,
+  when it was last due, and how long it has been quiet.
+* **One missed morning stays quiet.** Laptops sleep, and a job that runs late on wake has
+  not failed. Dex waits for a second miss before it says anything, and the moment the job
+  runs again it stops mentioning it.
+* **Dex tells you it has been watching, and lets you stop it.** The first time it brings any
+  of this up, it says plainly that it noticed these jobs and has been keeping an eye on them,
+  and offers you keep-or-stop for each one. Stop is real: no more alerts about that job, and
+  it is listed from then on as not watched, at your choice — never quietly dropped.
+* **It reads, it never meddles.** Dex looks at your job's settings and, where it can, at the
+  script itself, so it knows what to check for. It never changes them, never runs them, and
+  never repairs them — a job that has stopped is yours to fix, and Dex only tells you. Files
+  that could hold passwords or keys are skipped before they are opened at all.
+* **If it cannot check a job honestly, it says so.** Some jobs run on an event rather than a
+  clock, or leave nothing behind at all. Those keep the plain "cannot check this one"
+  wording instead of being waved through as fine. For a job like that, Dex can offer to add
+  a single line to your script so there is something to check — it shows you the exact line
+  first and only adds it if you say yes.
+* **A job of yours in trouble never makes Dex claim it is broken itself.** Your jobs and
+  Dex's own health stay separate lines with separate answers.
+
+This works for scheduled jobs on a Mac. Jobs set up other ways are not watched yet, and Dex
+says that rather than implying it has you covered.
+
 ## [1.96.8] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-21)
 
 After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.

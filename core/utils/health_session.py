@@ -83,6 +83,29 @@ def _snapshot_stamp(snapshot: HealthSnapshot) -> str:
     return snapshot.completed_at
 
 
+LEARNED_CHECK_ID = "doctor.core/learned-automations"
+
+
+def learned_automations_line(snapshot: HealthSnapshot | None) -> str:
+    """The one line session start may say about the person's own automations.
+
+    Read straight from the snapshot the Doctor published — this surface never
+    computes a verdict and never composes its own copy.  The disclosure is
+    already folded into that detail by ``core/health/learned.compose_surface``,
+    so an alarm cannot reach the person here without it.  Silence when there is
+    nothing to watch, or when the check is absent from an older snapshot.
+    """
+    if snapshot is None:
+        return ""
+    for result in snapshot.report.results:
+        if result.id != LEARNED_CHECK_ID:
+            continue
+        if result.verdict != "OK" or not result.detail.strip():
+            return ""
+        return f"🗂️ Your own automations: {result.detail}\n"
+    return ""
+
+
 def format_session_health(
     vault_root: str | Path,
     *,
@@ -97,6 +120,9 @@ def format_session_health(
         return "🩺 Dex health: unavailable — opening the general /dex-doctor flow is safe.\n"
 
     snapshot_stamp = _snapshot_stamp(surface.snapshot)
+    # Learned findings are the person's own jobs, never Dex's health. They are
+    # appended below the status line and can never change it.
+    learned = learned_automations_line(surface.snapshot)
     if surface.state == "critical" and surface.newly_critical:
         return "\n".join(
             (
@@ -106,15 +132,19 @@ def format_session_health(
                 "---",
                 "",
             )
-        )
+        ) + learned
     if surface.state == "critical":
         return (
             "🩺 Dex health: critical (ongoing) — "
             f"latest complete snapshot {snapshot_stamp}; run /dex-doctor to investigate.\n"
-        )
+        ) + learned
     if surface.state == "healthy" and surface.recovered:
-        return f"🩺 Dex health: healthy (recovered) — latest complete snapshot {snapshot_stamp}.\n"
-    return f"🩺 Dex health: {surface.state} — latest complete snapshot {snapshot_stamp}.\n"
+        return (
+            f"🩺 Dex health: healthy (recovered) — latest complete snapshot {snapshot_stamp}.\n"
+        ) + learned
+    return (
+        f"🩺 Dex health: {surface.state} — latest complete snapshot {snapshot_stamp}.\n"
+    ) + learned
 
 
 def main(argv: Sequence[str] | None = None) -> int:
