@@ -8,6 +8,8 @@ These tests exist so that failure mode cannot come back silently.
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 import pytest
@@ -350,3 +352,148 @@ def test_the_operation_may_write_only_the_usage_log() -> None:
     assert allowed.action == "write-usage-log"
     assert refused.allowed is False
     assert refused.action == "outside-usage-log"
+
+
+# --- the wiring itself, pinned to an explicit expected set ---
+#
+# Requested in review of #593. A "at least N are wired" check cannot catch a
+# specific omission: week-plan was missed and the suite stayed green. The set
+# below is the contract. Adding a skill to the log without wiring it, or
+# unwiring one, now fails here by name.
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SKILLS_DIR = _REPO_ROOT / ".claude" / "skills"
+_INSTRUCTION = re.compile(
+    r"Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `([^`]+)`"
+)
+
+# skill directory -> the feature argument its instruction passes.
+EXPECTED_WIRING = {
+    "create-mcp": "create-mcp",
+    "create-skill": "create-skill",
+    "daily-plan": "daily-plan",
+    "daily-review": "daily-review",
+    "dex-add-mcp": "dex-add-mcp",
+    "dex-backlog": "dex-backlog",
+    "dex-improve": "dex-improve",
+    "dex-level-up": "dex-level-up",
+    "dex-obsidian-setup": "dex-obsidian-setup",
+    "dex-whats-new": "dex-whats-new",
+    "getting-started": "getting-started",
+    "integrate-mcp": "integrate-mcp",
+    # /journal appears against two lines, so this one names the label.
+    "journal": "Journaling",
+    "meeting-prep": "meeting-prep",
+    "process-meetings": "process-meetings",
+    "product-brief": "product-brief",
+    "project-health": "project-health",
+    "prompt-improver": "prompt-improver",
+    "reset": "reset",
+    "save-insight": "save-insight",
+    "triage": "triage",
+    "week-plan": "week-plan",
+    "week-review": "week-review",
+    "xray": "xray",
+}
+
+# Skills left on prose ON PURPOSE, each with the reason. A skill leaves this
+# map only by being wired, and a new checkbox in the shipped log makes the
+# reason false, which the next test detects.
+DEFERRED_WIRING = {
+    "commitments": "no line in the shipped usage log",
+    "dex-doctor": "no line in the shipped usage log",
+    "initiative-kickoff": "no line in the shipped usage log",
+    "meeting-closeout": "no line in the shipped usage log",
+    "relationship-radar": "no line in the shipped usage log",
+}
+
+
+def _actual_wiring() -> dict[str, str]:
+    found = {}
+    for skill in sorted(_SKILLS_DIR.glob("*/SKILL.md")):
+        match = _INSTRUCTION.search(skill.read_text(encoding="utf-8"))
+        if match:
+            found[skill.parent.name] = match.group(1)
+    return found
+
+
+def test_exactly_the_expected_skills_are_wired() -> None:
+    actual = _actual_wiring()
+
+    assert actual == EXPECTED_WIRING, (
+        "wiring drifted. Missing: "
+        f"{sorted(set(EXPECTED_WIRING) - set(actual))}; "
+        f"unexpected: {sorted(set(actual) - set(EXPECTED_WIRING))}; "
+        "changed arguments: "
+        f"{ {k: (EXPECTED_WIRING[k], actual[k]) for k in set(actual) & set(EXPECTED_WIRING) if actual[k] != EXPECTED_WIRING[k]} }"
+    )
+
+
+def test_every_deferred_skill_still_has_a_true_reason() -> None:
+    """A deferred skill that gains a log line must stop being deferred."""
+    log = (_REPO_ROOT / "System" / "usage_log.md").read_text(encoding="utf-8")
+    lines = log.splitlines(keepends=True)
+
+    now_wireable = [
+        name
+        for name, reason in DEFERRED_WIRING.items()
+        if reason == "no line in the shipped usage log"
+        and len(analytics_helper._match_feature_lines(lines, name)) == 1
+    ]
+
+    assert not now_wireable, (
+        f"{now_wireable} are deferred for having no line in the log, but the log now "
+        "resolves them. Wire them or change the recorded reason."
+    )
+
+
+def test_no_skill_mentions_the_tool_in_a_shape_this_check_cannot_read() -> None:
+    """A skill the detector cannot parse is a skill nobody is validating.
+
+    An earlier fix wrote dex-level-up's instruction in a different shape; it
+    escaped the detector and the suite stayed green while nothing checked it.
+    """
+    readable = set(_actual_wiring())
+    unreadable = [
+        skill.parent.name
+        for skill in sorted(_SKILLS_DIR.glob("*/SKILL.md"))
+        if "mark_feature_used" in skill.read_text(encoding="utf-8")
+        and skill.parent.name not in readable
+    ]
+
+    assert not unreadable, (
+        f"{unreadable} reference mark_feature_used in a shape this test cannot read, "
+        "so the feature name they pass is unvalidated."
+    )
+
+
+@pytest.mark.parametrize("skill,feature", sorted(EXPECTED_WIRING.items()))
+def test_each_wired_skill_resolves_through_the_real_tool(
+    skill: str, feature: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the shipped log through the MCP tool, not just the matcher.
+
+    Requested in review: the check should run at the actual tool boundary, so
+    a skill's instruction is proven to move a box in the real shipped file.
+    """
+    import asyncio
+
+    from core.mcp import analytics_server
+
+    vault = tmp_path / skill
+    (vault / "System").mkdir(parents=True)
+    shipped = (_REPO_ROOT / "System" / "usage_log.md").read_text(encoding="utf-8")
+    log = vault / "System" / "usage_log.md"
+    log.write_text(shipped, encoding="utf-8")
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    payload = json.loads(
+        asyncio.run(
+            analytics_server.call_tool("mark_feature_used", {"feature": feature})
+        )[0].text
+    )
+
+    assert payload["status"] in {"marked", "already_marked"}, (
+        f"{skill} passes {feature!r}, which the shipped log answers with "
+        f"{payload['status']!r}. Its instruction records nothing."
+    )
