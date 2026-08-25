@@ -508,34 +508,84 @@ def test_a_solo_claimed_job_is_not_enrolled_and_enrolls_once_released(context):
 
 
 def test_a_learned_record_cannot_satisfy_the_shipped_build_gate(tmp_path):
-    """Removing a shipped declaration must still fail --check, learned or not."""
-    gate = REPO_ROOT / "scripts" / "generate-health-promises.py"
-    baseline = subprocess.run(
-        [sys.executable, str(gate), "--check"],
+    """Removing a shipped declaration must still fail --check, learned or not.
+
+    The mutation runs in a throwaway git worktree, never in the real tree: the
+    shipped register is the one file in this repository a flaky test must never
+    be able to leave damaged.
+    """
+    gate = "scripts/generate-health-promises.py"
+    worktree = tmp_path / "gate-worktree"
+    created = subprocess.run(
+        ["git", "worktree", "add", "--detach", str(worktree), "HEAD"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )
-    assert baseline.returncode == 0, baseline.stderr
+    if created.returncode != 0:
+        pytest.skip(f"git worktree unavailable: {created.stderr.strip()}")
 
-    register = REPO_ROOT / "core" / "health" / "promises.py"
-    original = register.read_text(encoding="utf-8")
-    victim = '    HealthPromise(\n        id="com.dex.learning-review",'
-    assert victim in original
-    start = original.index(victim)
-    end = original.index("    HealthPromise(\n        id=\"com.dex.obsidian-sync\"")
     try:
-        register.write_text(original[:start] + original[end:], encoding="utf-8")
-        broken = subprocess.run(
-            [sys.executable, str(gate), "--check"],
-            cwd=REPO_ROOT,
+        baseline = subprocess.run(
+            [sys.executable, gate, "--check"],
+            cwd=worktree,
             capture_output=True,
             text=True,
         )
+        assert baseline.returncode == 0, baseline.stderr
+
+        # A learned record claiming a shipped job's id changes nothing: the gate
+        # reads tracked repository files and the frozen tuple, never a vault.
+        vault_records = worktree / "System" / ".dex" / "health" / "learned-promises"
+        vault_records.mkdir(parents=True, exist_ok=True)
+        (vault_records / "impostor.json").write_text(
+            json.dumps(
+                {
+                    "contract": "dex.health.learned-promise/v1",
+                    "label": "com.dex.learning-review",
+                    "schedule_source": "StartInterval",
+                    "schedule": {"interval_seconds": 604800},
+                    "receipt_kind": "file-activity",
+                    "receipt_path": "/tmp/impostor.log",
+                    "receipt_provenance": "script-output",
+                    "watch_since": NOW.isoformat(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        register = worktree / "core" / "health" / "promises.py"
+        original = register.read_text(encoding="utf-8")
+        victim = '    HealthPromise(\n        id="com.dex.learning-review",'
+        assert victim in original
+        start = original.index(victim)
+        end = original.index('    HealthPromise(\n        id="com.dex.obsidian-sync"')
+        register.write_text(original[:start] + original[end:], encoding="utf-8")
+
+        broken = subprocess.run(
+            [sys.executable, gate, "--check"],
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+        )
+        assert broken.returncode == 1
+        assert "com.dex.learning-review" in broken.stderr
+        assert "has no entry in" in broken.stderr
     finally:
-        register.write_text(original, encoding="utf-8")
-    assert broken.returncode == 1
-    assert "com.dex.learning-review" in broken.stderr
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+        )
+
+    # The real register is untouched, whatever happened above.
+    assert (
+        subprocess.run(
+            ["git", "diff", "--quiet", "--", "core/health/promises.py"],
+            cwd=REPO_ROOT,
+        ).returncode
+        == 0
+    )
 
 
 def test_the_shipped_register_is_still_a_frozen_tuple_of_five():
