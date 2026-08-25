@@ -1,57 +1,65 @@
 {
   "adapter": {
     "directory": ".claude-plugin",
-    "kind": "claude-plugin-example",
+    "kind": "claude-plugin",
     "manifest": ".claude-plugin/plugin.json",
-    "status": "partial"
+    "status": "native"
   },
   "capabilities": [
     {
       "id": "vault",
-      "notes": "Folder access depends on the desktop permission granted by the user.",
+      "mode": "guided",
+      "notes": "Folder access depends on explicit desktop permission granted by the user.",
       "status": "partial",
       "tier": 0
     },
     {
       "id": "mcp",
-      "notes": "MCP availability is product/version dependent; verify before promising a server.",
+      "mode": "guided",
+      "notes": "Cowork external connectors require a public internet endpoint; the bundled local stdio server is not claimed.",
       "status": "partial",
       "tier": 1
     },
     {
       "id": "agent-skills",
-      "notes": "Portable skills can be supplied when the Cowork build supports Agent Skills.",
+      "mode": "on_demand",
+      "notes": "The native Claude plugin carries Dex's portable skills.",
       "status": "native",
       "tier": 2
     },
     {
       "id": "hooks",
-      "notes": "Claude Code settings hooks are not assumed in Cowork.",
-      "status": "none",
+      "mode": "guided",
+      "notes": "Cowork plugins can run the bundled hooks after installation and trust review.",
+      "status": "native",
       "tier": 3
     },
     {
       "id": "session-lifecycle",
-      "notes": "The desktop session lifecycle is client-owned.",
+      "mode": "guided",
+      "notes": "Hook availability depends on the Cowork task surface and granted folder access.",
       "status": "partial",
       "tier": 3
     },
     {
       "id": "background-jobs",
-      "notes": "Dex's local scheduler is not provided by Cowork.",
-      "status": "none",
+      "mode": "guided",
+      "notes": "Cowork can schedule host tasks, but Dex does not yet install schedule templates.",
+      "status": "partial",
       "tier": 1
     },
     {
       "id": "interactive-prompts",
+      "mode": "on_demand",
       "notes": "Desktop conversation prompts are host-native.",
       "status": "native",
       "tier": 2
     },
     {
       "id": "agent-plugins",
-      "notes": "Use Agent Plugins v1 only if the installed client advertises it.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "The same package includes a native Claude plugin manifest.",
+      "status": "native",
       "tier": 2
     }
   ],
@@ -67,9 +75,13 @@
     ]
   },
   "display_name": "Claude Cowork",
+  "evidence": [
+    "https://claude.com/docs/cowork/guide/plugins",
+    "https://support.claude.com/en/articles/13837440-use-plugins-in-claude"
+  ],
   "id": "cowork",
   "limitations": [
-    "Cowork is not treated as Claude Code; hooks and settings.json are not portable assumptions."
+    "The local stdio MCP bridge is not exposed as a Cowork external connector; that needs a separately secured public endpoint."
   ],
   "modes": [
     "tier-0-vault",
@@ -77,7 +89,7 @@
     "tier-2-skills"
   ],
   "name": "Claude Cowork",
-  "summary": "Desktop Cowork companion with skills and interactive work; local hooks and scheduling are not assumed.",
-  "support_level": "partial",
+  "summary": "Native Claude plugin for Cowork skills, hooks, and folder work, with a public-endpoint requirement for external connectors.",
+  "support_level": "supported",
   "vendor": "Anthropic"
 }

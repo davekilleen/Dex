@@ -1,57 +1,65 @@
 {
   "adapter": {
     "directory": ".claude-plugin",
-    "kind": "claude-plugin-example",
+    "kind": "claude-plugin",
     "manifest": ".claude-plugin/plugin.json",
-    "status": "reference"
+    "status": "native"
   },
   "capabilities": [
     {
       "id": "vault",
+      "mode": "on_demand",
       "notes": "Local filesystem access is available in the active project.",
       "status": "native",
       "tier": 0
     },
     {
       "id": "mcp",
-      "notes": "Project and user MCP configuration are supported.",
+      "mode": "on_demand",
+      "notes": "The package includes Claude's native .mcp.json configuration.",
       "status": "native",
       "tier": 1
     },
     {
       "id": "agent-skills",
-      "notes": "Canonical .claude/skills are loaded by Claude Code.",
+      "mode": "on_demand",
+      "notes": "The portable skill catalogue is bundled in the plugin.",
       "status": "native",
       "tier": 2
     },
     {
       "id": "hooks",
-      "notes": "PreToolUse, prompt-submit, session, and post-tool hooks are available.",
+      "mode": "guided",
+      "notes": "PreToolUse safety and SessionStart context hooks are bundled and reviewed at install.",
       "status": "native",
       "tier": 3
     },
     {
       "id": "session-lifecycle",
-      "notes": "SessionStart and SessionEnd surfaces are available.",
+      "mode": "automatic",
+      "notes": "SessionStart context runs automatically after the plugin is trusted.",
       "status": "native",
       "tier": 3
     },
     {
       "id": "background-jobs",
-      "notes": "Dex's OS-scheduled jobs are independent of the chat harness.",
+      "mode": "automatic",
+      "notes": "Dex's OS-scheduled jobs remain independent of the chat harness.",
       "status": "scheduled",
       "tier": 1
     },
     {
       "id": "interactive-prompts",
+      "mode": "on_demand",
       "notes": "AskUserQuestion is available when the client provides it.",
       "status": "native",
       "tier": 3
     },
     {
       "id": "agent-plugins",
-      "notes": "The portable Agent Plugins package remains the compatibility floor.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "The same package includes a native Claude plugin manifest.",
+      "status": "native",
       "tier": 2
     }
   ],
@@ -69,11 +77,12 @@
   },
   "display_name": "Claude Code",
   "evidence": [
+    "https://code.claude.com/docs/en/plugins",
     "https://code.claude.com/docs/en/hooks-guide"
   ],
   "id": "claude-code",
   "limitations": [
-    "Claude-only hooks are not copied into harness-neutral adapters."
+    "Host-specific features beyond the shared SessionStart and PreToolUse hooks remain Claude-only."
   ],
   "modes": [
     "tier-0-vault",

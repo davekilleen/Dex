@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Build and validate Dex's Agent Plugins v1.0.0 package.
+"""Build and validate Dex's portable, multi-harness plugin package.
 
-Only fixed Agent Plugins component locations are populated: ``plugin.json``,
-``skills/``, and ``mcp.json``. Registry and portability metadata live under an
-extension-owned directory and are copied as ordinary package data.
+The package keeps the Agent Plugins v1.0.0 root contract while adding the
+native manifests used by Codex and Claude Code/Cowork. Shared, dependency-free
+context and safety modules are vendored from ``core`` so every host executes
+the same read-only behavior rather than a rewritten approximation.
 """
 
 from __future__ import annotations
@@ -22,6 +23,15 @@ SKILLS_SOURCE = REPO_ROOT / ".agents" / "skills"
 METADATA_SOURCE = REPO_ROOT / "core" / "harnesses"
 SCHEMA_URL = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 MCP_SCHEMA_URL = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
+RUNTIME_SOURCES = (
+    Path("core/__init__.py"),
+    Path("core/path_safety.py"),
+    Path("core/context/__init__.py"),
+    Path("core/context/person_context.py"),
+    Path("core/context/session_boot.py"),
+    Path("core/gates/__init__.py"),
+    Path("core/gates/safety.py"),
+)
 
 
 def _plugin_json() -> dict:
@@ -60,6 +70,60 @@ def _mcp_json() -> dict:
     }
 
 
+def _native_mcp_json(root_variable: str, *, wrapped: bool) -> dict:
+    servers = {
+        "dex-core": {
+            "command": "python3",
+            "args": [f"${{{root_variable}}}/server.py"],
+        }
+    }
+    return {"mcpServers": servers} if wrapped else servers
+
+
+def _codex_plugin_json() -> dict:
+    return {
+        "name": "dex",
+        "version": "1.0.0",
+        "description": "Portable Dex context, safety, and work skills.",
+        "skills": "./skills/",
+        "mcpServers": "./.codex-mcp.json",
+        "hooks": "./hooks/hooks.json",
+    }
+
+
+def _claude_plugin_json() -> dict:
+    return {
+        "name": "dex",
+        "version": "1.0.0",
+        "description": "Portable Dex context, safety, and work skills.",
+        "author": {"name": "Dex"},
+        "homepage": "https://heydex.ai",
+        "repository": "https://github.com/davekilleen/Dex",
+        "license": "MIT",
+    }
+
+
+def _hooks_json() -> dict:
+    root = "${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}"
+    command = f'python3 "{root}/hook.py"'
+    return {
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "startup|resume|clear|compact",
+                    "hooks": [{"type": "command", "command": command}],
+                }
+            ],
+            "PreToolUse": [
+                {
+                    "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
+                    "hooks": [{"type": "command", "command": command}],
+                }
+            ],
+        }
+    }
+
+
 def _json_bytes(payload: dict) -> bytes:
     return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
 
@@ -81,14 +145,37 @@ def expected_plugin_files(repo_root: Path = REPO_ROOT) -> dict[Path, bytes]:
     expected: dict[Path, bytes] = {
         Path("packages/dex-agent-plugin/plugin.json"): _json_bytes(_plugin_json()),
         Path("packages/dex-agent-plugin/mcp.json"): _json_bytes(_mcp_json()),
+        Path("packages/dex-agent-plugin/.codex-plugin/plugin.json"): _json_bytes(
+            _codex_plugin_json()
+        ),
+        Path("packages/dex-agent-plugin/.claude-plugin/plugin.json"): _json_bytes(
+            _claude_plugin_json()
+        ),
+        Path("packages/dex-agent-plugin/.codex-mcp.json"): _json_bytes(
+            _native_mcp_json("PLUGIN_ROOT", wrapped=False)
+        ),
+        Path("packages/dex-agent-plugin/.mcp.json"): _json_bytes(
+            _native_mcp_json("CLAUDE_PLUGIN_ROOT", wrapped=True)
+        ),
+        Path("packages/dex-agent-plugin/hooks/hooks.json"): _json_bytes(_hooks_json()),
     }
     # Static launcher and bridge are source-controlled; include their exact
     # bytes in the golden map so --check detects a hard-coded path regression.
-    for relative in (Path("bin/dex-mcp"), Path("server.py"), Path("README.md")):
+    for relative in (
+        Path("bin/dex-mcp"),
+        Path("server.py"),
+        Path("hook.py"),
+        Path("README.md"),
+    ):
         source = plugin_root / relative
         if not source.is_file():
             raise ValueError(f"missing plugin source file: {source}")
         expected[(Path("packages/dex-agent-plugin") / relative)] = source.read_bytes()
+    for relative in RUNTIME_SOURCES:
+        source = repo_root / relative
+        if not source.is_file():
+            raise ValueError(f"missing portable runtime source file: {source}")
+        expected[Path("packages/dex-agent-plugin/runtime") / relative] = source.read_bytes()
     for relative in _relative_files(skills_source):
         expected[Path("packages/dex-agent-plugin/skills") / relative] = (skills_source / relative).read_bytes()
     for relative in (Path("registry.json"), Path("portability.json")):
@@ -108,8 +195,9 @@ def _existing_generated_files(plugin_root: Path, repo_root: Path) -> set[Path]:
     skills = plugin_root / "skills"
     metadata = plugin_root / "metadata" / "harnesses"
     extension = plugin_root / "ai.heydex.dex"
+    runtime = plugin_root / "runtime"
     paths: set[Path] = set()
-    for root in (skills, metadata, extension):
+    for root in (skills, metadata, extension, runtime):
         if not root.is_dir():
             continue
         for path in root.rglob("*"):

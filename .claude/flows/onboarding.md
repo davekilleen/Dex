@@ -12,8 +12,8 @@ Guide new users through setup in a friendly conversation of about 10 minutes. Ke
 
 ### Choose where Dex should work (before Calendar First)
 
-The start response includes `harness_setup` and `harness_capabilities`. This is a capability
-preview, not proof that the detection is right.
+The start response includes `harness_setup` and `harness_capabilities`. This is a capability preview,
+not proof that the detection is right.
 
 1. If one or more harnesses were detected, say: "I found [names]. Do you want Dex available
    in all of those, or should I change the selection?" Allow multiple choices.

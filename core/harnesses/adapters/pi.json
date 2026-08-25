@@ -2,11 +2,11 @@
   "adapter_schema_version": "1.0.0",
   "harness_id": "pi",
   "status": "supported",
-  "kind": "install-guide",
-  "native_paths": ["AGENTS.md", ".agents/skills/"],
+  "kind": "pi-extension",
+  "native_paths": ["AGENTS.md", ".agents/skills/", "extensions/dex/package.json"],
   "example": {
-    "manifest": null,
-    "install_guide": "Load AGENTS.md and the generated .agents/skills tree from the workspace. Install an explicit MCP bridge if MCP tools are required; Pi alone is not treated as an MCP client.",
+    "manifest": "dex-pi/extensions/dex/package.json",
+    "install_guide": "Open the full Dex vault and install the native Dex Pi extension. Pi has no built-in MCP client; use extension tools rather than pretending MCP parity.",
     "portable_surface": [".agents/skills/", "AGENTS.md"]
   }
 }

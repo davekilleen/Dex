@@ -1,57 +1,65 @@
 {
   "adapter": {
     "install_guide": "core/harnesses/adapters/chatgpt-work.json",
-    "kind": "companion-guide",
-    "manifest": null,
-    "status": "guide"
+    "kind": "openai-plugin",
+    "manifest": ".codex-plugin/plugin.json",
+    "status": "native-local"
   },
   "capabilities": [
     {
       "id": "vault",
-      "notes": "A local vault bridge must be explicitly supplied by the companion.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "Desktop can use an explicitly selected local vault; web cannot directly reach it.",
+      "status": "partial",
       "tier": 0
     },
     {
       "id": "mcp",
-      "notes": "ChatGPT Work connectors are not the same as a local MCP client.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "Local stdio works on desktop; web requires a separately hosted HTTPS MCP service.",
+      "status": "partial",
       "tier": 1
     },
     {
       "id": "agent-skills",
-      "notes": "No local Agent Skills loader is assumed.",
-      "status": "not-verified",
+      "mode": "on_demand",
+      "notes": "Skills are bundled in the OpenAI plugin.",
+      "status": "native",
       "tier": 2
     },
     {
       "id": "hooks",
-      "notes": "No Dex hook lifecycle is exposed by this descriptor.",
-      "status": "none",
+      "mode": "guided",
+      "notes": "Bundled hooks require local host support and user trust.",
+      "status": "partial",
       "tier": 3
     },
     {
       "id": "session-lifecycle",
-      "notes": "Lifecycle is controlled by the ChatGPT product.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "SessionStart context is available only where local plugin hooks run.",
+      "status": "partial",
       "tier": 3
     },
     {
       "id": "background-jobs",
-      "notes": "Dex cannot promise a local scheduler here.",
+      "mode": "unavailable",
+      "notes": "The portable plugin does not promise a scheduler.",
       "status": "none",
       "tier": 1
     },
     {
       "id": "interactive-prompts",
+      "mode": "on_demand",
       "notes": "Conversation prompts are host-native.",
       "status": "native",
       "tier": 2
     },
     {
       "id": "agent-plugins",
-      "notes": "Do not install a local plugin unless the client explicitly supports Agent Plugins v1.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "The generated OpenAI plugin is installable locally after user review.",
+      "status": "native",
       "tier": 2
     }
   ],
@@ -66,15 +74,18 @@
     ]
   },
   "display_name": "ChatGPT Work companion",
+  "evidence": [
+    "https://learn.chatgpt.com/docs/plugins"
+  ],
   "id": "chatgpt-work",
   "limitations": [
-    "This descriptor intentionally avoids promising local filesystem, MCP, or plugin parity."
+    "ChatGPT web needs a public HTTPS MCP service; the local-vault remote bridge is not implemented in this release."
   ],
   "modes": [
     "tier-0-vault"
   ],
   "name": "ChatGPT Work companion",
-  "summary": "A ChatGPT Work companion can provide a conversational front end, but local Dex vault and plugin loading are not assumed.",
-  "support_level": "companion",
+  "summary": "The Dex plugin can run locally in ChatGPT desktop; ChatGPT web needs a separately hosted HTTPS MCP bridge for a local vault.",
+  "support_level": "partial",
   "vendor": "OpenAI"
 }

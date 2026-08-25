@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Small dependency-free stdio MCP bridge shipped in the Dex plugin.
-
-The bridge keeps the package relocatable and exposes read-only capability
-introspection. A host may layer the full Dex MCP servers beside this package;
-the portable plugin never assumes a repository checkout or a host-specific
-working directory.
-"""
+"""Dependency-free, read-only stdio MCP bridge shipped in the Dex plugin."""
 
 from __future__ import annotations
 
@@ -16,8 +10,16 @@ from pathlib import Path
 from typing import Any
 
 
+sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent
 REGISTRY = ROOT / "metadata" / "harnesses" / "registry.json"
+RUNTIME = ROOT / "runtime"
+if str(RUNTIME) not in sys.path:
+    sys.path.insert(0, str(RUNTIME))
+
+from core.context.person_context import get_person_context  # noqa: E402
+from core.context.session_boot import build_session_boot  # noqa: E402
+from core.gates.safety import evaluate_safety_gate  # noqa: E402
 
 
 def _load_registry() -> dict[str, Any]:
@@ -36,6 +38,74 @@ def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
+def _vault(arguments: dict[str, Any]) -> Path:
+    value = arguments.get("vault_path")
+    if not isinstance(value, str) or not value.strip():
+        value = os.environ.get("DEX_VAULT_PATH") or os.environ.get("VAULT_PATH")
+    try:
+        return Path(value).expanduser() if value else Path.cwd()
+    except (OSError, TypeError, ValueError):
+        return Path.cwd()
+
+
+def _tool_result(request_id: Any, payload: Any) -> dict[str, Any]:
+    return _result(
+        request_id,
+        {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(payload, sort_keys=True, ensure_ascii=False),
+                }
+            ],
+            "structuredContent": payload,
+        },
+    )
+
+
+def _tools() -> list[dict[str, Any]]:
+    vault = {
+        "vault_path": {
+            "type": "string",
+            "description": "Dex vault root; defaults to DEX_VAULT_PATH, VAULT_PATH, or cwd.",
+        }
+    }
+    return [
+        {
+            "name": "dex_harness_profiles",
+            "description": "List the versioned, honest Dex harness descriptors.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "boot_today",
+            "description": "Read today's pillars, goals, priorities, and urgent tasks.",
+            "inputSchema": {"type": "object", "properties": vault},
+        },
+        {
+            "name": "get_person_context",
+            "description": "Read a person's role, company, last interaction, and open items.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {**vault, "name": {"type": "string"}},
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "check_safety_gate",
+            "description": "Check a proposed command or path before a harness executes it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **vault,
+                    "tool_name": {"type": "string"},
+                    "command": {"type": "string"},
+                    "path": {"type": "string"},
+                },
+            },
+        },
+    ]
+
+
 def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
     request_id = request.get("id")
     method = request.get("method")
@@ -51,26 +121,29 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             },
         )
     if method == "tools/list":
-        return _result(
-            request_id,
-            {
-                "tools": [
-                    {
-                        "name": "dex_harness_profiles",
-                        "description": "List the versioned, honest Dex harness descriptors.",
-                        "inputSchema": {"type": "object", "properties": {}},
-                    }
-                ]
-            },
-        )
+        return _result(request_id, {"tools": _tools()})
     if method == "tools/call":
         params = request.get("params")
         name = params.get("name") if isinstance(params, dict) else None
+        raw_arguments = params.get("arguments") if isinstance(params, dict) else None
+        arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
         if name == "dex_harness_profiles":
-            return _result(
+            return _tool_result(request_id, _load_registry())
+        if name == "boot_today":
+            return _tool_result(request_id, build_session_boot(_vault(arguments)))
+        if name == "get_person_context":
+            return _tool_result(
                 request_id,
-                {"content": [{"type": "text", "text": json.dumps(_load_registry(), sort_keys=True)}]},
+                get_person_context(_vault(arguments), arguments.get("name")),
             )
+        if name == "check_safety_gate":
+            decision = evaluate_safety_gate(
+                tool_name=arguments.get("tool_name"),
+                command=arguments.get("command"),
+                path=arguments.get("path"),
+                vault=_vault(arguments),
+            )
+            return _tool_result(request_id, decision.as_payload())
         return _error(request_id, -32602, f"unknown tool: {name}")
     if method == "ping":
         return _result(request_id, {})
@@ -81,8 +154,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def main() -> int:
-    # PLUGIN_DATA is intentionally read only to prove the launcher receives
-    # the Agent Plugins reserved variable; state is not written by this bridge.
+    # Host data directories are intentionally read only; this bridge never
+    # writes into plugin storage or a user's vault.
     os.environ.get("DEX_PLUGIN_DATA", "")
     for line in sys.stdin:
         try:

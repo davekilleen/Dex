@@ -34,6 +34,11 @@ def test_registry_is_versioned_and_contains_the_supported_harnesses() -> None:
     assert [entry["id"] for entry in payload["profiles"]] == sorted(
         entry["id"] for entry in payload["profiles"]
     )
+    assert all(
+        row.get("mode") in {"automatic", "on_demand", "guided", "unavailable"}
+        for profile in payload["profiles"]
+        for row in profile["capabilities"]
+    )
 
 
 def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
@@ -55,6 +60,15 @@ def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
     assert rows["agent-skills"]["status"] == "native"
     assert rows["mcp"]["status"] == "native"
     assert rows["hooks"]["status"] in {"none", "not-verified"}
+
+    codex = {row["id"]: row for row in get_profile("codex").capability_rows()}
+    assert codex["agent-plugins"]["status"] == "native"
+    assert codex["hooks"]["mode"] == "guided"
+    cowork = {row["id"]: row for row in get_profile("cowork").capability_rows()}
+    assert cowork["mcp"]["status"] == "partial"
+    assert cowork["mcp"]["mode"] == "guided"
+    bb = {row["id"]: row for row in get_profile("bb").capability_rows()}
+    assert bb["agent-plugins"]["status"] == "native"
 
 
 def test_every_profile_has_a_reviewable_adapter_descriptor() -> None:

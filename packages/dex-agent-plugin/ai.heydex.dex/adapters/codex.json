@@ -1,17 +1,11 @@
 {
   "adapter_schema_version": "1.0.0",
   "harness_id": "codex",
-  "status": "example",
-  "kind": "codex-plugin-example",
-  "native_paths": [".codex-plugin/plugin.json", ".agents/skills/", "AGENTS.md"],
+  "status": "native",
+  "kind": "codex-plugin",
+  "native_paths": [".codex-plugin/plugin.json", "skills/", "hooks/hooks.json", ".codex-mcp.json", "AGENTS.md"],
   "example": {
-    "manifest": {
-      "name": "dex",
-      "version": "1.0.0",
-      "skills": ".agents/skills/",
-      "instructions": "AGENTS.md",
-      "mcp": "mcp.json"
-    },
-    "note": "Treat this as an adapter example until the installed Codex build advertises a stable .codex-plugin schema."
+    "manifest": "packages/dex-agent-plugin/.codex-plugin/plugin.json",
+    "note": "Install the reviewed local plugin in Codex CLI or desktop and approve its hooks. Codex IDE extensions do not currently load plugins."
   }
 }

@@ -525,6 +525,7 @@ ONBOARDING_PROVISION_PATHS = frozenset(
         "System/pillars.yaml",
         "System/.onboarding-complete",
         "System/.onboarding-session.json",
+        "System/.dex/harness-profile.json",
         "CLAUDE.md",
         ".mcp.json",
         "core/paths.json",

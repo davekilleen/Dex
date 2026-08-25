@@ -238,7 +238,7 @@ def test_onboarding_dry_run_then_saves_confirmed_harness_receipt_transactionally
         str(profile),
     )
 
-    assert applied.returncode == 0, applied.stderr
+    assert applied.returncode == 0, applied.stderr or applied.stdout
     applied_summary = json.loads(applied.stdout)
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert receipt["schema_version"] == 1

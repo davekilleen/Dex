@@ -1,11 +1,11 @@
 {
   "adapter_schema_version": "1.0.0",
   "harness_id": "bb",
-  "status": "internal",
-  "kind": "internal-descriptor",
-  "native_paths": [".bb/dex-harness.json", ".agents/skills/"],
+  "status": "native",
+  "kind": "bb-plugin",
+  "native_paths": ["bb-plugin.json", "skills/", "server/tools/", "src/app.tsx"],
   "example": {
-    "manifest": {"harness": "bb", "skills_root": ".agents/skills", "mcp": "provided-by-runner"},
-    "install_guide": "Use the BB runner's workspace setup; do not copy host credentials into the vault."
+    "manifest": "bb-plugin-dex/bb-plugin.json",
+    "install_guide": "Install the unreleased standalone bb-plugin-dex package from a reviewed local path. Select the Dex vault in plugin settings; the first release is read-only."
   }
 }

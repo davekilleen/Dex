@@ -8,50 +8,58 @@
   "capabilities": [
     {
       "id": "vault",
+      "mode": "on_demand",
       "notes": "The workspace is available to Pi extensions and skills.",
       "status": "native",
       "tier": 0
     },
     {
       "id": "mcp",
-      "notes": "Pi does not provide a built-in MCP client in this descriptor; use an explicit bridge.",
+      "mode": "unavailable",
+      "notes": "Pi has no built-in MCP client; its native Dex extension supplies direct tools instead.",
       "status": "none",
       "tier": 1
     },
     {
       "id": "agent-skills",
+      "mode": "on_demand",
       "notes": "AGENTS.md and Agent Skills are the portable instruction surface.",
       "status": "native",
       "tier": 2
     },
     {
       "id": "hooks",
-      "notes": "Pi events are not the Claude hook contract.",
+      "mode": "guided",
+      "notes": "The native Dex extension maps Pi events rather than pretending they are Claude hooks.",
       "status": "partial",
       "tier": 3
     },
     {
       "id": "session-lifecycle",
-      "notes": "Pi extensions can observe lifecycle events.",
+      "mode": "automatic",
+      "notes": "The Dex Pi extension observes native session lifecycle events.",
       "status": "native",
       "tier": 3
     },
     {
       "id": "background-jobs",
+      "mode": "unavailable",
       "notes": "No Dex scheduler is assumed.",
       "status": "none",
       "tier": 1
     },
     {
       "id": "interactive-prompts",
+      "mode": "on_demand",
       "notes": "Pi exposes interactive conversation input.",
       "status": "native",
       "tier": 2
     },
     {
       "id": "agent-plugins",
-      "notes": "Install only if the Pi host adds an Agent Plugins loader.",
-      "status": "not-verified",
+      "mode": "unavailable",
+      "notes": "Pi uses its native Dex extension rather than an Agent Plugins loader.",
+      "status": "none",
       "tier": 2
     }
   ],
@@ -68,11 +76,11 @@
   },
   "display_name": "Pi",
   "evidence": [
-    "https://pi.dev"
+    "https://pi.dev/docs/latest"
   ],
   "id": "pi",
   "limitations": [
-    "MCP and scheduling require a separately installed bridge or host integration."
+    "MCP is intentionally not claimed; use the native Dex Pi extension for tools and lifecycle integration."
   ],
   "modes": [
     "tier-0-vault",

@@ -1,0 +1,8 @@
+{
+  "dex-core": {
+    "command": "python3",
+    "args": [
+      "${PLUGIN_ROOT}/server.py"
+    ]
+  }
+}

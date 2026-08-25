@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import jsonschema
 
@@ -94,6 +97,150 @@ def test_plugin_contains_skills_resources_registry_and_relocatable_launcher() ->
     text = launcher.read_text(encoding="utf-8")
     assert "PLUGIN_ROOT" in text
     assert "/srv/" not in text
+
+
+def test_native_codex_and_claude_manifests_share_one_package() -> None:
+    codex = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text())
+    claude = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())
+    hooks = json.loads((PLUGIN_ROOT / "hooks" / "hooks.json").read_text())
+    codex_mcp = json.loads((PLUGIN_ROOT / ".codex-mcp.json").read_text())
+    claude_mcp = json.loads((PLUGIN_ROOT / ".mcp.json").read_text())
+
+    assert codex["name"] == claude["name"] == "dex"
+    assert codex["skills"] == "./skills/"
+    assert codex["mcpServers"] == "./.codex-mcp.json"
+    assert codex["hooks"] == "./hooks/hooks.json"
+    assert "${PLUGIN_ROOT}/server.py" in json.dumps(codex_mcp)
+    assert "${CLAUDE_PLUGIN_ROOT}/server.py" in json.dumps(claude_mcp)
+    assert set(codex_mcp) == {"dex-core"}
+    assert set(claude_mcp) == {"mcpServers"}
+    assert set(hooks["hooks"]) == {"SessionStart", "PreToolUse"}
+    hook_text = json.dumps(hooks)
+    assert "PLUGIN_ROOT" in hook_text
+    assert "CLAUDE_PLUGIN_ROOT" in hook_text
+
+
+def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
+    for relative in (
+        "core/__init__.py",
+        "core/path_safety.py",
+        "core/context/__init__.py",
+        "core/context/person_context.py",
+        "core/context/session_boot.py",
+        "core/gates/__init__.py",
+        "core/gates/safety.py",
+    ):
+        assert (PLUGIN_ROOT / "runtime" / relative).read_bytes() == (REPO_ROOT / relative).read_bytes()
+
+
+def _mcp_roundtrip(messages: list[dict], *, cwd: Path | None = None) -> list[dict]:
+    payload = "".join(json.dumps(message) + "\n" for message in messages)
+    completed = subprocess.run(
+        [sys.executable, str(PLUGIN_ROOT / "server.py")],
+        input=payload,
+        text=True,
+        capture_output=True,
+        cwd=cwd,
+        env={**os.environ, "PYTHONNOUSERSITE": "1"},
+        check=True,
+    )
+    return [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+
+
+def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> None:
+    vault = tmp_path / "Dex Vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        'pillars:\n  - id: focus\n    name: "Focus"\n    description: "Do the important work"\n',
+        encoding="utf-8",
+    )
+    person_dir = vault / "05-Areas" / "People" / "Internal"
+    person_dir.mkdir(parents=True)
+    (person_dir / "Ada_Lovelace.md").write_text(
+        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n"
+        "- [ ] Send the operating memo\n",
+        encoding="utf-8",
+    )
+    responses = _mcp_roundtrip(
+        [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "boot_today", "arguments": {"vault_path": str(vault)}},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_person_context",
+                    "arguments": {"vault_path": str(vault), "name": "Ada Lovelace"},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {
+                    "name": "check_safety_gate",
+                    "arguments": {"vault_path": str(vault), "command": "rm -rf /"},
+                },
+            },
+        ],
+        cwd=vault,
+    )
+    assert len(responses) == 5
+    names = {tool["name"] for tool in responses[1]["result"]["tools"]}
+    assert names == {
+        "dex_harness_profiles",
+        "boot_today",
+        "get_person_context",
+        "check_safety_gate",
+    }
+    assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
+    person = responses[3]["result"]["structuredContent"]
+    assert person["found"] is True
+    assert person["matches"][0]["company"] == "Analytical Engines"
+    safety = responses[4]["result"]["structuredContent"]
+    assert safety["refused"] is True
+
+
+def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        "pillars:\n  - id: customer\n    name: Customer\n    description: Listen\n",
+        encoding="utf-8",
+    )
+    session = subprocess.run(
+        [sys.executable, str(PLUGIN_ROOT / "hook.py")],
+        input=json.dumps({"hook_event_name": "SessionStart", "cwd": str(vault)}),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    injected = json.loads(session.stdout)
+    assert injected["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "Customer" in injected["hookSpecificOutput"]["additionalContext"]
+
+    blocked = subprocess.run(
+        [sys.executable, str(PLUGIN_ROOT / "hook.py")],
+        input=json.dumps(
+            {
+                "hook_event_name": "PreToolUse",
+                "cwd": str(vault),
+                "tool_name": "Bash",
+                "tool_input": {"command": "rm -rf /"},
+            }
+        ),
+        text=True,
+        capture_output=True,
+    )
+    assert blocked.returncode == 2
+    assert json.loads(blocked.stdout)["decision"] == "block"
 
 
 def test_plugin_generator_check_is_clean() -> None:

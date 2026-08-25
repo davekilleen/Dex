@@ -2,11 +2,11 @@
   "adapter_schema_version": "1.0.0",
   "harness_id": "copilot-cli",
   "status": "supported",
-  "kind": "install-guide",
-  "native_paths": [".agents/skills/", "AGENTS.md", "mcp.json"],
+  "kind": "open-plugin-spec",
+  "native_paths": ["plugin.json", "skills/", "hooks/hooks.json", "mcp.json", "AGENTS.md"],
   "example": {
-    "manifest": null,
-    "install_guide": "Copy the generated .agents/skills tree and AGENTS.md into the workspace, then register the MCP server using the Copilot CLI's documented MCP command. Do not assume Claude settings hooks.",
-    "portable_surface": [".agents/skills/", "AGENTS.md"]
+    "manifest": "packages/dex-agent-plugin/plugin.json",
+    "install_guide": "Run `copilot plugin install` against the reviewed local package. Verify hook support in the installed CLI version before relying on automatic safety enforcement.",
+    "portable_surface": ["skills/", "mcp.json", "AGENTS.md"]
   }
 }
