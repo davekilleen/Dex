@@ -8,16 +8,16 @@
 const fs = require('fs');
 const path = require('path');
 
-// Resolve to an absolute path: a relative VAULT_PATH (as CI exports) would
-// otherwise propagate into every derived path and break consumers that
-// compare or remap roots.
-const VAULT_ROOT = path.resolve(process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd());
-
 /**
  * Load vault path constants from core/paths.json, falling back to hardcoded PARA defaults.
  * @returns {Record<string, string>} Object mapping path constant names to absolute directory/file paths
  */
 function loadPaths() {
+  // Resolve per call: one long-lived harness process may serve more than one
+  // vault. Relative VAULT_PATH values (as CI exports) still become absolute.
+  const VAULT_ROOT = path.resolve(
+    process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd(),
+  );
   // Try generated JSON first
   const jsonPath = path.join(VAULT_ROOT, 'core', 'paths.json');
   if (fs.existsSync(jsonPath)) {

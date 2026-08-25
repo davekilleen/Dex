@@ -17,6 +17,18 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from core.paths import (
+    PILLARS_FILE,
+    QUARTER_GOALS_FILE,
+    TASKS_FILE,
+    WEEK_PRIORITIES_FILE,
+    resolve_for_vault,
+)
+
 try:
     import yaml
 except ImportError:  # pragma: no cover - exercised in minimal installs
@@ -66,7 +78,7 @@ def _read_text(path: Path) -> str:
 
 
 def _load_pillars(vault: Path) -> list[dict[str, str]]:
-    path = vault / "System" / "pillars.yaml"
+    path = resolve_for_vault(vault, PILLARS_FILE)
     if not path.is_file():
         return []
     text = _read_text(path)
@@ -121,7 +133,7 @@ def _load_pillars(vault: Path) -> list[dict[str, str]]:
 
 
 def _load_quarter_goals(vault: Path) -> list[dict[str, str]]:
-    path = vault / "01-Quarter_Goals" / "Quarter_Goals.md"
+    path = resolve_for_vault(vault, QUARTER_GOALS_FILE)
     if not path.is_file():
         return []
     text = _read_text(path)
@@ -144,7 +156,7 @@ def _load_quarter_goals(vault: Path) -> list[dict[str, str]]:
 
 
 def _load_week_priorities(vault: Path) -> list[str]:
-    path = vault / "02-Week_Priorities" / "Week_Priorities.md"
+    path = resolve_for_vault(vault, WEEK_PRIORITIES_FILE)
     if not path.is_file():
         return []
     lines = _read_text(path).splitlines()
@@ -165,7 +177,7 @@ def _load_week_priorities(vault: Path) -> list[str]:
 
 
 def _load_urgent_tasks(vault: Path) -> list[str]:
-    path = vault / "03-Tasks" / "Tasks.md"
+    path = resolve_for_vault(vault, TASKS_FILE)
     if not path.is_file():
         return []
     urgent: list[str] = []

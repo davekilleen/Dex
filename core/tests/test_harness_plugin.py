@@ -363,6 +363,7 @@ def test_repo_marketplace_exposes_the_unreleased_local_openai_plugin() -> None:
 def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
     for relative in (
         "core/__init__.py",
+        "core/paths.py",
         "core/path_safety.py",
         "core/context/__init__.py",
         "core/context/person_context.py",

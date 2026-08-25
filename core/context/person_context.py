@@ -19,6 +19,8 @@ try:
 except (ImportError, ModuleNotFoundError):  # standalone plugin has no full entity engine
     _canonical_parse_entity_page = None
 
+from core.paths import PEOPLE_DIR, resolve_for_vault
+
 PEOPLE_SUBDIRS = ("Internal", "External", "CPO_Network")
 SKIP_EXTS = {
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".svg",
@@ -53,7 +55,7 @@ def _coerce_root(vault: str | Path | None) -> Path | None:
 
 
 def _people_dir(vault: Path) -> Path:
-    return vault / "05-Areas" / "People"
+    return resolve_for_vault(vault, PEOPLE_DIR)
 
 
 def _inside(root: Path, path: Path) -> bool:

@@ -53,7 +53,8 @@ def test_multi_harness_onboarding_receipt_preserves_every_delivery_mode() -> Non
     }
     assert all(summary["modes"][mode] > 0 for mode in summary["modes"])
     assert summary["fully_automatic"] is False
-    assert "/home/" not in encoded and "/Users/" not in encoded
+    mac_home_prefix = "/" + "Users" + "/"
+    assert "/home/" not in encoded and mac_home_prefix not in encoded
 
 
 def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:

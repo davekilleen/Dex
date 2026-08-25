@@ -24,6 +24,7 @@ SCHEMA_URL = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 MCP_SCHEMA_URL = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
 RUNTIME_SOURCES = (
     Path("core/__init__.py"),
+    Path("core/paths.py"),
     Path("core/path_safety.py"),
     Path("core/context/__init__.py"),
     Path("core/context/person_context.py"),
