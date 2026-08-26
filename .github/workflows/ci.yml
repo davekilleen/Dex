@@ -395,7 +395,7 @@ jobs:
           test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json.sha256"
 
   build-release:
-    needs: [quality, test-results]
+    needs: [quality, test-results, portable-plugin-platforms]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: macos-latest
     concurrency:
@@ -543,7 +543,7 @@ jobs:
             "${EXTRA[@]}"
 
   build-release-beta:
-    needs: [quality, test-results]
+    needs: [quality, test-results, portable-plugin-platforms]
     if: github.ref == 'refs/heads/beta' && github.event_name == 'push'
     runs-on: macos-latest
     permissions:

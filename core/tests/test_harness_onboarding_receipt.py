@@ -122,6 +122,28 @@ def test_read_receipt_rejects_unexpected_fields(tmp_path: Path) -> None:
         read_receipt(tmp_path)
 
 
+@pytest.mark.parametrize("detected", ("codex", None, 1, {}))
+def test_read_receipt_rejects_non_list_detected_ids(
+    tmp_path: Path,
+    detected: object,
+) -> None:
+    receipt = build_receipt(
+        [_profile("codex")],
+        detected_ids=("codex",),
+        source="detected",
+        generated_at="2026-08-25T08:30:00+00:00",
+    )
+    receipt["detected"] = detected
+    runtime = tmp_path / "System/.dex"
+    runtime.mkdir(parents=True)
+    (runtime / "harness-profile.json").write_bytes(
+        (json.dumps(receipt) + "\n").encode("utf-8")
+    )
+
+    with pytest.raises(HarnessReceiptError, match="detected.*list"):
+        read_receipt(tmp_path)
+
+
 def test_doctor_instructions_preserve_delivery_mode_truth() -> None:
     skill = (
         Path(__file__).resolve().parents[2] / ".claude/skills/dex-doctor/SKILL.md"

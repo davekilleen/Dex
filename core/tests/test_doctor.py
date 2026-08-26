@@ -870,6 +870,34 @@ def test_harness_capability_probe_reports_malformed_receipt_as_broken(context):
     assert result.heal.applied is False
 
 
+def test_harness_capability_probe_reports_non_list_detected_ids_as_broken(context):
+    receipt = build_receipt(
+        [
+            {
+                "id": "codex",
+                "display_name": "Codex",
+                "capabilities": [
+                    {"id": "vault", "mode": "automatic"},
+                ],
+            }
+        ],
+        detected_ids=("codex",),
+        source="detected",
+        generated_at=NOW,
+    )
+    receipt["detected"] = "codex"
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes((json.dumps(receipt) + "\n").encode("utf-8"))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "BROKEN"
+    assert "detected" in result.detail.lower()
+    assert result.heal is not None
+    assert result.heal.applied is False
+
+
 def test_release_catalog_probe_is_calmly_off_for_older_installs(context):
     result = doctor._probe_release_catalog(context)
 

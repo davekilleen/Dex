@@ -161,11 +161,15 @@ def test_both_release_lanes_publish_through_the_verified_script() -> None:
     assert "--channel beta" in beta_step["run"]
 
 
-def test_the_publishing_step_still_runs_only_after_the_full_suite() -> None:
-    """Draft-first changes WHEN a release goes public, never WHETHER it was tested."""
+def test_the_publishing_step_still_runs_only_after_all_release_gates() -> None:
+    """A release waits for the full suite and every native portable runtime gate."""
     workflow = _load(CI_WORKFLOW)
     for job_name in ("build-release", "build-release-beta"):
-        assert workflow["jobs"][job_name]["needs"] == ["quality", "test-results"]
+        assert workflow["jobs"][job_name]["needs"] == [
+            "quality",
+            "test-results",
+            "portable-plugin-platforms",
+        ]
 
 
 def test_stable_release_verifies_catalog_identity_before_publication() -> None:

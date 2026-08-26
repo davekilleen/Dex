@@ -140,6 +140,9 @@ def _validate_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
     profiles = receipt.get("profiles")
     if not isinstance(profiles, list):
         raise HarnessReceiptError("harness receipt profiles must be a list")
+    detected = receipt.get("detected", [])
+    if not isinstance(detected, list):
+        raise HarnessReceiptError("harness receipt detected must be a list")
     for profile in profiles:
         if not isinstance(profile, Mapping):
             raise HarnessReceiptError("harness receipt has a malformed profile")
@@ -161,7 +164,7 @@ def _validate_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
                     )
     rebuilt = build_receipt(
         profiles,
-        detected_ids=receipt.get("detected", []),  # type: ignore[arg-type]
+        detected_ids=detected,
         source=str(receipt.get("source", "")),
         generated_at=receipt.get("generated_at"),  # type: ignore[arg-type]
     )
