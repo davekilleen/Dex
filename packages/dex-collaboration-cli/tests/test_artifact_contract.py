@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 CORE_SOURCE = PACKAGE_ROOT / "src" / "core"
@@ -382,6 +384,99 @@ class SourceContractTests(unittest.TestCase):
                 self.assertIn("unsafe identity custody", json.loads(result.stderr)["error"])
                 self.assertNotIn("f" * 64, result.stderr)
 
+    def test_every_selected_identity_rejects_dot_slash_and_traversal_ids(self) -> None:
+        probes = (
+            (".", ["rooms", "list", "--as", ".", "--json"]),
+            (
+                "nested/owner",
+                ["rooms", "create", "--name", "Knowledge", "--as", "nested/owner"],
+            ),
+            (
+                "../escaped",
+                ["post", "--as", "../escaped", "--room", "room-1", "--text", "x"],
+            ),
+            (
+                "../../escaped",
+                ["timeline", "--room", "room-1", "--as", "../../escaped", "--json"],
+            ),
+        )
+        for identity_id, arguments in probes:
+            with self.subTest(identity_id=identity_id), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                studio_home = root / "studio"
+                log_path = root / "buzz.log"
+                core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
+                _seed_identity(studio_home, identity_id, "f" * 64)
+                _write_executable(fake_admin, "#!/bin/bash\nexit 99\n")
+                _write_executable(
+                    fake_buzz,
+                    "#!/bin/bash\n"
+                    "printf '%s\\n' \"$*\" >> \"$DEX_TEST_LOG\"\n"
+                    "case \"$*\" in\n"
+                    "  'channels list') printf '%s\\n' '[]' ;;\n"
+                    "  'channels create --name Knowledge --type stream --visibility open') printf '%s\\n' '{\"channel_id\":\"room-2\"}' ;;\n"
+                    "  'channels get --channel room-1') printf '%s\\n' '{\"channel_id\":\"room-1\"}' ;;\n"
+                    "  'channels join --channel room-1') printf '%s\\n' '{\"accepted\":true}' ;;\n"
+                    "  'messages send --channel room-1 --content x') printf '%s\\n' '{\"event_id\":\"event-1\"}' ;;\n"
+                    "  'messages get --channel room-1') printf '%s\\n' '[]' ;;\n"
+                    "  *) exit 41 ;;\n"
+                    "esac\n",
+                )
+                result = subprocess.run(
+                    [core, *arguments],
+                    env={
+                        **os.environ,
+                        "PATH": "",
+                        "DEX_STUDIO_HOME": str(studio_home),
+                        "DEX_TEST_LOG": str(log_path),
+                    },
+                    capture_output=True,
+                    text=True,
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("identity id is invalid", json.loads(result.stderr)["error"])
+                self.assertFalse(log_path.exists(), "invalid identity reached the Buzz runtime")
+
+    def test_identity_create_rejects_preexisting_symlinked_custody_parents(self) -> None:
+        for unsafe_parent in ("studio", "keys", "agents"):
+            with self.subTest(unsafe_parent=unsafe_parent), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                studio_home = root / "studio"
+                external = root / "external"
+                external.mkdir()
+                if unsafe_parent == "studio":
+                    studio_home.symlink_to(external, target_is_directory=True)
+                elif unsafe_parent == "keys":
+                    studio_home.mkdir()
+                    (studio_home / "keys").symlink_to(external, target_is_directory=True)
+                else:
+                    (studio_home / "keys").mkdir(parents=True)
+                    (studio_home / "keys" / "agents").symlink_to(
+                        external,
+                        target_is_directory=True,
+                    )
+                core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
+                _write_executable(
+                    fake_admin,
+                    "#!/bin/bash\n"
+                    "printf '%s\\n' 'Public key: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n"
+                    "printf '%s\\n' 'Secret key: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'\n",
+                )
+                _write_executable(fake_buzz, "#!/bin/bash\nprintf '%s\\n' '{\"accepted\":true}'\n")
+                result = subprocess.run(
+                    [core, "identity", "create", "--name", "Research Scout"],
+                    env={**os.environ, "PATH": "", "DEX_STUDIO_HOME": str(studio_home)},
+                    capture_output=True,
+                    text=True,
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("unsafe identity custody", json.loads(result.stderr)["error"])
+                self.assertEqual(list(external.rglob("key.json")), [])
+
     def test_archive_verification_rejects_a_sidecar_checksum_mismatch(self) -> None:
         verifier = PACKAGE_ROOT / "verify_artifact.py"
         with tempfile.TemporaryDirectory() as temporary:
@@ -510,6 +605,160 @@ class SourceContractTests(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("must be empty", json.loads(rejected.stderr)["error"])
 
+    def test_builder_canonicalizes_relative_cli_paths_before_building(self) -> None:
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            import build_artifact
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                with (
+                    mock.patch.object(build_artifact, "build", return_value={"status": "ok"}) as build,
+                    mock.patch("builtins.print"),
+                ):
+                    previous = Path.cwd()
+                    try:
+                        os.chdir(root)
+                        result = build_artifact.main(
+                            ["--buzz-source", "relative-buzz", "--output", "relative-output"]
+                        )
+                    finally:
+                        os.chdir(previous)
+                self.assertEqual(result, 0)
+                arguments = build.call_args.args[0]
+                self.assertEqual(arguments.buzz_source, root / "relative-buzz")
+                self.assertEqual(arguments.output, root / "relative-output")
+                self.assertTrue(arguments.buzz_source.is_absolute())
+                self.assertTrue(arguments.output.is_absolute())
+        finally:
+            sys.path.pop(0)
+
+    def test_failed_build_removes_private_state_outside_the_deliverable_output(self) -> None:
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            import build_artifact
+
+            contract = json.loads((PACKAGE_ROOT / "contract.json").read_text(encoding="utf-8"))
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "buzz"
+                source.mkdir()
+                output = root / "deliverables"
+                build_roots: list[Path] = []
+
+                def fail_runtime(arguments, build_root=None):
+                    private_root = Path(build_root) if build_root is not None else arguments.output
+                    build_roots.append(private_root)
+                    (private_root / ".hermit-state").mkdir(parents=True)
+                    raise build_artifact.BuildError("expected build failure")
+
+                arguments = type(
+                    "Arguments",
+                    (),
+                    {"buzz_source": source, "output": output, "jobs": 1},
+                )()
+                with (
+                    mock.patch.object(
+                        build_artifact,
+                        "_git_head",
+                        return_value=contract["buzz_revision"],
+                    ),
+                    mock.patch.object(build_artifact, "_require_clean_source"),
+                    mock.patch.object(
+                        build_artifact,
+                        "_build_pinned_runtime",
+                        side_effect=fail_runtime,
+                    ),
+                    self.assertRaisesRegex(build_artifact.BuildError, "expected build failure"),
+                ):
+                    build_artifact.build(arguments)
+
+                self.assertEqual(list(output.iterdir()) if output.exists() else [], [])
+                self.assertEqual(list(root.glob(".dex-core-build-*")), [])
+                self.assertEqual(len(build_roots), 1)
+                self.assertNotEqual(build_roots[0], output)
+        finally:
+            sys.path.pop(0)
+
+    def test_builder_requires_a_clean_dex_checkout_before_starting_runtime_build(self) -> None:
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            import build_artifact
+
+            contract = json.loads((PACKAGE_ROOT / "contract.json").read_text(encoding="utf-8"))
+            dex_root = PACKAGE_ROOT.parents[1]
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "buzz"
+                source.mkdir()
+                output = root / "new-parent" / "output"
+                arguments = type(
+                    "Arguments",
+                    (),
+                    {"buzz_source": source, "output": output, "jobs": 1},
+                )()
+
+                def require_clean(checkout):
+                    if Path(checkout) == dex_root:
+                        self.assertFalse(output.parent.exists())
+                        raise build_artifact.BuildError(
+                            "Dex source checkout is dirty; artifact provenance is not exact"
+                        )
+
+                with (
+                    mock.patch.object(
+                        build_artifact,
+                        "_git_head",
+                        return_value=contract["buzz_revision"],
+                    ),
+                    mock.patch.object(
+                        build_artifact,
+                        "_require_clean_source",
+                        side_effect=require_clean,
+                    ),
+                    mock.patch.object(build_artifact, "_build_pinned_runtime") as runtime_build,
+                    self.assertRaisesRegex(build_artifact.BuildError, "Dex source checkout is dirty"),
+                ):
+                    build_artifact.build(arguments)
+                runtime_build.assert_not_called()
+                self.assertFalse(output.parent.exists())
+        finally:
+            sys.path.pop(0)
+
+    def test_verifier_binds_complete_provenance_to_the_source_contract(self) -> None:
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            import verify_artifact
+            from artifact_support import ArtifactError, sha256_file
+
+            contract = json.loads((PACKAGE_ROOT / "contract.json").read_text(encoding="utf-8"))
+            valid = {
+                "buzz_repository": contract["buzz_repository"],
+                "buzz_revision": contract["buzz_revision"],
+                "buzz_tree_clean": True,
+                "cargo_target_fresh": True,
+                "hermit_state_isolated": True,
+                "dex_revision": "a" * 40,
+                "dex_tree_clean": True,
+                "source_contract_sha256": sha256_file(PACKAGE_ROOT / "contract.json"),
+                "toolchain": {
+                    "cargo": "cargo 1.95.0 (test)",
+                    "rustc": "rustc 1.95.0 (test)",
+                },
+            }
+            verify_artifact._verify_source_identity(valid, contract)
+            invalid_values = {
+                "buzz_repository": "https://example.invalid/buzz.git",
+                "dex_revision": "not-a-revision",
+                "dex_tree_clean": False,
+                "source_contract_sha256": "0" * 64,
+            }
+            for field, value in invalid_values.items():
+                with self.subTest(field=field), self.assertRaises(ArtifactError):
+                    verify_artifact._verify_source_identity({**valid, field: value}, contract)
+        finally:
+            sys.path.pop(0)
+
     def test_native_dependency_policy_rejects_non_baseline_libraries(self) -> None:
         sys.path.insert(0, str(PACKAGE_ROOT))
         try:
@@ -632,6 +881,30 @@ class SourceContractTests(unittest.TestCase):
             self.assertTrue((artifact_dir / "SHA256SUMS").is_file())
             self.assertTrue(archive.is_file())
             self.assertTrue(Path(f"{archive}.sha256").is_file())
+            self.assertEqual(
+                {path.name for path in output.iterdir()},
+                {artifact_dir.name, archive.name, f"{archive.name}.sha256"},
+            )
+            manifest = json.loads((artifact_dir / "manifest.json").read_text(encoding="utf-8"))
+            sources = manifest["sources"]
+            self.assertTrue(sources["dex_tree_clean"])
+            self.assertRegex(sources["dex_revision"], r"^[0-9a-f]{40}$")
+            self.assertEqual(
+                sources["source_contract_sha256"],
+                hashlib.sha256((PACKAGE_ROOT / "contract.json").read_bytes()).hexdigest(),
+            )
+            self.assertEqual(
+                sources["buzz_repository"],
+                "https://github.com/block/buzz.git",
+            )
+
+            rerun = subprocess.run(
+                build_command,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(rerun.returncode, 0)
+            self.assertIn("must be empty", json.loads(rerun.stderr)["error"])
 
             verified = subprocess.run(
                 [sys.executable, verifier, artifact_dir],

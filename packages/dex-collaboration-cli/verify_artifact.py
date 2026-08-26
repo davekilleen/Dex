@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from artifact_support import (
 )
 
 EXPECTED_COMMANDS = ["identity create", "rooms list", "rooms create", "post", "timeline"]
+PACKAGE_ROOT = Path(__file__).resolve().parent
 MAX_ARCHIVE_FILES = 64
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 
@@ -47,6 +49,35 @@ def _read_sums(path: Path) -> dict[str, str]:
     return result
 
 
+def _verify_source_identity(sources: object, contract: dict[str, object]) -> None:
+    if not isinstance(sources, dict):
+        raise ArtifactError("artifact source provenance is missing")
+    if (
+        sources.get("buzz_repository") != contract.get("buzz_repository")
+        or sources.get("buzz_revision") != contract.get("buzz_revision")
+        or sources.get("buzz_tree_clean") is not True
+        or sources.get("cargo_target_fresh") is not True
+        or sources.get("hermit_state_isolated") is not True
+    ):
+        raise ArtifactError("pinned Buzz source identity is missing")
+    dex_revision = sources.get("dex_revision")
+    if (
+        not isinstance(dex_revision, str)
+        or re.fullmatch(r"[0-9a-f]{40}", dex_revision) is None
+        or sources.get("dex_tree_clean") is not True
+    ):
+        raise ArtifactError("clean Dex source identity is missing")
+    if sources.get("source_contract_sha256") != sha256_file(PACKAGE_ROOT / "contract.json"):
+        raise ArtifactError("artifact source contract identity is invalid")
+    toolchain = sources.get("toolchain")
+    if (
+        not isinstance(toolchain, dict)
+        or not str(toolchain.get("cargo", "")).startswith("cargo 1.95.0 ")
+        or not str(toolchain.get("rustc", "")).startswith("rustc 1.95.0 ")
+    ):
+        raise ArtifactError("pinned Rust toolchain identity is missing")
+
+
 def verify(root: Path, expected_platform: str, expected_arch: str) -> dict[str, str]:
     if not root.is_dir() or root.is_symlink():
         raise ArtifactError("artifact must be an extracted regular directory")
@@ -57,21 +88,27 @@ def verify(root: Path, expected_platform: str, expected_arch: str) -> dict[str, 
     if not sums_path.is_file() or sums_path.is_symlink():
         raise ArtifactError("SHA256SUMS is missing")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    contract = json.loads((PACKAGE_ROOT / "contract.json").read_text(encoding="utf-8"))
     if manifest_path.read_bytes() != canonical_json_bytes(manifest):
         raise ArtifactError("manifest.json is not canonical")
     if manifest.get("schema") != "dex-collaboration-cli-artifact/1":
         raise ArtifactError("artifact manifest schema is unsupported")
-    if manifest.get("artifact_id") != "dex-core-collaboration-cli":
+    if manifest.get("artifact_id") != contract.get("artifact_id"):
         raise ArtifactError("artifact id is invalid")
     if manifest.get("platform") != expected_platform or manifest.get("architecture") != expected_arch:
         raise ArtifactError(
             f"artifact targets {manifest.get('platform')}/{manifest.get('architecture')}, "
             f"expected {expected_platform}/{expected_arch}"
         )
-    if manifest.get("commands") != EXPECTED_COMMANDS:
+    if manifest.get("commands") != contract.get("commands") or manifest.get("commands") != EXPECTED_COMMANDS:
         raise ArtifactError("artifact command contract is invalid")
     relay = manifest.get("relay")
-    if not isinstance(relay, dict) or relay.get("environment") != "BUZZ_RELAY_URL" or not relay.get("default"):
+    if (
+        not isinstance(relay, dict)
+        or relay != contract.get("service_boundary")
+        or relay.get("environment") != "BUZZ_RELAY_URL"
+        or not relay.get("default")
+    ):
         raise ArtifactError("artifact relay contract is invalid")
 
     entries = manifest.get("files")
@@ -154,21 +191,8 @@ def verify(root: Path, expected_platform: str, expected_arch: str) -> dict[str, 
         raise ArtifactError("packaged Core executable contract does not match its manifest")
 
     sources = manifest.get("sources")
-    if (
-        not isinstance(sources, dict)
-        or sources.get("buzz_revision") != "b2ac66cde81df7ce1afc50016e1571cb6e8b7779"
-        or sources.get("buzz_tree_clean") is not True
-        or sources.get("cargo_target_fresh") is not True
-        or sources.get("hermit_state_isolated") is not True
-    ):
-        raise ArtifactError("pinned Buzz source identity is missing")
-    toolchain = sources.get("toolchain")
-    if (
-        not isinstance(toolchain, dict)
-        or not str(toolchain.get("cargo", "")).startswith("cargo 1.95.0 ")
-        or not str(toolchain.get("rustc", "")).startswith("rustc 1.95.0 ")
-    ):
-        raise ArtifactError("pinned Rust toolchain identity is missing")
+    _verify_source_identity(sources, contract)
+    assert isinstance(sources, dict)
     return {
         "status": "verified",
         "artifact": str(root.resolve()),

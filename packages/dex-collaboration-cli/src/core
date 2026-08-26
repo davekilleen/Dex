@@ -60,6 +60,34 @@ slugify() {
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
 }
 
+require_identity_id() {
+  local identity_id="$1"
+  [[ "$identity_id" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] \
+    || die "identity id is invalid"
+}
+
+ensure_custody_root() {
+  local directory parent
+  for directory in "$STUDIO_HOME" "$STUDIO_HOME/keys" "$KEYS_DIR"; do
+    [[ ! -L "$directory" ]] || die "unsafe identity custody"
+    if [[ -e "$directory" ]]; then
+      [[ -d "$directory" && -O "$directory" ]] || die "unsafe identity custody"
+    else
+      parent="${directory%/*}"
+      if [[ "$directory" != "$STUDIO_HOME" ]]; then
+        [[ -d "$parent" && ! -L "$parent" && -O "$parent" ]] \
+          || die "unsafe identity custody"
+      fi
+      mkdir "$directory" || die "unsafe identity custody"
+    fi
+    [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] \
+      || die "unsafe identity custody"
+    chmod 0700 "$directory" || die "unsafe identity custody"
+    [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] \
+      || die "unsafe identity custody"
+  done
+}
+
 parse_key_line() {
   local label="$1" payload="$2"
   printf '%s\n' "$payload" | awk -v label="$label" '$1 " " $2 == label { print $3; exit }'
@@ -67,17 +95,17 @@ parse_key_line() {
 
 identity_create() {
   local name="$1" forced_id="${2:-}" id pair pubkey privkey target_dir temp_dir created_at
+  local keys_root identity_root
   id="$forced_id"
   if [[ -z "$id" ]]; then
     id="$(slugify "$name")"
   fi
   [[ -n "$id" ]] || die "identity name must contain a letter or number"
-  [[ "$id" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "identity id is invalid"
+  require_identity_id "$id"
 
+  ensure_custody_root
   target_dir="$KEYS_DIR/$id"
-  [[ ! -e "$target_dir" ]] || die "identity already exists: $id"
-  mkdir -p "$KEYS_DIR"
-  chmod 0700 "$STUDIO_HOME" "$STUDIO_HOME/keys" "$KEYS_DIR"
+  [[ ! -e "$target_dir" && ! -L "$target_dir" ]] || die "identity already exists: $id"
 
   if ! pair="$($BUZZ_ADMIN generate-key 2>&1)"; then
     die "Buzz key generation failed"
@@ -88,7 +116,7 @@ identity_create() {
     || die "Buzz key generation returned an invalid keypair"
 
   temp_dir="$KEYS_DIR/.core-identity-$id-$$"
-  [[ ! -e "$temp_dir" ]] || die "temporary identity path already exists"
+  [[ ! -e "$temp_dir" && ! -L "$temp_dir" ]] || die "temporary identity path already exists"
   mkdir "$temp_dir"
   chmod 0700 "$temp_dir"
   created_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -103,7 +131,17 @@ identity_create() {
     rmdir "$temp_dir"
     die "Buzz profile publication failed"
   fi
+  ensure_custody_root
+  [[ -d "$temp_dir" && ! -L "$temp_dir" && -O "$temp_dir" ]] \
+    || die "unsafe identity custody"
+  [[ ! -e "$target_dir" && ! -L "$target_dir" ]] || die "identity already exists: $id"
   mv "$temp_dir" "$target_dir"
+  keys_root="$(CDPATH= cd "$KEYS_DIR" && pwd -P)"
+  identity_root="$(CDPATH= cd "$target_dir" && pwd -P)"
+  case "$identity_root" in
+    "$keys_root"/*) ;;
+    *) die "unsafe identity custody" ;;
+  esac
   printf '{"id":"%s","name":"%s","pubkey":"%s"}\n' \
     "$(json_escape "$id")" "$(json_escape "$name")" "$pubkey"
 }
@@ -115,7 +153,8 @@ ensure_studio_identity() {
 }
 
 load_private_key() {
-  local identity_id="$1" key_file private_key directory mode
+  local identity_id="$1" key_file private_key directory mode keys_root identity_root
+  require_identity_id "$identity_id"
   key_file="$KEYS_DIR/$identity_id/key.json"
   [[ -e "$key_file" || -L "$key_file" ]] || die "unknown identity: $identity_id"
   for directory in "$STUDIO_HOME" "$STUDIO_HOME/keys" "$KEYS_DIR" "$KEYS_DIR/$identity_id"; do
@@ -130,6 +169,12 @@ load_private_key() {
     fi
     [[ "$mode" == "700" ]] || die "unsafe identity custody: $identity_id"
   done
+  keys_root="$(CDPATH= cd "$KEYS_DIR" && pwd -P)"
+  identity_root="$(CDPATH= cd "$KEYS_DIR/$identity_id" && pwd -P)"
+  case "$identity_root" in
+    "$keys_root"/*) ;;
+    *) die "unsafe identity custody: $identity_id" ;;
+  esac
   [[ -f "$key_file" && ! -L "$key_file" && -O "$key_file" ]] \
     || die "unsafe identity custody: $identity_id"
   if mode="$(stat -c '%a' "$key_file" 2>/dev/null)"; then

@@ -54,7 +54,10 @@ service.
 Identity private keys remain in
 `$DEX_STUDIO_HOME/keys/agents/<id>/key.json` (or
 `$HOME/.dex-studio/...`) with `0700` directories and `0600` files. Existing
-identities are never overwritten. Standard output is JSON-only; failures are
+identities are never overwritten. Selected identity IDs use the same canonical
+lowercase slug grammar as generated IDs; dot, slash, and traversal paths are
+rejected before key lookup. Pre-existing symlinks in the studio, keys, or
+agents custody root fail closed. Standard output is JSON-only; failures are
 JSON on standard error, and native error details are scrubbed of the active
 private key.
 
@@ -69,10 +72,18 @@ than overstating its evidence.
 
 ## Build and verify
 
-Use a clean Buzz checkout at the exact revision. The builder invokes that
-checkout's tracked Hermit launchers for Rust 1.95.0, strips inherited
+Use clean Dex and Buzz checkouts at their exact revisions. The builder invokes
+Buzz's tracked Hermit launchers for Rust 1.95.0, strips inherited
 Rust/Cargo/Hermit overrides, gives Hermit a new builder-owned HOME, cache,
-state and executable path, and always builds into a new empty target:
+state and executable path, and always builds into a new empty target. All
+private build state lives in a temporary sibling outside the requested output
+and is removed on success or failure. A successful output contains only the
+artifact directory, archive, and archive checksum sidecar; rerunning against
+that non-empty output is refused.
+
+The manifest records the clean Dex revision and the SHA-256 identity of
+`contract.json`. The verifier binds those fields to the exact Buzz repository,
+Buzz revision, and package source contract. Build and verify with:
 
 ```bash
 python3 packages/dex-collaboration-cli/build_artifact.py \

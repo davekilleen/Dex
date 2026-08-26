@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
 from artifact_support import (
@@ -80,9 +81,11 @@ def _require_clean_source(source: Path) -> None:
         text=True,
     )
     if result.returncode != 0:
-        raise BuildError("Buzz source cleanliness could not be verified")
+        label = "Dex" if source.resolve() == PACKAGE_ROOT.parents[1].resolve() else "Buzz"
+        raise BuildError(f"{label} source cleanliness could not be verified")
     if result.stdout:
-        raise BuildError("Buzz source checkout is dirty; runtime provenance is not exact")
+        label = "Dex" if source.resolve() == PACKAGE_ROOT.parents[1].resolve() else "Buzz"
+        raise BuildError(f"{label} source checkout is dirty; artifact provenance is not exact")
 
 
 def _copy_payload(source: Path, destination: Path, mode: int) -> None:
@@ -165,9 +168,12 @@ def _sanitized_build_environment(
     return environment
 
 
-def _build_pinned_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str]]:
+def _build_pinned_runtime(
+    args: argparse.Namespace,
+    build_root: Path,
+) -> tuple[Path, Path, dict[str, str]]:
     cargo = args.buzz_source / "bin" / "cargo"
-    target_dir = args.output / ".cargo-target"
+    target_dir = build_root / ".cargo-target"
     target_dir.mkdir()
     environment = _sanitized_build_environment(target_dir, source=args.buzz_source)
     toolchain = _toolchain_identity(args.buzz_source, environment)
@@ -231,111 +237,126 @@ def build(args: argparse.Namespace) -> dict[str, str]:
             f"{expected_revision} (found {actual_revision or 'none'})"
         )
     _require_clean_source(args.buzz_source)
-
-    args.output.mkdir(parents=True, exist_ok=True)
-    buzz_bin, buzz_admin_bin, toolchain = _build_pinned_runtime(args)
-    for path, label in (
-        (buzz_bin, "Buzz client"),
-        (buzz_admin_bin, "Buzz admin client"),
-        (PACKAGE_ROOT / "src" / "core", "Core executable"),
-    ):
-        require_regular_executable(path, label)
-    buzz_license = args.buzz_source / "LICENSE"
-    if not buzz_license.is_file() or buzz_license.is_symlink():
-        raise BuildError("pinned Buzz LICENSE is missing")
-
-    platform_label = host_platform()
-    architecture = host_arch()
-    runtime_identities: dict[str, tuple[str, str, str]] = {}
-    for name, path in (("buzz", buzz_bin), ("buzz-admin", buzz_admin_bin)):
-        runtime_identities[name] = native_identity(path)
-        _, runtime_platform, runtime_arch = runtime_identities[name]
-        if (runtime_platform, runtime_arch) != (platform_label, architecture):
-            raise BuildError(
-                f"{name} targets {runtime_platform}/{runtime_arch}, expected "
-                f"{platform_label}/{architecture}"
-            )
-        native_dependencies(path, platform_label)
-
-    artifact_name = f"{contract['artifact_id']}-{platform_label}-{architecture}"
-    artifact_dir = args.output / artifact_name
-    if artifact_dir.exists():
-        raise BuildError(f"artifact output already exists: {artifact_dir}")
-    artifact_dir.mkdir()
-
-    payload = (
-        (PACKAGE_ROOT / "src" / "core", artifact_dir / "bin" / "core", 0o755),
-        (buzz_bin, artifact_dir / "libexec" / "buzz", 0o755),
-        (buzz_admin_bin, artifact_dir / "libexec" / "buzz-admin", 0o755),
-        (buzz_license, artifact_dir / "LICENSES" / "Buzz-LICENSE", 0o644),
-    )
-    for source, destination, mode in payload:
-        _copy_payload(source, destination, mode)
-
     dex_root = PACKAGE_ROOT.parents[1]
-    files = []
-    for _, destination, mode in payload:
-        relative = destination.relative_to(artifact_dir).as_posix()
-        entry: dict[str, object] = {
-            "path": relative,
-            "mode": f"{mode:04o}",
-            "sha256": sha256_file(destination),
+    _require_clean_source(dex_root)
+    dex_revision = _git_head(dex_root)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(
+        prefix=".dex-core-build-",
+        dir=args.output.parent,
+    ) as temporary:
+        build_root = Path(temporary)
+        deliverables = build_root / "deliverables"
+        deliverables.mkdir()
+        buzz_bin, buzz_admin_bin, toolchain = _build_pinned_runtime(args, build_root)
+        for path, label in (
+            (buzz_bin, "Buzz client"),
+            (buzz_admin_bin, "Buzz admin client"),
+            (PACKAGE_ROOT / "src" / "core", "Core executable"),
+        ):
+            require_regular_executable(path, label)
+        buzz_license = args.buzz_source / "LICENSE"
+        if not buzz_license.is_file() or buzz_license.is_symlink():
+            raise BuildError("pinned Buzz LICENSE is missing")
+
+        platform_label = host_platform()
+        architecture = host_arch()
+        runtime_identities: dict[str, tuple[str, str, str]] = {}
+        for name, path in (("buzz", buzz_bin), ("buzz-admin", buzz_admin_bin)):
+            runtime_identities[name] = native_identity(path)
+            _, runtime_platform, runtime_arch = runtime_identities[name]
+            if (runtime_platform, runtime_arch) != (platform_label, architecture):
+                raise BuildError(
+                    f"{name} targets {runtime_platform}/{runtime_arch}, expected "
+                    f"{platform_label}/{architecture}"
+                )
+            native_dependencies(path, platform_label)
+
+        artifact_name = f"{contract['artifact_id']}-{platform_label}-{architecture}"
+        artifact_dir = deliverables / artifact_name
+        artifact_dir.mkdir()
+
+        payload = (
+            (PACKAGE_ROOT / "src" / "core", artifact_dir / "bin" / "core", 0o755),
+            (buzz_bin, artifact_dir / "libexec" / "buzz", 0o755),
+            (buzz_admin_bin, artifact_dir / "libexec" / "buzz-admin", 0o755),
+            (buzz_license, artifact_dir / "LICENSES" / "Buzz-LICENSE", 0o644),
+        )
+        for source, destination, mode in payload:
+            _copy_payload(source, destination, mode)
+
+        files = []
+        for _, destination, mode in payload:
+            relative = destination.relative_to(artifact_dir).as_posix()
+            entry: dict[str, object] = {
+                "path": relative,
+                "mode": f"{mode:04o}",
+                "sha256": sha256_file(destination),
+            }
+            if relative.startswith("libexec/"):
+                runtime_name = Path(relative).name
+                binary_format, _, binary_arch = runtime_identities[runtime_name]
+                entry.update(
+                    {
+                        "format": binary_format,
+                        "architecture": binary_arch,
+                        "dependencies": native_dependencies(destination, platform_label),
+                    }
+                )
+            elif relative == "bin/core":
+                entry["format"] = "bash"
+            else:
+                entry["format"] = "text"
+            files.append(entry)
+
+        manifest = {
+            "schema": "dex-collaboration-cli-artifact/1",
+            "artifact_id": contract["artifact_id"],
+            "artifact_name": artifact_name,
+            "platform": platform_label,
+            "architecture": architecture,
+            "commands": contract["commands"],
+            "relay": contract["service_boundary"],
+            "sources": {
+                "buzz_repository": contract["buzz_repository"],
+                "buzz_revision": expected_revision,
+                "buzz_tree_clean": True,
+                "cargo_target_fresh": True,
+                "hermit_state_isolated": True,
+                "dex_revision": dex_revision,
+                "dex_tree_clean": True,
+                "source_contract_sha256": sha256_file(PACKAGE_ROOT / "contract.json"),
+                "toolchain": toolchain,
+            },
+            "files": sorted(files, key=lambda entry: str(entry["path"])),
         }
-        if relative.startswith("libexec/"):
-            runtime_name = Path(relative).name
-            binary_format, _, binary_arch = runtime_identities[runtime_name]
-            entry.update(
-                {
-                    "format": binary_format,
-                    "architecture": binary_arch,
-                    "dependencies": native_dependencies(destination, platform_label),
-                }
-            )
-        elif relative == "bin/core":
-            entry["format"] = "bash"
-        else:
-            entry["format"] = "text"
-        files.append(entry)
+        manifest_path = artifact_dir / "manifest.json"
+        manifest_path.write_bytes(canonical_json_bytes(manifest))
+        manifest_path.chmod(0o644)
 
-    manifest = {
-        "schema": "dex-collaboration-cli-artifact/1",
-        "artifact_id": contract["artifact_id"],
-        "artifact_name": artifact_name,
-        "platform": platform_label,
-        "architecture": architecture,
-        "commands": contract["commands"],
-        "relay": contract["service_boundary"],
-        "sources": {
-            "buzz_repository": contract["buzz_repository"],
-            "buzz_revision": expected_revision,
-            "buzz_tree_clean": True,
-            "cargo_target_fresh": True,
-            "hermit_state_isolated": True,
-            "dex_revision": _git_head(dex_root),
-            "source_contract_sha256": sha256_file(PACKAGE_ROOT / "contract.json"),
-            "toolchain": toolchain,
-        },
-        "files": sorted(files, key=lambda entry: str(entry["path"])),
-    }
-    manifest_path = artifact_dir / "manifest.json"
-    manifest_path.write_bytes(canonical_json_bytes(manifest))
-    manifest_path.chmod(0o644)
+        checksum_paths = [destination.relative_to(artifact_dir) for _, destination, _ in payload]
+        checksum_paths.append(Path("manifest.json"))
+        sums = "".join(
+            f"{sha256_file(artifact_dir / relative)}  {relative.as_posix()}\n"
+            for relative in sorted(checksum_paths, key=lambda item: item.as_posix())
+        )
+        sums_path = artifact_dir / "SHA256SUMS"
+        sums_path.write_text(sums, encoding="utf-8")
+        sums_path.chmod(0o644)
 
-    checksum_paths = [destination.relative_to(artifact_dir) for _, destination, _ in payload]
-    checksum_paths.append(Path("manifest.json"))
-    sums = "".join(
-        f"{sha256_file(artifact_dir / relative)}  {relative.as_posix()}\n"
-        for relative in sorted(checksum_paths, key=lambda item: item.as_posix())
-    )
-    sums_path = artifact_dir / "SHA256SUMS"
-    sums_path.write_text(sums, encoding="utf-8")
-    sums_path.chmod(0o644)
+        archive = deliverables / f"{artifact_name}.tar.gz"
+        _write_deterministic_archive(artifact_dir, archive, _source_epoch(dex_root))
+        archive_checksum = sha256_file(archive)
+        checksum_file = Path(f"{archive}.sha256")
+        checksum_file.write_text(f"{archive_checksum}  {archive.name}\n", encoding="utf-8")
 
+        if args.output.exists():
+            args.output.rmdir()
+        deliverables.replace(args.output)
+
+    artifact_dir = args.output / artifact_name
     archive = args.output / f"{artifact_name}.tar.gz"
-    _write_deterministic_archive(artifact_dir, archive, _source_epoch(dex_root))
-    archive_checksum = sha256_file(archive)
-    checksum_file = Path(f"{archive}.sha256")
-    checksum_file.write_text(f"{archive_checksum}  {archive.name}\n", encoding="utf-8")
     return {
         "artifact_dir": str(artifact_dir.resolve()),
         "archive": str(archive.resolve()),
@@ -353,6 +374,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        args.buzz_source = args.buzz_source.resolve()
+        args.output = args.output.resolve()
         if args.jobs < 1 or args.jobs > 9:
             raise BuildError("--jobs must be between 1 and 9")
         result = build(args)
