@@ -1267,14 +1267,20 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
             f"The saved agent harness profile is invalid: {_one_line(error)}",
             Heal(
                 tier=3,
-                action="Run /setup and confirm the agent harness selection again.",
+                action=(
+                    "Run /setup and confirm the agent harness selection again; "
+                    "Dex will replace only this receipt."
+                ),
                 applied=False,
             ),
         )
     if receipt is None:
         return ProbeResult(
             "OFF",
-            "Agent harness capabilities have not been recorded by onboarding yet; run /setup to detect or choose them",
+            (
+                "Agent harness capabilities have not been recorded yet; run /setup to "
+                "record your harnesses without restarting onboarding"
+            ),
         )
 
     summary = summarize_receipt(receipt)

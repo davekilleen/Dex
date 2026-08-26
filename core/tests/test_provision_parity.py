@@ -261,6 +261,99 @@ def test_onboarding_dry_run_then_saves_confirmed_harness_receipt_transactionally
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_completed_vault_records_only_its_confirmed_harness_receipt(
+    tmp_path: Path,
+) -> None:
+    original_profile = "name: Existing User\ncustom: keep exactly\n"
+    vault = _prepare_provision_vault(tmp_path, profile_text=original_profile)
+    marker = vault / "System/.onboarding-complete"
+    marker.write_text('{"completed":true,"custom":"keep"}\n', encoding="utf-8")
+    task = vault / "03-Tasks/Tasks.md"
+    task.parent.mkdir(parents=True)
+    task.write_text("# Existing tasks\n", encoding="utf-8")
+    profile = tmp_path / "harness-profile.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "harnesses": ["codex", "cowork"],
+                "harness_detected": ["codex"],
+                "harness_source": "migrated",
+            }
+        ),
+        encoding="utf-8",
+    )
+    before_profile = (vault / "System/user-profile.yaml").read_bytes()
+    before_marker = marker.read_bytes()
+    before_task = task.read_bytes()
+
+    preview = _invoke_provision(
+        vault,
+        "--harness-only",
+        "--profile",
+        str(profile),
+        "--dry-run",
+    )
+
+    assert preview.returncode == 0, preview.stderr or preview.stdout
+    preview_summary = json.loads(preview.stdout)
+    assert preview_summary["mutation_receipt"]["declared_paths"] == [
+        "System/.dex/harness-profile.json"
+    ]
+    assert not (vault / "System/.dex/harness-profile.json").exists()
+
+    applied = _invoke_provision(
+        vault,
+        "--harness-only",
+        "--profile",
+        str(profile),
+    )
+
+    assert applied.returncode == 0, applied.stderr or applied.stdout
+    receipt = json.loads(
+        (vault / "System/.dex/harness-profile.json").read_text(encoding="utf-8")
+    )
+    assert receipt["selected"] == ["codex", "cowork"]
+    assert receipt["detected"] == ["codex"]
+    assert receipt["source"] == "migrated"
+    assert (vault / "System/user-profile.yaml").read_bytes() == before_profile
+    assert marker.read_bytes() == before_marker
+    assert task.read_bytes() == before_task
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_harness_only_refuses_an_incomplete_vault_without_mutation(
+    tmp_path: Path,
+) -> None:
+    vault = _prepare_provision_vault(
+        tmp_path,
+        profile_text="name: Existing User\ncustom: keep exactly\n",
+    )
+    profile = tmp_path / "harness-profile.json"
+    profile.write_text(
+        json.dumps(
+            {
+                "harnesses": ["codex"],
+                "harness_detected": [],
+                "harness_source": "migrated",
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = _snapshot_tree(vault)
+
+    refused = _invoke_provision(
+        vault,
+        "--harness-only",
+        "--profile",
+        str(profile),
+    )
+
+    assert refused.returncode == 1
+    assert "completed onboarding vault" in refused.stdout
+    assert _snapshot_tree(vault) == before
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_onboarding_rejects_unknown_harness_before_any_vault_mutation(
     tmp_path: Path,
 ) -> None:

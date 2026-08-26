@@ -30,6 +30,7 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg === '--adopt') options.adopt = true;
     else if (arg === '--onboard') options.onboard = true;
+    else if (arg === '--harness-only') options.harnessOnly = true;
     else if (arg === '--install-config-only') options.installConfigOnly = true;
     else if (arg === '--lifecycle-only') options.lifecycleOnly = true;
     else if (arg === '--enable-qmd') options.enableQmd = true;
@@ -410,6 +411,27 @@ function loadProfileOverlay(profilePath) {
   return overlay;
 }
 
+function loadHarnessReceiptOverlay(profilePath) {
+  if (!profilePath) throw new Error('--harness-only requires --profile');
+  const raw = JSON.parse(fs.readFileSync(path.resolve(profilePath), 'utf8'));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('Harness profile JSON must contain an object');
+  }
+  const allowed = new Set(['harnesses', 'harness_detected', 'harness_source']);
+  const unknown = Object.keys(raw).filter(key => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Harness-only profile has unknown fields: ${unknown.join(', ')}`);
+  }
+  const overlay = loadProfileOverlay(profilePath);
+  if (!Array.isArray(overlay.harnesses) || overlay.harnesses.length === 0) {
+    throw new Error('Harness-only profile requires at least one confirmed harness');
+  }
+  if (!['user-confirmed', 'migrated'].includes(overlay.harness_source)) {
+    throw new Error('Harness-only profile source must be user-confirmed or migrated');
+  }
+  return overlay;
+}
+
 function buildFreshProfile(template, overlay) {
   const profile = structuredClone(template || {});
   for (const [key, value] of Object.entries(overlay)) {
@@ -624,7 +646,9 @@ function provisionMutationTargets(vaultRoot, options) {
   const targets = [];
   const add = (relativePath, kind) => targets.push({ path: relativePath, kind });
 
-  if (options.installConfigOnly) {
+  if (options.harnessOnly) {
+    add('System/.dex/harness-profile.json', 'file');
+  } else if (options.installConfigOnly) {
     add('.mcp.json', 'file');
     add('core/paths.json', 'file');
   } else if (options.lifecycleOnly) {
@@ -1091,9 +1115,11 @@ function buildMutationReceipt(reporter, options) {
     ...(provisionReceipt?.transaction_id ? [provisionReceipt.transaction_id] : []),
   ])];
   return {
-    executor: options.adopt || options.onboard
-      ? 'lifecycle-service+provision-contract'
-      : 'provision-contract-bootstrap',
+    executor: options.harnessOnly
+      ? 'harness-receipt-provision-contract'
+      : (options.adopt || options.onboard
+        ? 'lifecycle-service+provision-contract'
+        : 'provision-contract-bootstrap'),
     declared_paths: [...new Set([
       ...reporter.summary.created,
       ...reporter.summary.removed,
@@ -1133,6 +1159,29 @@ function provision(options) {
     return reporter.summary;
   }
 
+  if (options.harnessOnly) {
+    const incompatible = [
+      options.adopt && '--adopt',
+      options.onboard && '--onboard',
+      options.installConfigOnly && '--install-config-only',
+      options.lifecycleOnly && '--lifecycle-only',
+      options.sessionFile && '--session-file',
+    ].filter(Boolean);
+    if (incompatible.length > 0) {
+      reporter.error(`--harness-only cannot be combined with ${incompatible.join(', ')}`);
+      reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
+      return reporter.summary;
+    }
+    try {
+      const marker = fs.lstatSync(path.join(vaultRoot, 'System', '.onboarding-complete'));
+      if (marker.isSymbolicLink() || !marker.isFile()) throw new Error('unsafe marker');
+    } catch (_) {
+      reporter.error('--harness-only requires a completed onboarding vault');
+      reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
+      return reporter.summary;
+    }
+  }
+
   if (!options.dryRun) {
     try {
       reporter.summary.provision_recovery = routeProvisionTransaction(
@@ -1144,6 +1193,29 @@ function provision(options) {
       reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
       return reporter.summary;
     }
+  }
+
+  if (options.harnessOnly) {
+    let transaction = null;
+    try {
+      const overlay = loadHarnessReceiptOverlay(options.profile);
+      const content = buildHarnessReceipt(overlay);
+      if (content === null) throw new Error('Harness receipt authority returned no receipt');
+      transaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
+      writeIfChanged(
+        path.join(vaultRoot, 'System', '.dex', 'harness-profile.json'),
+        content,
+        reporter,
+        options.dryRun,
+        transaction,
+      );
+      if (transaction) reporter.summary.provision_transaction = transaction.commit();
+    } catch (error) {
+      if (transaction) rollbackProvision(transaction, reporter, error);
+      else reporter.error(error.message);
+    }
+    reporter.summary.mutation_receipt = buildMutationReceipt(reporter, options);
+    return reporter.summary;
   }
 
   if (options.installConfigOnly) {
@@ -1478,7 +1550,7 @@ function printSummary(summary, asJson) {
 }
 
 function usage() {
-  return 'Usage: node core/provision.cjs --path <vault> [--profile <file.json>] [--adopt|--onboard] [--session-file <path>] [--install-config-only] [--lifecycle-only] [--enable-qmd] [--dry-run] [--json]\n';
+  return 'Usage: node core/provision.cjs --path <vault> [--profile <file.json>] [--adopt|--onboard|--harness-only] [--session-file <path>] [--install-config-only] [--lifecycle-only] [--enable-qmd] [--dry-run] [--json]\n';
 }
 
 if (require.main === module) {

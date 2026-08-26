@@ -626,6 +626,72 @@ def _run_onboarding_provisioner(
             profile_path.unlink(missing_ok=True)
 
 
+def _run_harness_receipt_provisioner(
+    selected: List[str],
+    detected: List[str],
+    *,
+    source: str,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    """Record only the post-onboarding harness receipt through provisioning."""
+    profile_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="dex-harness-profile-",
+            suffix=".json",
+            delete=False,
+        ) as profile:
+            profile_path = Path(profile.name)
+            json.dump(
+                {
+                    "harnesses": selected,
+                    "harness_detected": detected,
+                    "harness_source": source,
+                },
+                profile,
+            )
+            profile.write("\n")
+        provisioner = Path(__file__).parent.parent / "provision.cjs"
+        command = [
+            os.environ.get("DEX_PROVISION_NODE", "node"),
+            str(provisioner),
+            "--path",
+            str(BASE_DIR),
+            "--profile",
+            str(profile_path),
+            "--harness-only",
+        ]
+        if dry_run:
+            command.append("--dry-run")
+        command.append("--json")
+        completed = subprocess.run(
+            command,
+            cwd=Path(__file__).parent.parent.parent,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env={
+                **os.environ,
+                "DEX_HARNESS_PYTHON": sys.executable,
+                "DEX_PROVISION_PYTHON": sys.executable,
+            },
+        )
+        try:
+            receipt = json.loads(completed.stdout)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Provisioner returned an invalid harness receipt") from error
+        if completed.returncode != 0 or receipt.get("ok") is not True:
+            detail = "; ".join(receipt.get("errors", [])) or completed.stderr.strip()
+            raise RuntimeError(detail or "Provisioner refused harness selection")
+        return receipt
+    finally:
+        if profile_path is not None:
+            profile_path.unlink(missing_ok=True)
+
+
 def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
     """Collect onboarding inputs and let the sanctioned provisioner mutate."""
     receipt = _run_onboarding_provisioner(session, dry_run=False)
@@ -1738,7 +1804,8 @@ async def handle_list_tools() -> list[types.Tool]:
             name="save_harness_selection",
             description=(
                 "Save the user's confirmed one-or-more harness selection in the resumable "
-                "onboarding session. The final receipt is written only by provisioning."
+                "onboarding session, or write only the harness receipt for an already-onboarded "
+                "vault. The final receipt is written only by provisioning."
             ),
             inputSchema={
                 "type": "object",
@@ -2035,12 +2102,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "save_harness_selection":
             session = load_session()
-            if not session:
-                result = create_error_response(
-                    "No active session",
-                    suggestion="Call start_onboarding_session first",
-                )
-            elif arguments.get("confirmed") is not True:
+            if arguments.get("confirmed") is not True:
                 result = create_error_response(
                     "Harness selection requires explicit confirmation after the capability preview",
                     suggestion="Call inspect_harnesses, show the preview, then set confirmed=true",
@@ -2051,22 +2113,57 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 except ValueError as error:
                     result = create_error_response(str(error))
                 else:
-                    previous = session.get("harness_setup", {})
-                    detected = previous.get("detected", []) if isinstance(previous, dict) else []
-                    session["harness_setup"] = {
-                        "detected": detected if isinstance(detected, list) else [],
-                        "selected": inspected["selected"],
-                        "confirmed": True,
-                    }
-                    session["harness_capabilities"] = inspected["profiles"]
-                    save_session(session)
-                    result = create_success_response(
-                        {
-                            "harness_setup": session["harness_setup"],
-                            "profiles": inspected["profiles"],
-                        },
-                        "Harness selection confirmed. Doctor will preserve the same capability truth.",
-                    )
+                    if MARKER_FILE.is_file() and not MARKER_FILE.is_symlink():
+                        detected_now = inspect_harnesses().get("detected", [])
+                        detected = sorted(
+                            profile_id
+                            for profile_id in detected_now
+                            if profile_id in inspected["selected"]
+                        )
+                        try:
+                            receipt = _run_harness_receipt_provisioner(
+                                inspected["selected"],
+                                detected,
+                                source="user-confirmed",
+                                dry_run=False,
+                            )
+                        except RuntimeError as error:
+                            result = create_error_response(str(error))
+                        else:
+                            result = create_success_response(
+                                {
+                                    "harness_setup": {
+                                        "detected": detected,
+                                        "selected": inspected["selected"],
+                                        "confirmed": True,
+                                    },
+                                    "profiles": inspected["profiles"],
+                                    "receipt": receipt,
+                                },
+                                "Harness selection recorded without changing the existing profile or onboarding state.",
+                            )
+                    elif session:
+                        previous = session.get("harness_setup", {})
+                        detected = previous.get("detected", []) if isinstance(previous, dict) else []
+                        session["harness_setup"] = {
+                            "detected": detected if isinstance(detected, list) else [],
+                            "selected": inspected["selected"],
+                            "confirmed": True,
+                        }
+                        session["harness_capabilities"] = inspected["profiles"]
+                        save_session(session)
+                        result = create_success_response(
+                            {
+                                "harness_setup": session["harness_setup"],
+                                "profiles": inspected["profiles"],
+                            },
+                            "Harness selection confirmed. Doctor will preserve the same capability truth.",
+                        )
+                    else:
+                        result = create_error_response(
+                            "No active session",
+                            suggestion="Call start_onboarding_session first",
+                        )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "start_onboarding_session":

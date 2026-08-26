@@ -321,6 +321,67 @@ class TestHarnessSelection:
             "mode": "automatic",
         }
 
+    def test_completed_vault_can_record_selection_without_restarting_onboarding(
+        self, tmp_path, monkeypatch
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        marker = system / ".onboarding-complete"
+        marker.write_text("{}\n", encoding="utf-8")
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(onboarding_server, "MARKER_FILE", marker)
+        monkeypatch.setattr(
+            onboarding_server,
+            "SESSION_FILE",
+            system / ".onboarding-session.json",
+        )
+        onboarding_server.SESSION_FILE.write_text(
+            json.dumps(onboarding_server.create_new_session()),
+            encoding="utf-8",
+        )
+        original_session = onboarding_server.SESSION_FILE.read_bytes()
+        profiles = {
+            "codex": _FakeHarnessProfile("codex", pre_tool="automatic"),
+            "pi": _FakeHarnessProfile("pi"),
+        }
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "get_profile",
+            profiles.__getitem__,
+        )
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "detect_harnesses",
+            lambda **_kwargs: (_FakeHarnessProfile("codex"),),
+        )
+        calls = []
+
+        def record(selected, detected, *, source, dry_run):
+            calls.append((selected, detected, source, dry_run))
+            return {
+                "ok": True,
+                "mutation_receipt": {
+                    "declared_paths": ["System/.dex/harness-profile.json"]
+                },
+            }
+
+        monkeypatch.setattr(
+            onboarding_server,
+            "_run_harness_receipt_provisioner",
+            record,
+            raising=False,
+        )
+
+        accepted = _call_tool(
+            "save_harness_selection",
+            {"harnesses": ["codex", "pi"], "confirmed": True},
+        )
+
+        assert accepted["success"] is True
+        assert calls == [(["codex", "pi"], ["codex"], "user-confirmed", False)]
+        assert accepted["data"]["receipt"]["ok"] is True
+        assert onboarding_server.SESSION_FILE.read_bytes() == original_session
+
     def test_selection_rejects_unknown_and_duplicate_harnesses(
         self, tmp_path, monkeypatch
     ):

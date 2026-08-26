@@ -17,6 +17,9 @@ def test_first_run_entrypoints_share_the_canonical_completion_marker() -> None:
 
     assert f"If `{COMPLETION_MARKER}` doesn't exist, this is a fresh setup." in claude_md
     assert f"If `{COMPLETION_MARKER}` already exists, setup is complete." in setup_skill
+    assert "System/.dex/harness-profile.json" in setup_skill
+    assert "inspect_harnesses" in setup_skill
+    assert "save_harness_selection" in setup_skill
     assert "start_onboarding_session()" in setup_skill
     assert "core/onboarding/FLOW.md" in setup_skill
 

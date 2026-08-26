@@ -802,7 +802,7 @@ def test_harness_capability_probe_is_calmly_off_before_selection(context):
     result = doctor._probe_harness_capabilities(context)
 
     assert result.verdict == "OFF"
-    assert "onboarding" in result.detail.lower()
+    assert "record your harnesses without restarting onboarding" in result.detail.lower()
 
 
 def test_harness_capability_probe_reports_modes_without_overclaiming(context, monkeypatch):
