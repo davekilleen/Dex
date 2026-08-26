@@ -25,6 +25,9 @@ jobs:
     name: ${{ matrix.os }} native artifact
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: Dex
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +39,7 @@ jobs:
       - name: Check out Dex Core
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          path: Dex
           persist-credentials: false
 
       - name: Check out pinned Buzz runtime source
@@ -43,7 +47,7 @@ jobs:
         with:
           repository: block/buzz
           ref: b2ac66cde81df7ce1afc50016e1571cb6e8b7779
-          path: _buzz
+          path: Buzz
           persist-credentials: false
 
       - name: Set up Python
@@ -56,7 +60,7 @@ jobs:
         shell: bash
         env:
           DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
-          DEX_TEST_BUZZ_LAUNCHER_SOURCE: ${{ github.workspace }}/_buzz
+          DEX_TEST_BUZZ_LAUNCHER_SOURCE: ${{ github.workspace }}/Buzz
         run: |
           "$DEX_PYTHON" packages/dex-collaboration-cli/tests/test_artifact_contract.py
           /bin/bash -n packages/dex-collaboration-cli/src/core
@@ -70,7 +74,7 @@ jobs:
         run: |
           output="$RUNNER_TEMP/dex-core-collaboration"
           build_json="$("$DEX_PYTHON" packages/dex-collaboration-cli/build_artifact.py \
-            --buzz-source "$GITHUB_WORKSPACE/_buzz" \
+            --buzz-source "$GITHUB_WORKSPACE/Buzz" \
             --jobs 6 \
             --output "$output")"
           printf '%s\n' "$build_json"

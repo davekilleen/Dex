@@ -626,12 +626,27 @@ class SourceContractTests(unittest.TestCase):
                         os.chdir(previous)
                 self.assertEqual(result, 0)
                 arguments = build.call_args.args[0]
-                self.assertEqual(arguments.buzz_source, root / "relative-buzz")
-                self.assertEqual(arguments.output, root / "relative-output")
+                canonical_root = root.resolve()
+                self.assertEqual(arguments.buzz_source, canonical_root / "relative-buzz")
+                self.assertEqual(arguments.output, canonical_root / "relative-output")
                 self.assertTrue(arguments.buzz_source.is_absolute())
                 self.assertTrue(arguments.output.is_absolute())
         finally:
             sys.path.pop(0)
+
+    def test_workflow_keeps_buzz_checkout_outside_the_dex_source_tree(self) -> None:
+        workflow = (
+            PACKAGE_ROOT.parents[1]
+            / ".github"
+            / "workflows"
+            / "b5-core-collaboration-artifact.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("working-directory: Dex", workflow)
+        self.assertIn("path: Dex", workflow)
+        self.assertIn("path: Buzz", workflow)
+        self.assertIn("${{ github.workspace }}/Buzz", workflow)
+        self.assertNotIn("path: _buzz", workflow)
 
     def test_failed_build_removes_private_state_outside_the_deliverable_output(self) -> None:
         sys.path.insert(0, str(PACKAGE_ROOT))
