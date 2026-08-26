@@ -9,11 +9,17 @@ new `.claude/skills/<name>/SKILL.md`, the slash menu can still omit it until
 the next session.
 
 This module is the Dex-owned path. SessionStart records which skills were
-already on disk. UserPromptSubmit then injects any skill that arrived later
-(and any on-disk skill the user already named with a slash) as additional
-context so the current turn can Read the SKILL.md and follow it.
+already on disk at startup or resume. Compact, clear, and fork fire
+SessionStart again without being a new session: overwriting the baseline
+there would treat a skill that landed after startup as already-known and
+stop injection, while the host slash list stays stale. Those later events
+keep the original snapshot and ask the host to re-scan via reloadSkills.
+UserPromptSubmit still injects any skill that arrived later (and any
+on-disk skill the user already named with a slash) so the current turn can
+Read the SKILL.md and follow it.
 
-HOST_SLASH_LIST_REFRESHABLE is False on purpose. A test fails if someone
+HOST_SLASH_LIST_REFRESHABLE is False on purpose. Requesting reloadSkills is
+not proof the host honors it on compact/clear/fork. A test fails if someone
 claims Dex can reload the host menu.
 """
 
@@ -27,6 +33,11 @@ import sys
 from pathlib import Path
 
 HOST_SLASH_LIST_REFRESHABLE = False
+
+# Snapshot only on a real session begin. compact/clear/fork re-fire
+# SessionStart inside the same session and must not reset the baseline.
+BASELINE_SESSION_SOURCES = frozenset({"startup", "resume"})
+KEEP_BASELINE_SESSION_SOURCES = frozenset({"compact", "clear", "fork"})
 
 SKILLS_RELATIVE = Path(".claude") / "skills"
 SKILL_FILENAME = "SKILL.md"
@@ -179,6 +190,29 @@ def record_session_snapshot(vault: Path, session_id: str = "default") -> dict[st
     return installed
 
 
+def session_start_source(payload: dict) -> str:
+    source = payload.get("source")
+    if isinstance(source, str):
+        return source.strip().lower()
+    return ""
+
+
+def should_write_session_snapshot(source: str, snapshot: set[str] | None) -> bool:
+    """Write the baseline only at startup/resume, or when none exists yet."""
+    if snapshot is None:
+        return True
+    return source in BASELINE_SESSION_SOURCES
+
+
+def should_request_skill_reload(source: str) -> bool:
+    """Ask the host to re-scan on later SessionStart events.
+
+    This does not make HOST_SLASH_LIST_REFRESHABLE true: Dex cannot prove the
+    host honors reloadSkills on compact/clear/fork, so injection stays.
+    """
+    return source in KEEP_BASELINE_SESSION_SOURCES
+
+
 def context_for_prompt(
     vault: Path,
     prompt: str,
@@ -197,22 +231,22 @@ def context_for_prompt(
     return additional_context_for(to_inject, vault)
 
 
-def hook_payload(event_name: str, context: str) -> dict:
-    return {
-        "continue": True,
-        "hookSpecificOutput": {
-            "hookEventName": event_name,
-            "additionalContext": context,
-        },
-    }
+def hook_payload(event_name: str, context: str = "", *, reload_skills: bool = False) -> dict:
+    output: dict = {"hookEventName": event_name}
+    if context:
+        output["additionalContext"] = context
+    if reload_skills:
+        output["reloadSkills"] = True
+    return {"continue": True, "hookSpecificOutput": output}
 
 
 def handle_hook_event(payload: object, vault: Path | None = None) -> dict | None:
-    """Return a UserPromptSubmit hook payload, or None for silence.
+    """Return a hook payload, or None for silence.
 
-    SessionStart records the snapshot and stays silent. Any failure is
-    silence: a vault that cannot advertise a new skill is no worse off
-    than before this hook existed.
+    SessionStart snapshots on startup/resume (or when no snapshot exists).
+    Compact/clear/fork keep that baseline and may request a host re-scan.
+    Any failure is silence: a vault that cannot advertise a new skill is no
+    worse off than before this hook existed.
     """
     if not isinstance(payload, dict):
         return None
@@ -223,7 +257,12 @@ def handle_hook_event(payload: object, vault: Path | None = None) -> dict | None
         session_id = "default"
 
     if event == "SessionStart":
-        record_session_snapshot(root, session_id)
+        source = session_start_source(payload)
+        snapshot = load_snapshot(root, session_id)
+        if should_write_session_snapshot(source, snapshot):
+            record_session_snapshot(root, session_id)
+        if should_request_skill_reload(source):
+            return hook_payload("SessionStart", reload_skills=True)
         return None
 
     if event != "UserPromptSubmit":

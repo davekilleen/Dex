@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # LIVE surface of core.utils.skill_freshness. After an update writes a new
 # SKILL.md, the host slash list can still omit it until the next session.
-# This hook records the on-disk skill set at SessionStart and injects any
+# This hook records the on-disk skill set at startup/resume and injects any
 # skill that arrived later into the current turn so it is usable now.
+# Compact, clear, and fork keep that baseline; they do not reset it.
 #
 # Fail open: exit 0 always. A vault that cannot advertise a new skill is no
 # worse off than before this hook existed.

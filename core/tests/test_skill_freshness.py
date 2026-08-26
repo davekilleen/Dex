@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from core.utils import skill_freshness
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -211,6 +213,77 @@ def test_hook_fails_open_for_empty_and_invalid_stdin(tmp_path: Path) -> None:
         result = _run_hook(stdin, tmp_path, tmp_path / "state")
         assert result.returncode == 0
         assert result.stdout == ""
+
+
+@pytest.mark.parametrize("source", ["compact", "clear", "fork"])
+def test_compact_clear_fork_does_not_wipe_post_startup_skill_out_of_injection(
+    tmp_path: Path, source: str
+) -> None:
+    vault = tmp_path / "vault"
+    state = tmp_path / "state"
+    _write_skill(vault, "daily-plan", "Plan the day.")
+
+    started = _run_hook(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "s5",
+                "source": "startup",
+            }
+        ),
+        vault,
+        state,
+        extra_args=["--session-start"],
+    )
+    assert started.returncode == 0
+    assert started.stdout == ""
+
+    _write_skill(vault, "feedback", "Report a Dex bug with zero homework.")
+
+    later = _run_hook(
+        json.dumps(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "s5",
+                "source": source,
+            }
+        ),
+        vault,
+        state,
+        extra_args=["--session-start"],
+    )
+    assert later.returncode == 0
+    later_payload = json.loads(later.stdout)
+    assert later_payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert later_payload["hookSpecificOutput"]["reloadSkills"] is True
+    assert skill_freshness.HOST_SLASH_LIST_REFRESHABLE is False
+
+    hello = _run_hook(
+        json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "s5",
+                "prompt": "what's next",
+            }
+        ),
+        vault,
+        state,
+    )
+    assert hello.returncode == 0
+    context = json.loads(hello.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "/feedback" in context
+    assert ".claude/skills/feedback/SKILL.md" in context
+    assert "/daily-plan" not in context
+
+
+def test_session_start_only_snapshots_on_startup_resume_or_missing_baseline() -> None:
+    assert skill_freshness.should_write_session_snapshot("startup", None) is True
+    assert skill_freshness.should_write_session_snapshot("resume", set()) is True
+    assert skill_freshness.should_write_session_snapshot("compact", {"daily-plan"}) is False
+    assert skill_freshness.should_write_session_snapshot("clear", {"daily-plan"}) is False
+    assert skill_freshness.should_write_session_snapshot("fork", {"daily-plan"}) is False
+    assert skill_freshness.should_write_session_snapshot("", {"daily-plan"}) is False
+    assert skill_freshness.should_write_session_snapshot("compact", None) is True
 
 
 def test_dex_update_treats_newly_landed_skills_as_live_this_session() -> None:
