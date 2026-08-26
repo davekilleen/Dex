@@ -4,7 +4,7 @@
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
-> **Ground truth as of** `upstream/main` at `fd335640`, latest release tag **v1.97.0** (2026-08-13). Dex Everywhere portability remains unreleased on this branch; native macOS/Windows acceptance and mandatory Fable reviews are still pending.
+> **Ground truth as of** `upstream/main` at `fd335640`, latest release tag **v1.97.0** (2026-08-13). Dex Everywhere portability remains unreleased on this branch; exact-head native macOS/Windows acceptance is green, while the mandatory Fable reviews and live release-candidate installs are still pending.
 >
 > **Don't duplicate generated files.** Tool lists, skill lists, ownership-class path tables, and MCP↔skill wiring live in the auto-generated `docs/architecture/INVENTORY.md`. This map cross-references it; it does not restate it.
 >

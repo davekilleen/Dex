@@ -223,8 +223,9 @@ workflows behind that choice.
   platforms. Exact-commit native round-trip evidence lives on the draft pull
   request and must be repeated for every review head; Linux remains deliberately
   deferred. The BB package is macOS-only because BB's Windows route is WSL2.
-- The BB package passes TypeScript, Vitest, current-stable SDK backend and
-  frontend harnesses, package audit, and tarball checks.
+- The BB package passes 36 tests, TypeScript, BB `0.40.0` / plugin SDK
+  `0.4.21` backend and frontend harnesses, package audit, tarball inspection,
+  and exact-head native macOS CI on both its push and draft pull request.
 - Release and vault bundle builders include byte-identical product-facing
   `AGENTS.md` instructions in their installed-files manifests.
 
@@ -233,11 +234,10 @@ workflows behind that choice.
 Keep the final review head green on the native macOS/Windows matrix and complete
 the mandatory Fable reviews; run live release-candidate installs in ChatGPT
 desktop, Cowork, Copilot CLI, Pi, and BB; complete the final combined test and
-security gates; keep the private Build Card reconciled; clear the private BB
-repository's Actions-budget block and run its native macOS review CI; decide the
-later public packaging sequence; merge only with explicit founder approval;
-then build and verify a real release artifact. Linux remains a separate future
-delivery.
+security gates; keep the private Build Card reconciled; keep BB's native macOS
+review CI green; decide the later public packaging sequence; merge only with
+explicit founder approval; then build and verify a real release artifact. Linux
+remains a separate future delivery.
 
 ## What is the release principle?
 

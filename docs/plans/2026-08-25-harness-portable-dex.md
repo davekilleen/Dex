@@ -17,7 +17,7 @@ The build stops before merge, publication, marketplace submission, installation 
 user, or release.
 
 Dex Core's portable distribution targets macOS and native Windows. Linux remains deliberately
-deferred. The standalone BB adapter is narrower: BB 0.39.0 has no native Windows host and
+deferred. The standalone BB adapter is narrower: BB 0.40.0 has no native Windows host and
 documents WSL2 instead, so this BB release targets macOS while Windows/WSL stays in the
 deferred Linux lane. A platform is not called release-ready until the same launcher completes
 real round trips on that operating system's CI runner. Node 20+ and Python 3.11+ are explicit
@@ -201,7 +201,7 @@ receipt/Doctor truth, and a safe failure/fallback for one unsupported automatic 
 | Copilot CLI | Root manifest follows the Open Plugin Spec accepted by Copilot; package and schema tests pass. Its incompatible hook schema is now explicitly unavailable rather than overclaimed. | The Copilot binary is not installed on this Devbox, so live CLI installation remains a release-candidate check. |
 | Pi | Existing native `dex-pi/extensions/dex/package.json` and lifecycle extension are present in the Pi repository. | The dirty shared Pi checkout was inspected read-only; no Pi package was changed or released. |
 | Agent Plugin | v1 schema, Node-to-Python launcher, tools, resources, dependency closure, and Linux deferred-runtime journey pass golden tests. A mandatory macOS/Windows CI matrix is wired. | Exact-commit macOS and Windows evidence belongs to the draft pull request and must be green on the final review head. Mandatory Fable reviews remain required; client-specific hooks stay outside the v1 floor. |
-| BB | Standalone head `75161c93f53f4fe55109e3421d576060ba9b1cbb`; TypeScript, Vitest, current stable plugin SDK `0.4.17`, SDK backend/frontend harness, package audit, and tarball checks pass. Its manifest now truthfully scopes this release to macOS. Private draft PR [dex-bb-plugin#1](https://github.com/davekilleen/dex-bb-plugin/pull/1) requests full-tree review. | GitHub refused to start the exact-head macOS job because the private-repository Actions budget prevents further use; live path install and marketplace release remain undone. BB has no native Windows host; its WSL2 route stays deferred with Linux. |
+| BB | Standalone head `9686e2266834e194ceef4eeafaf35cc27a812991`; 36 tests, TypeScript, BB `0.40.0`, plugin SDK `0.4.21`, SDK backend/frontend harness, package audit, and tarball checks pass. Exact-head native macOS push and draft-PR runs [32949546856](https://github.com/davekilleen/dex-bb-plugin/actions/runs/32949546856) and [32949551083](https://github.com/davekilleen/dex-bb-plugin/actions/runs/32949551083) are green. Its package and runtime truthfully scope this release to macOS. Private draft PR [dex-bb-plugin#1](https://github.com/davekilleen/dex-bb-plugin/pull/1) requests full-tree review. | Live path install and marketplace release remain undone. BB has no native Windows host; its WSL2 route stays deferred with Linux. |
 
 ## Research decisions and sources
 
