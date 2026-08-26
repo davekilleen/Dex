@@ -37,6 +37,7 @@ def _decide(tmp_path: Path, event: str, *paths: str) -> subprocess.CompletedProc
         ".github/workflows/ci.yml",
         "scripts/generate-dex-lens-catalog.py",
         "scripts/lens-catalog-release-path.py",
+        "core/lens_catalog_discovery.py",
         "core/lens_catalog_sources.py",
         "core/lens-catalog/registry.json",
         "core/lifecycle/catalog/official-capabilities.json",

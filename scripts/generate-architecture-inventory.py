@@ -7,11 +7,17 @@ import argparse
 import ast
 import hashlib
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from core.lens_catalog_discovery import LensDiscoveryError, discover_mcp_server_source
+
 DEFAULT_OUTPUT = REPO_ROOT / "docs/architecture/INVENTORY.md"
 GENERATOR_PATH = "scripts/generate-architecture-inventory.py"
 TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -125,45 +131,16 @@ def _server_sources(repo_root: Path) -> list[Path]:
 def discover_engines(repo_root: Path) -> list[Engine]:
     engines: list[Engine] = []
     for path in _server_sources(repo_root):
-        source = path.read_text(encoding="utf-8")
         try:
-            tree = ast.parse(source, filename=str(path))
-        except SyntaxError as error:
-            raise InventoryError(f"cannot parse MCP server {path}: {error}") from error
-
-        server_names: set[str] = set()
-        registered_tools: set[str] = set()
-        dispatched_tools: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                call_name = _call_name(node)
-                if call_name == "Server" and node.args:
-                    if (server_name := _string(node.args[0])) is not None:
-                        server_names.add(server_name)
-                elif call_name == "Tool":
-                    tool_name = _keyword_string(node, "name")
-                    if tool_name is None and node.args:
-                        tool_name = _string(node.args[0])
-                    if tool_name is not None and TOOL_NAME.fullmatch(tool_name):
-                        registered_tools.add(tool_name)
-            elif isinstance(node, ast.Compare):
-                dispatched_tools.update(_dispatch_tool_names(node))
-
-        if len(server_names) != 1:
-            relative = path.relative_to(repo_root).as_posix()
-            raise InventoryError(
-                f"expected exactly one literal Server name in {relative}; "
-                f"found {sorted(server_names)}"
-            )
-        tools = tuple(sorted(registered_tools | dispatched_tools))
-        if not tools:
-            raise InventoryError(f"no exposed tools found in {path.relative_to(repo_root)}")
+            candidate = discover_mcp_server_source(repo_root, path)
+        except LensDiscoveryError as error:
+            raise InventoryError(str(error)) from error
         engines.append(
             Engine(
-                source=path.relative_to(repo_root).as_posix(),
-                server_name=next(iter(server_names)),
-                tools=tools,
-                has_feature_status="feature_status" in source,
+                source=candidate.source_path,
+                server_name=candidate.server_name,
+                tools=candidate.tools,
+                has_feature_status=candidate.has_feature_status,
             )
         )
     return sorted(engines, key=lambda engine: (engine.server_name, engine.source))

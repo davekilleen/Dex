@@ -1,0 +1,1064 @@
+{
+  "$defs": {
+    "CapabilityCompatibilityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "foundation_capabilities": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Foundation Capabilities",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "host_adapters": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Host Adapters",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "host_requirements": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Host Requirements",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "minimum_lens_contract": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Minimum Lens Contract",
+          "type": "string"
+        },
+        "needs_hooks": {
+          "title": "Needs Hooks",
+          "type": "boolean"
+        },
+        "needs_mcp": {
+          "title": "Needs Mcp",
+          "type": "boolean"
+        },
+        "platforms": {
+          "items": {
+            "enum": [
+              "macos",
+              "linux",
+              "windows"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Platforms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "host_adapters",
+        "foundation_capabilities",
+        "minimum_lens_contract",
+        "platforms",
+        "needs_hooks",
+        "needs_mcp",
+        "host_requirements",
+        "limitations"
+      ],
+      "title": "CapabilityCompatibilityV2",
+      "type": "object"
+    },
+    "CapabilityEvidenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            "verified",
+            "supported",
+            "reported",
+            "unknown"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "limitations": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Limitations",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "source",
+        "summary",
+        "limitations"
+      ],
+      "title": "CapabilityEvidenceV2",
+      "type": "object"
+    },
+    "CapabilityPortableBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "goal": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Goal",
+          "type": "string"
+        },
+        "method_outline": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Method Outline",
+          "type": "array"
+        },
+        "rollback_advice": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Rollback Advice",
+          "type": "string"
+        },
+        "safety_notes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Safety Notes",
+          "type": "array"
+        },
+        "verification_checklist": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Verification Checklist",
+          "type": "array"
+        }
+      },
+      "required": [
+        "goal",
+        "method_outline",
+        "verification_checklist",
+        "rollback_advice",
+        "safety_notes"
+      ],
+      "title": "CapabilityPortableBriefV2",
+      "type": "object"
+    },
+    "CatalogueMetadataV2": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_version": {
+          "minimum": 1,
+          "title": "Catalog Version",
+          "type": "integer"
+        },
+        "contract_version": {
+          "const": "dex-lens-catalogue-v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "core_release": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Core Release",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "key_id": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Key Id",
+          "type": "string"
+        },
+        "produced_at": {
+          "format": "date-time",
+          "title": "Produced At",
+          "type": "string"
+        },
+        "producer": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Producer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "catalog_version",
+        "produced_at",
+        "expires_at",
+        "producer",
+        "core_release",
+        "key_id"
+      ],
+      "title": "CatalogueMetadataV2",
+      "type": "object"
+    },
+    "CatalogueV2": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/CatalogueCapabilityEntryV2"
+          },
+          "maxItems": 300,
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array",
+          "uniqueItems": true,
+          "x-dex-lens-unique-by": "capability_id"
+        },
+        "jobs_taxonomy": {
+          "items": {
+            "$ref": "#/$defs/JobTaxonomyEntryV2"
+          },
+          "maxItems": 80,
+          "minItems": 1,
+          "title": "Jobs Taxonomy",
+          "type": "array"
+        },
+        "portable_brief": {
+          "$ref": "#/$defs/PortableBriefContractV2"
+        }
+      },
+      "required": [
+        "jobs_taxonomy",
+        "capabilities",
+        "portable_brief"
+      ],
+      "title": "CatalogueV2",
+      "type": "object"
+    },
+    "JobTaxonomyEntryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_gap_signals": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Confirmed Gap Signals",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "job_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "label",
+        "description",
+        "confirmed_gap_signals"
+      ],
+      "title": "JobTaxonomyEntryV2",
+      "type": "object"
+    },
+    "PortableBriefContractV2": {
+      "additionalProperties": false,
+      "properties": {
+        "audience": {
+          "const": "the person's own AI system",
+          "title": "Audience",
+          "type": "string"
+        },
+        "format": {
+          "const": "markdown",
+          "title": "Format",
+          "type": "string"
+        },
+        "safety_boundary": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Safety Boundary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "audience",
+        "safety_boundary"
+      ],
+      "title": "PortableBriefContractV2",
+      "type": "object"
+    },
+    "ActiveSkillCapabilityEntryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "changed_in": {
+          "items": {
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "type": "string"
+          },
+          "maxItems": 40,
+          "title": "Changed In",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "compatibility": {
+          "$ref": "#/$defs/CapabilityCompatibilityV2"
+        },
+        "docs_url": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Docs Url",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/CapabilityEvidenceV2"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "jobs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Jobs",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "portable_brief": {
+          "$ref": "#/$defs/CapabilityPortableBriefV2"
+        },
+        "prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "release_provenance": {
+          "const": "core-release",
+          "title": "Release Provenance",
+          "type": "string"
+        },
+        "since_release": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Since Release",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "trade_offs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Trade Offs",
+          "type": "array"
+        },
+        "value": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "capability_class": {
+          "const": "active-skill",
+          "type": "string"
+        },
+        "impact_tier": {
+          "type": "string",
+          "enum": [
+            "core",
+            "high",
+            "medium",
+            "niche"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "active",
+            "dormant"
+          ]
+        }
+      },
+      "required": [
+        "capability_class",
+        "impact_tier",
+        "availability",
+        "capability_id",
+        "title",
+        "summary",
+        "value",
+        "jobs",
+        "prerequisites",
+        "trade_offs",
+        "evidence",
+        "compatibility",
+        "docs_url",
+        "since_release",
+        "changed_in",
+        "release_provenance",
+        "portable_brief"
+      ],
+      "title": "ActiveSkillCapabilityEntryV2",
+      "type": "object"
+    },
+    "McpServerCapabilityEntryV2": {
+      "title": "McpServerCapabilityEntryV2",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "jobs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Jobs",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "trade_offs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Trade Offs",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/CapabilityEvidenceV2"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "release_provenance": {
+          "const": "core-release",
+          "title": "Release Provenance",
+          "type": "string"
+        },
+        "capability_class": {
+          "const": "mcp-server",
+          "type": "string"
+        },
+        "impact_tier": {
+          "type": "string",
+          "enum": [
+            "core",
+            "high",
+            "medium",
+            "niche"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "active"
+          ]
+        },
+        "server_name": {
+          "type": "string",
+          "pattern": "^dex-[a-z0-9-]+$"
+        },
+        "tool_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "example_tools": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "source_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 300,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+          }
+        }
+      },
+      "required": [
+        "capability_id",
+        "capability_class",
+        "impact_tier",
+        "availability",
+        "title",
+        "summary",
+        "value",
+        "jobs",
+        "prerequisites",
+        "trade_offs",
+        "evidence",
+        "release_provenance",
+        "server_name",
+        "tool_count",
+        "example_tools",
+        "source_paths"
+      ]
+    },
+    "ScheduledAutomationCapabilityEntryV2": {
+      "title": "ScheduledAutomationCapabilityEntryV2",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "jobs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Jobs",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "trade_offs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Trade Offs",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/CapabilityEvidenceV2"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "release_provenance": {
+          "const": "core-release",
+          "title": "Release Provenance",
+          "type": "string"
+        },
+        "capability_class": {
+          "const": "scheduled-automation",
+          "type": "string"
+        },
+        "impact_tier": {
+          "type": "string",
+          "enum": [
+            "core",
+            "high",
+            "medium",
+            "niche"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "active"
+          ]
+        },
+        "automation_label": {
+          "type": "string",
+          "pattern": "^com\\.dex\\.[a-z0-9.-]+$"
+        },
+        "cadence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "source_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 300,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+          }
+        },
+        "installer_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+        },
+        "program_target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "run_at_load": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "capability_id",
+        "capability_class",
+        "impact_tier",
+        "availability",
+        "title",
+        "summary",
+        "value",
+        "jobs",
+        "prerequisites",
+        "trade_offs",
+        "evidence",
+        "release_provenance",
+        "automation_label",
+        "cadence",
+        "source_paths",
+        "installer_path",
+        "program_target",
+        "run_at_load"
+      ]
+    },
+    "SystemEngineCapabilityEntryV2": {
+      "title": "SystemEngineCapabilityEntryV2",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "jobs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Jobs",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "trade_offs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Trade Offs",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/CapabilityEvidenceV2"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "release_provenance": {
+          "const": "core-release",
+          "title": "Release Provenance",
+          "type": "string"
+        },
+        "capability_class": {
+          "const": "system-engine",
+          "type": "string"
+        },
+        "impact_tier": {
+          "type": "string",
+          "enum": [
+            "core",
+            "high",
+            "medium",
+            "niche"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "active",
+            "parked"
+          ]
+        },
+        "source_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 300,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+          }
+        },
+        "component_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "example_components": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+          }
+        }
+      },
+      "required": [
+        "capability_id",
+        "capability_class",
+        "impact_tier",
+        "availability",
+        "title",
+        "summary",
+        "value",
+        "jobs",
+        "prerequisites",
+        "trade_offs",
+        "evidence",
+        "release_provenance",
+        "source_paths",
+        "component_count",
+        "example_components"
+      ]
+    },
+    "CatalogueCapabilityEntryV2": {
+      "title": "CatalogueCapabilityEntryV2",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LegacySkillCapabilityEntryV2"
+        },
+        {
+          "$ref": "#/$defs/ActiveSkillCapabilityEntryV2"
+        },
+        {
+          "$ref": "#/$defs/McpServerCapabilityEntryV2"
+        },
+        {
+          "$ref": "#/$defs/ScheduledAutomationCapabilityEntryV2"
+        },
+        {
+          "$ref": "#/$defs/SystemEngineCapabilityEntryV2"
+        }
+      ]
+    },
+    "LegacySkillCapabilityEntryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "changed_in": {
+          "items": {
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "type": "string"
+          },
+          "maxItems": 40,
+          "title": "Changed In",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "compatibility": {
+          "$ref": "#/$defs/CapabilityCompatibilityV2"
+        },
+        "docs_url": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Docs Url",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/CapabilityEvidenceV2"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "jobs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Jobs",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "portable_brief": {
+          "$ref": "#/$defs/CapabilityPortableBriefV2"
+        },
+        "prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "release_provenance": {
+          "const": "core-release",
+          "title": "Release Provenance",
+          "type": "string"
+        },
+        "since_release": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Since Release",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "trade_offs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Trade Offs",
+          "type": "array"
+        },
+        "value": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability_id",
+        "title",
+        "summary",
+        "value",
+        "jobs",
+        "prerequisites",
+        "trade_offs",
+        "evidence",
+        "compatibility",
+        "docs_url",
+        "since_release",
+        "changed_in",
+        "release_provenance",
+        "portable_brief"
+      ],
+      "title": "CatalogueCapabilityEntryV2",
+      "type": "object"
+    }
+  },
+  "$id": "https://heydex.ai/catalogue/dex-lens/v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "catalogue": {
+      "$ref": "#/$defs/CatalogueV2"
+    },
+    "metadata": {
+      "$ref": "#/$defs/CatalogueMetadataV2"
+    },
+    "signature": {
+      "minLength": 1,
+      "title": "Signature",
+      "type": "string"
+    }
+  },
+  "required": [
+    "metadata",
+    "catalogue",
+    "signature"
+  ],
+  "title": "SignedCatalogueEnvelopeV2",
+  "type": "object",
+  "x-dex-lens-minimum-version": "0.1.9"
+}

@@ -1,0 +1,195 @@
+{
+  "registry_version": 1,
+  "entries": [
+    {
+      "id": "dex-analytics",
+      "capability_class": "mcp-server",
+      "impact_tier": "medium",
+      "availability": "active",
+      "value": "Shows which Dex workflows are being used so the system can improve from real behavior.",
+      "jobs_served": ["reflect-and-improve-continuously"],
+      "prerequisites": ["The Dex analytics MCP server is registered locally."],
+      "trade_offs": ["Usage signals are only as complete as the events the local system records."]
+    },
+    {
+      "id": "dex-calendar-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Makes calendar pressure and meeting context available to planning and preparation workflows.",
+      "jobs_served": ["start-each-day-focused", "track-people-and-relationships"],
+      "prerequisites": ["Local calendar access is authorized and the server is registered."],
+      "trade_offs": ["Calendar results depend on operating-system permissions and the freshness of local calendars."]
+    },
+    {
+      "id": "dex-career-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "medium",
+      "availability": "active",
+      "value": "Keeps career evidence and development work consented, sourced and reviewable.",
+      "jobs_served": ["track-career-growth"],
+      "prerequisites": ["The career capability is enabled and its local data paths exist."],
+      "trade_offs": ["Career outputs remain bounded by the evidence the person has chosen to capture."]
+    },
+    {
+      "id": "dex-customization-migration-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "medium",
+      "availability": "active",
+      "value": "Moves approved customizations through Dex's receipt-backed lifecycle instead of editing the vault ad hoc.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["A compatible migration plan and lifecycle service are available."],
+      "trade_offs": ["Migration remains confirm-gated and may refuse changes that cannot be safely reversed."]
+    },
+    {
+      "id": "dex-granola-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Brings meeting records into Dex for processing without relying on manual transcript copying.",
+      "jobs_served": ["capture-without-friction", "track-people-and-relationships"],
+      "prerequisites": ["Granola access is connected and authorized by the person."],
+      "trade_offs": ["Meeting coverage depends on the upstream Granola account and transcript availability."]
+    },
+    {
+      "id": "dex-improvements-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Turns observed friction into a ranked, inspectable backlog of system improvements.",
+      "jobs_served": ["reflect-and-improve-continuously", "evolve-the-system-itself"],
+      "prerequisites": ["The local improvements store is available."],
+      "trade_offs": ["Ranking is advisory and still needs a person to choose what should change."]
+    },
+    {
+      "id": "dex-onboarding-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Coordinates first-run setup through explicit, locally verified onboarding steps.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["Dex is running from a writable local vault during onboarding."],
+      "trade_offs": ["Setup quality depends on the person supplying accurate preferences and granting chosen permissions."]
+    },
+    {
+      "id": "dex-resume-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "medium",
+      "availability": "active",
+      "value": "Builds truthful application material from consented career evidence rather than invented claims.",
+      "jobs_served": ["track-career-growth"],
+      "prerequisites": ["Consented career evidence exists in the local career space."],
+      "trade_offs": ["The server cannot fill evidence gaps without the person's review and additional source material."]
+    },
+    {
+      "id": "dex-session-memory",
+      "capability_class": "mcp-server",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Carries sourced context across sessions so repeated work does not restart from an empty chat.",
+      "jobs_served": ["reflect-and-improve-continuously", "keep-projects-on-track"],
+      "prerequisites": ["The local session-memory store is available."],
+      "trade_offs": ["Remembered context can become stale and must retain clear provenance."]
+    },
+    {
+      "id": "dex-work-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "core",
+      "availability": "active",
+      "value": "Provides the validated task, project, person and company operations that core Dex workflows rely on.",
+      "jobs_served": ["manage-tasks-reliably", "keep-projects-on-track", "track-people-and-relationships"],
+      "prerequisites": ["A Dex vault and its portable path contract are available."],
+      "trade_offs": ["Mutations remain bounded by confirmation, validation and the local vault's current structure."]
+    },
+    {
+      "id": "dex-changelog-checker",
+      "capability_class": "scheduled-automation",
+      "impact_tier": "medium",
+      "availability": "active",
+      "value": "Checks for relevant upstream capability changes several times a day without manual polling.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["The learning automation launch agent is installed on macOS."],
+      "trade_offs": ["The check is periodic, so upstream changes are not surfaced instantly."]
+    },
+    {
+      "id": "dex-learning-review",
+      "capability_class": "scheduled-automation",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Prompts a daily review so observed friction can become durable learning.",
+      "jobs_served": ["reflect-and-improve-continuously"],
+      "prerequisites": ["The learning automation launch agent is installed on macOS."],
+      "trade_offs": ["A scheduled prompt still depends on the person choosing to review and adopt useful changes."]
+    },
+    {
+      "id": "dex-meeting-intel",
+      "capability_class": "scheduled-automation",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Keeps Granola meeting material synchronized frequently enough for timely preparation and closeout.",
+      "jobs_served": ["capture-without-friction", "track-people-and-relationships"],
+      "prerequisites": ["Granola is connected and the meeting-intelligence launch agent is installed on macOS."],
+      "trade_offs": ["Sync freshness depends on both the upstream service and the local machine being able to run the job."]
+    },
+    {
+      "id": "dex-smoke-nightly",
+      "capability_class": "scheduled-automation",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Runs a nightly health smoke check so breakage can surface before a person depends on the system.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["The nightly smoke launch agent is installed on macOS."],
+      "trade_offs": ["A nightly check can detect known failures but cannot prove every workflow is healthy."]
+    },
+    {
+      "id": "dex-vault-backup",
+      "capability_class": "scheduled-automation",
+      "impact_tier": "core",
+      "availability": "active",
+      "value": "Creates a scheduled recovery copy of the person's vault at a time they choose.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["Backup setup is complete and its destination has been verified."],
+      "trade_offs": ["A schedule is not proof of recovery; the person must still test that a backup can be restored."]
+    },
+    {
+      "id": "entity-temperature-engine",
+      "capability_class": "system-engine",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Keeps people and entity context warm when it matters and cools stale signals over time.",
+      "jobs_served": ["track-people-and-relationships"],
+      "prerequisites": ["Entity indexing and relationship data are available locally."],
+      "trade_offs": ["Temperature is a prioritization signal, not an objective measure of relationship importance."]
+    },
+    {
+      "id": "proactive-promise-engine",
+      "capability_class": "system-engine",
+      "impact_tier": "core",
+      "availability": "active",
+      "value": "Defines the concrete promises Dex health checks use to catch silent reliability failures.",
+      "jobs_served": ["manage-tasks-reliably", "evolve-the-system-itself"],
+      "prerequisites": ["Dex Doctor can inspect the relevant local runtime evidence."],
+      "trade_offs": ["A promise only detects the failure modes its evidence and thresholds explicitly cover."]
+    },
+    {
+      "id": "ritual-intelligence-engine",
+      "capability_class": "system-engine",
+      "impact_tier": "high",
+      "availability": "parked",
+      "value": "Contains a richer meeting and ritual intelligence engine that is code-complete but not wired into the live product.",
+      "jobs_served": ["start-each-day-focused", "capture-without-friction"],
+      "prerequisites": ["The parked engine would need an approved live integration before it could serve users."],
+      "trade_offs": ["This capability is parked and must not be presented as currently available."]
+    },
+    {
+      "id": "session-hook-orchestration",
+      "capability_class": "system-engine",
+      "impact_tier": "core",
+      "availability": "active",
+      "value": "Coordinates session startup, safety, context injection, maintenance and closeout around the user's work.",
+      "jobs_served": ["evolve-the-system-itself", "start-each-day-focused"],
+      "prerequisites": ["Claude Code hooks are installed and enabled for the Dex vault."],
+      "trade_offs": ["Hook behavior depends on the host honoring the configured lifecycle events and local permissions."]
+    }
+  ]
+}

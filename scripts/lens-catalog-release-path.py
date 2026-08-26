@@ -13,6 +13,7 @@ EXACT_DEPENDENCIES = frozenset(
         ".github/workflows/ci.yml",
         "CHANGELOG.md",
         "core/capabilities.py",
+        "core/lens_catalog_discovery.py",
         "core/lens_catalog_sources.py",
         "core/portable_contract.py",
         "package.json",

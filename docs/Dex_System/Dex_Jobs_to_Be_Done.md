@@ -29,7 +29,7 @@ Everything in this system aligns to your strategic priorities. Pillars are **ong
 
 ---
 
-## The Six Jobs
+## The Eight Jobs
 
 Each job represents something that needs to happen reliably. The system exists to make these jobs easier or automatic.
 

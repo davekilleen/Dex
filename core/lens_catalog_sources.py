@@ -336,6 +336,14 @@ def _require_tracked(release_root: Path, relative: str, *, context: str) -> None
         raise SkillSourceError(f"{context} is not tracked by the release tree: {relative}")
 
 
+def require_release_file(release_root: Path, relative: str, *, context: str) -> Path:
+    """Return one regular, symlink-free file proven to belong to the release tree."""
+
+    source = _release_file(release_root, relative, context=context)
+    _require_tracked(release_root, relative, context=context)
+    return source
+
+
 def _verify_pin(
     *,
     kind: str,
@@ -348,8 +356,7 @@ def _verify_pin(
     exact_room_directory: bool = False,
     previous_payloads: tuple[SkillPayloadPin, ...] = (),
 ) -> SkillSourcePin:
-    source = _release_file(release_root, source_path, context=context)
-    _require_tracked(release_root, source_path, context=context)
+    source = require_release_file(release_root, source_path, context=context)
     if exact_room_directory:
         entries = tuple(source.parent.iterdir())
         if len(entries) != 1 or entries[0].name != "SKILL.md" or entries[0] != source:

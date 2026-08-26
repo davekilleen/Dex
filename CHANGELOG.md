@@ -7,6 +7,30 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.0] — 🔎 Dex Lens sees every active skill, and Obsidian setup tells the truth (2026-08-26)
+
+Dex Lens could show only a hand-curated slice of what Dex can do, so the catalogue
+fell behind the skills that actually ship. Separately, Obsidian setup could say its
+Mac background sync was working while it was repeatedly crashing, and a brand-new
+vault could have its placeholder pages or Dex's own product notes mistaken for
+personal content during wiki-link setup.
+
+**What this improves for you:**
+
+* **Dex Lens now sees all 66 active Dex skills.** They are organised around eight
+  clear jobs and come from the exact release people install. Vendor examples and
+  dormant optional skills stay out instead of inflating the picture.
+* **The broader experimental catalogue stays closed.** Dex has a guarded preview
+  of automations, connected tools, and system engines, but this release does not
+  sign or publish it before Lens can verify it safely.
+* **Obsidian background sync no longer calls a crash “installed.”** Setup pins a
+  compatible Python version and checks that the Mac job actually stayed healthy.
+* **Wiki-link setup changes only the right notes.** Placeholder pages, Dex product
+  files, and code examples are left alone, and recovery points at the exact safe
+  copy instead of suggesting a history-rewriting command.
+
+The catalogue audit and two Obsidian setup failures shaped this release.
+
 ## [1.96.8] — 🧰 Dex still knows who you are after an update, and Mail search checkup stops a false alarm (2026-08-21)
 
 After the first setup, an update could greet you like a stranger. Your name, role, company size, working style, and focus areas snapped back to “Not yet configured,” even though the settings file from setup still had the real values. Nothing warned you. Separately, Mail search checkup could say the search index was broken when the index was actually current, because the checkup process itself could not read Mail.

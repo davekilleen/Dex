@@ -830,8 +830,10 @@ core/integrations/pipedrive/pipedrive_server.py
 core/integrations/post_update_check.py
 core/integrations/slack/setup.py
 core/integrations/task_sync.py
+core/lens-catalog/enriched-registry.json
 core/lens-catalog/registry.json
 core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json
+core/lens_catalog_discovery.py
 core/lens_catalog_sources.py
 core/lifecycle/__init__.py
 core/lifecycle/bridge.py
@@ -944,6 +946,7 @@ core/tests/__init__.py
 core/tests/brain-vault-migrator-integration.test.cjs
 core/tests/brain-vault-migrator-unit.test.cjs
 core/tests/conftest.py
+core/tests/fixtures/dex-lens-catalogue-enriched-preview.schema.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.expected.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.md
 core/tests/fixtures/entity_pages/02-pipe-table.expected.json
@@ -1125,6 +1128,8 @@ core/tests/test_large_vault_performance.py
 core/tests/test_launch_agents.py
 core/tests/test_learning_capture_command_name.py
 core/tests/test_lens_catalog_ci_trigger.py
+core/tests/test_lens_catalog_discovery.py
+core/tests/test_lens_catalog_enriched_discovery.py
 core/tests/test_lens_catalog_sources.py
 core/tests/test_lifecycle_bridge.py
 core/tests/test_lifecycle_official_capabilities.py
@@ -1145,6 +1150,8 @@ core/tests/test_meeting_source_instruction_contract.py
 core/tests/test_messy_vault_parsers.py
 core/tests/test_no_deprecated_models.py
 core/tests/test_nudge_calendar.py
+core/tests/test_obsidian_sync_installer.py
+core/tests/test_obsidian_wikilink_migration.py
 core/tests/test_onboarding_calendar.py
 core/tests/test_onboarding_context_lifecycle.py
 core/tests/test_path_contract.py
@@ -1296,8 +1303,10 @@ docs/calendar-performance.md
 docs/credential-remediation.md
 docs/customization-migration-threat-model.md
 docs/dex-doctor-spec.md
+docs/dex-lens-catalogue-enriched-schema-delta.md
 docs/dex-lens-catalogue-wave-2-audit.md
 docs/dexdiff-runtime-boundary.md
+docs/examples/dex-lens-catalog-enriched-preview.json
 docs/feedback-loop-contract.md
 docs/gate-omission-audit-2026-08-11.md
 docs/health-telemetry.md
@@ -1316,7 +1325,10 @@ docs/superpowers/plans/2026-07-23-entity-engine-bridge-reliability.md
 docs/superpowers/plans/2026-07-23-typed-relationships-build.md
 docs/superpowers/plans/2026-07-27-meeting-sources.md
 docs/superpowers/plans/2026-07-29-updater-bridge-fleet.md
+docs/superpowers/plans/2026-08-25-dex-lens-catalogue-phase-1.md
+docs/superpowers/plans/2026-08-25-dex-lens-catalogue-phase-2.md
 docs/superpowers/specs/2026-05-15-dex-web-design.md
+docs/superpowers/specs/2026-08-25-dex-lens-catalogue-enrichment-design.md
 docs/support/upgrade-platform-matrix.md
 docs/testing-governance.md
 docs/testing-hardening-merge-runbook.md

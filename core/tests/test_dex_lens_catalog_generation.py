@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import jsonschema
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
+from core.lens_catalog_discovery import discover_active_skills
 from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
+ENRICHED_SCHEMA = REPO_ROOT / "core/tests/fixtures/dex-lens-catalogue-enriched-preview.schema.json"
+ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
 
 WAVE3_IDS = (
     "account-plan",
@@ -57,6 +62,16 @@ WAVE3_ROOM_IDS = frozenset(
 )
 WAVE3_ACTIVE_IDS = frozenset({"pipeline-sync"})
 WAVE3_LIFECYCLE_IDS = frozenset(WAVE3_IDS) - WAVE3_ROOM_IDS - WAVE3_ACTIVE_IDS
+CANONICAL_JOB_IDS = (
+    "capture-without-friction",
+    "start-each-day-focused",
+    "track-people-and-relationships",
+    "manage-tasks-reliably",
+    "reflect-and-improve-continuously",
+    "keep-projects-on-track",
+    "track-career-growth",
+    "evolve-the-system-itself",
+)
 
 
 def _signed_payload(envelope: dict) -> str:
@@ -102,14 +117,18 @@ def _registry(root: Path) -> None:
                 "catalog_version": 7,
                 "jobs": [
                     {
-                        "job_id": "plan-my-day",
-                        "title": "Plan my day",
-                        "description": "Turn calendar and tasks into one realistic daily plan.",
+                        "job_id": job_id,
+                        "title": job_id.replace("-", " ").title(),
+                        "description": f"Exercise the documented {job_id.replace('-', ' ')} job.",
                     }
+                    for job_id in CANONICAL_JOB_IDS
                 ],
                 "entries": [
                     {
                         "id": "daily-plan",
+                        "capability_class": "active-skill",
+                        "impact_tier": "core",
+                        "availability": "active",
                         "source": {
                             "kind": "active-skill",
                             "path": ".claude/skills/daily-plan/SKILL.md",
@@ -117,7 +136,7 @@ def _registry(root: Path) -> None:
                             "byte_size": len(skill_bytes),
                         },
                         "value": "Helps a person choose what matters today before work scatters.",
-                        "jobs_served": ["plan-my-day"],
+                        "jobs_served": ["start-each-day-focused"],
                         "foundation_capabilities": [
                             "context-orientation",
                             "scoped-agency-human-control",
@@ -178,6 +197,34 @@ def _generate(root: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _generate_enriched(output_dir: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(REPO_ROOT),
+            "--output-dir",
+            str(output_dir),
+            "--issued-at",
+            "2026-08-25T12:00:00Z",
+            "--enriched-preview",
+            *extra,
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _load_generator_module():
+    spec = importlib.util.spec_from_file_location("dex_lens_catalog_generator", GENERATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> None:
     _registry(tmp_path)
 
@@ -192,9 +239,12 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert envelope["metadata"]["producer"] == "Dex Core release pipeline v1.94.0"
     assert envelope["metadata"]["core_release"] == "v1.94.0"
     assert envelope["metadata"]["key_id"] == "dex-core-lens-1"
-    assert envelope["catalogue"]["jobs_taxonomy"][0]["job_id"] == "plan-my-day"
-    assert envelope["catalogue"]["jobs_taxonomy"][0]["label"] == "Plan my day"
+    assert envelope["metadata"]["produced_at"] == "2026-08-11T12:00:00Z"
+    assert tuple(job["job_id"] for job in envelope["catalogue"]["jobs_taxonomy"]) == CANONICAL_JOB_IDS
     capability = envelope["catalogue"]["capabilities"][0]
+    assert "capability_class" not in capability
+    assert "impact_tier" not in capability
+    assert "availability" not in capability
     assert capability["capability_id"] == "daily-plan"
     assert capability["title"] == "Daily Plan"
     assert capability["summary"] == "Use when planning a day."
@@ -286,6 +336,280 @@ def test_generator_rejects_unknown_job_and_foundation_references(tmp_path: Path)
     assert "unknown job reference" in result.stderr
 
 
+def test_generator_requires_the_documented_eight_job_taxonomy(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["jobs"].append(
+        {
+            "job_id": "invented-ninth-job",
+            "title": "Invented ninth job",
+            "description": "This taxonomy must not drift from the documented eight.",
+        }
+    )
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "must contain the documented eight Jobs to Be Done" in result.stderr
+
+
+def test_generator_rejects_discovered_active_skill_without_annotation(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    _skill(tmp_path, "unannotated-skill")
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "active skill annotations do not match discovery" in result.stderr
+    assert "missing annotations: unannotated-skill" in result.stderr
+
+
+def test_generator_rejects_stale_active_annotation(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["entries"][0]["id"] = "stale-skill"
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert "active skill annotations do not match discovery" in result.stderr
+    assert "stale annotations: stale-skill" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("availability", "maybe", "availability must be active or dormant"),
+        ("capability_class", "workflow", "capability_class must be active-skill"),
+        ("impact_tier", "massive", "impact_tier must be core, high, medium, or niche"),
+    ],
+)
+def test_generator_rejects_unknown_internal_classification(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    _registry(tmp_path)
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    data["entries"][0][field] = value
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 1
+    assert message in result.stderr
+
+
+def test_generator_ignores_unannotated_vendored_skills(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    _skill(tmp_path, "anthropic-pdf", description="Vendored third-party PDF skill.")
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    assert [entry["capability_id"] for entry in envelope["catalogue"]["capabilities"]] == ["daily-plan"]
+
+
+def test_generator_orders_active_entries_by_discovery_not_registry(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    alpha_bytes = _skill(tmp_path, "alpha-skill", description="Use alpha safely.")
+    registry_path = tmp_path / "core/lens-catalog/registry.json"
+    data = json.loads(registry_path.read_text())
+    alpha = json.loads(json.dumps(data["entries"][0]))
+    alpha["id"] = "alpha-skill"
+    alpha["source"] = {
+        "kind": "active-skill",
+        "path": ".claude/skills/alpha-skill/SKILL.md",
+        "sha256": hashlib.sha256(alpha_bytes).hexdigest(),
+        "byte_size": len(alpha_bytes),
+    }
+    alpha["evidence"][0]["reference"] = ".claude/skills/alpha-skill/SKILL.md"
+    alpha["evidence"][0].pop("coverage", None)
+    alpha["evidence"][0]["kind"] = "runtime-path"
+    data["entries"].append(alpha)
+    _write(registry_path, json.dumps(data))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    assert [entry["capability_id"] for entry in envelope["catalogue"]["capabilities"]] == [
+        "alpha-skill",
+        "daily-plan",
+    ]
+
+
+def test_enriched_preview_requires_a_lens_0_1_9_schema(tmp_path: Path) -> None:
+    missing = _generate_enriched(tmp_path / "missing")
+
+    assert missing.returncode == 1
+    assert "requires --lens-schema" in missing.stderr
+    assert _lens_artifacts(tmp_path) == []
+
+
+def test_lens_0_1_9_schema_proposal_still_accepts_the_legacy_phase1_shape(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    _registry(tmp_path)
+    result = _generate_signed(tmp_path, signing_key_b64)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    schema = json.loads(ENRICHED_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(schema).validate(envelope)
+
+
+def test_enriched_preview_refuses_signing_and_release_names(tmp_path: Path) -> None:
+    result = _generate_enriched(tmp_path / "dist", "--lens-schema", str(ENRICHED_SCHEMA), "--sign")
+
+    assert result.returncode == 1
+    assert "enriched previews cannot be signed or published" in result.stderr
+    assert not (tmp_path / "dist").exists()
+
+
+@pytest.mark.parametrize(
+    "signing_options",
+    [
+        ("--test-deterministic-signature",),
+        ("--signing-key-env", "UNUSED_PREVIEW_KEY"),
+        ("--key-id", "preview-key-must-not-be-overridden"),
+    ],
+)
+def test_enriched_preview_refuses_every_signing_option(
+    tmp_path: Path, signing_options: tuple[str, ...]
+) -> None:
+    result = _generate_enriched(
+        tmp_path / "dist",
+        "--lens-schema",
+        str(ENRICHED_SCHEMA),
+        *signing_options,
+    )
+
+    assert result.returncode == 1
+    assert "enriched previews cannot use signing options" in result.stderr
+    assert not (tmp_path / "dist").exists()
+
+
+@pytest.mark.parametrize(
+    "abbreviated_options",
+    [
+        ("--test",),
+        ("--test-deterministic-signatur",),
+        ("--signing-key-e", "UNUSED_PREVIEW_KEY"),
+        ("--key", "preview-key-must-not-be-overridden"),
+    ],
+)
+def test_enriched_preview_refuses_abbreviated_signing_options(
+    tmp_path: Path, abbreviated_options: tuple[str, ...]
+) -> None:
+    result = _generate_enriched(
+        tmp_path / "dist",
+        "--lens-schema",
+        str(ENRICHED_SCHEMA),
+        *abbreviated_options,
+    )
+
+    assert result.returncode == 2
+    assert "unrecognized arguments" in result.stderr
+    assert not (tmp_path / "dist").exists()
+
+
+def test_enriched_preview_rejects_an_id_already_used_by_a_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _load_generator_module()
+    registry = json.loads((REPO_ROOT / "core/lens-catalog/enriched-registry.json").read_text())
+    collision = json.loads(json.dumps(registry["entries"][0]))
+    collision["id"] = "daily-plan"
+    registry["entries"].append(collision)
+    registry_path = tmp_path / "enriched-registry.json"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    monkeypatch.setattr(generator, "ENRICHED_REGISTRY_PATH", registry_path)
+
+    with pytest.raises(generator.LensCatalogError, match="duplicates existing capability id 'daily-plan'"):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+@pytest.mark.parametrize(
+    ("discovery_name", "capability_class"),
+    [
+        ("discover_mcp_servers", "mcp-server"),
+        ("discover_scheduled_automations", "scheduled-automation"),
+        ("discover_system_engines", "system-engine"),
+    ],
+)
+def test_enriched_preview_rejects_duplicate_discovered_capability_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    discovery_name: str,
+    capability_class: str,
+) -> None:
+    generator = _load_generator_module()
+    discover = getattr(generator, discovery_name)
+    candidate = discover(REPO_ROOT)[0]
+    monkeypatch.setattr(generator, discovery_name, lambda _root: (candidate, candidate))
+
+    with pytest.raises(
+        generator.LensCatalogError,
+        match=rf"{capability_class} discovery produced duplicate capability id {candidate.capability_id!r}",
+    ):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+def test_enriched_schema_declares_capability_id_uniqueness() -> None:
+    schema = json.loads(ENRICHED_SCHEMA.read_text(encoding="utf-8"))
+    capabilities = schema["$defs"]["CatalogueV2"]["properties"]["capabilities"]
+
+    assert capabilities["uniqueItems"] is True
+    assert capabilities["x-dex-lens-unique-by"] == "capability_id"
+
+
+def test_enriched_preview_validates_all_four_classes_but_current_schema_rejects_it(tmp_path: Path) -> None:
+    output = tmp_path / "dist"
+    result = _generate_enriched(output, "--lens-schema", str(ENRICHED_SCHEMA))
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(path.name for path in output.iterdir()) == ["dex-lens-catalog-enriched-preview.json"]
+    envelope = json.loads((output / "dex-lens-catalog-enriched-preview.json").read_text())
+    assert envelope["signature"] == "UNSIGNED-PREVIEW-NOT-FOR-PUBLICATION"
+    assert envelope["metadata"]["produced_at"] == "2026-08-25T12:00:00Z"
+    classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
+    assert {item: classes.count(item) for item in set(classes)} == {
+        "active-skill": 95,
+        "mcp-server": 10,
+        "scheduled-automation": 5,
+        "system-engine": 4,
+    }
+    availability = [entry["availability"] for entry in envelope["catalogue"]["capabilities"]]
+    assert {item: availability.count(item) for item in set(availability)} == {
+        "active": 84,
+        "dormant": 29,
+        "parked": 1,
+    }
+    current_schema = json.loads(
+        (REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json").read_text()
+    )
+    with pytest.raises(jsonschema.ValidationError, match="Additional properties are not allowed"):
+        jsonschema.Draft202012Validator(current_schema).validate(envelope)
+
+
+def test_committed_enriched_example_is_generator_output_and_matches_proposed_schema(tmp_path: Path) -> None:
+    result = _generate_enriched(tmp_path, "--lens-schema", str(ENRICHED_SCHEMA))
+
+    assert result.returncode == 0, result.stderr
+    generated = json.loads((tmp_path / "dex-lens-catalog-enriched-preview.json").read_text())
+    committed = json.loads(ENRICHED_EXAMPLE.read_text())
+    assert committed == generated
+    schema = json.loads(ENRICHED_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(schema).validate(committed)
+
+
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
     _registry(tmp_path)
     data = json.loads((tmp_path / "core/lens-catalog/registry.json").read_text())
@@ -307,11 +631,11 @@ def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
 
 
 def _adoptable_registry(root: Path, source_kind: str) -> Path:
-    """Turn the synthetic entry into a dormant lifecycle or room capability."""
+    """Append a dormant lifecycle or room annotation beside the active fixture."""
     _registry(root)
     registry_path = root / "core/lens-catalog/registry.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    entry = registry["entries"][0]
+    entry = json.loads(json.dumps(registry["entries"][0]))
     if source_kind == "lifecycle-skill":
         entry_id = "account-plan"
         relative = ".claude/skills/_available/sales/account-plan/SKILL.md"
@@ -383,22 +707,23 @@ def _adoptable_registry(root: Path, source_kind: str) -> Path:
             "skill": entry_id,
         }
     entry["id"] = entry_id
+    entry["availability"] = "dormant"
+    entry["impact_tier"] = "medium"
+    registry["entries"].append(entry)
     _write(registry_path, json.dumps(registry))
     return root / relative
 
 
 @pytest.mark.parametrize("source_kind", ("lifecycle-skill", "room-skill"))
-def test_generator_resolves_adoptable_source_without_an_active_copy(tmp_path: Path, source_kind: str) -> None:
+def test_generator_validates_but_does_not_publish_dormant_skill_source(tmp_path: Path, source_kind: str) -> None:
     source = _adoptable_registry(tmp_path, source_kind)
 
     result = _generate(tmp_path)
 
     assert result.returncode == 0, result.stderr
     envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text(encoding="utf-8"))
-    capability = envelope["catalogue"]["capabilities"][0]
-    assert capability["summary"] in source.read_text(encoding="utf-8")
-    assert not (tmp_path / f".claude/skills/{capability['capability_id']}/SKILL.md").exists()
-    assert "source" not in capability
+    assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == ["daily-plan"]
+    assert source.is_file(), "the dormant source was not actually present for resolver validation"
 
 
 def test_generator_rejects_mutated_room_source_before_signing_or_publication(
@@ -723,18 +1048,37 @@ def test_broken_registry_refusal_is_not_a_signing_failure(tmp_path: Path, signin
 # root, so pin drift fails on the pull request that causes it.
 
 
+def test_real_registry_annotates_the_complete_active_set_and_marks_dormant_entries() -> None:
+    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    discovered_ids = {candidate.capability_id for candidate in discover_active_skills(REPO_ROOT)}
+    active_entries = [entry for entry in registry["entries"] if entry["availability"] == "active"]
+    dormant_entries = [entry for entry in registry["entries"] if entry["availability"] == "dormant"]
+
+    assert registry["catalog_version"] == 4
+    assert tuple(job["job_id"] for job in registry["jobs"]) == CANONICAL_JOB_IDS
+    assert len(registry["entries"]) == 95
+    assert len(active_entries) == 66
+    assert len(dormant_entries) == 29
+    assert {entry["id"] for entry in active_entries} == discovered_ids
+    assert all(entry["capability_class"] == "active-skill" for entry in registry["entries"])
+    assert {entry["impact_tier"] for entry in registry["entries"]} <= {"core", "high", "medium", "niche"}
+    assert all(set(entry["jobs_served"]) <= set(CANONICAL_JOB_IDS) for entry in registry["entries"])
+
+
 def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> None:
     registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
-    wave3 = registry["entries"][-len(WAVE3_IDS) :]
+    by_id = {entry["id"]: entry for entry in registry["entries"]}
+    wave3 = [by_id[entry_id] for entry_id in WAVE3_IDS]
 
-    assert registry["catalog_version"] == 3
-    assert len(registry["jobs"]) == 11
-    assert [job["job_id"] for job in registry["jobs"][-2:]] == [
-        "run-my-role",
-        "grow-my-career",
-    ]
-    assert len(registry["entries"]) == 55
+    assert registry["catalog_version"] == 4
+    assert len(registry["jobs"]) == 8
+    assert len(registry["entries"]) == 95
     assert tuple(entry["id"] for entry in wave3) == WAVE3_IDS
+    assert all(entry["capability_class"] == "active-skill" for entry in wave3)
+    assert all(
+        entry["availability"] == ("active" if entry["id"] in WAVE3_ACTIVE_IDS else "dormant")
+        for entry in wave3
+    )
     assert all(
         evidence.get("coverage") == "supporting"
         for entry in wave3
@@ -852,10 +1196,10 @@ def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_k
     envelope = json.loads((tmp_path / f"dist/dex-lens-catalog-v{version}.json").read_text())
     assert envelope["signature"], "the real catalogue was written without a signature"
     assert envelope["metadata"]["core_release"] == f"v{version}"
-    registry = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
-        entry["id"] for entry in registry["entries"]
+        candidate.capability_id for candidate in discover_active_skills(REPO_ROOT)
     ]
+    assert len(envelope["catalogue"]["capabilities"]) == 66
 
 
 def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> None:
