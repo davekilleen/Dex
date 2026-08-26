@@ -130,12 +130,6 @@ def _sanitized_build_environment(
 ) -> dict[str, str]:
     inherited = os.environ if source_environment is None else source_environment
     allowed = (
-        "HOME",
-        "USER",
-        "TMPDIR",
-        "TMP",
-        "TEMP",
-        "XDG_CACHE_HOME",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "NO_PROXY",
@@ -147,9 +141,23 @@ def _sanitized_build_environment(
     )
     environment = {key: inherited[key] for key in allowed if inherited.get(key)}
     trusted_bin = f"{source / 'bin'}:" if source is not None else ""
+    build_root = target_dir.parent
+    hermit_home = build_root / ".hermit-home"
+    hermit_state = build_root / ".hermit-state"
+    hermit_executable = hermit_state / "pkg" / "hermit@stable" / "hermit"
+    xdg_cache = build_root / ".xdg-cache"
+    temporary = build_root / ".tmp"
+    for directory in (hermit_home, hermit_state, xdg_cache, temporary):
+        directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(0o700)
     environment.update(
         {
             "PATH": f"{trusted_bin}/usr/bin:/bin:/usr/sbin:/sbin",
+            "HOME": str(hermit_home),
+            "XDG_CACHE_HOME": str(xdg_cache),
+            "TMPDIR": str(temporary),
+            "HERMIT_STATE_DIR": str(hermit_state),
+            "HERMIT_EXE": str(hermit_executable),
             "CARGO_TARGET_DIR": str(target_dir),
             "CARGO_TERM_COLOR": "never",
         }
@@ -302,6 +310,7 @@ def build(args: argparse.Namespace) -> dict[str, str]:
             "buzz_revision": expected_revision,
             "buzz_tree_clean": True,
             "cargo_target_fresh": True,
+            "hermit_state_isolated": True,
             "dex_revision": _git_head(dex_root),
             "source_contract_sha256": sha256_file(PACKAGE_ROOT / "contract.json"),
             "toolchain": toolchain,

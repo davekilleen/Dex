@@ -71,7 +71,8 @@ than overstating its evidence.
 
 Use a clean Buzz checkout at the exact revision. The builder invokes that
 checkout's tracked Hermit launchers for Rust 1.95.0, strips inherited
-Rust/Cargo/Hermit overrides, and always builds into a new empty target:
+Rust/Cargo/Hermit overrides, gives Hermit a new builder-owned HOME, cache,
+state and executable path, and always builds into a new empty target:
 
 ```bash
 python3 packages/dex-collaboration-cli/build_artifact.py \

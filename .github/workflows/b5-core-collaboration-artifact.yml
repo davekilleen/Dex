@@ -56,6 +56,7 @@ jobs:
         shell: bash
         env:
           DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          DEX_TEST_BUZZ_LAUNCHER_SOURCE: ${{ github.workspace }}/_buzz
         run: |
           "$DEX_PYTHON" packages/dex-collaboration-cli/tests/test_artifact_contract.py
           /bin/bash -n packages/dex-collaboration-cli/src/core

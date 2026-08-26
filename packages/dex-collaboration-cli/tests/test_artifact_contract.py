@@ -465,16 +465,28 @@ class SourceContractTests(unittest.TestCase):
             "CARGO_BUILD_RUSTC": "/tmp/fake-rustc",
             "CARGO_TARGET_DIR": "/tmp/prebuilt",
             "HERMIT_EXE": "/tmp/fake-hermit",
+            "HERMIT_STATE_DIR": "/tmp/fake-hermit-state",
+            "HOME": "/tmp/fake-home",
+            "XDG_CACHE_HOME": "/tmp/fake-xdg",
         }
-        environment = build_artifact._sanitized_build_environment(
-            Path("/tmp/fresh-target"),
-            source_environment={**os.environ, **poisoned},
-        )
-        for key in poisoned:
-            if key == "CARGO_TARGET_DIR":
-                continue
-            self.assertNotIn(key, environment)
-        self.assertEqual(environment["CARGO_TARGET_DIR"], "/tmp/fresh-target")
+        with tempfile.TemporaryDirectory() as sanitized_temporary:
+            target = Path(sanitized_temporary) / "fresh-target"
+            environment = build_artifact._sanitized_build_environment(
+                target,
+                source_environment={**os.environ, **poisoned},
+            )
+            for key in ("RUSTC", "RUSTFLAGS", "RUSTC_WRAPPER", "CARGO_BUILD_RUSTC"):
+                self.assertNotIn(key, environment)
+            self.assertEqual(environment["CARGO_TARGET_DIR"], str(target))
+            self.assertEqual(environment["HOME"], str(target.parent / ".hermit-home"))
+            self.assertEqual(environment["XDG_CACHE_HOME"], str(target.parent / ".xdg-cache"))
+            self.assertEqual(environment["HERMIT_STATE_DIR"], str(target.parent / ".hermit-state"))
+            self.assertEqual(
+                environment["HERMIT_EXE"],
+                str(target.parent / ".hermit-state/pkg/hermit@stable/hermit"),
+            )
+            for key in ("HOME", "XDG_CACHE_HOME", "HERMIT_STATE_DIR", "HERMIT_EXE"):
+                self.assertNotEqual(environment[key], poisoned[key])
 
         with tempfile.TemporaryDirectory() as temporary:
             prebuilt_output = Path(temporary)
@@ -515,6 +527,74 @@ class SourceContractTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, "non-baseline"):
                 require_baseline_dependencies("darwin", ["@rpath/libinjected.dylib"])
+        finally:
+            sys.path.pop(0)
+
+    @unittest.skipUnless(
+        os.environ.get("DEX_TEST_BUZZ_LAUNCHER_SOURCE"),
+        "real pinned Buzz launcher source was not supplied",
+    )
+    def test_build_environment_never_executes_caller_cached_hermit(self) -> None:
+        source = Path(os.environ["DEX_TEST_BUZZ_LAUNCHER_SOURCE"])
+        revision = subprocess.run(
+            ["git", "-C", source, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        self.assertEqual(revision, "b2ac66cde81df7ce1afc50016e1571cb6e8b7779")
+
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            import build_artifact
+
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                caller_home = root / "caller-home"
+                caller_xdg = root / "caller-xdg"
+                target = root / "builder" / ".cargo-target"
+                poison_home_marker = root / "poison-home-ran"
+                poison_xdg_marker = root / "poison-xdg-ran"
+                controlled_marker = root / "controlled-ran"
+                fake_locations = (
+                    (caller_home / ".cache/hermit/pkg/hermit@stable/hermit", poison_home_marker),
+                    (caller_xdg / "hermit/pkg/hermit@stable/hermit", poison_xdg_marker),
+                    (
+                        target.parent / ".hermit-state/pkg/hermit@stable/hermit",
+                        controlled_marker,
+                    ),
+                )
+                for executable, marker in fake_locations:
+                    executable.parent.mkdir(parents=True)
+                    _write_executable(
+                        executable,
+                        "#!/bin/bash\n"
+                        f"/usr/bin/touch '{marker}'\n"
+                        "printf '%s\\n' 'cargo 1.95.0 (controlled-test)'\n",
+                    )
+                environment = build_artifact._sanitized_build_environment(
+                    target,
+                    source=source,
+                    source_environment={
+                        "HOME": str(caller_home),
+                        "XDG_CACHE_HOME": str(caller_xdg),
+                        "USER": "caller",
+                    },
+                )
+                result = subprocess.run(
+                    [source / "bin" / "cargo", "--version", "--verbose"],
+                    cwd=source,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue(controlled_marker.is_file())
+                self.assertFalse(poison_home_marker.exists())
+                self.assertFalse(poison_xdg_marker.exists())
+                self.assertNotEqual(environment.get("HOME"), str(caller_home))
+                self.assertNotEqual(environment.get("XDG_CACHE_HOME"), str(caller_xdg))
         finally:
             sys.path.pop(0)
 

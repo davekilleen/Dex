@@ -159,6 +159,7 @@ def verify(root: Path, expected_platform: str, expected_arch: str) -> dict[str, 
         or sources.get("buzz_revision") != "b2ac66cde81df7ce1afc50016e1571cb6e8b7779"
         or sources.get("buzz_tree_clean") is not True
         or sources.get("cargo_target_fresh") is not True
+        or sources.get("hermit_state_isolated") is not True
     ):
         raise ArtifactError("pinned Buzz source identity is missing")
     toolchain = sources.get("toolchain")
