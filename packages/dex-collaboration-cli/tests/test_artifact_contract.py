@@ -644,6 +644,7 @@ class SourceContractTests(unittest.TestCase):
 
         self.assertIn("working-directory: Dex", workflow)
         self.assertIn("path: Dex", workflow)
+        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
         self.assertIn("path: Buzz", workflow)
         self.assertIn("${{ github.workspace }}/Buzz", workflow)
         self.assertNotIn("path: _buzz", workflow)
