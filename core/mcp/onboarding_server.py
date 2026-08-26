@@ -283,7 +283,9 @@ def _harness_profile_payload(profile: object) -> Dict[str, Any]:
 def inspect_harnesses(explicit: List[str] | None = None) -> Dict[str, Any]:
     """Return detected/selected profiles plus every manual choice."""
     if explicit is None:
-        selected_profiles = harness_registry.detect_harnesses()
+        selected_profiles = harness_registry.detect_harnesses(
+            paths=harness_registry.standard_detection_paths()
+        )
         detected_ids = [profile.id for profile in selected_profiles]
     else:
         if not isinstance(explicit, list) or any(

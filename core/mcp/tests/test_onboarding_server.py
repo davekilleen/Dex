@@ -260,6 +260,26 @@ class _FakeHarnessProfile:
 
 
 class TestHarnessSelection:
+    def test_inspection_supplies_existing_home_path_evidence(self, monkeypatch):
+        evidence = (Path("/fixture/.codex"), Path("/fixture/.pi"))
+        captured = []
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "standard_detection_paths",
+            lambda: evidence,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            onboarding_server.harness_registry,
+            "detect_harnesses",
+            lambda **kwargs: captured.append(kwargs) or (),
+        )
+
+        inspected = onboarding_server.inspect_harnesses()
+
+        assert inspected["detected"] == []
+        assert captured == [{"paths": evidence}]
+
     def test_start_detects_harnesses_without_confirming_for_the_user(
         self, tmp_path, monkeypatch
     ):

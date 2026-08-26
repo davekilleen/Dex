@@ -272,6 +272,40 @@ def _path_values(paths: Iterable[Path | str] | Path | str | None) -> tuple[str, 
     return tuple(result)
 
 
+def standard_detection_paths(
+    *,
+    home: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[Path, ...]:
+    """Return existing, read-only home evidence for advisory harness detection."""
+    environment = env if env is not None else os.environ
+    home_path = home or Path(
+        environment.get("HOME")
+        or environment.get("USERPROFILE")
+        or Path.home()
+    )
+    candidates: set[Path] = set()
+    for profile in list_profiles():
+        for marker in profile.detection.get("paths", ()):
+            relative = marker.strip("/")
+            if relative.startswith(".") and ".." not in Path(relative).parts:
+                candidates.add(home_path / relative)
+
+    candidates.update(
+        {
+            home_path / "Library/Application Support/Claude",
+            home_path / "Library/Application Support/Claude/claude_desktop_config.json",
+            home_path / "Library/Application Support/Claude Desktop",
+        }
+    )
+    for root_name in ("APPDATA", "XDG_CONFIG_HOME"):
+        root = environment.get(root_name)
+        if root:
+            candidates.add(Path(root) / "Claude")
+            candidates.add(Path(root) / "Claude/claude_desktop_config.json")
+    return tuple(sorted((path for path in candidates if path.exists()), key=lambda path: path.as_posix()))
+
+
 def detect_harnesses(
     env: Mapping[str, str] | None = None,
     paths: Iterable[Path | str] | Path | str | None = None,
@@ -290,7 +324,11 @@ def detect_harnesses(
     environment = env if env is not None else os.environ
     marker_values = {str(key).upper(): str(value) for key, value in environment.items()}
     path_values = _path_values(paths)
-    lowered_paths = tuple(value.lower() for value in path_values)
+    lowered_paths = tuple(
+        candidate
+        for value in path_values
+        for candidate in (value.lower(), f"{value.lower().rstrip('/')}/")
+    )
     detected: list[CapabilityProfile] = []
     for profile in list_profiles():
         env_markers = profile.detection.get("env", ())
@@ -316,7 +354,8 @@ def _cli() -> int:
         profiles = list_profiles()
     else:
         explicit = args.explicit or None
-        profiles = detect_harnesses(explicit=explicit, paths=args.path or None)
+        paths = args.path if args.path is not None else standard_detection_paths()
+        profiles = detect_harnesses(explicit=explicit, paths=paths)
     if args.format == "ids":
         print(json.dumps([profile.id for profile in profiles], separators=(",", ":")))
     else:

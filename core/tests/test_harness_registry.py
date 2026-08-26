@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +17,7 @@ from core.harnesses.registry import (
     get_profile,
     get_release_contract,
     list_profiles,
+    standard_detection_paths,
 )
 
 EXPECTED_IDS = {
@@ -132,3 +136,45 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.bb/worktrees/x")])] == ["bb"]
     assert detect_harnesses(env={}, paths=[]) == ()
+
+
+def test_standard_detection_paths_return_only_real_home_evidence(tmp_path: Path) -> None:
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    claude = tmp_path / "Library/Application Support/Claude"
+    claude.mkdir(parents=True)
+    desktop_config = claude / "claude_desktop_config.json"
+    desktop_config.write_text("{}\n", encoding="utf-8")
+
+    paths = standard_detection_paths(home=tmp_path, env={})
+
+    assert codex in paths
+    assert claude in paths
+    assert desktop_config in paths
+    assert tmp_path / ".pi" not in paths
+
+
+def test_detection_cli_uses_real_home_path_evidence_by_default(tmp_path: Path) -> None:
+    (tmp_path / ".pi").mkdir()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "core.harnesses.registry",
+            "detect",
+            "--format",
+            "ids",
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        env={
+            "HOME": str(tmp_path),
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == ["pi"]
