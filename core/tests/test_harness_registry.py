@@ -94,10 +94,12 @@ def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
     cursor = {row["id"]: row for row in get_profile("cursor").capability_rows()}
     assert cursor["agent-plugins"]["status"] == "native"
     assert cursor["hooks"]["status"] == "native"
+    assert "tier-3-full" not in get_profile("cursor").modes
 
     gemini = {row["id"]: row for row in get_profile("gemini-cli").capability_rows()}
     assert gemini["mcp"]["status"] == "native"
     assert gemini["hooks"]["status"] == "native"
+    assert "tier-3-full" not in get_profile("gemini-cli").modes
 
     desktop = {row["id"]: row for row in get_profile("claude-desktop").capability_rows()}
     assert desktop["mcp"]["status"] == "native"

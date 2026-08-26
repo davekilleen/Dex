@@ -112,10 +112,13 @@ product instructions for Codex, and golden journey tests.
 
 A separate unreleased standalone `dex-bb-plugin` workspace contains BB-native
 status, capabilities, and brief tools; `bb dex` commands; a sidebar panel;
-bundled skills; Core catalogue readers; and package tests. Its remote repository
-has not been chosen yet. Pi's existing native Dex extension remains the Pi path.
-The public website installer branch has also been changed to acquire the
-supported `release` branch rather than `main`.
+bundled skills; Core catalogue readers; and package tests. Its private remote is
+[`davekilleen/dex-bb-plugin`](https://github.com/davekilleen/dex-bb-plugin), with
+draft PR #1 under review. The first package is macOS-only and read-only; BB's
+Windows route uses WSL2 and stays in the deferred Linux lane. Pi's existing
+native Dex extension remains the Pi path. The public website installer branch
+has also been changed to acquire the supported `release` branch rather than
+`main`.
 
 ## Is any of this live?
 

@@ -87,8 +87,7 @@
   "modes": [
     "tier-0-vault",
     "tier-1-core",
-    "tier-2-skills",
-    "tier-3-full"
+    "tier-2-skills"
   ],
   "name": "Cursor",
   "summary": "Native Cursor plugin plus the open Agent Plugins package, with shared skills, MCP, context, and safety hooks.",

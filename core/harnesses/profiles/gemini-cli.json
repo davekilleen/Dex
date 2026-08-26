@@ -86,8 +86,7 @@
   "modes": [
     "tier-0-vault",
     "tier-1-core",
-    "tier-2-skills",
-    "tier-3-full"
+    "tier-2-skills"
   ],
   "name": "Gemini CLI",
   "summary": "Native Gemini CLI extension generated from Dex's shared skills, MCP, context, and safety core.",

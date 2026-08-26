@@ -16,7 +16,9 @@ node_modules/.bin/mcpb info build/portable-artifacts/dex-claude-desktop.mcpb
 ```
 
 On Windows, use `python` in place of `python3` when that is the installed Python
-launcher. The bundle requires Python 3.11+; Node is supplied by Claude Desktop.
+launcher. The bundle requires Python 3.11+ and Node.js >=18; Claude Desktop
+supplies the Node runtime, so no separate Node installation is needed for this
+artifact.
 
 To test the reviewed artifact without publishing it, open Claude Desktop and use
 **Settings > Extensions > Advanced settings > Install Extension**. Select the

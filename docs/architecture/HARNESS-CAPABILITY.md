@@ -29,13 +29,16 @@ Layers 1–2 of the repo (`core/`, MCP servers, `.scripts/`, including
 `.scripts/lib/llm-client.cjs`) already qualify as Tier 1. Do not rewrite them
 to “become” harness-neutral; they already are.
 
-Conformance tests live in `core/tests/test_harness_capability_contract.py`.
+Registry and package conformance tests live in `core/tests/test_harness_registry.py`
+and `core/tests/test_harness_portability.py`.
 They fail CI when:
 
-- the README loses the tier table
-- a live doc claims cross-harness support without naming a tier
-- a generated `.agents/` adapter is missing or still carries Claude-only frontmatter
-- a Tier ≤2 code surface imports Claude hooks or opens `.claude/settings.json` at import time
+- the registry loses a supported harness, exposes an invalid delivery mode, or
+  lacks a reviewable adapter descriptor
+- generated `.agents/` adapters or portable package metadata drift from their
+  canonical sources
+- a portable skill loses required resources, rewrites a user-owned custom skill,
+  or keeps a Claude-only reference
 
 The executable source of truth is `core/harnesses/registry.json`. Every capability
 has an explicit delivery mode: `automatic`, `on_demand`, `guided`, or `unavailable`.

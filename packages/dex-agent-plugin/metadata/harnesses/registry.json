@@ -235,7 +235,7 @@
         {"id": "interactive-prompts", "status": "native", "tier": 2, "mode": "on_demand", "notes": "Agent chat interaction is host-native."},
         {"id": "agent-plugins", "status": "native", "tier": 2, "mode": "guided", "notes": "Cursor loads Agent Plugins directly and also accepts the included native Cursor manifest."}
       ],
-      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills", "tier-3-full"],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
       "detection": {"env": ["CURSOR_TRACE_ID", "CURSOR_AGENT", "CURSOR_VERSION"], "paths": ["/.cursor/", "/Cursor/", "/.cursor-plugin/"]},
       "limitations": ["Cursor cloud agents do not run sessionStart; local safety hooks require workspace trust."],
       "evidence": ["https://cursor.com/docs/plugins", "https://cursor.com/docs/hooks"]
@@ -258,7 +258,7 @@
         {"id": "interactive-prompts", "status": "native", "tier": 2, "mode": "on_demand", "notes": "CLI interaction is host-native."},
         {"id": "agent-plugins", "status": "partial", "tier": 2, "mode": "guided", "notes": "Gemini uses its native extension format; the artifact is generated from the same canonical package sources."}
       ],
-      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills", "tier-3-full"],
+      "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
       "detection": {"env": ["GEMINI_CLI", "GEMINI_PROJECT_DIR", "GEMINI_SESSION_ID"], "paths": ["/.gemini/", "/gemini-cli/"]},
       "limitations": ["Gemini uses a separately built extension artifact because its fixed hooks file has a different schema from Claude's."],
       "evidence": ["https://github.com/google-gemini/gemini-cli/blob/main/docs/extensions/reference.md", "https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md"]

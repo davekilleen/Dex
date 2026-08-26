@@ -22,11 +22,13 @@ reports the same receipt.
 Exact-commit native evidence belongs to the draft pull request checks and release
 record, rather than becoming a timeless pass claim in this versioned guide.
 
-The portable package requires Node 20+ and Python 3.11+. The supported-platform
-contract lives in `core/harnesses/registry.json`, is copied into the package,
-and is reported by Doctor. Native CI evidence lives in the workflow run for the
-exact commit; the registry's `release_ready` requirement does not mean an
-unrun branch has already passed that evidence gate.
+The portable Agent Plugin package requires Node 20+ and Python 3.11+. The Claude
+Desktop MCPB is the documented exception: it declares Node.js >=18, supplied by
+Claude Desktop, and still requires Python 3.11+. The supported-platform contract
+lives in `core/harnesses/registry.json`, is copied into the package, and is
+reported by Doctor. Native CI evidence lives in the workflow run for the exact
+commit; the registry's `release_ready` requirement does not mean an unrun branch
+has already passed that evidence gate.
 
 ## What is shared
 
@@ -74,7 +76,7 @@ not publish, install, or release anything.
 | Gemini CLI | Run `gemini extensions install build/portable-artifacts/dex-gemini-extension`, approve its hooks, and restart Gemini CLI in the full Dex folder. | Gemini's fixed hook file uses a different schema, so Dex builds a separate complete artifact from the same canonical sources. |
 | Agent Plugins v1 client | Install the folder using root `plugin.json` and `mcp.json`. | The open specification standardizes skills and MCP, not every host lifecycle. |
 | Pi | Use the native `dex-pi/extensions/dex` package and open the full Dex folder. | Pi has no built-in MCP client; its extension supplies native tools and lifecycle events instead. |
-| BB | Install the separately built `bb-plugin-dex` package from a reviewed local path and select the vault in settings. | Version one is read-only: status, capabilities, brief, CLI, and panel; no jobs, writes, provider bridge, or marketplace release. |
+| BB | Install the separately built `bb-plugin-dex` package from a reviewed local path and select the vault in settings. | Version one is macOS-only and read-only: status, capabilities, brief, CLI, and panel; no jobs, writes, provider bridge, or marketplace release. BB's Windows route uses WSL2 and stays in the deferred Linux lane. |
 
 ## Acceptance journey
 
