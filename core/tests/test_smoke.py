@@ -1981,3 +1981,96 @@ def test_every_runtime_core_path_survives_git_archive() -> None:
         exported = {member.name for member in archive.getmembers() if member.isfile()}
 
     assert sorted(runtime - exported) == []
+
+
+def test_capability_room_ids_returns_none_when_registry_module_is_absent(monkeypatch) -> None:
+    """An unreachable registry is "could not check", never "no rooms exist"."""
+    import builtins
+
+    from core.utils import validators
+
+    real_import = builtins.__import__
+
+    def refuse(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "core" and fromlist and "capabilities" in fromlist:
+            raise ImportError("cannot import name 'capabilities' from 'core'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", refuse)
+    assert validators.capability_room_ids() is None
+
+
+def test_capability_room_ids_returns_none_when_registry_file_is_unreadable(monkeypatch) -> None:
+    """The core-only runner has the module but not the contract it reads."""
+    from core import capabilities
+    from core.utils import validators
+
+    def unreadable() -> set[str]:
+        raise capabilities.CapabilityError("Could not read capability registry: nowhere")
+
+    monkeypatch.setattr(capabilities, "room_ids", unreadable)
+    assert validators.capability_room_ids() is None
+
+
+def test_user_profile_capabilities_are_shape_checked_without_the_registry(monkeypatch) -> None:
+    """A missing registry must not make a healthy configuration look invalid."""
+    from core.utils import validators
+
+    monkeypatch.setattr(validators, "capability_room_ids", lambda: None)
+    config = {
+        "name": "Someone",
+        "email_domain": "example.com",
+        "capabilities": {"anything": {"enabled": True}},
+    }
+    assert validators.validate_user_profile_config(config) == []
+
+    bad_shape = {
+        "name": "Someone",
+        "email_domain": "example.com",
+        "capabilities": {"anything": {"enabled": "yes"}},
+    }
+    assert validators.validate_user_profile_config(bad_shape) == [
+        "capabilities.anything.enabled must be true or false"
+    ]
+
+
+def test_unknown_room_is_still_reported_when_the_registry_is_reachable(monkeypatch) -> None:
+    """The cross-check must keep working wherever the registry can be read."""
+    from core.utils import validators
+
+    monkeypatch.setattr(validators, "capability_room_ids", lambda: {"sales"})
+    config = {
+        "name": "Someone",
+        "email_domain": "example.com",
+        "capabilities": {"not_a_room": {"enabled": True}},
+    }
+    assert validators.validate_user_profile_config(config) == [
+        "capabilities contains unknown room 'not_a_room'"
+    ]
+
+
+def test_configs_journey_passes_and_names_the_skipped_cross_check(tmp_path, monkeypatch) -> None:
+    """Without the registry the journey stays OK and says what it did not check.
+
+    Regression for the configs journey reporting UNKNOWN on every run: the
+    registry is outside the core-only runner, so it can never be read there, and
+    an UNKNOWN verdict stopped the health snapshot completing indefinitely.
+    """
+    from core.utils import validators
+
+    vault = _write_valid_vault(tmp_path)
+    profile = vault / "System" / "user-profile.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8") + "\ncapabilities:\n  anything:\n    enabled: true\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(validators, "capability_room_ids", lambda: None)
+    result = smoke._journey_configs(vault, None)
+    assert result["verdict"] == "OK"
+    assert "were not cross-checked" in result["detail"]
+
+    monkeypatch.setattr(validators, "capability_room_ids", lambda: {"anything"})
+    checked = smoke._journey_configs(vault, None)
+    assert checked["verdict"] == "OK"
+    assert "were not cross-checked" not in checked["detail"]

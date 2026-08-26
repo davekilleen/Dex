@@ -72,17 +72,16 @@ def validate_user_profile_config(config: object) -> list[str]:
             errors.append("feedback.review_mode must be always-review or auto-send")
     capabilities = config.get("capabilities")
     if isinstance(capabilities, Mapping):
-        from core.capabilities import room_ids
-
-        declared = set(room_ids())
         for room, state in capabilities.items():
-            if room not in declared:
-                errors.append(f"capabilities contains unknown room {room!r}")
-                continue
             if not isinstance(state, Mapping):
                 errors.append(f"capabilities.{room} must be an object")
             elif not isinstance(state.get("enabled"), bool):
                 errors.append(f"capabilities.{room}.enabled must be true or false")
+        declared = capability_room_ids()
+        if declared is not None:
+            for room in capabilities:
+                if room not in declared:
+                    errors.append(f"capabilities contains unknown room {room!r}")
     return errors
 
 
@@ -237,3 +236,29 @@ def validate_mcp_config(config: object) -> list[str]:
 
     errors.extend(_placeholder_errors(parsed))
     return errors
+
+
+def capability_room_ids() -> set[str] | None:
+    """Known capability room ids, or ``None`` when the registry is unreachable.
+
+    ``None`` is "could not check", never "no rooms exist". The registry lives in
+    ``packages/dex-contracts/``, outside ``core``, and the smoke runner is
+    materialised core-only by design, so inside a journey subprocess this is
+    legitimately unreachable however complete the runner is. Callers must treat
+    ``None`` as an unchecked condition and say so, rather than reporting the
+    user's configuration as invalid.
+    """
+    try:
+        from core import capabilities as capability_registry
+
+        return set(capability_registry.room_ids())
+    except ImportError:
+        # ImportError, not ModuleNotFoundError: when ``core`` imports but the
+        # submodule is absent -- the smoke runner's fallback tree -- Python
+        # raises the parent class.
+        return None
+    except ValueError:
+        # CapabilityError subclasses ValueError. Catching the base deliberately:
+        # naming CapabilityError here would raise NameError on the import-failed
+        # path, where the class was never bound.
+        return None
