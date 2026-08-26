@@ -628,6 +628,35 @@ async def handle_list_tools() -> list[types.Tool]:
 
 
 @app.call_tool()
+
+def _naive_local_start(value: object) -> "datetime | None":
+    """Parse an event start into a naive local datetime, for range comparison.
+
+    EventKit returns ISO 8601 carrying a real UTC offset, for example
+    ``2026-08-25T00:00:00+01:00``. The retired AppleScript path emitted
+    ``... +0000`` with a leading space, which is why the original code stripped
+    that one literal before parsing. Any other offset survived the replace, so
+    ``fromisoformat`` returned an aware datetime and comparing it against the
+    naive range bounds raised ``TypeError``.
+
+    That comparison is only reached for all-day events, so most days were
+    unaffected and the fault stayed invisible until a day happened to contain
+    one. Converting to local time before dropping the offset also keeps the
+    comparison correct for an all-day event recorded in another timezone.
+
+    Returns ``None`` when the value cannot be parsed, so callers can decide
+    rather than crash.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace(' +0000', ''))
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone().replace(tzinfo=None)
+    return parsed
+
 async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -703,9 +732,12 @@ async def _handle_call_tool_inner(
                 filtered_events = []
                 for event in events:
                     if event.get('all_day'):
-                        # Only include all-day events that start within our range
-                        event_start = datetime.fromisoformat(event['start'].replace(' +0000', ''))
-                        if start_dt <= event_start < end_dt:
+                        # Only include all-day events that start within our range.
+                        # Unparseable timestamps are kept rather than dropped: an
+                        # extra visible event is a smaller failure than a silently
+                        # missing one.
+                        event_start = _naive_local_start(event.get('start'))
+                        if event_start is None or start_dt <= event_start < end_dt:
                             filtered_events.append(event)
                     else:
                         # Include all non-all-day events

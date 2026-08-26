@@ -4,6 +4,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -281,3 +282,111 @@ def test_calendar_read_empty_results_remain_healthy(
     assert "user_message" not in payload
     assert "warning" not in payload
     assert payload[empty_field] == ([] if empty_field == "events" else None)
+
+
+def _stub_eventkit(monkeypatch, events, tz="Europe/London"):
+    """Make calendar_get_events see exactly ``events``, under a pinned timezone.
+
+    The timezone is pinned deliberately. The range comparison normalises offsets
+    to local time, so a runner in UTC and a runner in BST would otherwise place a
+    ``+01:00`` midnight on different calendar days and the test would pass or fail
+    depending on where CI happens to run.
+    """
+    monkeypatch.setenv("TZ", tz)
+    time.tzset()
+
+    def fake_run_shell_script(script, *args):
+        return True, json.dumps(events)
+
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run_shell_script)
+
+
+def test_all_day_event_with_a_real_offset_does_not_break_the_day(monkeypatch):
+    """A day containing an all-day event must still return its events.
+
+    EventKit emits ISO 8601 with a real UTC offset. The range filter used to
+    strip only the literal ' +0000' left by the retired AppleScript path, so any
+    other offset stayed timezone-aware and the comparison against the naive range
+    bounds raised TypeError. Only all-day events reach that comparison, so days
+    without one were unaffected and the fault stayed invisible.
+    """
+    _stub_eventkit(monkeypatch, [
+        {"title": "Offsite", "start": "2026-08-25T00:00:00+01:00",
+         "end": "2026-08-25T23:59:59+01:00", "all_day": True},
+        {"title": "Standup", "start": "2026-08-25T09:30:00+01:00",
+         "end": "2026-08-25T09:45:00+01:00", "all_day": False},
+    ])
+
+    result = asyncio.run(calendar_server.handle_call_tool(
+        "calendar_get_events",
+        {"calendar_name": "Calendar", "start_date": "2026-08-25", "end_date": "2026-08-26"},
+    ))
+    payload = _decode_tool_result(result)
+
+    assert payload["success"] is True
+    assert payload["count"] == 2
+    assert {event["title"] for event in payload["events"]} == {"Offsite", "Standup"}
+
+
+def test_all_day_event_outside_the_range_is_still_filtered_out(monkeypatch):
+    """The filter must keep working: this is what the comparison is for."""
+    _stub_eventkit(monkeypatch, [
+        {"title": "Long holiday", "start": "2026-08-20T00:00:00+01:00",
+         "end": "2026-08-30T23:59:59+01:00", "all_day": True},
+        {"title": "Standup", "start": "2026-08-25T09:30:00+01:00",
+         "end": "2026-08-25T09:45:00+01:00", "all_day": False},
+    ])
+
+    result = asyncio.run(calendar_server.handle_call_tool(
+        "calendar_get_events",
+        {"calendar_name": "Calendar", "start_date": "2026-08-25", "end_date": "2026-08-26"},
+    ))
+    payload = _decode_tool_result(result)
+
+    assert [event["title"] for event in payload["events"]] == ["Standup"]
+
+
+def test_legacy_applescript_offset_still_parses(monkeypatch):
+    """The old ' +0000' form must keep working for any caller still emitting it."""
+    _stub_eventkit(monkeypatch, [
+        {"title": "Legacy all-day", "start": "2026-08-25 00:00:00 +0000",
+         "end": "2026-08-25 23:59:59 +0000", "all_day": True},
+    ])
+
+    result = asyncio.run(calendar_server.handle_call_tool(
+        "calendar_get_events",
+        {"calendar_name": "Calendar", "start_date": "2026-08-25", "end_date": "2026-08-26"},
+    ))
+    payload = _decode_tool_result(result)
+
+    assert [event["title"] for event in payload["events"]] == ["Legacy all-day"]
+
+
+def test_unparseable_all_day_start_is_kept_not_silently_dropped(monkeypatch):
+    """An extra visible event is a smaller failure than a silently missing one."""
+    _stub_eventkit(monkeypatch, [
+        {"title": "Malformed", "start": "not a timestamp", "all_day": True},
+    ])
+
+    result = asyncio.run(calendar_server.handle_call_tool(
+        "calendar_get_events",
+        {"calendar_name": "Calendar", "start_date": "2026-08-25", "end_date": "2026-08-26"},
+    ))
+    payload = _decode_tool_result(result)
+
+    assert [event["title"] for event in payload["events"]] == ["Malformed"]
+
+
+def test_naive_local_start_normalises_offsets_to_local(monkeypatch):
+    """An all-day event recorded in another timezone lands on the right local day."""
+    monkeypatch.setenv("TZ", "Europe/London")
+    time.tzset()
+
+    # 23:00 UTC on the 24th is midnight on the 25th in BST.
+    parsed = calendar_server._naive_local_start("2026-08-24T23:00:00+00:00")
+    assert parsed is not None
+    assert parsed.tzinfo is None
+    assert (parsed.year, parsed.month, parsed.day, parsed.hour) == (2026, 8, 25, 0)
+
+    assert calendar_server._naive_local_start(None) is None
+    assert calendar_server._naive_local_start("nonsense") is None
