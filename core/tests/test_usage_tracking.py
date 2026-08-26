@@ -367,7 +367,10 @@ _INSTRUCTION = re.compile(
     r"Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `([^`]+)`"
 )
 
-# skill directory -> the feature argument its instruction passes.
+# skill directory -> EVERY feature argument its instruction passes. Almost all
+# skills record one thing. A skill with distinct modes records the mode that
+# ran, so its entry lists each one and the exact-equality check below fails if
+# a mode is dropped or silently collapsed into a single unconditional call.
 EXPECTED_WIRING = {
     "create-mcp": "create-mcp",
     "create-skill": "create-skill",
@@ -381,8 +384,10 @@ EXPECTED_WIRING = {
     "dex-whats-new": "dex-whats-new",
     "getting-started": "getting-started",
     "integrate-mcp": "integrate-mcp",
-    # /journal appears against two lines, so this one names the label.
-    "journal": "Journaling",
+    # Two modes, two lines in the log. Setup can only ever be ticked by the
+    # command that performs it, so the call has to follow the mode. Named by
+    # label because /journal itself is ambiguous across both lines.
+    "journal": ("Journaling setup", "Journaling"),
     "meeting-prep": "meeting-prep",
     "process-meetings": "process-meetings",
     "product-brief": "product-brief",
@@ -408,13 +413,25 @@ DEFERRED_WIRING = {
 }
 
 
-def _actual_wiring() -> dict[str, str]:
-    found = {}
+def _actual_wiring() -> dict[str, object]:
+    """Every feature each skill records, in the order its instruction states them.
+
+    Returns a bare string for the single-call majority and a tuple for a skill
+    with distinct modes, matching the shape of EXPECTED_WIRING above.
+    """
+    found: dict[str, object] = {}
     for skill in sorted(_SKILLS_DIR.glob("*/SKILL.md")):
-        match = _INSTRUCTION.search(skill.read_text(encoding="utf-8"))
-        if match:
-            found[skill.parent.name] = match.group(1)
+        names = _INSTRUCTION.findall(skill.read_text(encoding="utf-8"))
+        # Preserve order, drop repeats: a skill may restate the same call in
+        # prose without that being a second, distinct thing it records.
+        unique = list(dict.fromkeys(names))
+        if unique:
+            found[skill.parent.name] = unique[0] if len(unique) == 1 else tuple(unique)
     return found
+
+
+def _features_of(entry: object) -> tuple[str, ...]:
+    return (entry,) if isinstance(entry, str) else tuple(entry)
 
 
 def test_exactly_the_expected_skills_are_wired() -> None:
@@ -467,7 +484,14 @@ def test_no_skill_mentions_the_tool_in_a_shape_this_check_cannot_read() -> None:
     )
 
 
-@pytest.mark.parametrize("skill,feature", sorted(EXPECTED_WIRING.items()))
+@pytest.mark.parametrize(
+    "skill,feature",
+    sorted(
+        (skill, feature)
+        for skill, entry in EXPECTED_WIRING.items()
+        for feature in _features_of(entry)
+    ),
+)
 def test_each_wired_skill_resolves_through_the_real_tool(
     skill: str, feature: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -496,4 +520,100 @@ def test_each_wired_skill_resolves_through_the_real_tool(
     assert payload["status"] in {"marked", "already_marked"}, (
         f"{skill} passes {feature!r}, which the shipped log answers with "
         f"{payload['status']!r}. Its instruction records nothing."
+    )
+
+
+# --- mode-specific scenarios ---
+#
+# Raised in review of #593: the journal skill runs setup and entry modes, and
+# the log carries a separate line for each, so one unconditional call means
+# "Journaling setup" can never be ticked by the only command that performs it.
+# A count-based or one-call-per-skill check cannot see that, so the scenarios
+# are written out.
+
+# (skill, the invocation, the log line it must tick)
+MODE_SCENARIOS = [
+    ("journal", "/journal on", "Journaling setup"),
+    ("journal", "/journal off", "Journaling setup"),
+    ("journal", "/journal", "Journaling"),
+    ("journal", "/journal morning", "Journaling"),
+    ("journal", "/journal evening", "Journaling"),
+    ("journal", "/journal week", "Journaling"),
+]
+
+
+@pytest.mark.parametrize("skill,invocation,feature", MODE_SCENARIOS)
+def test_each_mode_names_the_line_it_should_tick(
+    skill: str, invocation: str, feature: str
+) -> None:
+    body = (_SKILLS_DIR / skill / "SKILL.md").read_text(encoding="utf-8")
+
+    # Backticked throughout, which also keeps "/journal" from matching the
+    # "/journal on" row as a substring and testing the wrong mode.
+    quoted = f"`{invocation}`"
+    assert quoted in body, f"{skill} no longer documents {invocation}; retire this case"
+    assert feature in _features_of(EXPECTED_WIRING[skill]), (
+        f"{skill} does not record {feature!r} at all, so {invocation} cannot tick it."
+    )
+
+    # The mode and the feature it records have to appear together, otherwise
+    # the skill states two calls and leaves the reader to guess which mode
+    # takes which, which is the ambiguity this test exists to prevent.
+    row = next(
+        (line for line in body.splitlines() if quoted in line and "mark_feature_used" in line),
+        None,
+    )
+    assert row is not None, (
+        f"{skill} records {feature!r} somewhere, but nothing ties {invocation} to a call. "
+        "State the mode and its feature on the same line."
+    )
+    assert f"`{feature}`" in row, (
+        f"{invocation} is tied to a call that does not pass {feature!r}: {row.strip()!r}"
+    )
+
+
+def test_a_skill_with_several_modes_never_records_them_unconditionally() -> None:
+    """One call for a multi-line skill silently starves the other line.
+
+    The failure is invisible in the output: the call succeeds, a box ticks,
+    and the line that should have ticked stays empty forever.
+    """
+    multi = {skill for skill, _, _ in MODE_SCENARIOS}
+    for skill in sorted(multi):
+        features = _features_of(EXPECTED_WIRING[skill])
+        expected = {feature for s, _, feature in MODE_SCENARIOS if s == skill}
+        assert set(features) == expected, (
+            f"{skill} records {sorted(features)} but its modes cover {sorted(expected)}. "
+            "Every documented mode needs the line it ticks, and no others."
+        )
+
+
+def test_the_ambiguous_command_is_still_ambiguous(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why journal is wired by label: /journal matches both of its lines.
+
+    If the log ever stops being ambiguous for /journal, the label indirection
+    is no longer needed and the skill's explanation for it becomes untrue.
+    """
+    import asyncio
+
+    from core.mcp import analytics_server
+
+    vault = tmp_path / "ambiguous"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "usage_log.md").write_text(
+        (_REPO_ROOT / "System" / "usage_log.md").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    payload = json.loads(
+        asyncio.run(
+            analytics_server.call_tool("mark_feature_used", {"feature": "/journal"})
+        )[0].text
+    )
+
+    assert payload["status"] == "ambiguous", (
+        "/journal now resolves to a single line, so the journal skill's stated reason for "
+        f"naming its features by label is stale: {payload}"
     )
