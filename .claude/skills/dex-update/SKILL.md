@@ -48,6 +48,11 @@ plainly that the update applied but something is wrong underneath, and run
 `/dex-doctor` now. Never report the update as complete while the canary is
 failing.
 
+Newly written `.claude/skills/*/SKILL.md` files are live in this session.
+The host slash list may still omit them until the next session; that does not
+make them unavailable. If the user asks for a skill that now has a SKILL.md
+on disk, Read that file and follow it. Do not tell them to restart first.
+
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 
 ## One-time brain and vault upgrade

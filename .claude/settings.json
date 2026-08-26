@@ -26,6 +26,10 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/release_notes_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\" --session-start"
           }
         ]
       }
@@ -33,6 +37,10 @@
     "UserPromptSubmit": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\""
+          },
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/soft-promise-detector.py\""

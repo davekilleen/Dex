@@ -29,6 +29,12 @@ Sign-in is compulsory, but DexDiff beta membership is NOT (Dave, 2026-08-10): an
 signed-in Heydex account may link a terminal and file feedback. The DexDiff private
 beta continues to gate publishing, love letters, and diff/profile reads only.
 
+The Dex-side client (`.claude/skills/feedback/scripts/feedback_client.py`) must treat
+a linked Heydex session (`sessionToken` in `~/.dex/heydex-auth.json`) as sufficient
+to send. Missing DexDiff beta membership is not a client-side send refusal. If the
+hosted API still rejects a linked non-beta session, that is a heydex-web blocker,
+not a Dex client gate. Tickets still land on the private DexDiff desk.
+
 ## HTTP endpoints (all also answer OPTIONS for CORS)
 
 ### POST /api/feedback/report
