@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -18,9 +19,22 @@ def _write_executable(path: Path, body: str) -> None:
     path.chmod(0o755)
 
 
+def _install_test_artifact(root: Path) -> tuple[Path, Path, Path]:
+    core = root / "bin" / "core"
+    buzz = root / "libexec" / "buzz"
+    buzz_admin = root / "libexec" / "buzz-admin"
+    core.parent.mkdir(parents=True)
+    buzz.parent.mkdir(parents=True)
+    shutil.copyfile(CORE_SOURCE, core)
+    core.chmod(0o755)
+    return core, buzz, buzz_admin
+
+
 def _seed_identity(studio_home: Path, identity_id: str, private_key: str) -> None:
     key_dir = studio_home / "keys" / "agents" / identity_id
     key_dir.mkdir(parents=True)
+    for directory in (studio_home, studio_home / "keys", studio_home / "keys" / "agents"):
+        directory.chmod(0o700)
     key_dir.chmod(0o700)
     key_file = key_dir / "key.json"
     key_file.write_text(
@@ -82,13 +96,23 @@ class SourceContractTests(unittest.TestCase):
             ["identity create", "rooms list", "rooms create", "post", "timeline"],
         )
 
+    def test_core_shell_is_bsd_portable_and_uses_only_bundled_runtime_paths(self) -> None:
+        source = CORE_SOURCE.read_text(encoding="utf-8")
+        for utility in ("chmod", "dirname", "mkdir", "mv", "rm", "rmdir"):
+            self.assertNotRegex(
+                source,
+                rf"(?m)^\s*{utility}\b[^\n]*\s--(?:\s|$)",
+                f"{utility} uses a non-POSIX option terminator",
+            )
+        self.assertNotIn("DEX_BUZZ_BIN", source)
+        self.assertNotIn("DEX_BUZZ_ADMIN", source)
+
     def test_identity_create_uses_the_bundled_admin_and_keeps_the_private_key_local(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             studio_home = root / "studio"
             log_path = root / "buzz.log"
-            fake_admin = root / "buzz-admin"
-            fake_buzz = root / "buzz"
+            core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
             _write_executable(
                 fake_admin,
                 "#!/usr/bin/env bash\n"
@@ -104,12 +128,10 @@ class SourceContractTests(unittest.TestCase):
             environment = {
                 **os.environ,
                 "DEX_STUDIO_HOME": str(studio_home),
-                "DEX_BUZZ_BIN": str(fake_buzz),
-                "DEX_BUZZ_ADMIN": str(fake_admin),
                 "DEX_TEST_LOG": str(log_path),
             }
             result = subprocess.run(
-                [CORE_SOURCE, "identity", "create", "--name", "Research Scout"],
+                [core, "identity", "create", "--name", "Research Scout"],
                 env=environment,
                 capture_output=True,
                 text=True,
@@ -140,7 +162,7 @@ class SourceContractTests(unittest.TestCase):
             )
 
             duplicate = subprocess.run(
-                [CORE_SOURCE, "identity", "create", "--name", "Research Scout"],
+                [core, "identity", "create", "--name", "Research Scout"],
                 env=environment,
                 capture_output=True,
                 text=True,
@@ -153,8 +175,7 @@ class SourceContractTests(unittest.TestCase):
             root = Path(temporary)
             studio_home = root / "studio"
             log_path = root / "buzz.log"
-            fake_admin = root / "buzz-admin"
-            fake_buzz = root / "buzz"
+            core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
             _seed_identity(studio_home, "studio", "c" * 64)
             _seed_identity(studio_home, "room-owner", "d" * 64)
             _write_executable(fake_admin, "#!/bin/bash\nexit 99\n")
@@ -172,19 +193,17 @@ class SourceContractTests(unittest.TestCase):
                 **os.environ,
                 "PATH": "",
                 "DEX_STUDIO_HOME": str(studio_home),
-                "DEX_BUZZ_BIN": str(fake_buzz),
-                "DEX_BUZZ_ADMIN": str(fake_admin),
                 "DEX_TEST_LOG": str(log_path),
             }
             listed = subprocess.run(
-                [CORE_SOURCE, "rooms", "list", "--as", "studio", "--json"],
+                [core, "rooms", "list", "--as", "studio", "--json"],
                 env=environment,
                 capture_output=True,
                 text=True,
             )
             created = subprocess.run(
                 [
-                    CORE_SOURCE,
+                    core,
                     "rooms",
                     "create",
                     "--name",
@@ -216,8 +235,7 @@ class SourceContractTests(unittest.TestCase):
             root = Path(temporary)
             studio_home = root / "studio"
             log_path = root / "buzz.log"
-            fake_admin = root / "buzz-admin"
-            fake_buzz = root / "buzz"
+            core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
             _seed_identity(studio_home, "studio", "c" * 64)
             _seed_identity(studio_home, "research-scout", "d" * 64)
             _write_executable(fake_admin, "#!/bin/bash\nexit 99\n")
@@ -237,13 +255,11 @@ class SourceContractTests(unittest.TestCase):
                 **os.environ,
                 "PATH": "",
                 "DEX_STUDIO_HOME": str(studio_home),
-                "DEX_BUZZ_BIN": str(fake_buzz),
-                "DEX_BUZZ_ADMIN": str(fake_admin),
                 "DEX_TEST_LOG": str(log_path),
             }
             posted = subprocess.run(
                 [
-                    CORE_SOURCE,
+                    core,
                     "post",
                     "--as",
                     "research-scout",
@@ -257,7 +273,7 @@ class SourceContractTests(unittest.TestCase):
                 text=True,
             )
             timeline_result = subprocess.run(
-                [CORE_SOURCE, "timeline", "--room", "room-1", "--limit", "2", "--json"],
+                [core, "timeline", "--room", "room-1", "--limit", "2", "--json"],
                 env=environment,
                 capture_output=True,
                 text=True,
@@ -278,8 +294,7 @@ class SourceContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             studio_home = root / "studio"
-            fake_admin = root / "buzz-admin"
-            fake_buzz = root / "buzz"
+            core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
             private_key = "e" * 64
             _seed_identity(studio_home, "studio", private_key)
             _write_executable(fake_admin, "#!/bin/bash\nexit 99\n")
@@ -296,30 +311,28 @@ class SourceContractTests(unittest.TestCase):
                 **os.environ,
                 "PATH": "",
                 "DEX_STUDIO_HOME": str(studio_home),
-                "DEX_BUZZ_BIN": str(fake_buzz),
-                "DEX_BUZZ_ADMIN": str(fake_admin),
             }
             probes = [
                 subprocess.run(
-                    [CORE_SOURCE, "post", "--as", "missing", "--room", "room-1", "--text", "x"],
+                    [core, "post", "--as", "missing", "--room", "room-1", "--text", "x"],
                     env=environment,
                     capture_output=True,
                     text=True,
                 ),
                 subprocess.run(
-                    [CORE_SOURCE, "timeline", "--room", "room-1", "--limit", "0"],
+                    [core, "timeline", "--room", "room-1", "--limit", "0"],
                     env=environment,
                     capture_output=True,
                     text=True,
                 ),
                 subprocess.run(
-                    [CORE_SOURCE, "timeline", "--room", "missing", "--json"],
+                    [core, "timeline", "--room", "missing", "--json"],
                     env=environment,
                     capture_output=True,
                     text=True,
                 ),
                 subprocess.run(
-                    [CORE_SOURCE, "rooms", "list", "--json"],
+                    [core, "rooms", "list", "--json"],
                     env=environment,
                     capture_output=True,
                     text=True,
@@ -335,6 +348,39 @@ class SourceContractTests(unittest.TestCase):
             self.assertIn("1 to 200", json.loads(probes[1].stderr)["error"])
             self.assertIn("unknown room", json.loads(probes[2].stderr)["error"])
             self.assertIn("relay timed out", json.loads(probes[3].stderr)["error"])
+
+    def test_existing_identity_custody_fails_closed_on_unsafe_modes_or_symlinks(self) -> None:
+        for unsafe_case in ("key-mode", "directory-mode", "key-symlink"):
+            with self.subTest(unsafe_case=unsafe_case), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                studio_home = root / "studio"
+                core, fake_buzz, fake_admin = _install_test_artifact(root / "artifact")
+                _write_executable(fake_buzz, "#!/bin/bash\nexit 99\n")
+                _write_executable(fake_admin, "#!/bin/bash\nexit 99\n")
+                _seed_identity(studio_home, "unsafe", "f" * 64)
+                key_file = studio_home / "keys" / "agents" / "unsafe" / "key.json"
+                if unsafe_case == "key-mode":
+                    key_file.chmod(0o644)
+                elif unsafe_case == "directory-mode":
+                    key_file.parent.chmod(0o755)
+                else:
+                    original = key_file.with_name("original.json")
+                    key_file.rename(original)
+                    key_file.symlink_to(original)
+                result = subprocess.run(
+                    [core, "post", "--as", "unsafe", "--room", "room-1", "--text", "x"],
+                    env={
+                        **os.environ,
+                        "PATH": "",
+                        "DEX_STUDIO_HOME": str(studio_home),
+                    },
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("unsafe identity custody", json.loads(result.stderr)["error"])
+                self.assertNotIn("f" * 64, result.stderr)
 
     def test_archive_verification_rejects_a_sidecar_checksum_mismatch(self) -> None:
         verifier = PACKAGE_ROOT / "verify_artifact.py"
@@ -377,6 +423,101 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("pinned Buzz revision", error["error"])
         self.assertEqual(result.stdout, "")
 
+    def test_builder_has_no_caller_selected_cargo_or_target_and_redacts_diagnostics(self) -> None:
+        builder = PACKAGE_ROOT / "build_artifact.py"
+        help_result = subprocess.run(
+            [sys.executable, builder, "--help"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(help_result.returncode, 0)
+        self.assertNotIn("--cargo", help_result.stdout)
+        self.assertNotIn("--cargo-target-dir", help_result.stdout)
+
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            import build_artifact
+
+            source = Path("/private/build/buzz")
+            target = Path("/private/build/target")
+            diagnostic = build_artifact._bounded_cargo_diagnostic(
+                "Compiling example\n"
+                f"error[E0001]: failed in {source}/crates/example/src/lib.rs\n"
+                f"  target: {target}/release/example\n"
+                "  BUZZ_PRIVATE_KEY=super-secret-value\n"
+                "warning: build failed, waiting for other jobs to finish...\n",
+                source,
+                target,
+            )
+        finally:
+            sys.path.pop(0)
+        self.assertIn("error[E0001]", diagnostic)
+        self.assertIn("<buzz-source>", diagnostic)
+        self.assertIn("<cargo-target>", diagnostic)
+        self.assertNotIn("/private/build", diagnostic)
+        self.assertNotIn("super-secret-value", diagnostic)
+        self.assertLessEqual(len(diagnostic), 4096)
+
+        poisoned = {
+            "RUSTC": "/tmp/fake-rustc",
+            "RUSTFLAGS": "--cfg injected",
+            "RUSTC_WRAPPER": "/tmp/fake-wrapper",
+            "CARGO_BUILD_RUSTC": "/tmp/fake-rustc",
+            "CARGO_TARGET_DIR": "/tmp/prebuilt",
+            "HERMIT_EXE": "/tmp/fake-hermit",
+        }
+        environment = build_artifact._sanitized_build_environment(
+            Path("/tmp/fresh-target"),
+            source_environment={**os.environ, **poisoned},
+        )
+        for key in poisoned:
+            if key == "CARGO_TARGET_DIR":
+                continue
+            self.assertNotIn(key, environment)
+        self.assertEqual(environment["CARGO_TARGET_DIR"], "/tmp/fresh-target")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            prebuilt_output = Path(temporary)
+            (prebuilt_output / ".cargo-target" / "release").mkdir(parents=True)
+            _write_executable(
+                prebuilt_output / ".cargo-target" / "release" / "buzz",
+                "#!/bin/bash\nexit 0\n",
+            )
+            rejected = subprocess.run(
+                [
+                    sys.executable,
+                    builder,
+                    "--buzz-source",
+                    PACKAGE_ROOT,
+                    "--output",
+                    prebuilt_output,
+                ],
+                capture_output=True,
+                text=True,
+            )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("must be empty", json.loads(rejected.stderr)["error"])
+
+    def test_native_dependency_policy_rejects_non_baseline_libraries(self) -> None:
+        sys.path.insert(0, str(PACKAGE_ROOT))
+        try:
+            from artifact_support import require_baseline_dependencies
+
+            require_baseline_dependencies(
+                "linux",
+                ["libc.so.6", "libm.so.6", "libgcc_s.so.1", "ld-linux-x86-64.so.2"],
+            )
+            with self.assertRaisesRegex(RuntimeError, "non-baseline"):
+                require_baseline_dependencies("linux", ["/tmp/libinjected.so"])
+            require_baseline_dependencies(
+                "darwin",
+                ["/usr/lib/libSystem.B.dylib", "/System/Library/Frameworks/Security.framework/Security"],
+            )
+            with self.assertRaisesRegex(RuntimeError, "non-baseline"):
+                require_baseline_dependencies("darwin", ["@rpath/libinjected.dylib"])
+        finally:
+            sys.path.pop(0)
+
     @unittest.skipUnless(
         os.environ.get("DEX_TEST_BUZZ_SOURCE"),
         "real pinned Buzz source was not supplied",
@@ -395,12 +536,6 @@ class SourceContractTests(unittest.TestCase):
                 "--output",
                 output,
             ]
-            if os.environ.get("DEX_TEST_BUZZ_CARGO"):
-                build_command.extend(["--cargo", os.environ["DEX_TEST_BUZZ_CARGO"]])
-            if os.environ.get("DEX_TEST_BUZZ_TARGET_DIR"):
-                build_command.extend(
-                    ["--cargo-target-dir", os.environ["DEX_TEST_BUZZ_TARGET_DIR"]]
-                )
             built = subprocess.run(
                 build_command,
                 capture_output=True,

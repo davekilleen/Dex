@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +17,7 @@ from artifact_support import (
     canonical_json_bytes,
     host_arch,
     host_platform,
+    native_dependencies,
     native_identity,
     require_regular_executable,
     sha256_file,
@@ -25,6 +28,30 @@ PACKAGE_ROOT = Path(__file__).resolve().parent
 
 class BuildError(ArtifactError):
     pass
+
+
+def _bounded_cargo_diagnostic(stderr: str, source: Path, target: Path) -> str:
+    sanitized = stderr.replace(str(source.resolve()), "<buzz-source>")
+    sanitized = sanitized.replace(str(target.resolve()), "<cargo-target>")
+    user_home = str(Path.home())
+    if user_home:
+        sanitized = sanitized.replace(user_home, "<user-home>")
+    sanitized = re.sub(
+        r"(?i)\b([a-z0-9_]*(?:token|secret|password|private[_-]?key)[a-z0-9_]*)\s*[=:]\s*\S+",
+        lambda match: f"{match.group(1)}=[redacted]",
+        sanitized,
+    )
+    lines = sanitized.splitlines()
+    first_error = next(
+        (index for index, line in enumerate(lines) if re.match(r"^\s*(error(?:\[[^]]+\])?:|Caused by:)", line)),
+        max(0, len(lines) - 12),
+    )
+    start = max(0, first_error - 2)
+    selected = lines[start : start + 24]
+    diagnostic = "\n".join(selected).strip()
+    if len(diagnostic) > 4096:
+        diagnostic = diagnostic[:4083] + "\n[truncated]"
+    return diagnostic or "Cargo failed without diagnostic output"
 
 
 def _git_head(source: Path) -> str:
@@ -75,17 +102,67 @@ def _source_epoch(repo: Path) -> int:
     return int(result.stdout.strip())
 
 
-def _build_pinned_runtime(args: argparse.Namespace) -> tuple[Path, Path]:
-    cargo = args.cargo
-    if cargo is None:
-        source_cargo = args.buzz_source / "bin" / "cargo"
-        cargo = source_cargo if source_cargo.is_file() else Path("cargo")
-    environment = None
-    target_dir = args.cargo_target_dir
-    if target_dir is not None:
-        import os
+def _toolchain_identity(source: Path, environment: dict[str, str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for name in ("cargo", "rustc"):
+        executable = source / "bin" / name
+        completed = subprocess.run(
+            [executable, "--version", "--verbose"],
+            cwd=source,
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            raise BuildError(f"pinned Buzz {name} launcher failed")
+        first_line = completed.stdout.splitlines()[0] if completed.stdout else ""
+        if not first_line.startswith(f"{name} 1.95.0 "):
+            raise BuildError(f"pinned Buzz {name} is not version 1.95.0")
+        result[name] = first_line
+    return result
 
-        environment = {**os.environ, "CARGO_TARGET_DIR": str(target_dir)}
+
+def _sanitized_build_environment(
+    target_dir: Path,
+    *,
+    source_environment: dict[str, str] | None = None,
+    source: Path | None = None,
+) -> dict[str, str]:
+    inherited = os.environ if source_environment is None else source_environment
+    allowed = (
+        "HOME",
+        "USER",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "XDG_CACHE_HOME",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+    )
+    environment = {key: inherited[key] for key in allowed if inherited.get(key)}
+    trusted_bin = f"{source / 'bin'}:" if source is not None else ""
+    environment.update(
+        {
+            "PATH": f"{trusted_bin}/usr/bin:/bin:/usr/sbin:/sbin",
+            "CARGO_TARGET_DIR": str(target_dir),
+            "CARGO_TERM_COLOR": "never",
+        }
+    )
+    return environment
+
+
+def _build_pinned_runtime(args: argparse.Namespace) -> tuple[Path, Path, dict[str, str]]:
+    cargo = args.buzz_source / "bin" / "cargo"
+    target_dir = args.output / ".cargo-target"
+    target_dir.mkdir()
+    environment = _sanitized_build_environment(target_dir, source=args.buzz_source)
+    toolchain = _toolchain_identity(args.buzz_source, environment)
     result = subprocess.run(
         [
             str(cargo),
@@ -105,13 +182,11 @@ def _build_pinned_runtime(args: argparse.Namespace) -> tuple[Path, Path]:
         text=True,
     )
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip().splitlines()
-        final_line = detail[-1] if detail else "unknown Cargo failure"
-        raise BuildError(f"pinned Buzz release build failed: {final_line}")
-    target_root = target_dir if target_dir is not None else args.buzz_source / "target"
-    buzz = target_root / "release" / "buzz"
-    buzz_admin = target_root / "release" / "buzz-admin"
-    return buzz, buzz_admin
+        detail = _bounded_cargo_diagnostic(result.stderr or result.stdout, args.buzz_source, target_dir)
+        raise BuildError(f"pinned Buzz release build failed:\n{detail}")
+    buzz = target_dir / "release" / "buzz"
+    buzz_admin = target_dir / "release" / "buzz-admin"
+    return buzz, buzz_admin, toolchain
 
 
 def _write_deterministic_archive(artifact_dir: Path, archive: Path, epoch: int) -> None:
@@ -137,6 +212,8 @@ def _write_deterministic_archive(artifact_dir: Path, archive: Path, epoch: int) 
 
 
 def build(args: argparse.Namespace) -> dict[str, str]:
+    if args.output.exists() and any(args.output.iterdir()):
+        raise BuildError("artifact output directory must be empty")
     contract = json.loads((PACKAGE_ROOT / "contract.json").read_text(encoding="utf-8"))
     expected_revision = contract["buzz_revision"]
     actual_revision = _git_head(args.buzz_source)
@@ -147,7 +224,8 @@ def build(args: argparse.Namespace) -> dict[str, str]:
         )
     _require_clean_source(args.buzz_source)
 
-    buzz_bin, buzz_admin_bin = _build_pinned_runtime(args)
+    args.output.mkdir(parents=True, exist_ok=True)
+    buzz_bin, buzz_admin_bin, toolchain = _build_pinned_runtime(args)
     for path, label in (
         (buzz_bin, "Buzz client"),
         (buzz_admin_bin, "Buzz admin client"),
@@ -169,8 +247,8 @@ def build(args: argparse.Namespace) -> dict[str, str]:
                 f"{name} targets {runtime_platform}/{runtime_arch}, expected "
                 f"{platform_label}/{architecture}"
             )
+        native_dependencies(path, platform_label)
 
-    args.output.mkdir(parents=True, exist_ok=True)
     artifact_name = f"{contract['artifact_id']}-{platform_label}-{architecture}"
     artifact_dir = args.output / artifact_name
     if artifact_dir.exists():
@@ -198,7 +276,13 @@ def build(args: argparse.Namespace) -> dict[str, str]:
         if relative.startswith("libexec/"):
             runtime_name = Path(relative).name
             binary_format, _, binary_arch = runtime_identities[runtime_name]
-            entry.update({"format": binary_format, "architecture": binary_arch})
+            entry.update(
+                {
+                    "format": binary_format,
+                    "architecture": binary_arch,
+                    "dependencies": native_dependencies(destination, platform_label),
+                }
+            )
         elif relative == "bin/core":
             entry["format"] = "bash"
         else:
@@ -217,8 +301,10 @@ def build(args: argparse.Namespace) -> dict[str, str]:
             "buzz_repository": contract["buzz_repository"],
             "buzz_revision": expected_revision,
             "buzz_tree_clean": True,
+            "cargo_target_fresh": True,
             "dex_revision": _git_head(dex_root),
             "source_contract_sha256": sha256_file(PACKAGE_ROOT / "contract.json"),
+            "toolchain": toolchain,
         },
         "files": sorted(files, key=lambda entry: str(entry["path"])),
     }
@@ -253,8 +339,6 @@ def build(args: argparse.Namespace) -> dict[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--buzz-source", type=Path, required=True)
-    parser.add_argument("--cargo", type=Path)
-    parser.add_argument("--cargo-target-dir", type=Path)
     parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)

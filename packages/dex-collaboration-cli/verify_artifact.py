@@ -15,6 +15,7 @@ from artifact_support import (
     canonical_json_bytes,
     host_arch,
     host_platform,
+    native_dependencies,
     native_identity,
     require_mode,
     safe_relative_files,
@@ -127,6 +128,9 @@ def verify(root: Path, expected_platform: str, expected_arch: str) -> dict[str, 
             raise ArtifactError(f"native runtime target mismatch: {relative}")
         if entry.get("format") != binary_format or entry.get("architecture") != binary_arch:
             raise ArtifactError(f"native runtime manifest mismatch: {relative}")
+        dependencies = native_dependencies(runtime, expected_platform)
+        if entry.get("dependencies") != dependencies:
+            raise ArtifactError(f"native runtime dependency manifest mismatch: {relative}")
 
     with tempfile.TemporaryDirectory() as temporary:
         environment = {
@@ -154,8 +158,16 @@ def verify(root: Path, expected_platform: str, expected_arch: str) -> dict[str, 
         not isinstance(sources, dict)
         or sources.get("buzz_revision") != "b2ac66cde81df7ce1afc50016e1571cb6e8b7779"
         or sources.get("buzz_tree_clean") is not True
+        or sources.get("cargo_target_fresh") is not True
     ):
         raise ArtifactError("pinned Buzz source identity is missing")
+    toolchain = sources.get("toolchain")
+    if (
+        not isinstance(toolchain, dict)
+        or not str(toolchain.get("cargo", "")).startswith("cargo 1.95.0 ")
+        or not str(toolchain.get("rustc", "")).startswith("rustc 1.95.0 ")
+    ):
+        raise ArtifactError("pinned Rust toolchain identity is missing")
     return {
         "status": "verified",
         "artifact": str(root.resolve()),

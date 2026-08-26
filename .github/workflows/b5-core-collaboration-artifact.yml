@@ -52,10 +52,6 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Set up pinned Rust toolchain
-        shell: bash
-        run: rustup toolchain install 1.95.0 --profile minimal
-
       - name: Check source contract
         shell: bash
         env:
@@ -72,17 +68,19 @@ jobs:
           DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: |
           output="$RUNNER_TEMP/dex-core-collaboration"
-          cargo_bin="$(rustup which cargo --toolchain 1.95.0)"
-          "$DEX_PYTHON" packages/dex-collaboration-cli/build_artifact.py \
+          build_json="$("$DEX_PYTHON" packages/dex-collaboration-cli/build_artifact.py \
             --buzz-source "$GITHUB_WORKSPACE/_buzz" \
-            --cargo "$cargo_bin" \
             --jobs 6 \
-            --output "$output"
-          artifact_dir="$(find "$output" -mindepth 1 -maxdepth 1 -type d \
-            -name 'dex-core-collaboration-cli-*' -print -quit)"
-          test -n "$artifact_dir"
+            --output "$output")"
+          printf '%s\n' "$build_json"
+          artifact_dir="$("$DEX_PYTHON" -c \
+            'import json,sys; print(json.loads(sys.argv[1])["artifact_dir"])' \
+            "$build_json")"
+          archive="$("$DEX_PYTHON" -c \
+            'import json,sys; print(json.loads(sys.argv[1])["archive"])' \
+            "$build_json")"
           printf 'artifact_dir=%s\n' "$artifact_dir" >> "$GITHUB_OUTPUT"
-          printf 'archive=%s.tar.gz\n' "$artifact_dir" >> "$GITHUB_OUTPUT"
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
 
       - name: Verify extracted artifact and archive
         shell: bash

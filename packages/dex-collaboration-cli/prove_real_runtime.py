@@ -178,7 +178,7 @@ def prove(artifact: Path, relay: str) -> dict[str, object]:
             or room_detail.get("name") != room_name
             or room_detail.get("description") != description
         ):
-            raise ProofError("room flags were not preserved by the relay")
+            raise ProofError("room name or description was not preserved by the relay")
         relay_metadata_pubkey = str(room_detail.get("pubkey", ""))
 
         posted_ids: list[str] = []
@@ -225,7 +225,7 @@ def prove(artifact: Path, relay: str) -> dict[str, object]:
         if not isinstance(timeline, list) or [event.get("id") for event in timeline] != posted_ids[-2:]:
             raise ProofError("timeline did not return the newest two posts")
         if any(event.get("kind") != 9 or event.get("pubkey") != pubkey for event in timeline):
-            raise ProofError("timeline contains an unsigned or wrong-author post")
+            raise ProofError("timeline contains a wrong-kind or wrong-author post")
         created_times = [event.get("created_at") for event in timeline]
         if any(not isinstance(value, int) for value in created_times) or created_times != sorted(created_times):
             raise ProofError("timeline is not ascending with snake_case created_at values")
@@ -301,8 +301,16 @@ def prove(artifact: Path, relay: str) -> dict[str, object]:
                 "channel_id": room_id,
                 "selected_creator_identity_verified": True,
                 "relay_metadata_pubkey": relay_metadata_pubkey,
+                "requested_type": "stream",
+                "requested_visibility": "open",
+                "canonical_tags_independently_verified": False,
             },
-            "posts": {"signed_kind": 9, "count": len(posted_ids)},
+            "posts": {
+                "relay_returned_kind": 9,
+                "author_pubkey_matched": True,
+                "cryptographic_signature_independently_verified": False,
+                "count": len(posted_ids),
+            },
             "timeline": {"limit": 2, "newest_tail": True, "ascending": True},
             "negative_paths": ["invalid_limit", "unknown_identity", "unknown_room", "relay_failure"],
             "private_key_leaked": False,

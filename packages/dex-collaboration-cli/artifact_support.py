@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import os
 import platform
+import re
 import stat
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -89,6 +91,67 @@ def native_identity(path: Path) -> tuple[str, str, str]:
         return "mach-o", "darwin", arch
 
     raise ArtifactError(f"runtime is not a supported native executable: {path}")
+
+
+def native_dependencies(path: Path, platform_label: str) -> list[str]:
+    if platform_label == "linux":
+        result = subprocess.run(
+            ["/usr/bin/readelf", "-d", path],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise ArtifactError(f"ELF dependency closure could not be read: {path.name}")
+        if "(RPATH)" in result.stdout or "(RUNPATH)" in result.stdout:
+            raise ArtifactError(f"native runtime has a non-baseline search path: {path.name}")
+        dependencies = re.findall(r"\(NEEDED\).*Shared library: \[([^]]+)\]", result.stdout)
+    elif platform_label == "darwin":
+        result = subprocess.run(
+            ["/usr/bin/otool", "-L", path],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise ArtifactError(f"Mach-O dependency closure could not be read: {path.name}")
+        dependencies = [
+            line.strip().split(" (", 1)[0]
+            for line in result.stdout.splitlines()[1:]
+            if line.strip()
+        ]
+    else:
+        raise ArtifactError(f"unsupported dependency platform: {platform_label}")
+    require_baseline_dependencies(platform_label, dependencies)
+    return sorted(set(dependencies))
+
+
+def require_baseline_dependencies(platform_label: str, dependencies: list[str]) -> None:
+    if not dependencies:
+        raise ArtifactError("native runtime dependency closure is empty")
+    if platform_label == "linux":
+        allowed = {
+            "libc.so.6",
+            "libdl.so.2",
+            "libgcc_s.so.1",
+            "libm.so.6",
+            "libpthread.so.0",
+            "libresolv.so.2",
+            "librt.so.1",
+            "libutil.so.1",
+            "ld-linux-x86-64.so.2",
+            "ld-linux-aarch64.so.1",
+        }
+        rejected = [dependency for dependency in dependencies if dependency not in allowed]
+    elif platform_label == "darwin":
+        rejected = [
+            dependency
+            for dependency in dependencies
+            if not dependency.startswith("/usr/lib/")
+            and not dependency.startswith("/System/Library/Frameworks/")
+        ]
+    else:
+        raise ArtifactError(f"unsupported dependency platform: {platform_label}")
+    if rejected:
+        raise ArtifactError(f"native runtime has non-baseline dependencies: {', '.join(rejected)}")
 
 
 def canonical_json_bytes(document: object) -> bytes:

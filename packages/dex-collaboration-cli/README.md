@@ -15,6 +15,11 @@ artifact only: it is not wired into Dex's installer, release workflow, or an
 existing packaged app. That integration and packaged-app proof remain B5.4
 work.
 
+The native dependency closure is recorded per executable and restricted to
+the operating system baseline (`/usr/lib` and system frameworks on macOS;
+glibc/loader libraries on Linux). The verifier recomputes that closure on each
+fresh CI host and rejects custom search paths or non-baseline libraries.
+
 ## Frozen boundary
 
 `contract.json` pins the collaboration runtime to
@@ -53,15 +58,20 @@ identities are never overwritten. Standard output is JSON-only; failures are
 JSON on standard error, and native error details are scrubbed of the active
 private key.
 
-Buzz uses NIP-29 semantics: the selected creator identity signs the create
+Buzz uses NIP-29 semantics: the selected creator identity authorizes the create
 request, while canonical channel metadata returned by the relay is
-relay-signed. The behavioral proof verifies the creator selection, the room
-flags, and a post/timeline round-trip signed by that same identity without
-misreporting the relay metadata signer as the creator.
+relay-signed. The package boundary test proves that `stream` and `open` are
+sent, and the behavioral proof verifies the returned room name/description and
+the creator's pubkey on kind-9 timeline events. The pinned CLI does not expose
+the raw canonical room tags or event signatures through these commands, so the
+proof reports those two independent cryptographic checks as `false` rather
+than overstating its evidence.
 
 ## Build and verify
 
-Use a Buzz checkout at the exact revision and Rust 1.95.0:
+Use a clean Buzz checkout at the exact revision. The builder invokes that
+checkout's tracked Hermit launchers for Rust 1.95.0, strips inherited
+Rust/Cargo/Hermit overrides, and always builds into a new empty target:
 
 ```bash
 python3 packages/dex-collaboration-cli/build_artifact.py \
@@ -88,8 +98,8 @@ python3 packages/dex-collaboration-cli/prove_real_runtime.py \
 
 The proof creates a uniquely named disposable room on that relay. It uses
 fresh temporary homes and an empty caller `PATH`, checks identity persistence
-and overwrite refusal, selected creator identity and room flags, signed kind-9
-post/timeline semantics, newest-tail limiting, JSON failures for invalid and
+and overwrite refusal, selected creator identity and requested room flags,
+kind-9 author post/timeline semantics, newest-tail limiting, JSON failures for invalid and
 unknown inputs, relay failure handling, and private-key non-disclosure.
 
 ## CI
