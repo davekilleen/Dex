@@ -19,11 +19,12 @@ with a receipt.
 > The old `sed "s|{{VAULT_PATH}}|…|"` templating over `System/.mcp.json.example`
 > no longer exists. If a doc describes it, that doc is stale.
 
-## 2. MCP servers — 10 core, external ones stay external
+## 2. MCP servers — 10 core plus one reviewed optional integration
 
-Dex ships **10 MCP servers** in `core/mcp/`. The authoritative, CI-drift-gated
-list (names, tool counts, exact tools) is `docs/architecture/INVENTORY.md`
-§ "MCP engines" — don't hand-copy it here.
+Dex ships **10 MCP servers** in `core/mcp/` plus the optional Pipedrive server
+under `core/integrations/pipedrive/`, for 11 reviewed Dex servers in total. The
+authoritative, CI-drift-gated list (names, tool counts, exact tools) is
+`docs/architecture/INVENTORY.md` § "MCP engines" — don't hand-copy it here.
 
 External MCPs (browser automation, user-installed integrations, hosted vendor
 MCPs) are not part of Dex; users add them via their own Claude settings.

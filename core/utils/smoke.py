@@ -1387,7 +1387,16 @@ def _harness_failure_run(
 
 
 def _safe_temporary_parent(source: Path) -> Path:
-    candidates = (Path("/private/tmp"), Path("/tmp"), Path("/var/tmp"), Path(tempfile.gettempdir()))
+    # Honour an explicit host temp directory first when it is outside the
+    # live vault. CI and managed runners commonly put /tmp on a small tmpfs;
+    # ignoring TMPDIR can exhaust that filesystem even when normal disk was
+    # deliberately supplied for the smoke proof.
+    candidates = (
+        Path(tempfile.gettempdir()),
+        Path("/private/tmp"),
+        Path("/var/tmp"),
+        Path("/tmp"),
+    )
     for candidate in candidates:
         try:
             resolved = candidate.resolve(strict=True)

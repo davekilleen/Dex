@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: dd9818642b133e90d8c327eb4d9932c3d452fd96737126d36f1a9162fd25b536 -->
+<!-- Content SHA-256: ab1af48d6358265d8f1071ebb8645af1bdc23733f7c1f7458658127b1065e1b7 -->
 
 # Architecture Inventory
 
@@ -26,8 +26,8 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 82<br>
-**Discoverability-risk count:** 4
+**Skill count:** 81<br>
+**Discoverability-risk count:** 3
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
 
@@ -56,7 +56,6 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `backup-setup` | `.claude/skills/backup-setup/SKILL.md` | Set up automatic vault backups to a synced folder or a cloud provider, with verified archives and tiered retention. Use when the user says 'back up my vault', 'set up backups', 'where are my backups going', or asks about losing their notes. Not for restoring or testing a restore (`backup-restore`); not for a one-off backup right now (`backup-now`). | 350 | when |
 | `calendar-setup` | `.claude/skills/calendar-setup/SKILL.md` | Grant Python calendar access for ~30x faster calendar queries. Use when the user says 'connect my calendar', 'calendar is slow', 'set up calendar access'. Not for connecting Google Workspace as a whole; use `google-workspace-setup`. | 232 | when |
 | `commitments` | `.claude/skills/commitments/SKILL.md` | Reconcile the promises you made and the asks you received across meetings and notes into a clear owner/due/source list, then — only with your confirmation — turn the real ones into tracked tasks. Use when the user says 'what did I promise', 'what am I on the hook for', 'anything I owe people', 'loose ends', or after a run of meetings. Also use proactively during daily-plan/daily-review when uncaptured commitments surface. Not for tracking work you handed off to others; use `delegate-check`. Not for recording a decision you made; use `decision-log`. | 554 | when |
-| `connect` | `.claude/skills/connect/SKILL.md` | Connect, check and manage your app integrations — Google and Linear are reviewed and ready; hundreds more (Slack, Notion, GitHub and others) connect with an extra confirmation. OAuth or paste-a-key, tokens stored encrypted on your machine. | 239 | **discoverability-risk** |
 | `create-mcp` | `.claude/skills/create-mcp/SKILL.md` | Build a brand-new MCP integration from scratch with a guided wizard. Use when the user wants Dex to talk to a tool that has no existing server — 'build an integration for X', 'Dex can't connect to Y yet'. Not for installing an MCP that already exists; use `integrate-mcp`. Not for a prompt-only workflow with no external tool; use `create-skill`. | 346 | when |
 | `create-skill` | `.claude/skills/create-skill/SKILL.md` | Author a new Dex skill — a reusable `/command` — that actually fires and passes the quality bar. Runs a collision check, classifies the shape, writes a router-grade description, generates the real package (SKILL.md + evals), and grades it with `skill-score` before calling it done. Use when the user says 'make a skill', 'I want a /command for X', 'turn this into a skill'. A skill the user builds for themselves is saved as `-custom` (protected from updates) and coached, never blocked; a first-party skill is held to the hard gate. Not for connecting an external tool; use `create-mcp`. Not for grading a skill that already exists; use `skill-score`. | 652 | when |
 | `daily-plan` | `.claude/skills/daily-plan/SKILL.md` | Build today's plan from calendar, tasks, priorities and commitments, with smart scheduling suggestions. Use when the user says 'plan my day', 'what's on today', 'help me focus', or starts the morning. Also use proactively at the first session of the day. Not for reviewing a finished day; use `daily-review`. | 308 | when |

@@ -72,6 +72,16 @@
       "trade_offs": ["Setup quality depends on the person supplying accurate preferences and granting chosen permissions."]
     },
     {
+      "id": "dex-pipedrive-mcp",
+      "capability_class": "mcp-server",
+      "impact_tier": "high",
+      "availability": "active",
+      "value": "Connects customer relationship data to Dex so deal context can support planning and follow-through.",
+      "jobs_served": ["keep-projects-on-track", "track-people-and-relationships"],
+      "prerequisites": ["Pipedrive is explicitly connected and its local server is registered."],
+      "trade_offs": ["External records depend on Pipedrive availability, and writes remain opt-in and confirmation-gated."]
+    },
+    {
       "id": "dex-resume-mcp",
       "capability_class": "mcp-server",
       "impact_tier": "medium",
@@ -150,6 +160,16 @@
       "jobs_served": ["evolve-the-system-itself"],
       "prerequisites": ["Backup setup is complete and its destination has been verified."],
       "trade_offs": ["A schedule is not proof of recovery; the person must still test that a backup can be restored."]
+    },
+    {
+      "id": "connection-manager-engine",
+      "capability_class": "system-engine",
+      "impact_tier": "high",
+      "availability": "parked",
+      "value": "Provides local connection custody and provider metadata, but its person-facing doorway remains unavailable.",
+      "jobs_served": ["evolve-the-system-itself"],
+      "prerequisites": ["A reviewed person-facing doorway must be released before this engine can be used."],
+      "trade_offs": ["The engine is shipped groundwork and must not be recommended as currently usable."]
     },
     {
       "id": "entity-temperature-engine",

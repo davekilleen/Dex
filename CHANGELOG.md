@@ -7,6 +7,44 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.2] — 🔎 Dex Lens catalogue tells the complete release truth (2026-08-27)
+
+Dex's architecture inventory could see the optional Pipedrive server and its 15 tools,
+but the catalogue used by Dex Lens could not. Separately, the catalogue described the
+general `/connect` doorway as available even though Core's security decision still holds
+that doorway back.
+
+**What this improves for you:**
+
+* **Dex Lens can account for all 11 connected-tool servers and 146 tools.** Core now
+  uses one source of truth for both its architecture inventory and its Lens catalogue.
+* **Held work is no longer presented as usable.** The underlying connection manager
+  remains visible as parked groundwork, while the unreleased `/connect` instructions
+  stay out of the active skill list.
+* **The next catalogue has a new identity.** The corrected enriched candidate is
+  catalogue version 6 with 115 entries. It is not published by this change.
+
+## [1.97.1] — 🔎 Dex Lens can now see the wider Dex system (2026-08-26)
+
+Dex Lens could see the skills that ship with Dex, but not the connected-tool servers,
+scheduled automations, or system engines around them. That made the catalogue accurate
+but incomplete, and it left beta testers without a clear picture of which broader Dex
+capabilities were active, optional, or deliberately parked.
+
+**What this improves for you:**
+
+* **Dex Lens now receives the full 114-entry Dex catalogue.** It covers 95 skills,
+  10 connected-tool servers, five scheduled automations, and four system engines,
+  organised around the same eight jobs as before.
+* **Optional does not get mistaken for active.** The 29 dormant skills remain marked
+  dormant, so Lens can explain that they exist without pretending they are installed.
+* **Parked work stays parked.** The ritual-intelligence engine appears for honest
+  system awareness but cannot be recommended as an active capability.
+* **The trust boundary remains intact.** The catalogue is validated by the released
+  Dex Lens contract and signed only inside Dex's protected release process.
+
+The Phase 2 catalogue review and the released Dex Lens v0.1.9 verifier shaped this release.
+
 ## [1.97.0] — 🔎 Dex Lens sees every active skill, and Obsidian setup tells the truth (2026-08-26)
 
 Dex Lens could show only a hand-curated slice of what Dex can do, so the catalogue

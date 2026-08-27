@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 from core import portable_contract
 
@@ -13,6 +15,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-architecture-inventory.py"
 GATE = REPO_ROOT / "scripts/check-architecture-inventory.sh"
 INVENTORY = REPO_ROOT / "docs/architecture/INVENTORY.md"
+
+
+def _load_generator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "dex_architecture_inventory_generator",
+        GENERATOR,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _generate(output: Path) -> subprocess.CompletedProcess[str]:
@@ -38,6 +52,31 @@ def test_generator_is_deterministic(tmp_path: Path) -> None:
     assert first.read_text(encoding="utf-8").startswith(
         "<!-- GENERATED FILE — DO NOT EDIT BY HAND. -->\n"
     )
+
+
+def test_architecture_inventory_uses_lens_mcp_discovery(monkeypatch) -> None:
+    generator = _load_generator()
+    candidate = SimpleNamespace(
+        source_path="core/integrations/example/example_server.py",
+        server_name="dex-example-mcp",
+        tools=("example_tool",),
+        has_feature_status=True,
+    )
+    monkeypatch.setattr(
+        generator,
+        "discover_mcp_servers",
+        lambda _repo_root: (candidate,),
+        raising=False,
+    )
+
+    assert generator.discover_engines(REPO_ROOT) == [
+        generator.Engine(
+            source=candidate.source_path,
+            server_name=candidate.server_name,
+            tools=candidate.tools,
+            has_feature_status=True,
+        )
+    ]
 
 
 def test_inventory_detects_known_tool_and_skill(tmp_path: Path) -> None:

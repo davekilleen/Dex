@@ -439,6 +439,16 @@ def test_ambient_tmpdir_inside_vault_is_never_used(monkeypatch, tmp_path: Path) 
     assert not list(vault.glob("dex-smoke-*"))
 
 
+def test_ambient_tmpdir_outside_vault_is_preferred(monkeypatch, tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    normal_disk = tmp_path / "runner-temp"
+    normal_disk.mkdir()
+    monkeypatch.setenv("TMPDIR", str(normal_disk))
+    monkeypatch.setattr(smoke.tempfile, "tempdir", None)
+
+    assert smoke._safe_temporary_parent(vault) == normal_disk.resolve()
+
+
 def test_early_harness_failure_keeps_json_schema_and_exits_two(
     monkeypatch,
     tmp_path: Path,
