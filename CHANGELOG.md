@@ -7,6 +7,50 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.4] — 🔒 An outside security review, and every fix it called for (2026-08-27)
+
+An independent security reviewer, Sean O'Neill, went through all of Dex's code
+and published what he found. The verdict was reassuring — no bad code, no
+hidden data collection, several things done better than common practice — but
+he also named real weaknesses, mostly in how Dex brings in code written by
+other people. This release fixes everything from that review that can be fixed
+in Dex itself. Thank you, Sean.
+
+**What this fixes for you:**
+
+* **The building blocks Dex installs are now locked to reviewed versions.**
+  Installing Dex used to fetch the newest available copy of each supporting
+  package, trusting whatever had been published that day. Now every package is
+  fixed to an exact version Dex has already been tested with, checked against
+  a fingerprint of the genuine copy, and anything unexpected stops the install
+  rather than slipping in quietly.
+* **The Slack connection can no longer change under you.** The add-on that
+  connects Dex to Slack was fetched fresh on every start, so a bad release by
+  its author would have reached you automatically. It is now held to one
+  reviewed version, and moving to a newer one is a deliberate, reviewed
+  change. The review also found a template mistakenly installing a
+  similarly-named add-on by a different author on every setup — that is gone.
+* **What other people say in meetings is treated as information, never as
+  instructions.** Dex quietly reminds itself of who's who while you work,
+  drawing on notes that partly come from meeting transcripts — words other
+  people said. That material is now clearly fenced off as reference data, so
+  a carefully-worded sentence in someone's meeting audio can't read as a
+  command to Dex.
+* **The accident guard catches more accidents.** The safeguard that stops
+  catastrophic delete commands missed several common spellings of them; those
+  are now blocked, with tests to keep them blocked. Its description also now
+  says honestly what it is: a guard against accidents, not a wall against a
+  determined attacker.
+* **Usage analytics can no longer point back to you.** The anonymous
+  identifier was derived from your name, which a determined person could work
+  backwards, and your company's web address was included. The identifier is
+  now truly random, and your company is never mentioned unless you explicitly
+  choose to share it.
+* **The README now says plainly what you trust when you install Dex.** A new
+  Security & Trust Boundary section explains what runs on your machine, that
+  updates never happen without your say-so, and exactly whose account you are
+  trusting when you accept one.
+
 ## [1.97.3] — ↩️ After an update you can undo it, and Doctor talks while it heals (2026-08-27)
 
 An update could look finished while undo had nothing to go back to. New skills
