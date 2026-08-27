@@ -161,7 +161,7 @@ test('guard falls back to python when python3 is unavailable', (t) => {
   assert.equal(result.status, 2, result.stdout + result.stderr);
 });
 
-test('guard retains catastrophic blocks when no Python is available', (t) => {
+test('guard fails open when no Python is available', (t) => {
   const result = runGuard(
     'Bash',
     GUARD_PATH,
@@ -169,7 +169,9 @@ test('guard retains catastrophic blocks when no Python is available', (t) => {
     undefined,
     { DEX_PYTHON: '', PATH: restrictedPath(t, { includePython: false }) },
   );
-  assert.equal(result.status, 2, result.stdout + result.stderr);
+  // The shared Python gate is the only enforcement. Without a launcher the
+  // hook must not invent a second bash rule set that can drift from it.
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
 test('guard allows safe absolute paths when no Python is available', (t) => {
