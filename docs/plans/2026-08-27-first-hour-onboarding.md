@@ -125,11 +125,13 @@ Copy must say what is happening, why, and what she can do next. Failure copy: si
 
 ### 1. Welcome + consent (A) or welcome + name (B)
 
-**A:** “Hi [first name if we have it from the email]. Your work calendar, Slack, Granola, and Salesforce are already signed in here. For the next fifteen minutes I’d like to read your calendar and meeting notes so I can organise your week. I won’t change anything in those apps. Is that okay?”
+The first thing she hears is a hello — warm, a little excited, fifteen minutes, what Dex is great at. Look for her name silently first. Do not narrate looking, installing, or “checking what’s configured.”
+
+**A:** “Hey [first name] — welcome to Dex. You’re taking the leap, and this is going to be good. For the next fifteen minutes I’ll help you keep meetings, people, and follow-ups in one place you own. I can already see [app names]. I’d like to read your calendar and meeting notes so I can organise your week. I won’t change anything in those apps. Sound good?”
 
 First identity card uses **email only**: “From your work email: you’re Doireann Marron, at Pendo. Right?” Job title waits until after consent.
 
-**B:** “Hi — I’m Dex. I’ll help you keep meetings, people, and follow-ups in one place you own. What’s your name?” Then the short interview. Connect calendar after she names what matters.
+**B:** “Hey — welcome to Dex. You’re taking the leap, and this is going to be good. I’ll help you keep meetings, people, and follow-ups in one place you own. About fifteen minutes and we’ll have your week in front of you. What’s your name?” Then the short interview. Connect calendar after she names what matters.
 
 ### 2. Early meeting notes (when a source exists or she wants one)
 
@@ -255,7 +257,7 @@ Preview entry (to implement after this spec is approved):
 curl -fsSL https://heydex.ai/lab-onboarding.sh | bash
 ```
 
-That script (when written) should: create or use a throwaway folder, install Dex as today, drop in only the lab skill + this spec, and print “type `/setup-lab`”. It must **not** patch `onboarding.md` for existing users.
+That script (when written) should: create or use a practice folder, finish the behind-the-scenes setup **before anyone opens the chat** (the small Python folder plus the file that points Claude at Dex’s helpers), drop in only the lab skill + this spec, and print “type `/setup-lab`”. If that setup is skipped, the first message has nothing to talk to and the agent starts explaining machinery instead of saying hello. It must **not** patch `onboarding.md` for existing users. The agent must not run that install from inside `/setup-lab`.
 
 Empty-connector testing is mandatory: run Scenario B on a machine/account with company apps off, and prove the connect-at-the-right-time copy.
 

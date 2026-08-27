@@ -7,7 +7,7 @@ positive:
     expect: fire
   - utterance: "I want to try the new first hour."
     expect: fire
-  - utterance: "Start /setup-lab for this throwaway vault."
+  - utterance: "Start /setup-lab for this practice folder."
     expect: fire
 
 negative:
@@ -26,9 +26,9 @@ ambiguous:
     why: could be shipped /setup, /setup-lab, or /getting-started.
 
 missing_prerequisite:
-  - utterance: "Run /setup-lab"  # onboarding-mcp unavailable
+  - utterance: "Run /setup-lab"  # helpers not wired yet
     expect: degrade
-    why: say the preview cannot start without onboarding-mcp; do not invent a side-path vault.
+    why: one friendly line — practice folder is not ready, close chat, run the starter, type /setup-lab. Do not install from inside the chat. Do not invent a side path.
 
 failure-recovery:
   - utterance: "Finalize crashed, just edit the files."
