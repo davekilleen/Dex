@@ -94,7 +94,7 @@ approval is required for any release or merge.
 | Priority | Repository | Purpose | Current review surface |
 | --- | --- | --- | --- |
 | 1 | `davekilleen/Dex` | Portable Core, host registry, onboarding, Doctor, adapters, release assets, docs and press release | Draft PR #594 |
-| 2 | `davekilleen/dex-capability-exchange` | Receive/share loop, hosted intake contract, consent, privacy abstraction, withdrawal | Separate integration branches; no release |
+| 2 | `davekilleen/dex-lens` | Capability Exchange receive/share loop, hosted intake contract, consent, privacy abstraction, withdrawal | Separate integration branches; no release |
 | 3 | `davekilleen/dex-cards` | Mission Control Build Card and durable programme evidence | Draft PR #95 |
 | 4 | `davekilleen/dex-bb-plugin` | Standalone BB/getbb.app macOS-only adapter | Private draft PR #1 |
 
@@ -161,7 +161,8 @@ clean isolated clone.
 
 ### Capability Exchange
 
-- Repository: <https://github.com/davekilleen/dex-capability-exchange>
+- Canonical repository: <https://github.com/davekilleen/dex-lens>. The older
+  `davekilleen/dex-capability-exchange` URL redirects here.
 - Verified base before the local integration work:
   `5815bcc8a26d2c4d615119703e15f132dc64ce79`
 - Local integration candidate:
@@ -377,7 +378,8 @@ Doctor/onboarding claim is capability-derived, not brand-derived.
 
 ### Phase 2 — privacy-safe capability exchange
 
-1. Work in `davekilleen/dex-capability-exchange`, not Dex Core.
+1. Work in `davekilleen/dex-lens`, not Dex Core. Capability Exchange now lives in the
+   Dex Lens repository.
 2. Rebase is unnecessary; merge current `main` into an isolated integration branch.
 3. Preserve the `a12b3b8` Lens-doorway correction.
 4. Treat `c76f1f5` as a reviewed prototype, not an acceptable implementation.
