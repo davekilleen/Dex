@@ -1316,7 +1316,7 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
 
 def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
     """Report the saved host contract without promoting guided work to automatic."""
-    from core.harnesses.registry import get_platform_release
+    from core.harnesses.registry import get_platform_release, get_profile
     from core.onboarding.harness_receipt import (
         HarnessReceiptError,
         read_receipt,
@@ -1355,6 +1355,22 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
         for profile in receipt["profiles"]
         if isinstance(profile, dict)
     ]
+    limitations: dict[str, list[str]] = {}
+    limitation_notes: list[str] = []
+    for selected_id in summary["selected"]:
+        if not isinstance(selected_id, str):
+            continue
+        try:
+            live_profile = get_profile(selected_id)
+        except KeyError:
+            limitations[selected_id] = []
+            continue
+        notes = [str(note) for note in live_profile.limitations]
+        limitations[selected_id] = notes
+        limitation_notes.extend(
+            f"{live_profile.display_name}: {note}" for note in notes if note
+        )
+    summary["limitations"] = limitations
     modes = summary["modes"]
     assert isinstance(modes, dict)
     detail = (
@@ -1365,6 +1381,8 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
         f"{modes['unavailable']} unavailable capability assignments; "
         f"{platform_release['label']} is {platform_release['readiness'].replace('_', ' ')}"
     )
+    if limitation_notes:
+        detail = f"{detail}. {' '.join(limitation_notes)}"
     return ProbeResult("OK", detail, structured_detail=summary)
 
 

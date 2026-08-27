@@ -17,13 +17,18 @@ from pathlib import Path
 
 import pytest
 
+from core.harnesses.registry import get_profile
 from core.health import promises as health_promises
 from core.lifecycle import service as lifecycle_service
 from core.lifecycle.bridge import activate_vault
 from core.lifecycle.catalog import with_catalog_identity
 from core.lifecycle.engine import AdoptionReceipt
 from core.lifecycle.ledger import record_adoption
-from core.onboarding.harness_receipt import build_receipt, canonical_receipt_bytes
+from core.onboarding.harness_receipt import (
+    build_receipt,
+    build_receipt_for_ids,
+    canonical_receipt_bytes,
+)
 from core.tests.lifecycle_test_helpers import (
     SOURCE_COMMIT,
     write_bridge_release,
@@ -848,6 +853,7 @@ def test_harness_capability_probe_reports_modes_without_overclaiming(context, mo
             "unavailable": 0,
         },
         "fully_automatic": False,
+        "limitations": {"codex": list(get_profile("codex").limitations)},
         "platform": {
             "id": "linux",
             "included_in_release": False,
@@ -856,6 +862,32 @@ def test_harness_capability_probe_reports_modes_without_overclaiming(context, mo
             "readiness": "deferred",
             "runtime": {"node": ">=20", "python": ">=3.11"},
         },
+    }
+    assert "ide" in result.detail.lower()
+
+
+def test_harness_capability_probe_reports_cowork_public_endpoint_limit(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["cowork"],
+        detected_ids=("cowork",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "Claude Cowork" in result.detail
+    assert "public" in result.detail.lower()
+    assert "stdio" in result.detail.lower()
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail["selected"] == ["cowork"]
+    assert result.structured_detail["limitations"] == {
+        "cowork": list(get_profile("cowork").limitations),
     }
 
 

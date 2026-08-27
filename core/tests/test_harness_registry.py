@@ -188,10 +188,14 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
     assert [profile.id for profile in detected] == ["codex"]
     assert [profile.id for profile in detect_harnesses(env={"CURSOR_TRACE_ID": "x"})] == ["cursor"]
     assert [profile.id for profile in detect_harnesses(env={"GEMINI_CLI": "1"})] == ["gemini-cli"]
+    assert [profile.id for profile in detect_harnesses(env={"COWORK": "1"})] == ["cowork"]
+    assert [profile.id for profile in detect_harnesses(env={"CLAUDE_COWORK": "1"})] == ["cowork"]
+    assert [profile.id for profile in detect_harnesses(env={"CLAUDE_CODE": "1"})] == ["claude-code"]
 
 
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.bb/worktrees/x")])] == ["bb"]
+    assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.cowork/task")])] == ["cowork"]
     assert detect_harnesses(env={}, paths=[]) == ()
 
 
