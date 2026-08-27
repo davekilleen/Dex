@@ -1,6 +1,11 @@
 #!/bin/bash
 # Dex Safety Guard — PreToolUse hook
-# Guards both Bash commands AND MCP tool preferences.
+#
+# Best-effort guard that catches common catastrophic accidents in Bash commands
+# and redirects disallowed scraper MCPs. It is a pattern denylist, not a security
+# boundary — the host permission system remains the real control. Anything that
+# deliberately obfuscates a command (variables, encoding, indirection) will pass.
+#
 # Exit 0 = allow, Exit 2 = block
 
 INPUT=$(cat)
@@ -104,14 +109,44 @@ fi
 
 # === HARD BLOCKS (exit 2) ===
 
-# Catastrophic filesystem destruction
-if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?(\/|~\/?\s|"\$HOME"|\/Users)'; then
-    echo '{"decision":"block","reason":"Blocked: recursive delete targeting root, home, or /Users"}'
+# Catastrophic filesystem destruction.
+#
+# Quotes are stripped first so `"$HOME"`, `'~'` and payloads carried inside
+# `bash -c "..."` are seen the same way as the bare form. Matching is substring
+# based on the whole command, so a catastrophic-looking string anywhere in the
+# command blocks it. That is deliberate: a false positive costs a rephrase, a
+# false negative costs a home directory.
+COMMAND_UNQUOTED=$(printf '%s' "$COMMAND" | tr -d "\"'")
+
+# `rm` invoked recursively, in any flag order: -rf, -fr, -r -f, -f -r, -Rf,
+# --recursive --force. Trailing separator required so `remove`/`confirm` and
+# similar words never match.
+RM_RECURSIVE='(^|[^[:alnum:]_-])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)([[:space:]]+(-[a-zA-Z]+|--[a-z-]+))*[[:space:]]+'
+# Home directory in every spelling: ~, ~/…, $HOME, ${HOME}, $HOME/…
+TARGET_HOME='(~|\$\{?HOME\}?)([[:space:]/]|[;&|)]|$)'
+# Filesystem root: / and /*
+TARGET_ROOT='/([[:space:]]|\*|[;&|)]|$)'
+# Bare relative nukes that are only catastrophic in a dangerous working dir.
+TARGET_HERE='(\.|\*|\./\*?)([[:space:]]|[;&|)]|$)'
+# `cd` into home or root (with or without a trailing slash) in the same command.
+CD_DANGEROUS='(^|[^[:alnum:]_-])cd[[:space:]]+(~|\$\{?HOME\}?|/)/?([[:space:]]|[;&|)]|$)'
+
+if printf '%s' "$COMMAND_UNQUOTED" | grep -qE "${RM_RECURSIVE}(${TARGET_HOME}|${TARGET_ROOT})"; then
+    echo '{"decision":"block","reason":"Blocked: recursive delete targeting your home directory or the filesystem root"}'
     exit 2
 fi
 
-if echo "$COMMAND" | grep -qE 'rm\s+-rf\s+/'; then
-    echo '{"decision":"block","reason":"Blocked: rm -rf /"}'
+# `cd ~ && rm -rf .` and friends — harmless-looking target, catastrophic place.
+if printf '%s' "$COMMAND_UNQUOTED" | grep -qE "$CD_DANGEROUS" \
+    && printf '%s' "$COMMAND_UNQUOTED" | grep -qE "${RM_RECURSIVE}${TARGET_HERE}"; then
+    echo '{"decision":"block","reason":"Blocked: recursive delete of the current directory after switching to your home directory or the filesystem root"}'
+    exit 2
+fi
+
+# Any rm reaching an absolute path (/Users/…, /etc/…, /opt/…). Preserved from
+# the original guard: absolute-path deletes are always worth a second look.
+if printf '%s' "$COMMAND_UNQUOTED" | grep -qE '(^|[^[:alnum:]_-])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*/'; then
+    echo '{"decision":"block","reason":"Blocked: delete targeting an absolute system path"}'
     exit 2
 fi
 

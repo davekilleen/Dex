@@ -90,6 +90,66 @@ test('blocked-scraper guard-removal mutation loses protection', () => {
   }
 });
 
+test('guard blocks catastrophic deletes in every common spelling', () => {
+  const catastrophic = [
+    'rm -rf ~',
+    'rm -rf $HOME',
+    'rm -rf ${HOME}',
+    'rm -rf "$HOME"',
+    "rm -rf '~'",
+    'rm -rf ~/',
+    'rm -rf ~/Documents',
+    'rm -rf $HOME/',
+    'rm -r -f ~',
+    'rm -f -r ~',
+    'rm -Rf $HOME',
+    'rm --recursive --force $HOME',
+    'rm -fr /',
+    'rm -rf /*',
+    'sudo rm -rf /',
+    'rm -rf /Users/sean',
+    'cd ~ && rm -rf .',
+    'cd $HOME && rm -rf *',
+    'cd / ; rm -rf .',
+    'cd ~/ && rm -rf ./*',
+    'bash -c "rm -rf ~"',
+    "sh -c 'rm -rf $HOME'",
+    'bash -c "cd ~ && rm -rf ."',
+    'echo start && rm -rf ~ && echo done',
+    'npm ci; rm -rf ${HOME}/Library',
+  ];
+  for (const command of catastrophic) {
+    const result = runGuard('Bash', GUARD_PATH, command);
+    assert.equal(result.status, 2, `should block: ${command}`);
+    assert.match(result.stdout, /Blocked/, `should explain block: ${command}`);
+  }
+});
+
+test('guard allows ordinary deletes and workspace commands', () => {
+  const benign = [
+    'rm -rf node_modules',
+    'rm -rf ./build',
+    'rm file.txt',
+    'git rm -r docs/old',
+    'echo hello',
+    'rm -rf "$TMPDIR/foo"',
+    'rm -rf .venv',
+    'rm -rf dist/*',
+    'rm -rf build/tmp',
+    'rm -rf "$HOMEBREW_PREFIX/cache"',
+    'git status --short',
+    'cd ~/projects/dex && npm test',
+    'cd ~ && ls -la',
+    'echo "please confirm /etc looks right"',
+    "find . -name '*.pyc' -delete",
+    'npm run build && rm -rf coverage',
+  ];
+  for (const command of benign) {
+    const result = runGuard('Bash', GUARD_PATH, command);
+    assert.equal(result.status, 0, `should allow: ${command} -> ${result.stdout}`);
+  }
+});
+
 test('guard blocks raw Git mutations while a live migration lock is held', () => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-migration-guard-'));
   try {
