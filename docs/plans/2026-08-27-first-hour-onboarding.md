@@ -9,6 +9,49 @@ This file is the product contract for a **preview / lab** onboarding. Shipped `/
 
 ---
 
+## Onboarding MCP — yes, we use it
+
+The lab hour **uses the existing onboarding MCP** (`core/mcp/onboarding_server.py`). That is the safe door: session, validation, `finalize_onboarding`, working-context preview/apply, person-page offer. Vault files are not written by a side path.
+
+We do **not** invent a second provisioner.
+
+Today’s MCP cannot run this hour unchanged. These limits are why Doireann’s calendar was stored as “none” while Google already worked in the chat:
+
+- `save_calendar_selection` and `preview_confirmed_onboarding_context` accept **Apple Calendar or none**. The tool text says Google is not supported there.
+- `validate_and_save_step` forces steps **in order** (name → role → company size → domain → …). A one-card identity confirm will bounce.
+- `run_first_week_analysis` reads **Calendar.app**, not a signed-in Google calendar.
+- `verify_dependencies` checks Calendar.app and Granola, not host email/calendar.
+- `generate_nudge_calendar` builds the old month-long `.ics`, not two weeks of free cue cards.
+
+**Same server, widened for lab** (and later for shipped `/setup` once the preview is proven):
+
+1. Calendar source may be `apple`, `google` (already signed in on this host), or `none`.
+2. One confirm can save name + company + email domain + inferred company size (email domain still validated).
+3. Meeting source is written when Granola (or another recorder) is detected or connected.
+4. First-week analysis can use the recorded calendar source, not only Calendar.app.
+5. Cue-card helper: ten free all-day `[Dex]` events, or a chat list if we cannot write.
+6. A lab marker (`System/.onboarding-lab`) so a preview vault is not treated as a normal completed install.
+
+The `/setup-lab` skill still starts with `start_onboarding_session` and still ends with `finalize_onboarding` + approved working context.
+
+---
+
+## P0 to connect: email, calendar, meeting notes
+
+Hour one only chases **three** things. Everything else (Slack, Salesforce, Gong) can be named and left for later.
+
+| Need | How we detect | If missing |
+|---|---|---|
+| **Email** | Host Gmail / Google Workspace / Apple Mail already signed in | Company door or `/google-workspace-setup` / Apple Mail, after she says what matters |
+| **Calendar** | Host Google Calendar, or Calendar.app | Same — this is what makes “her week” real |
+| **Meeting notes** | Granola already signed in on the host, or a Granola key, or another recorder Dex can actually read (Zoom / Teams / a folder of notes) | If Granola is detected, use it and **record it**. If not, ask for Granola (key in chat is fine) or the recorder she actually uses |
+
+Detect Granola **before** asking for a key. If it is already there, do not make her paste one.
+
+**Daily plan must use that calendar.** Today `/daily-plan` and `/meeting-prep` read Dex’s own `calendar-mcp` (Calendar.app) and only treat email as connected when `google-workspace.enabled` is true. That is the Doireann bug: first hour can use Google; Tuesday morning cannot. Fixing that wiring is **part of this work**, not a follow-up. Until it is fixed, we do not tell her the morning brief is ready.
+
+---
+
 ## What we are not doing
 
 - Not replacing everyone’s `/setup` on day one.
@@ -18,6 +61,7 @@ This file is the product contract for a **preview / lab** onboarding. Shipped `/
 - Not offering 366 people pages in hour one.
 - Not saying “I can’t see your calendar,” “connector,” “tools are on,” “cron,” or “sync failed.”
 - Not editing Dex source in the user’s vault to recover from a crash.
+- Not asking her to connect Slack or Salesforce in hour one.
 
 ---
 
@@ -40,8 +84,8 @@ Do **not** say that is unusual. The interview carries the hour. Connect the **on
 Right time to connect:
 
 1. After “what matters most right now” — so the ask has a reason.
-2. Calendar first (so we can show her week).
-3. Meeting notes second (Granola key in chat is fine, or a folder of exported notes).
+2. **Email + calendar** (so we can show her week and know who she is).
+3. **Meeting notes** — Granola if we detected it; otherwise the recorder she uses, or a folder of notes.
 4. Everything else later.
 
 Two honest doors (never `/connect`):
@@ -215,7 +259,8 @@ Empty-connector testing is mandatory: run Scenario B on a machine/account with c
 1. Finalize must not crash on Apple’s default Python 3.9.
 2. Getting-started date bug must not crash the tour.
 3. An agent must not edit Dex source in the user’s vault to recover.
-4. Morning skills and the first-hour calendar story must not contradict each other.
+4. `/daily-plan` and `/meeting-prep` must read the same calendar and meeting source onboarding just recorded (host Google and Granola included). If they cannot, the first hour must not claim tomorrow’s brief is ready.
+5. Granola is detected if already signed in; we do not ask for a key we already have.
 
 ---
 
@@ -239,3 +284,6 @@ Empty-connector testing is mandatory: run Scenario B on a machine/account with c
 - Help, analytics, feedback, doctor as one helping hand.
 - Empty-apps path is first-class.
 - Preview first; do not ship over everyone’s `/setup`.
+- Use the existing onboarding MCP; widen it — do not bypass it.
+- Hour-one connects are email, calendar, and Granola (or her meeting recorder). Detect Granola.
+- Daily plan uses that same calendar. That fix ships with the preview.
