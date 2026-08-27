@@ -840,6 +840,19 @@ Updates never touch:
 
 ---
 
+## Security & Trust Boundary
+
+Dex runs on your own computer, so it's worth being plain about what you're trusting.
+
+- **What runs on your machine.** Small scripts called hooks run when a session starts and ends. Optional background helpers sync meetings and tasks on a schedule. MCP servers connect Dex to tools like your calendar. All of it runs locally, as you, with access to the same files you have.
+- **Updates are never applied automatically.** Once a day Dex looks at the project's GitHub releases page to see whether a newer version exists. That look is read-only — nothing is downloaded, installed, or changed. Code on your machine changes only when you run `/dex-update` and confirm it.
+- **What you're trusting.** The code you receive is whatever the project's GitHub account, [github.com/davekilleen/Dex](https://github.com/davekilleen/Dex), publishes. Releases are **not yet cryptographically signed**, so trusting Dex means trusting the security of that account. If it were ever compromised, an update could carry code Dave didn't write.
+- **You can read it before you accept it.** All of Dex's source is public and reviewable. `/dex-update` shows you every change before applying it, you can read the same code on GitHub, and you can ask Claude to walk you through anything you don't recognize. The source is source-available under PolyForm Noncommercial — free for personal, noncommercial use ([commercial licensing](COMMERCIAL_LICENSE.md)).
+
+Think you've found a security problem? Report it at [github.com/davekilleen/Dex/issues](https://github.com/davekilleen/Dex/issues) — and if the details shouldn't be public, open an issue that says only that, without the specifics, so a private way to share them can be arranged.
+
+---
+
 ## Obsidian Integration (Optional)
 
 Dex works great with [Obsidian](https://obsidian.md) for visual graph navigation.

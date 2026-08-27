@@ -4,7 +4,7 @@ Use a small relay service to keep `PENDO_TRACK_SECRET` server-side.
 
 ## Why
 
-If an open-source client sends directly to Pendo, any bundled write key is eventually discoverable.
+If a client whose source is public sends directly to Pendo, any bundled write key is eventually discoverable.
 Proxy mode prevents shipping that key to users.
 
 ## Client Configuration
