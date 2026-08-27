@@ -23,7 +23,9 @@ not proof that the detection is right.
    resulting rows before saving.
 4. Explain the four labels once: **automatic** runs at the right moment without asking;
    **on demand** is available as a skill/tool; **guided** needs a visible fallback step;
-   **unavailable** is not provided by that host.
+   **unavailable** is not provided by that host. Also say each selected host's named
+   limits in plain words. Mode counts are not enough if a host has no built-in tool
+   door, is Mac-only, or is still unreleased.
 5. After the user confirms, call
    `save_harness_selection(harnesses=[...], confirmed=true)`. Never set `confirmed=true`
    without showing the capability preview.

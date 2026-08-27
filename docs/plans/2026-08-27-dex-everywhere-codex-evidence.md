@@ -2,7 +2,7 @@
 
 **Date:** 27 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Codex exact-head native CI is green. Claude Cowork exact-head CI is green. Pi and BB Core proof is in progress.
+**Sequence:** Codex exact-head native CI is green. Claude Cowork exact-head CI is green. Pi and BB Dex CI is green. The Mac fleet on that later-host head is still running.
 
 ## What “Codex done” means
 
@@ -94,19 +94,27 @@ Ubuntu still cannot click Cowork’s desktop folder permission or prove a live p
 
 ## Pi and BB (started after Cowork CI was green)
 
-Core proof only. This does not claim a live Pi checkout or a live BB install.
+Core proof on `616618e45fbe26adc71cc7c3ce5d3bceb090af67` after Cowork CI was green:
 
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33106291761 — **success**
+  - quality
+  - tests 1–3 and test-results
+  - native macOS portable runtime
+  - native Windows portable runtime
+  - Lens catalog dry-run
+- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33106291751 — still running
 - Detects Pi from `PI_CLI` / `PI_CODING_AGENT` and a `/.pi/` path
 - Detects BB from `BB_HARNESS` / `BB_RUNNER` and a `/.bb/` path
-- Doctor names Pi’s missing built-in MCP door and BB’s macOS-only unreleased limit
-- The Pi source-byte check stays skipped unless a pinned checkout is present. `DEX_PI_REQUIRE_CONFORMANCE=1` still fails closed
-- The BB plugin stays private and unreleased. WSL2 and Windows stay deferred
+- Doctor names Pi’s missing built-in tool door and BB’s Mac-only unreleased limit
+- Local pinned Pi checkout `5bf33ad7` matched its source-byte test on this Ubuntu runner. GitHub CI still skips that test unless a checkout is present there
+- The BB plugin at `e1d704fd` stayed private and unreleased. `npm install` on Linux refused the Mac-only package. That is the named limit, not a defect
+- Setup preview now carries those same named limits, and the setup script tells Dex to say them in plain words
 
-This later-host commit must earn its own green exact-head Dex CI and fleet canary.
+A later commit that records this proof is a new head and must earn its own green Dex CI. The fleet canary on `616618e4` keeps running and is not cancelled by a later push.
 
 ## Deliberately not started
 
-- Live Pi checkout byte-match, live BB install, or publishing `dex-bb-plugin`
+- Live BB install, or publishing `dex-bb-plugin`
 - Copilot CLI and other remaining later hosts
 - Capability-exchange privacy repairs in Dex Lens
 - Final genuine Fable reviews (wait until heads are frozen and native CI is green)

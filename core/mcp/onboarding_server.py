@@ -269,6 +269,7 @@ def _harness_profile_payload(profile: object) -> Dict[str, Any]:
     """Return only the stable, non-secret fields onboarding may display/save."""
     payload = profile.to_dict()
     capabilities = profile.capability_rows()
+    raw_limits = getattr(profile, "limitations", payload.get("limitations", ()))
     return {
         "id": payload["id"],
         "display_name": getattr(
@@ -277,6 +278,7 @@ def _harness_profile_payload(profile: object) -> Dict[str, Any]:
             payload.get("display_name", payload.get("name", payload["id"])),
         ),
         "capabilities": capabilities,
+        "limitations": [str(note) for note in raw_limits if str(note)],
     }
 
 

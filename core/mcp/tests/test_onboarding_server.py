@@ -260,6 +260,18 @@ class _FakeHarnessProfile:
 
 
 class TestHarnessSelection:
+    def test_preview_includes_live_pi_and_bb_limits(self):
+        from core.harnesses.registry import get_profile
+
+        inspected = onboarding_server.inspect_harnesses(["pi", "bb"])
+
+        assert inspected["selected"] == ["bb", "pi"]
+        by_id = {row["id"]: row for row in inspected["profiles"]}
+        assert by_id["pi"]["limitations"] == list(get_profile("pi").limitations)
+        assert by_id["bb"]["limitations"] == list(get_profile("bb").limitations)
+        assert "mcp" in " ".join(by_id["pi"]["limitations"]).lower()
+        assert "macos" in " ".join(by_id["bb"]["limitations"]).lower()
+
     def test_inspection_supplies_existing_home_path_evidence(self, monkeypatch):
         evidence = (Path("/fixture/.codex"), Path("/fixture/.pi"))
         captured = []
