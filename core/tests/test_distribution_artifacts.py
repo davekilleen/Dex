@@ -86,6 +86,7 @@ RELEASE_BUILD_INPUTS = (
     "core/provision.cjs",
     "core/transaction/engine.py",
     "core/transaction/journal.py",
+    "core/update/apply_update.py",
     "core/update/journey_protocol.py",
     "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",

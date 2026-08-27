@@ -300,20 +300,30 @@ def _vault_mode_gitignore_section() -> str:
     ]
     for top in tops:
         exceptions = sorted(
-            rule.path for rule in vault_children
-            if rule.path.startswith(f"{top.path}/")
+            (
+                rule
+                for rule in vault_children
+                if rule.path.startswith(f"{top.path}/")
+            ),
+            key=lambda rule: rule.path,
         )
-        for exception in exceptions:
-            if exception.count("/") != top.path.count("/") + 1:
-                raise CompositionError(
-                    "vault-owned contract path nested deeper than one level "
-                    f"under brain-owned {top.path!r}: {exception!r}"
-                )
         if top.kind == "file":
             lines.append(f"/{top.path}")
         elif exceptions:
             lines.append(f"/{top.path}/*")
-            lines.extend(f"!/{exception}/" for exception in exceptions)
+            emitted_parents: set[str] = set()
+            top_depth = len(top.path.split("/"))
+            for exception in exceptions:
+                segments = exception.path.split("/")
+                for depth in range(top_depth + 1, len(segments)):
+                    parent = "/".join(segments[:depth])
+                    if parent in emitted_parents:
+                        continue
+                    lines.append(f"!/{parent}/")
+                    lines.append(f"/{parent}/*")
+                    emitted_parents.add(parent)
+                suffix = "/" if exception.kind == "dir" else ""
+                lines.append(f"!/{exception.path}{suffix}")
         else:
             lines.append(f"/{top.path}/")
 
