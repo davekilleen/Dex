@@ -36,6 +36,8 @@ ENRICHED_REGISTRY_PATH = Path("core/lens-catalog/enriched-registry.json")
 LENS_CATALOG_SCHEMA_PATH = Path("core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json")
 PACKAGE_PATH = Path("package.json")
 CHANGELOG_PATH = Path("CHANGELOG.md")
+HARNESS_REGISTRY_PATH = Path("core/harnesses/registry.json")
+HARNESS_PORTABILITY_PATH = Path("core/harnesses/portability.json")
 CONTRACT_VERSION = "dex-lens-catalogue-v2"
 MINIMUM_LENS_CONTRACT = "0.1.0"
 REGISTRY_VERSION = 1
@@ -343,7 +345,78 @@ def _brief(value: object, *, context: str) -> dict[str, object]:
     }
 
 
-def _compatibility(value: object, *, context: str) -> dict[str, object]:
+def _skill_portability_key(source: Mapping[str, object], *, context: str) -> str:
+    path = source.get("path")
+    prefix = ".claude/skills/"
+    suffix = "/SKILL.md"
+    if not isinstance(path, str) or not path.startswith(prefix) or not path.endswith(suffix):
+        raise LensCatalogError(f"{context} source is not a canonical skill path")
+    return path[len(prefix) : -len(suffix)]
+
+
+def _host_adapters_for_skill(
+    release_root: Path,
+    source: Mapping[str, object],
+    *,
+    context: str,
+) -> tuple[str, ...]:
+    portability_document = _mapping(
+        _closed_json(release_root / HARNESS_PORTABILITY_PATH),
+        context=str(HARNESS_PORTABILITY_PATH),
+    )
+    skills = _mapping(
+        portability_document.get("skills"),
+        context=f"{HARNESS_PORTABILITY_PATH} skills",
+    )
+    key = _skill_portability_key(source, context=context)
+    row = _mapping(skills.get(key), context=f"{HARNESS_PORTABILITY_PATH} skill {key}")
+    classification = row.get("classification")
+    if classification not in {"portable", "conditional", "claude-only", "broken"}:
+        raise LensCatalogError(f"{context} has no supported portability classification")
+
+    registry = _mapping(
+        _closed_json(release_root / HARNESS_REGISTRY_PATH),
+        context=str(HARNESS_REGISTRY_PATH),
+    )
+    profiles = registry.get("profiles")
+    if not isinstance(profiles, list):
+        raise LensCatalogError(f"{HARNESS_REGISTRY_PATH} profiles must be an array")
+    capable: list[str] = []
+    claude_native: list[str] = []
+    for profile in profiles:
+        if not isinstance(profile, Mapping) or not isinstance(profile.get("id"), str):
+            raise LensCatalogError(f"{HARNESS_REGISTRY_PATH} contains a malformed profile")
+        rows = profile.get("capabilities")
+        if not isinstance(rows, list):
+            raise LensCatalogError(f"{HARNESS_REGISTRY_PATH} profile capabilities must be an array")
+        skills_row = next(
+            (row for row in rows if isinstance(row, Mapping) and row.get("id") == "agent-skills"),
+            None,
+        )
+        if not isinstance(skills_row, Mapping) or skills_row.get("status") not in {"native", "portable"}:
+            continue
+        capable.append(profile["id"])
+        adapter = profile.get("adapter")
+        if isinstance(adapter, Mapping) and adapter.get("kind") == "claude-plugin":
+            claude_native.append(profile["id"])
+    if classification in {"portable", "conditional"}:
+        adapters = capable
+    else:
+        # Preserve the existing Claude-only floor for skills whose body is not
+        # portable yet; the portability reason remains the authority for the
+        # limitation and prevents claiming other hosts.
+        adapters = claude_native
+    if not adapters:
+        raise LensCatalogError(f"{context} resolves to no host adapters")
+    return tuple(adapters)
+
+
+def _compatibility(
+    value: object,
+    *,
+    context: str,
+    host_adapters: tuple[str, ...],
+) -> dict[str, object]:
     raw = _mapping(value, context=f"{context} compatibility")
     _exact_fields(
         raw,
@@ -358,7 +431,7 @@ def _compatibility(value: object, *, context: str) -> dict[str, object]:
         if type(raw.get(key)) is not bool:
             raise LensCatalogError(f"{context} compatibility {key} must be true or false")
     return {
-        "host_adapters": ("claude-code",),
+        "host_adapters": host_adapters,
         "foundation_capabilities": (),
         "minimum_lens_contract": MINIMUM_LENS_CONTRACT,
         "platforms": platforms,
@@ -550,7 +623,15 @@ def _build_catalogue(
         for version in changed:
             if version not in released_versions:
                 raise LensCatalogError(f"{context} changed_in has no shipped source in CHANGELOG.md: {version}")
-        compatibility = _compatibility(entry.get("compatibility"), context=context)
+        compatibility = _compatibility(
+            entry.get("compatibility"),
+            context=context,
+            host_adapters=_host_adapters_for_skill(
+                release_root,
+                source,
+                context=context,
+            ),
+        )
         if availability == "dormant" and not include_dormant:
             continue
         summary = (

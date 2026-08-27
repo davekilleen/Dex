@@ -110,6 +110,14 @@ def _registry(root: Path) -> None:
     )
     _write(root / "package.json", '{"version":"1.94.0"}\n')
     _write(
+        root / "core/harnesses/registry.json",
+        (REPO_ROOT / "core/harnesses/registry.json").read_text(encoding="utf-8"),
+    )
+    _write(
+        root / "core/harnesses/portability.json",
+        (REPO_ROOT / "core/harnesses/portability.json").read_text(encoding="utf-8"),
+    )
+    _write(
         root / "core/lens-catalog/registry.json",
         json.dumps(
             {
@@ -262,6 +270,18 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert capability["compatibility"]["needs_hooks"] is False
     assert capability["compatibility"]["needs_mcp"] is True
     assert capability["compatibility"]["host_requirements"] == ["skills-directory"]
+    assert capability["compatibility"]["host_adapters"] == [
+        "agent-plugin",
+        "bb",
+        "chatgpt-work",
+        "claude-code",
+        "codex",
+        "copilot-cli",
+        "cowork",
+        "cursor",
+        "gemini-cli",
+        "pi",
+    ]
     assert "Needs hooks" not in " ".join(capability["compatibility"]["limitations"])
     assert capability["portable_brief"]["goal"].startswith("Create a daily planning routine")
     assert "adaptation_notes" not in capability["portable_brief"]
@@ -278,6 +298,21 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
         envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ) + "\n"
     assert (tmp_path / "dist/dex-lens-catalog-v1.94.0.json.sha256").read_text().strip()
+
+
+def test_claude_only_skill_catalogues_only_claude_plugin_hosts(tmp_path: Path) -> None:
+    _registry(tmp_path)
+    portability_path = tmp_path / "core/harnesses/portability.json"
+    portability = json.loads(portability_path.read_text())
+    portability["skills"]["daily-plan"]["classification"] = "claude-only"
+    _write(portability_path, json.dumps(portability))
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    capability = envelope["catalogue"]["capabilities"][0]
+    assert capability["compatibility"]["host_adapters"] == ["claude-code", "cowork"]
 
 
 def test_generator_rejects_unknown_fields_in_registry(tmp_path: Path) -> None:
@@ -420,6 +455,13 @@ def test_generator_ignores_unannotated_vendored_skills(tmp_path: Path) -> None:
 def test_generator_orders_active_entries_by_discovery_not_registry(tmp_path: Path) -> None:
     _registry(tmp_path)
     alpha_bytes = _skill(tmp_path, "alpha-skill", description="Use alpha safely.")
+    portability_path = tmp_path / "core/harnesses/portability.json"
+    portability = json.loads(portability_path.read_text())
+    portability["skills"]["alpha-skill"] = {
+        "classification": "portable",
+        "reason": "Synthetic portable skill used to prove deterministic ordering.",
+    }
+    _write(portability_path, json.dumps(portability))
     registry_path = tmp_path / "core/lens-catalog/registry.json"
     data = json.loads(registry_path.read_text())
     alpha = json.loads(json.dumps(data["entries"][0]))
