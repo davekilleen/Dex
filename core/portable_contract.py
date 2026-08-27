@@ -617,10 +617,76 @@ def update_write_verdict(
         "legacy-qmd-reconciliation",
         "onboarding-context",
         "onboarding-provision",
+        "conflict-resolution",
+        "conflict-resolution-rewind",
         "analytics-receipt",
         "automation-ownership",
     ):
         raise ValueError(f"unknown write operation: {operation}")
+
+    if operation in ("conflict-resolution", "conflict-resolution-rewind"):
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-conflict-resolution",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            return WriteVerdict(
+                candidate,
+                False,
+                "outside-conflict-resolution",
+                None,
+                None,
+            )
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        # Keep-both is the one explicit conflict exception: the user's
+        # edited skill is copied to its ``-custom`` sidecar, but only when
+        # that sidecar is absent. Its rewind counterpart is allowed to delete
+        # the sidecar that the same transaction created. All other paths
+        # continue through the ordinary ownership policy below.
+        if resolution.rule_id == "vault-claude-skills-custom":
+            if operation == "conflict-resolution" and exists:
+                return WriteVerdict(
+                    candidate,
+                    False,
+                    "write-if-absent",
+                    resolution.ownership,
+                    resolution.rule_id,
+                )
+            if operation == "conflict-resolution-rewind" and not exists:
+                return WriteVerdict(
+                    candidate,
+                    False,
+                    "delete-conflict-resolution",
+                    resolution.ownership,
+                    resolution.rule_id,
+                )
+            return WriteVerdict(
+                candidate,
+                True,
+                (
+                    "write-conflict-resolution"
+                    if operation == "conflict-resolution"
+                    else "delete-conflict-resolution"
+                ),
+                resolution.ownership,
+                resolution.rule_id,
+            )
 
     if operation == "onboarding-provision":
         try:

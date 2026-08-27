@@ -1209,6 +1209,14 @@ function provision(options) {
         options.dryRun,
         transaction,
       );
+      // A completed vault already owns its System/.dex runtime directory;
+      // the harness-only preview must declare the confirmed receipt itself,
+      // not that incidental parent directory.
+      if (options.dryRun) {
+        reporter.summary.created = reporter.summary.created.filter(
+          relative => relative === 'System/.dex/harness-profile.json',
+        );
+      }
       if (transaction) reporter.summary.provision_transaction = transaction.commit();
     } catch (error) {
       if (transaction) rollbackProvision(transaction, reporter, error);

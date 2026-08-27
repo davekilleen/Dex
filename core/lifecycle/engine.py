@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core import portable_contract
 from core.lifecycle.catalog import CatalogError, load_catalog
 from core.lifecycle.conflict import (
     ConflictResolutionPreview,
@@ -1096,7 +1097,27 @@ def rewind_adoption(
     plan, restored = _snapshot_rewind_plan(root, validated, current_modes)
 
     try:
-        transaction = Transaction.begin(root, plan)
+        # Ordinary adoption rewinds keep the frozen Transaction.begin call
+        # shape. A keep-both receipt needs the narrow contract seam that can
+        # delete its vault-owned ``-custom`` sidecar.
+        def is_preserved_sidecar(entry: PlanEntry) -> bool:
+            try:
+                return (
+                    portable_contract.resolve(entry.relative).rule_id
+                    == "vault-claude-skills-custom"
+                )
+            except portable_contract.ContractViolation:
+                return False
+
+        has_preserved_sidecar = any(is_preserved_sidecar(entry) for entry in plan)
+        if has_preserved_sidecar:
+            transaction = Transaction.begin(
+                root,
+                plan,
+                operation="conflict-resolution-rewind",
+            )
+        else:
+            transaction = Transaction.begin(root, plan)
 
         def verify_no_late_drift() -> None:
             """Bind the rewind to the state captured by its transaction.
@@ -1527,16 +1548,10 @@ def execute_conflict_resolution(
         for write in item.writes
         if write.source == "preserved"
     ]
-    # write-if-absent for the preserved sidecar is enforced HERE, in engine
-    # logic, not by the ownership contract: the sidecar resolves to a brain
-    # (replace) path, so the Transaction's own update_write_verdict would
-    # permit an overwrite. This pre-check plus the before_commit
-    # snapshot-absence check below are the only guards. A non-transaction
-    # writer that creates this exact path in the narrow window between snapshot
-    # capture and the atomic replace is still not detected here — the same
-    # documented post-snapshot residual race the adoption path carries, but
-    # without a contract backstop; making the sidecar contract-owned (so the
-    # contract itself vetoes an overwrite) is the tracked -custom follow-up.
+    # Keep-both's preserved sidecar is an explicit conflict-resolution seam in
+    # the ownership contract. It is still write-if-absent: the pre-check gives
+    # a useful refusal before opening the transaction, while the contract and
+    # ``expected_absent`` guard below close the race under the mutator lock.
     for write in preserved_writes:
         target = root / write.path
         if target.exists() or target.is_symlink():
@@ -1568,7 +1583,13 @@ def execute_conflict_resolution(
                 content = payload_cache[write.path]
             else:
                 content = current_cache[preserved_sources[write.path]]
-            entries.append(PlanEntry(write.path, content))
+            entries.append(
+                PlanEntry(
+                    write.path,
+                    content,
+                    expected_absent=write.source == "preserved",
+                )
+            )
 
     inventory_by_path = {
         entry.canonical_path: entry
@@ -1583,7 +1604,11 @@ def execute_conflict_resolution(
     }
 
     try:
-        transaction = Transaction.begin(root, entries)
+        transaction = Transaction.begin(
+            root,
+            entries,
+            operation="conflict-resolution",
+        )
 
         def verify_approval_binding() -> None:
             """Bind approval to captured canonical bytes and sidecar absence."""
