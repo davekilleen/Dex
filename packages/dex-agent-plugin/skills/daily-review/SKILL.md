@@ -213,7 +213,7 @@ Use: reminders_clear_completed(list_name="Dex Today")
 
 ### 3.1 Find Today's Plan
 
-Look for `07-Archives/Plans/YYYY-MM-DD.md` (today's date).
+Look for `00-Inbox/Daily_Plans/YYYY-MM-DD.md` (today's date).
 
 ### 3.2 Extract Planned Focus
 

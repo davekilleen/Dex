@@ -50,7 +50,7 @@ milestone, specific accomplishments that moved each goal.
 
 ### 1.4 Daily Completion Rate Trend
 
-Check `07-Archives/Plans/` for this week's daily plans and
+Check `00-Inbox/Daily_Plans/` for this week's daily plans and
 `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` for each working day. Extract
 `plan_completion_rate` from review frontmatter where present. If only a plan
 exists for a day, count it as evidence of the planning ritual and note which

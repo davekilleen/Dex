@@ -30,7 +30,7 @@ Agent tool, using the self-contained prompt in this skill's
    `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`).
 3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
    a short description.
-4. Verify it wrote the draft plan to `07-Archives/Plans/YYYY-MM-DD.md`, then run
+4. Verify it wrote the draft plan to `00-Inbox/Daily_Plans/YYYY-MM-DD.md`, then run
    the remaining interactive steps from its findings and present the plan.
 5. **Close out every `<!-- NEEDS TASK -->` line in the draft.** The subagent
    never creates tasks, so a focus candidate with no existing task is written
@@ -576,7 +576,7 @@ Flag potential issues:
 item maps to a Tasks.md task — create the task first if needed). If the item is not a
 task at all, drop both the placeholder and the `- [ ]` checkbox for that line.
 
-Create `07-Archives/Plans/YYYY-MM-DD.md`:
+Create `00-Inbox/Daily_Plans/YYYY-MM-DD.md`:
 
 ```markdown
 ---
