@@ -2,6 +2,7 @@
   "adapter": {
     "install_guide": "core/harnesses/adapters/bb.json",
     "kind": "bb-plugin",
+    "lens_adapter_id": "bb-host",
     "manifest": "package.json#bb",
     "status": "native"
   },

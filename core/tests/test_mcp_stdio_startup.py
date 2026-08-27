@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 
 import pytest
 
+from core.utils import mcp_handshake
 from core.utils.mcp_handshake import mcp_stdio_handshake
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -132,6 +134,42 @@ def test_dex_owned_server_completes_stdio_initialize(
     assert result.response["id"] == 1
     assert isinstance(result.response["result"]["capabilities"], dict)
     assert isinstance(result.response["result"]["serverInfo"], dict)
+
+
+def test_handshake_cleanup_survives_killpg_permission_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Observed on macOS CI (PR 601 tests (1)): killpg raised
+    # PermissionError(1, "Operation not permitted") after a blessed local
+    # Python MCP had already answered initialize. The exception escaped
+    # handshake cleanup and the smoke journey reported
+    # "internal smoke journey refused: [Errno 1] Operation not permitted".
+    def deny_killpg(_process_group_id: int, _requested_signal: int) -> None:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(mcp_handshake.os, "killpg", deny_killpg)
+    script = tmp_path / "server.py"
+    script.write_text(
+        "import json, sys, time\n"
+        "request = json.loads(sys.stdin.readline())\n"
+        "print(json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': "
+        "{'capabilities': {}, 'serverInfo': {'name': 'test', 'version': '1'}}}), "
+        "flush=True)\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+
+    result = mcp_stdio_handshake(
+        [sys.executable, str(script)],
+        cwd=tmp_path,
+        env=os.environ,
+        timeout=5,
+    )
+
+    assert result.ok, f"{result.error}\nstderr:\n{result.stderr}"
+    assert result.error is None
+    assert result.response is not None
+    assert result.response["result"]["serverInfo"]["name"] == "test"
 
 
 @pytest.mark.parametrize(

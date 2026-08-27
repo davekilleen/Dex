@@ -142,6 +142,8 @@ stub all external probes.
 - `--heal` applies T1 only (tmp vault fixture: missing dir gets created; nothing else touched)
 - JSON contract shape (keys, verdict enum) — this is the skill's API
 - freshness thresholds honored only when job installed
+- `--heal` prints `Apply safe Tier-1 repairs before checking.` on stderr immediately, then `Checking this Dex install (read-only)...` before the read-only pass; JSON stays on stdout at the end
+- probes and Tier-1 heals run in-process; Doctor does not abandon work in daemon threads after a shared deadline
 
 ## Non-goals (v1)
 

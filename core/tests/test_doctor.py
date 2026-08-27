@@ -9,6 +9,8 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
+import time
 import venv
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1673,6 +1675,96 @@ def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, 
     assert doctor.main(["--heal"], context=context) == 0
     assert json.loads(capsys.readouterr().out)["mode"] == "quick"
     assert calls == [context]
+
+
+def test_main_heal_reports_progress_before_repairs_and_checks(
+    monkeypatch, context, capsys
+):
+    """A stuck step must not leave the person staring at an empty terminal."""
+    observed_stderr = []
+
+    def heal(_context):
+        observed_stderr.append(capsys.readouterr().err)
+        return {}, []
+
+    def first_probe(_context):
+        observed_stderr.append(capsys.readouterr().err)
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_apply_t1_heals", heal)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
+
+    assert doctor.main(["--heal"], context=context) == 0
+    captured = capsys.readouterr()
+
+    assert observed_stderr == [
+        f"{doctor.HEAL_PROGRESS}\n",
+        f"{doctor.CHECK_PROGRESS}\n",
+    ]
+    assert captured.err == ""
+    assert json.loads(captured.out)["mode"] == "quick"
+
+
+def test_collect_runs_probes_in_process_without_shared_timeout_threads(
+    monkeypatch, context, capsys
+):
+    """Checks must not be abandoned in daemon threads after a shared deadline."""
+    caller = threading.get_ident()
+    seen: list[int] = []
+
+    def first_probe(_context):
+        seen.append(threading.get_ident())
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
+
+    report = doctor.collect(context=context)
+
+    assert seen == [caller]
+    assert _check(report, "vault.structure")["verdict"] == "OK"
+    assert capsys.readouterr().err == ""
+
+
+def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, context):
+    caller = threading.get_ident()
+    seen: list[tuple[str, int]] = []
+
+    def fail_executables(_context):
+        seen.append(("exec", threading.get_ident()))
+        raise RuntimeError("exec boom")
+
+    def env_finding(_context):
+        seen.append(("env", threading.get_ident()))
+        return None
+
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", fail_executables)
+    monkeypatch.setattr(doctor, "_env_permission_finding", env_finding)
+    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
+    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_capability_rooms",
+        lambda _context: doctor.ProbeResult("OK", "rooms"),
+    )
+
+    actions, errors = doctor._apply_t1_heals(context)
+
+    assert [name for name, _ident in seen] == ["exec", "env"]
+    assert all(ident == caller for _name, ident in seen)
+    assert errors == ["Executable-mode heal failed: exec boom"]
+    assert actions == {}
+
+
+def test_doctor_skill_keeps_collector_stderr_visible():
+    skill = (REPO_ROOT / ".claude/skills/dex-doctor/SKILL.md").read_text(encoding="utf-8")
+    assert "doctor.py --heal 2>/dev/null" not in skill
+    assert "python3 core/utils/doctor.py --heal" in skill
 
 
 def test_main_deep_flag_runs_the_deep_registry(monkeypatch, context, capsys):

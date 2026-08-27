@@ -31,12 +31,16 @@ from core.lifecycle.conflict import (
     build_conflict_resolution_preview,
 )
 from core.lifecycle.engine import (
+    DELIVERED_RELEASE_ITEM_ID,
     AdoptionReceipt,
+    AdoptionReceiptPersistenceError,
     TopologyMigrationError,
+    build_delivered_release_receipt,
     build_topology_migration_preview,
     execute_adoption,
     execute_conflict_resolution,
     execute_topology_migration,
+    publish_delivered_release_adoption,
     recover_committed_adoption_evidence,
     rewind_acknowledgement_token,
     rewind_adoption,
@@ -271,6 +275,7 @@ def _execute_approved_transaction(
     approved_token: str,
     operation: str = "update",
     before_commit: Callable[[], None] | None = None,
+    bind_intent: Callable[[str], Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Execute an exact private preview through the one Transaction engine."""
     root = Path(vault_root)
@@ -299,6 +304,7 @@ def _execute_approved_transaction(
         plan,
         operation=operation,
         before_commit=before_commit,
+        bind_intent=bind_intent,
     )
     tx_paths_after = _tree_paths(root, tx_root_relative)
     declared_paths = (
@@ -332,14 +338,22 @@ def _run_internal_transaction(
     *,
     operation: str,
     before_commit: Callable[[], None] | None,
+    bind_intent: Callable[[str], Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Run one private transaction while keeping bounded reads off legacy seams."""
-    return Transaction.begin(
+    transaction = Transaction.begin(
         vault_root,
         list(plan),
         operation=operation,
         max_read_bytes_by_relative=_internal_transaction_read_limits(operation),
-    ).run(before_commit=before_commit)
+    )
+    if bind_intent is not None:
+        try:
+            transaction.journal.append("ADOPTION-INTENT", dict(bind_intent(transaction.tx_id)))
+        except BaseException:
+            transaction.rollback()
+            raise
+    return transaction.run(before_commit=before_commit)
 
 
 def _validate_analytics_receipt_record(record: object) -> None:
@@ -901,11 +915,18 @@ def _inventory_and_plan_models(vault_root: str | Path):
     held_back = ledger["held_back"]
     assert isinstance(adopted, dict)
     assert isinstance(held_back, list)
+    catalog_ids = {item.id for item in catalog.items}
     plan = build_adoption_plan(
         catalog,
         inventory,
-        adoption_states={item_id: AdoptionState.ADOPTED for item_id in adopted},
-        held_back=frozenset(held_back),
+        adoption_states={
+            item_id: AdoptionState.ADOPTED
+            for item_id in adopted
+            if item_id in catalog_ids
+        },
+        held_back=frozenset(
+            item_id for item_id in held_back if item_id in catalog_ids
+        ),
     )
     return catalog, inventory, plan
 
@@ -1237,14 +1258,37 @@ def execute_approved_delivered_release(
         plan,
         purpose="delivered-release",
     )["approval_token"]
+    identity = expected_preview["release"]
+    assert isinstance(identity, Mapping)
+    published: list[AdoptionReceipt] = []
+
+    def bind_intent(tx_id: str) -> dict[str, object]:
+        receipt = build_delivered_release_receipt(
+            transaction_id=tx_id,
+            plan=plan,
+            catalog_sha256=hashlib.sha256(_canonical(dict(identity))).hexdigest(),
+            inventory_sha256=hashlib.sha256(str(previous_commit).encode("ascii")).hexdigest(),
+            preview_sha256=expected_token,
+        )
+        published.append(receipt)
+        return {
+            "receipt": receipt.to_dict(),
+            "item_versions": {DELIVERED_RELEASE_ITEM_ID: str(identity["version"])},
+            "previous_commit": previous_commit,
+        }
+
     executed = _execute_approved_transaction(
         vault_root,
         plan,
         purpose="delivered-release",
         approved_token=str(transaction_token),
         before_commit=lambda: apply_update._finalize_release_metadata(
-            Path(vault_root).resolve(), release, previous_commit
+            Path(vault_root).resolve(),
+            brain_git=release.brain_git,
+            commit=release.commit,
+            previous_commit=previous_commit,
         ),
+        bind_intent=bind_intent,
     )
     # Post-commit tidy-up (issue #433): the runtime activation record still
     # names the release that just executed this update, which would refuse
@@ -1259,8 +1303,16 @@ def execute_approved_delivered_release(
     from core.lifecycle.bridge import ACTIVATION_RELATIVE, discard_superseded_activation
 
     receipt = executed["receipt"]
-    identity = expected_preview["release"]
-    assert isinstance(identity, Mapping)
+    if not published:
+        raise AdoptionReceiptPersistenceError(
+            "delivered-release committed, but no adoption receipt was bound; "
+            "the transaction journal is authoritative"
+        )
+    publish_delivered_release_adoption(
+        Path(vault_root).resolve(),
+        published[0],
+        str(identity["version"]),
+    )
     if discard_superseded_activation(Path(vault_root).resolve(), str(identity["version"])):
         declared = receipt.get("declared_paths")
         if isinstance(declared, list):

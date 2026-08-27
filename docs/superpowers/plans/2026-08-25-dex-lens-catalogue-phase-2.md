@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
+**Status:** The guarded-preview tasks below are complete. Lens `v0.1.9` subsequently released the full contract, and the 26 August promotion addendum at the end records the Core production path.
+
 **Goal:** Build and validate a guarded four-class catalogue preview covering skills, MCP servers, scheduled automations, and system engines without allowing that preview into the current signing or release path.
 
-**Architecture:** One normalized candidate model feeds per-class resolvers. Repository structure owns discoverable facts while registry annotations own impact and user-facing judgment. A proposed local schema validates the preview; the current Lens schema remains authoritative for publishable Phase 1 output.
+**Architecture:** One normalized candidate model feeds per-class resolvers. Repository structure owns discoverable facts while registry annotations own impact and user-facing judgment. The exact released Lens `v0.1.9` schema now validates both the legacy Phase 1 output and the enriched catalogue.
 
 **Tech Stack:** Python 3.12, `ast`, `plistlib`, pytest, JSON Schema Draft 2020-12, Pydantic-compatible discriminated-union specification.
 
@@ -75,3 +77,14 @@
 3. Run all Lens catalogue/discovery tests, architecture-inventory tests, Ruff, JSON parsing, documentation bridge comparison, and generated-artifact drift checks.
 4. Read the complete diff for product truth: dormant is not active, parked is not live, 10/131 MCP boundary is exact, no preview path can sign or publish, and no current schema file changed.
 5. Reconcile the Mission Control card and Dispatch milestone, push the branch, open a draft PR, and wait for explicit approval before merge, signing with the production key, serving, or release publication.
+
+## Promotion addendum — 26 August 2026
+
+Lens `v0.1.9` completed the contract at tag commit `5815bcc8a26d2c4d615119703e15f132dc64ce79`. Core's promotion work therefore:
+
+1. vendors the exact released producer schema (SHA-256 `5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7`);
+2. removes the superseded proposal fixture and validates both legacy and enriched output against the released schema;
+3. keeps `--enriched-preview` permanently unsigned and non-release-named;
+4. adds `--enriched` as the signed catalogue-version-5 production mode;
+5. points the stable release workflow and its PR dry-run at that production mode; and
+6. verifies a test-signed 114-entry envelope through the real released Lens wheel before live signing.

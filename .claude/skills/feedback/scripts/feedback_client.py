@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import ssl
 import stat
 import sys
 import time
@@ -41,6 +42,18 @@ AUTH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 HTTP_TIMEOUT_SECONDS = 20
 
 SCHEMA_VERSION = 1
+
+# Contract: docs/feedback-loop-contract.md — any linked Heydex session may
+# send. DexDiff beta membership is not a client-side send gate. Tests fail
+# if this flag is flipped on.
+DEXDIFF_BETA_REQUIRED_TO_SEND = False
+BETA_GATE_MARKERS = (
+    "beta_access_denied",
+    "dexdiff beta",
+    "private beta",
+    "not in beta",
+    "beta membership",
+)
 
 # Field caps mirror the server (convex feedback shaping). The server is the
 # enforcer; these exist so a too-long report fails here with a helpful
@@ -88,6 +101,10 @@ class NetworkError(FeedbackError):
     exit_code = 3
 
 
+class CertificateError(FeedbackError):
+    exit_code = 3
+
+
 class BadResponse(FeedbackError):
     exit_code = 5
 
@@ -98,6 +115,27 @@ class FileProblem(FeedbackError):
 
 class DraftProblem(FeedbackError):
     exit_code = 4
+
+
+def _is_beta_gate_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in BETA_GATE_MARKERS)
+
+
+def session_permits_feedback_send(auth: dict | None) -> bool:
+    """A linked Heydex session is enough. DexDiff beta is not a send gate.
+
+    Intentionally ignores dexdiffBeta / isBeta / beta membership fields on
+    the auth file. Those fields may exist because the same file is shared
+    with the DexDiff publish flow.
+    """
+    if not isinstance(auth, dict):
+        return False
+    token = str(auth.get("sessionToken") or "").strip()
+    if not token:
+        return False
+    # dexdiffBeta / isBeta / beta on this shared auth file are ignored.
+    return DEXDIFF_BETA_REQUIRED_TO_SEND is False
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +227,11 @@ def load_auth(reference_ms: "int | None" = None, site_base: "str | None" = None)
     if reference - int(timestamp) > AUTH_MAX_AGE_MS:
         raise AuthError(link_instructions(site_base, expired=True))
 
+    # A linked Heydex session is enough to send. DexDiff beta membership on
+    # this shared auth file is ignored on purpose.
+    if not session_permits_feedback_send(auth):
+        raise AuthError(link_instructions(site_base))
+
     return auth
 
 
@@ -219,10 +262,28 @@ def _request_json(
             status = response.status
     except urllib.error.HTTPError as error:
         raise _http_error_to_feedback_error(error)
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, ssl.SSLCertVerificationError):
+            raise CertificateError(
+                f"Could not verify the secure certificate from {get_api_base_url(api_base)}. "
+                "This can happen when a corporate network inspects encrypted traffic; "
+                "your internet connection may still be working. Ask your IT team to check "
+                "the network's certificate setup, then try again."
+            ) from error
         raise NetworkError(
             f"Could not reach {get_api_base_url(api_base)}. Check your internet connection and try again."
-        )
+        ) from error
+    except ssl.SSLCertVerificationError as error:
+        raise CertificateError(
+            f"Could not verify the secure certificate from {get_api_base_url(api_base)}. "
+            "This can happen when a corporate network inspects encrypted traffic; "
+            "your internet connection may still be working. Ask your IT team to check "
+            "the network's certificate setup, then try again."
+        ) from error
+    except (TimeoutError, OSError) as error:
+        raise NetworkError(
+            f"Could not reach {get_api_base_url(api_base)}. Check your internet connection and try again."
+        ) from error
 
     return _decode_json_response(status, response_body)
 
@@ -238,7 +299,12 @@ def _http_error_to_feedback_error(error: urllib.error.HTTPError) -> FeedbackErro
         pass
 
     if error.code == 401:
-        detail = f" ({message})" if message else ""
+        # Never recast a hosted beta-gate as "you need DexDiff beta". Sign-in
+        # is the only Dex-side send requirement; a linked session that the
+        # host still rejects is a connection problem, not a membership one.
+        detail = ""
+        if message and not _is_beta_gate_message(message):
+            detail = f" ({message})"
         return AuthError(
             f"The Heydex connection was not accepted{detail}. Create a new sign-in code and run the link command again."
         )
@@ -437,6 +503,8 @@ def command_check(args: argparse.Namespace) -> int:
     resolve the link before any report is drafted.
     """
     auth = load_auth(site_base=args.site_base)
+    if not session_permits_feedback_send(auth):
+        raise AuthError(link_instructions(args.site_base))
     identity = auth.get("email") or auth.get("handle") or "your Heydex account"
     print(f"LINKED: this terminal can send feedback as {identity}.")
     return 0
@@ -660,6 +728,9 @@ def main(argv: "list[str] | None" = None) -> int:
         return args.func(args)
     except AuthError as error:
         print(f"CONNECTION NEEDED: {error.user_message}")
+        return error.exit_code
+    except CertificateError as error:
+        print(f"CERTIFICATE ERROR: {error.user_message}")
         return error.exit_code
     except NetworkError as error:
         print(f"NETWORK ERROR: {error.user_message}")

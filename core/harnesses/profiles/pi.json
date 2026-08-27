@@ -26,6 +26,7 @@
     },
     "install_guide": "core/harnesses/adapters/pi.json",
     "kind": "pi-extension",
+    "lens_adapter_id": "pi-host",
     "manifest": "extensions/dex/package.json",
     "status": "native"
   },

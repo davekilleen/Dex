@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -212,6 +213,28 @@ def test_first_service_run_creates_baseline_without_adapter_calls(sync_vault, mo
     assert not sync_vault["inbound"].exists()
 
 
+def test_unscoped_sync_ignores_global_flags_without_task_service_settings(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    sync_vault["config"].write_text(
+        "enabled:\n  google: true\n"
+        + sync_vault["config"].read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("first run must not call an adapter")
+
+    monkeypatch.setattr(task_sync, "_run_adapter", fail_if_called)
+
+    result = task_sync.sync_external_tasks()
+
+    assert set(result) == {"todoist"}
+    assert result["todoist"]["first_run"] is True
+    assert result["todoist"]["errors"] == []
+
+
 def test_push_create_records_opaque_mapping(sync_vault, monkeypatch):
     _enable(sync_vault, "todoist")
     _write_tasks(
@@ -241,6 +264,36 @@ def test_push_create_records_opaque_mapping(sync_vault, monkeypatch):
     assert state["todoist"]["map"] == {
         "task-20260712-001": "opaque:todoist:9007199254740999"
     }
+
+
+def test_date_typed_canonical_task_reaches_adapter_as_iso_string(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    _write_tasks(
+        sync_vault["tasks"],
+        "- [ ] Prepare customer follow-up ^task-20260827-001",
+    )
+    task_sync._write_state(
+        _state(todoist=_service_state("2026-08-26T08:00:00+00:00"))
+    )
+    canonical_task = work_server.parse_tasks_file(sync_vault["tasks"])[0]
+    canonical_task["due"] = date(2026, 8, 28)
+    monkeypatch.setattr(task_sync, "_canonical_tasks", lambda: [canonical_task])
+    calls = _install_fake_runner(
+        monkeypatch,
+        {
+            ("todoist", "create"): "external-date-task",
+            ("todoist", "get_changes"): [],
+        },
+    )
+
+    result = task_sync.sync_external_tasks(services=["todoist"])
+
+    assert result["todoist"]["errors"] == []
+    assert result["todoist"]["pushed_creates"] == 1
+    assert calls[0]["operation"] == "create"
+    assert calls[0]["request"]["args"]["due"] == "2026-08-28"
 
 
 def test_push_skips_tasks_older_than_service_baseline(sync_vault, monkeypatch):

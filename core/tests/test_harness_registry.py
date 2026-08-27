@@ -177,6 +177,11 @@ def test_bb_adapter_matches_the_standalone_package_layout() -> None:
     assert get_profile("bb").adapter["manifest"] == "package.json#bb"
 
 
+def test_two_character_harness_ids_have_schema_compatible_lens_ids() -> None:
+    assert get_profile("bb").adapter["lens_adapter_id"] == "bb-host"
+    assert get_profile("pi").adapter["lens_adapter_id"] == "pi-host"
+
+
 def test_get_profile_rejects_unknown_ids() -> None:
     with pytest.raises(KeyError):
         get_profile("not-a-harness")

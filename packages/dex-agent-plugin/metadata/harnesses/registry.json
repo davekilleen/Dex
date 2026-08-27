@@ -56,7 +56,7 @@
       "display_name": "BB",
       "vendor": "Dex",
       "summary": "Native BB plugin for read-only Dex status, capability inspection, and work briefing.",
-      "adapter": {"kind": "bb-plugin", "status": "native", "manifest": "package.json#bb", "install_guide": "core/harnesses/adapters/bb.json"},
+      "adapter": {"kind": "bb-plugin", "status": "native", "manifest": "package.json#bb", "install_guide": "core/harnesses/adapters/bb.json", "lens_adapter_id": "bb-host"},
       "support_level": "supported",
       "capabilities": [
         {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The plugin reads the user-selected local Dex vault with containment checks."},
@@ -274,6 +274,7 @@
         "status": "native",
         "manifest": "extensions/dex/package.json",
         "install_guide": "core/harnesses/adapters/pi.json",
+        "lens_adapter_id": "pi-host",
         "evidence": {
           "repository_url": "https://github.com/davekilleen/dex-pi.git",
           "commit": "5bf33ad7b23a06a890b25445cb1b4f4077b2ac19",

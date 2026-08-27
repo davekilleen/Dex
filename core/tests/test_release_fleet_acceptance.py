@@ -8,6 +8,7 @@ import inspect
 import json
 import stat
 import subprocess
+import sys
 import urllib.error
 from collections.abc import Sequence
 from dataclasses import fields
@@ -1369,6 +1370,7 @@ def _immutable_follow_up() -> release_fleet.ImmutableRelease:
     )
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="live fleet finalization is macOS-only")
 def test_forged_executor_runs_cannot_mint_a_platform_receipt(
     tmp_path: Path,
 ) -> None:
@@ -1429,6 +1431,7 @@ def test_live_finalizer_does_not_accept_caller_counts_digests_or_start_tags() ->
     }
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="live fleet finalization is macOS-only")
 def test_changed_evidence_validator_cannot_mint_a_platform_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1480,6 +1483,7 @@ def test_changed_evidence_validator_cannot_mint_a_platform_receipt(
         )
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="live fleet finalization is macOS-only")
 def test_live_finalization_rejects_a_spoofed_host_platform(
     tmp_path: Path,
 ) -> None:
