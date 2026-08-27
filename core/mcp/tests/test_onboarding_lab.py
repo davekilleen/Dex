@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 
@@ -126,17 +126,15 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
         granola_days.append(days)
         return []
 
-    class FrozenDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return datetime(2026, 8, 27, 12, 0)
-
-    monkeypatch.setattr(onboarding_server, "datetime", FrozenDateTime)
     monkeypatch.setattr(onboarding_server, "get_recent_granola_meetings", capture_granola)
     (lab_session / "System" / "user-profile.yaml").write_text(
         "role: Customer Engineer\nemail_domain: pendo.io\npillars:\n  - name: Retention\n",
         encoding="utf-8",
     )
+
+    this_week = datetime.now().replace(hour=10, minute=0, second=0, microsecond=0)
+    one_week_ago = this_week - timedelta(days=7)
+    two_weeks_ago = this_week - timedelta(days=14)
 
     payload = _call_tool(
         "run_first_week_analysis",
@@ -144,8 +142,8 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
             "events": [
                 {
                     "title": "Caerus expansion",
-                    "start": datetime(2026, 8, 27, 10, 0),
-                    "end": datetime(2026, 8, 27, 11, 0),
+                    "start": this_week,
+                    "end": this_week + timedelta(hours=1),
                     "duration_minutes": 60,
                     "attendees": [
                         {
@@ -156,8 +154,8 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
                 },
                 {
                     "title": "Doireann / Alex 1:1",
-                    "start": datetime(2026, 8, 13, 15, 0),
-                    "end": datetime(2026, 8, 13, 15, 30),
+                    "start": two_weeks_ago.replace(hour=15, minute=0),
+                    "end": two_weeks_ago.replace(hour=15, minute=30),
                     "duration_minutes": 30,
                     "attendees": [
                         {
@@ -170,8 +168,8 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
                 },
                 {
                     "title": "Doireann / Alex 1:1",
-                    "start": datetime(2026, 8, 20, 15, 0),
-                    "end": datetime(2026, 8, 20, 15, 30),
+                    "start": one_week_ago.replace(hour=15, minute=0),
+                    "end": one_week_ago.replace(hour=15, minute=30),
                     "duration_minutes": 30,
                     "attendees": [
                         {
