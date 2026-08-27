@@ -101,7 +101,10 @@ test('guard blocks Firecrawl and RAG-browser MCPs but allows native WebFetch and
 test('blocked-scraper guard-removal mutation loses protection', () => {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-safety-mutation-'));
   try {
-    const mutated = path.join(temporary, 'guard.sh');
+    const hooksDirectory = path.join(temporary, '.claude', 'hooks');
+    fs.mkdirSync(hooksDirectory, { recursive: true });
+    fs.symlinkSync(path.join(ROOT, 'core'), path.join(temporary, 'core'), 'dir');
+    const mutated = path.join(hooksDirectory, 'guard.sh');
     const source = fs.readFileSync(GUARD_PATH, 'utf8');
     fs.writeFileSync(
       mutated,
@@ -172,7 +175,7 @@ test('guard retains catastrophic blocks when no Python is available', (t) => {
   assert.equal(result.status, 2, result.stdout + result.stderr);
 });
 
-test('guard allows safe absolute paths when no Python is available', (t) => {
+test('guard fails closed for safe-looking commands when no Python is available', (t) => {
   const result = runGuard(
     'Bash',
     GUARD_PATH,
@@ -180,7 +183,8 @@ test('guard allows safe absolute paths when no Python is available', (t) => {
     undefined,
     { DEX_PYTHON: '', PATH: restrictedPath(t, { includePython: false }) },
   );
-  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stdout, /needs Python 3/);
 });
 
 test('guard ignores an unusable DEX_PYTHON and falls back to a supported interpreter', (t) => {

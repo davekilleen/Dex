@@ -55,25 +55,16 @@ case "$TOOL_LOWER" in
         ;;
 esac
 
-# A missing helper or interpreter is a hook failure, not a shared gate result;
-# preserve the existing fail-open behavior while still enforcing real blocks.
+# A missing helper or interpreter means the shared decision cannot be made.
+# Fail closed instead of duplicating matchers here or silently allowing work.
 if [[ ! -f "$SAFETY_PY" ]]; then
-    exit 0
+    echo "BLOCKED: the shared Dex safety gate is unavailable. Restore Core before running tools."
+    exit 2
 fi
 
-# Keep the old guard's last-resort catastrophic blocks even when a supported
-# Python launcher is unavailable. This is deliberately narrow: the shared
-# Python gate remains authoritative for every contextual decision.
 if [[ "${#PYTHON_CMD[@]}" -eq 0 ]]; then
-    ROOT_DELETE_PATTERN='(^|[^[:alnum:]_])rm[[:space:]]+(-rf|-fr)[[:space:]]+/($|[^[:alnum:]_])'
-    if [[ "$INPUT" =~ $ROOT_DELETE_PATTERN ]] || [[ "$INPUT" == *"mkfs."* ]] \
-        || [[ "$INPUT" == *"dd if="*" of=/dev/"* ]] \
-        || [[ "$INPUT" == *"DROP DATABASE"* ]] || [[ "$INPUT" == *"DROP SCHEMA"* ]] \
-        || [[ "$INPUT" == *"git push --force"* ]] || [[ "$INPUT" == *"git push -f"* ]]; then
-            echo "BLOCKED: catastrophic command refused while the shared Python safety gate is unavailable."
-            exit 2
-    fi
-    exit 0
+    echo "BLOCKED: the shared Dex safety gate needs Python 3. Install Python or set DEX_PYTHON."
+    exit 2
 fi
 
 SAFETY_ARGS=(--hook)
