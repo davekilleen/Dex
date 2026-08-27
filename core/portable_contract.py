@@ -565,6 +565,12 @@ ONBOARDING_PROVISION_PATHS = frozenset(
 CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
 CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
 CUSTOMIZATION_MIGRATION_SEAM_PATHS = ("CLAUDE-custom.md",)
+CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS = frozenset(
+    {
+        "vault-claude-skills-custom",
+        "vault-agents-skills-custom",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -619,6 +625,8 @@ def update_write_verdict(
         "onboarding-provision",
         "analytics-receipt",
         "automation-ownership",
+        "conflict-resolution",
+        "adoption-rewind",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -908,6 +916,66 @@ def update_write_verdict(
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )
+
+    if operation == "conflict-resolution":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+            resolution = resolve(candidate)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        if resolution.rule_id in CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS:
+            return WriteVerdict(
+                resolution.path,
+                not exists,
+                "write-if-absent",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+
+    if operation == "adoption-rewind":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+            resolution = resolve(candidate)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        if resolution.rule_id in CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS:
+            return WriteVerdict(
+                resolution.path,
+                True,
+                "restore-custom-sidecar",
+                resolution.ownership,
+                resolution.rule_id,
+            )
 
     try:
         resolution = resolve(path)

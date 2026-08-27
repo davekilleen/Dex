@@ -350,6 +350,95 @@ def test_default_update_denies_customization_migration_seam() -> None:
     assert verdict.action == "never"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/skills/alpha-custom/SKILL.md",
+        ".agents/skills/alpha-custom/SKILL.md",
+    ],
+)
+def test_conflict_resolution_may_create_absent_custom_skill_sidecar(path: str) -> None:
+    update = portable_contract.update_write_verdict(path, exists=False)
+    created = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="conflict-resolution",
+    )
+    existing = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="conflict-resolution",
+    )
+
+    assert update.allowed is False
+    assert update.action == "never"
+    assert created.allowed is True
+    assert created.action == "write-if-absent"
+    assert existing.allowed is False
+    assert existing.action == "write-if-absent"
+
+
+def test_conflict_resolution_still_replaces_the_canonical_skill() -> None:
+    verdict = portable_contract.update_write_verdict(
+        ".claude/skills/alpha/SKILL.md",
+        exists=True,
+        operation="conflict-resolution",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "replace"
+
+
+def test_conflict_resolution_does_not_open_unrelated_vault_paths() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "04-Projects/My_Project/notes.md",
+        exists=False,
+        operation="conflict-resolution",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/skills/alpha-custom/SKILL.md",
+        ".agents/skills/alpha-custom/SKILL.md",
+    ],
+)
+def test_adoption_rewind_may_restore_or_delete_custom_skill_sidecar(path: str) -> None:
+    existing = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="adoption-rewind",
+    )
+    absent = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="adoption-rewind",
+    )
+    update = portable_contract.update_write_verdict(path, exists=True)
+
+    assert existing.allowed is True
+    assert existing.action == "restore-custom-sidecar"
+    assert absent.allowed is True
+    assert absent.action == "restore-custom-sidecar"
+    assert update.allowed is False
+    assert update.action == "never"
+
+
+def test_adoption_rewind_does_not_open_unrelated_vault_paths() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "04-Projects/My_Project/notes.md",
+        exists=True,
+        operation="adoption-rewind",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
 def test_update_write_verdict_operation_is_keyword_only_with_update_default() -> None:
     # Existing mutation-test monkeypatches use lambda path, *, exists — any future
     # caller passing operation= must update them.

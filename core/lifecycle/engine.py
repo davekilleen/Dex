@@ -1096,7 +1096,11 @@ def rewind_adoption(
     plan, restored = _snapshot_rewind_plan(root, validated, current_modes)
 
     try:
-        transaction = Transaction.begin(root, plan)
+        transaction = Transaction.begin(
+            root,
+            plan,
+            operation="adoption-rewind",
+        )
 
         def verify_no_late_drift() -> None:
             """Bind the rewind to the state captured by its transaction.
@@ -1527,16 +1531,12 @@ def execute_conflict_resolution(
         for write in item.writes
         if write.source == "preserved"
     ]
-    # write-if-absent for the preserved sidecar is enforced HERE, in engine
-    # logic, not by the ownership contract: the sidecar resolves to a brain
-    # (replace) path, so the Transaction's own update_write_verdict would
-    # permit an overwrite. This pre-check plus the before_commit
-    # snapshot-absence check below are the only guards. A non-transaction
-    # writer that creates this exact path in the narrow window between snapshot
-    # capture and the atomic replace is still not detected here — the same
-    # documented post-snapshot residual race the adoption path carries, but
-    # without a contract backstop; making the sidecar contract-owned (so the
-    # contract itself vetoes an overwrite) is the tracked -custom follow-up.
+    # The sidecar is contract-owned as a user customisation namespace (vault).
+    # Ordinary updates may never write it. The keep-both transaction uses
+    # operation="conflict-resolution" so the contract itself allows only a
+    # write-if-absent create. This pre-check plus the before_commit
+    # snapshot-absence check remain the user-facing refusal when a sidecar
+    # already exists.
     for write in preserved_writes:
         target = root / write.path
         if target.exists() or target.is_symlink():
@@ -1583,7 +1583,11 @@ def execute_conflict_resolution(
     }
 
     try:
-        transaction = Transaction.begin(root, entries)
+        transaction = Transaction.begin(
+            root,
+            entries,
+            operation="conflict-resolution",
+        )
 
         def verify_approval_binding() -> None:
             """Bind approval to captured canonical bytes and sidecar absence."""
