@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import os
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -1199,3 +1201,105 @@ def test_connection_test_uses_no_real_identity_or_profile_metadata(
     serialized = json.dumps(delivered, sort_keys=True)
     for unsafe_value in ("real-visitor-123", "real-account-456", "journey_stage", "role"):
         assert unsafe_value not in serialized
+
+
+VISITOR_ID_RELATIVE = Path("System/.dex/analytics-visitor-id")
+
+
+def _profile_vault(tmp_path: Path, profile_yaml: str) -> Path:
+    vault = tmp_path / "vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "user-profile.yaml").write_text(profile_yaml, encoding="utf-8")
+    return vault
+
+
+def test_default_visitor_id_is_a_random_persisted_uuid_never_derived_from_the_name(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _profile_vault(
+        tmp_path,
+        'name: "Ada Lovelace"\nemail_domain: "real-company.io"\n',
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    first = analytics_helper.get_visitor_info()
+    second = analytics_helper.get_visitor_info()
+
+    stored_path = vault / VISITOR_ID_RELATIVE
+    assert stored_path.is_file()
+    stored = stored_path.read_text(encoding="utf-8").strip()
+    assert uuid.UUID(stored).version == 4
+    assert first["visitor_id"] == stored
+    assert second["visitor_id"] == stored
+    assert stored_path.stat().st_mode & 0o777 == 0o600
+
+    name_hash = hashlib.sha256("Ada Lovelace".encode()).hexdigest()[:16]
+    serialized = json.dumps(first, sort_keys=True)
+    for unsafe_value in (name_hash, "Ada", "Lovelace", "real-company.io"):
+        assert unsafe_value not in serialized
+
+
+def test_two_installs_with_the_same_name_get_different_visitor_ids(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first_vault = _profile_vault(tmp_path / "one", 'name: "Ada Lovelace"\n')
+    second_vault = _profile_vault(tmp_path / "two", 'name: "Ada Lovelace"\n')
+
+    monkeypatch.setenv("VAULT_PATH", str(first_vault))
+    first = analytics_helper.get_visitor_info()["visitor_id"]
+    monkeypatch.setenv("VAULT_PATH", str(second_vault))
+    second = analytics_helper.get_visitor_info()["visitor_id"]
+
+    assert first != second
+
+
+def test_account_id_defaults_to_the_shared_constant_and_never_the_email_domain(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _profile_vault(
+        tmp_path,
+        'name: "Ada Lovelace"\nemail_domain: "real-company.io"\n',
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    info = analytics_helper.get_visitor_info()
+
+    assert info["account_id"] == "dex-users"
+    assert analytics_helper.DEFAULT_ACCOUNT_ID == "dex-users"
+
+
+def test_explicit_profile_ids_still_win_and_write_no_local_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _profile_vault(
+        tmp_path,
+        'name: "Ada Lovelace"\nemail_domain: "real-company.io"\n'
+        "analytics:\n  visitor_id: chosen-visitor\n  account_id: chosen-account\n",
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+
+    info = analytics_helper.get_visitor_info()
+
+    assert info == {"visitor_id": "chosen-visitor", "account_id": "chosen-account"}
+    assert not (vault / VISITOR_ID_RELATIVE).exists()
+
+
+def test_visitor_id_survives_an_unwritable_vault_without_raising(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = _profile_vault(tmp_path, 'name: "Ada Lovelace"\n')
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setattr(
+        analytics_helper,
+        "_atomic_write_private",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("read-only vault")),
+    )
+
+    visitor_id = analytics_helper.get_visitor_info()["visitor_id"]
+
+    assert uuid.UUID(visitor_id).version == 4

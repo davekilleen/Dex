@@ -14,11 +14,12 @@ Usage in skills:
     from analytics_helper import fire_event, check_consent, mark_feature_used
 """
 
-import hashlib
 import json
 import os
 import re
 import sys
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -47,6 +48,7 @@ ANALYTICS_MODE_PROXY = "proxy"
 _CONNECTION_TEST_EVENT = "dex_analytics_test"
 _CONNECTION_TEST_VISITOR_ID = "dex-analytics-test"
 _CONNECTION_TEST_ACCOUNT_ID = "dex-analytics-test"
+DEFAULT_ACCOUNT_ID = "dex-users"
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
 
 
@@ -332,32 +334,81 @@ def calculate_journey_metadata() -> Dict[str, Any]:
     }
 
 
+def _atomic_write_private(path: Path, content: str) -> None:
+    """Write owner-only content atomically, never leaving a partial file behind."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
+
+
+def get_or_create_analytics_visitor_id() -> str:
+    """Return the install-scoped random analytics ID, creating it on first use.
+
+    The ID is a random UUID persisted at `System/.dex/analytics-visitor-id`.
+    It is never derived from the user's name, email, or any other personal
+    detail, so it cannot be reversed back to a person by enumeration.
+    """
+    visitor_path = get_vault_path() / 'System' / '.dex' / 'analytics-visitor-id'
+    try:
+        existing = visitor_path.read_text(encoding='utf-8').strip()
+        return str(uuid.UUID(existing))
+    except (OSError, ValueError, UnicodeError):
+        visitor_id = str(uuid.uuid4())
+        try:
+            _atomic_write_private(visitor_path, visitor_id + "\n")
+        except OSError:
+            # Unwritable vault: still return a usable ID for this run.
+            pass
+        return visitor_id
+
+
 def get_visitor_info() -> Dict[str, str]:
-    """Get visitor ID and account ID from user-profile.yaml.
-    
+    """Get visitor ID and account ID for analytics.
+
     Priority for visitor_id:
     1. analytics.visitor_id from user-profile.yaml (explicit config)
-    2. Deterministic hash of user's name (stable across restarts)
-    3. 'anonymous' fallback (never random)
+    2. A random UUID generated once and persisted locally at
+       System/.dex/analytics-visitor-id (stable across restarts)
+
+    The visitor ID is never derived from the user's name or any other
+    personal detail.
+
+    Priority for account_id:
+    1. analytics.account_id from user-profile.yaml (explicit opt-in — this is
+       the only way an employer/email domain is ever reported)
+    2. The constant 'dex-users'
     """
     profile = load_user_profile()
     analytics = profile.get('analytics', {})
-    
+
     # Priority 1: Explicit visitor_id in analytics config
     visitor_id = analytics.get('visitor_id')
-    
+
     if not visitor_id:
-        # Priority 2: Deterministic hash of name
-        name = profile.get('name', '')
-        if name:
-            visitor_id = hashlib.sha256(name.encode()).hexdigest()[:16]
-        else:
-            # Priority 3: Fallback
-            visitor_id = 'anonymous'
-    
-    # Account ID from email domain or default
-    account_id = analytics.get('account_id') or profile.get('email_domain', 'dex-users')
-    
+        # Priority 2: Random, locally persisted UUID
+        visitor_id = get_or_create_analytics_visitor_id()
+
+    # Account ID: only what the user explicitly configured, else a constant.
+    # The email domain identifies the user's employer and is never sent by default.
+    account_id = analytics.get('account_id') or DEFAULT_ACCOUNT_ID
+
     return {
         'visitor_id': visitor_id,
         'account_id': account_id
