@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "ed568338aa12af9ce0d78e6abd64ead35c44dc2763f84362d333b0e742ccf9f9",
-        "byte_size": 32111
+        "sha256": "d1ce83ee9cfa9f893d378890d740cc0f8792e4c3a48f8447ca878e000374f7dd",
+        "byte_size": 32142
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
