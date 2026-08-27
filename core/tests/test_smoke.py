@@ -222,6 +222,119 @@ def test_mcp_startup_allows_server_taking_three_seconds_to_handshake(
     assert observed_timeouts == [smoke.HANDSHAKE_TIMEOUT_SECONDS]
 
 
+def test_mcp_startup_reports_never_spawned_work_mcp_in_existing_voice(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.utils import mcp_handshake, preflight
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / smoke.MCP_PLAN).write_text(
+        json.dumps(
+            {
+                "state": "OK",
+                "entries": [
+                    {
+                        "name": "work-mcp",
+                        "verdict": "EXECUTE",
+                        "kind": "builtin",
+                        "script": "core/mcp/work_server.py",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    bootstrap = smoke._install_network_guard(tmp_path) / "server_bootstrap.py"
+    monkeypatch.setenv("DEX_SMOKE_SERVER_BOOTSTRAP", str(bootstrap))
+    monkeypatch.setattr(
+        mcp_handshake,
+        "mcp_stdio_handshake",
+        lambda *_args, **_kwargs: mcp_handshake.MCPHandshakeResult(
+            ok=True,
+            response={"jsonrpc": "2.0", "id": 1, "result": {}},
+            error=None,
+            stderr="",
+            returncode=0,
+        ),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "apply_never_spawned_overlay",
+        lambda health, **_kwargs: {
+            "servers": {
+                "work-mcp": {
+                    "status": "error",
+                    "humanError": preflight.NEVER_SPAWNED_HUMAN_ERROR,
+                }
+            }
+        },
+    )
+
+    result = smoke._journey_mcp_startup(vault, tmp_path / "release")
+
+    assert result == {
+        "verdict": "BROKEN",
+        "detail": "work-mcp: BROKEN — Task Manager cannot start",
+    }
+
+
+def test_mcp_startup_reports_never_spawned_work_mcp_without_isolated_mcp_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.utils import mcp_handshake, preflight
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / smoke.MCP_PLAN).write_text(
+        json.dumps(
+            {
+                "state": "OK",
+                "entries": [
+                    {
+                        "name": "work-mcp",
+                        "verdict": "EXECUTE",
+                        "script": "core/mcp/work_server.py",
+                    },
+                    {
+                        "name": "calendar-mcp",
+                        "verdict": "EXECUTE",
+                        "script": "core/mcp/calendar_server.py",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    bootstrap = smoke._install_network_guard(tmp_path) / "server_bootstrap.py"
+    monkeypatch.setenv("DEX_SMOKE_SERVER_BOOTSTRAP", str(bootstrap))
+    monkeypatch.setattr(
+        mcp_handshake,
+        "mcp_stdio_handshake",
+        lambda *_args, **_kwargs: mcp_handshake.MCPHandshakeResult(
+            ok=True,
+            response={"jsonrpc": "2.0", "id": 1, "result": {}},
+            error=None,
+            stderr="",
+            returncode=0,
+        ),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "list_process_cmdlines",
+        lambda: ["python /tmp/dex-fixture/core/mcp/calendar_server.py"],
+    )
+
+    assert not (vault / ".mcp.json").exists()
+    result = smoke._journey_mcp_startup(vault, tmp_path / "release")
+
+    assert result["verdict"] == "BROKEN"
+    assert "work-mcp: BROKEN — Task Manager cannot start" in result["detail"]
+    assert "calendar-mcp: OK" in result["detail"]
+
+
 def test_mcp_timeout_budget_ordering_invariant() -> None:
     mcp_startup = next(journey for journey in smoke.JOURNEYS if journey.id == "mcp_startup")
 

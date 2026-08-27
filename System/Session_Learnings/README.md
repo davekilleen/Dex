@@ -17,7 +17,7 @@ Each learning includes:
 - **What happened** — Specific situation
 - **Why it matters** — Impact on system/workflow
 - **Suggested fix** — Specific action with file paths
-- **Status** — pending, implemented, or won't-fix
+- **Status** — pending, captured, noted, partially fixed, or in-progress until implemented or won't-fix
 
 ## Naming Convention
 

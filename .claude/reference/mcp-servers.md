@@ -372,12 +372,12 @@ node .scripts/check-anthropic-changelog.cjs --dry-run  # Preview mode
 **Purpose:** Remind user to review accumulated session learnings
 
 **How it works:**
-1. Scans `System/Session_Learnings/` for files from past 7 days
-2. Counts learnings with `**Status:** pending`
-3. If 5+ pending learnings:
+1. Scans every `System/Session_Learnings/` file (not only the past 7 days)
+2. Counts learnings whose `**Status:**` is still open: `pending`, `captured`, `noted`, `partially fixed`, or `in-progress` (hyphen/space and capitalization variants included). Closed labels such as `implemented` and `won't-fix` are ignored.
+3. If 5+ open learnings:
    - Writes reminder to `System/learning-review-pending.md`
    - Session start hook displays count and suggests `/dex-whats-new --learnings`
-4. If <5 pending, removes any existing reminder file
+4. If <5 open, removes any existing reminder file
 
 **Manual testing:**
 ```bash

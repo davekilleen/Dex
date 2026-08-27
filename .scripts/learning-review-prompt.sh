@@ -13,6 +13,13 @@ PROMPT_FILE="$VAULT_ROOT/System/learning-review-pending.md"
 LOG_DIR="$VAULT_ROOT/.scripts/logs"
 LOG_FILE="$LOG_DIR/learning-review.log"
 
+# Open backlog statuses: the original "pending" plus the labels used in
+# real vaults (captured, noted, partially fixed, in-progress). Closed
+# statuses (implemented, won't-fix, and similar) stay out of the count.
+# Match is case-insensitive; hyphen/space variants of the multi-word
+# labels are accepted. The rest of the Status line must be that label.
+BACKLOG_STATUS_REGEX='^\*\*Status:\*\*[[:space:]]*(pending|captured|noted|partially[[:space:]]+fixed|partially-fixed|in-progress|in[[:space:]]+progress)[[:space:]]*$'
+
 # Create log directory if needed
 mkdir -p "$LOG_DIR"
 
@@ -29,35 +36,29 @@ if [[ ! -d "$SESSION_LEARNINGS_DIR" ]]; then
   exit 0
 fi
 
-# Count pending learnings (files from last 7 days with "pending" status)
 PENDING_COUNT=0
-WEEK_AGO=$(date -v-7d +%Y-%m-%d)
 
-log "Scanning for learnings since $WEEK_AGO"
+log "Scanning session learnings for open backlog statuses"
 
-# Find learning files from the past week
+# Count open-backlog learnings in every dated file, including older ones.
 for file in "$SESSION_LEARNINGS_DIR"/*.md; do
   if [[ ! -f "$file" ]]; then
     continue
   fi
-  
+
   # Extract date from filename (YYYY-MM-DD.md)
   filename=$(basename "$file" .md)
-  
+
   # Skip README
   if [[ "$filename" == "README" ]]; then
     continue
   fi
-  
-  # Check if file is from the past week
-  if [[ "$filename" > "$WEEK_AGO" ]] || [[ "$filename" == "$WEEK_AGO" ]]; then
-    # Count "pending" learnings in this file
-    pending=$(grep -c "^\*\*Status:\*\* pending" "$file" 2>/dev/null || echo "0")
-    # Strip any whitespace and ensure it's a number
-    pending=$(echo "$pending" | tr -d '[:space:]')
-    pending=${pending:-0}
-    PENDING_COUNT=$((PENDING_COUNT + pending))
-  fi
+
+  pending=$(grep -ciE "$BACKLOG_STATUS_REGEX" "$file" 2>/dev/null || true)
+  # Strip any whitespace and ensure it's a number
+  pending=$(echo "$pending" | tr -d '[:space:]')
+  pending=${pending:-0}
+  PENDING_COUNT=$((PENDING_COUNT + pending))
 done
 
 log "Found $PENDING_COUNT pending learnings"
@@ -65,11 +66,11 @@ log "Found $PENDING_COUNT pending learnings"
 # If 5+ pending learnings, create prompt file
 if [[ $PENDING_COUNT -ge 5 ]]; then
   log "Creating learning review prompt (threshold met: $PENDING_COUNT >= 5)"
-  
+
   cat > "$PROMPT_FILE" <<EOF
 # 📚 Pending Learnings Review
 
-**Count:** $PENDING_COUNT pending learnings from the past week
+**Count:** $PENDING_COUNT pending learnings
 **Detected:** $(date -u +"%Y-%m-%d %H:%M UTC")
 
 ---
@@ -93,7 +94,7 @@ EOF
   log "Prompt file created at $PROMPT_FILE"
 else
   log "Threshold not met ($PENDING_COUNT < 5), no prompt needed"
-  
+
   # Remove any existing prompt file
   if [[ -f "$PROMPT_FILE" ]]; then
     rm "$PROMPT_FILE"
