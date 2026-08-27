@@ -378,6 +378,51 @@ def test_report_schema_exit_zero_and_no_live_write(tmp_path: Path) -> None:
     assert _tree_hash(vault) == before
 
 
+def test_manual_install_configs_snapshot_keeps_capability_validator_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import yaml
+
+    vault = _write_valid_vault(tmp_path)
+    (vault / "System" / "user-profile.yaml").write_text(
+        "name: Smoke User\n"
+        "capabilities:\n"
+        "  career:\n"
+        "    enabled: false\n"
+        "analytics:\n"
+        "  enabled: false\n",
+        encoding="utf-8",
+    )
+    for relative in (*smoke.RUNNER_FALLBACK_RELATIVES, Path("core/capabilities.py")):
+        destination = vault / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative, destination)
+
+    yaml_site_packages = Path(yaml.__file__).resolve().parent.parent
+    monkeypatch.setattr(
+        smoke.sysconfig,
+        "get_paths",
+        lambda: {
+            "purelib": str(yaml_site_packages),
+            "platlib": str(yaml_site_packages),
+        },
+    )
+    monkeypatch.setattr(smoke, "RUNNER_ROOT", vault)
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=vault,
+        journey_definitions=(_definition("configs"),),
+    )
+
+    journey = run.report["journeys"][0]
+    assert {"verdict": journey["verdict"], "detail": journey["detail"]} == {
+        "verdict": "OK",
+        "detail": "parsed and validated 3 configuration files",
+    }
+
+
 def test_fresh_release_without_onboarding_or_python_packages_has_clean_verdicts(
     monkeypatch,
     tmp_path: Path,
@@ -648,6 +693,27 @@ def test_json_without_ledger_writes_nothing(tmp_path: Path, capsys) -> None:
     assert json.loads(capsys.readouterr().out)["summary"]["ok"] == 1
     assert not (vault / "System" / ".smoke-last-run.json").exists()
     assert not (vault / "System" / ".dex" / "smoke-history.jsonl").exists()
+
+
+def test_configs_journey_validates_enabled_capability_in_isolated_runner(tmp_path: Path) -> None:
+    vault = _write_valid_vault(tmp_path)
+    profile = vault / "System" / "user-profile.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8")
+        + "capabilities:\n  career:\n    enabled: true\n",
+        encoding="utf-8",
+    )
+
+    run = smoke.run_smoke(
+        vault_root=vault,
+        repo_root=REPO_ROOT,
+        journey_definitions=(_definition("configs"),),
+    )
+
+    assert run.harness_failed is False
+    assert run.exit_code == 0
+    assert run.report["journeys"][0]["verdict"] == "OK"
+    assert run.report["journeys"][0]["detail"] == "parsed and validated 3 configuration files"
 
 
 def test_head_runner_generation_stays_coherent_when_release_is_older(tmp_path: Path) -> None:

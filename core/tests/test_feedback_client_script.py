@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import ssl
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -409,3 +411,27 @@ def test_beta_gate_http_error_is_not_a_dexdiff_membership_refusal():
         assert "dexdiff" not in lowered
         assert "membership" not in lowered
         assert converted.exit_code != 0
+
+
+def test_link_reports_wrapped_certificate_failure_as_a_trust_problem(monkeypatch, capsys):
+    client = _load_script()
+    certificate_error = ssl.SSLCertVerificationError(
+        1,
+        "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+        "CA cert does not include key usage extension",
+    )
+
+    def reject_certificate(*args, **kwargs):
+        raise urllib.error.URLError(certificate_error)
+
+    monkeypatch.setattr(client.urllib.request, "urlopen", reject_certificate)
+
+    code = client.main(
+        ["link", "--code", "ABC123", "--api-base", "https://feedback.example"]
+    )
+
+    assert code == 3
+    output = capsys.readouterr().out
+    assert output.startswith("CERTIFICATE ERROR: ")
+    assert "corporate network" in output
+    assert "internet connection may still be working" in output

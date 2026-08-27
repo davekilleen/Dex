@@ -90,9 +90,13 @@ MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
 MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
 MCP_ONCE_TOKEN_MAX_AGE_SECONDS = 120.0
 TRUSTED_GIT_CANDIDATES = (Path("/usr/bin/git"), Path("/bin/git"))
+RUNNER_EXTERNAL_RELATIVES = frozenset(
+    {Path("packages/dex-contracts/dist/portable-vault.contract.json")}
+)
 RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
     Path("core/paths.py"),
+    Path("core/portable_contract.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/dex_logger.py"),
     Path("core/utils/release_channel.py"),
@@ -100,6 +104,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/utils/trust_registry.py"),
     Path("core/utils/update_verifier.py"),
     Path("core/utils/validators.py"),
+    *RUNNER_EXTERNAL_RELATIVES,
 )
 CONTENT_VERIFIED_SENSITIVE_DEPENDENCIES = frozenset(
     {
@@ -977,7 +982,10 @@ def _materialize_runner(destination: Path) -> Path:
         if (
             relative.is_absolute()
             or not relative.parts
-            or relative.parts[0] != "core"
+            or (
+                relative.parts[0] != "core"
+                and relative not in RUNNER_EXTERNAL_RELATIVES
+            )
             or any(part in {"", ".", ".."} for part in relative.parts)
         ):
             raise JourneySafetySkip(f"tracked runner path is unsafe: {relative}")
@@ -2046,7 +2054,17 @@ def _missing_release_ref_reason(channel: str, *, server: bool = False) -> str:
 
 
 def _git_tree_paths(repo_root: Path, treeish: str) -> set[str] | None:
-    command = _git_command(repo_root, "ls-tree", "-r", "-z", "--name-only", treeish, "--", "core")
+    command = _git_command(
+        repo_root,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        treeish,
+        "--",
+        "core",
+        *(relative.as_posix() for relative in RUNNER_EXTERNAL_RELATIVES),
+    )
     if command is None:
         return None
     result = subprocess.run(

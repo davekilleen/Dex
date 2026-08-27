@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import ssl
 import stat
 import sys
 import time
@@ -97,6 +98,10 @@ class AuthError(FeedbackError):
 
 
 class NetworkError(FeedbackError):
+    exit_code = 3
+
+
+class CertificateError(FeedbackError):
     exit_code = 3
 
 
@@ -257,10 +262,28 @@ def _request_json(
             status = response.status
     except urllib.error.HTTPError as error:
         raise _http_error_to_feedback_error(error)
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, ssl.SSLCertVerificationError):
+            raise CertificateError(
+                f"Could not verify the secure certificate from {get_api_base_url(api_base)}. "
+                "This can happen when a corporate network inspects encrypted traffic; "
+                "your internet connection may still be working. Ask your IT team to check "
+                "the network's certificate setup, then try again."
+            ) from error
         raise NetworkError(
             f"Could not reach {get_api_base_url(api_base)}. Check your internet connection and try again."
-        )
+        ) from error
+    except ssl.SSLCertVerificationError as error:
+        raise CertificateError(
+            f"Could not verify the secure certificate from {get_api_base_url(api_base)}. "
+            "This can happen when a corporate network inspects encrypted traffic; "
+            "your internet connection may still be working. Ask your IT team to check "
+            "the network's certificate setup, then try again."
+        ) from error
+    except (TimeoutError, OSError) as error:
+        raise NetworkError(
+            f"Could not reach {get_api_base_url(api_base)}. Check your internet connection and try again."
+        ) from error
 
     return _decode_json_response(status, response_body)
 
@@ -705,6 +728,9 @@ def main(argv: "list[str] | None" = None) -> int:
         return args.func(args)
     except AuthError as error:
         print(f"CONNECTION NEEDED: {error.user_message}")
+        return error.exit_code
+    except CertificateError as error:
+        print(f"CERTIFICATE ERROR: {error.user_message}")
         return error.exit_code
     except NetworkError as error:
         print(f"NETWORK ERROR: {error.user_message}")

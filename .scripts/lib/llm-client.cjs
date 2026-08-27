@@ -42,7 +42,8 @@ async function generateWithAnthropic(prompt, options = {}) {
     ]
   });
   
-  return message.content[0].text;
+  const textBlock = message.content.find(block => block.type === 'text');
+  return textBlock ? textBlock.text : '';
 }
 
 // ============================================================================
