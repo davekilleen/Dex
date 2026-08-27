@@ -19,7 +19,7 @@ Setup used to assume Apple Calendar, and the morning plan kept talking to Apple 
 * **That hello comes before any looking.** The first message is a welcome, not a wait. If the last step cannot build the folder, your answers stay saved and you are not put through the questions again.
 * **The preview hour is a conversation, not a form.** Dex asks you to talk — hold the microphone if that is easier — and to share last year’s review if you have it. It looks at three weeks of meetings, not one, so it can spot regular 1:1s and people you keep close.
 * **Meeting notes are connected in that first sitting.** Dex asks what you use — Granola, Fireflies, Zoom, Teams, a folder of notes, or nowhere — and walks you through it then. Granola is set up in the chat, not saved for later.
-* **People and company pages are an explicit yes.** After those meetings, Dex asks whether to file people and company pages for you automatically.
+* **People and company pages are an explicit yes.** After those meetings, Dex names everyone who showed up in the last few weeks and, if you say yes, files all of those pages — then keeps filing new ones.
 * **Granola points at the real setup.** When notes are not connected yet, Dex says `/granola-setup`, not a door that is not shipped.
 * **The getting-started tour no longer dies on a Mac with the built-in Python.** Date-only meeting dates are read instead of crashing.
 

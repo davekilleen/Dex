@@ -6310,8 +6310,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/setup-lab/SKILL.md",
-        "sha256": "fcc7d376331c5142a622acf9c80f8acc0dacd82750bfa122833db80f8876ff77",
-        "byte_size": 4793
+        "sha256": "6b838edc24240fb9e777b48c4279d266837e6bea23161090e49281b37d474acd",
+        "byte_size": 4935
       },
       "value": "Run the fifteen-minute Dex preview onboarding: confirm who you are from work email, organise this week, and make one shortcut live.",
       "jobs_served": [

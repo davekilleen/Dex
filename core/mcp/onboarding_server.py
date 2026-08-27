@@ -1532,13 +1532,38 @@ def _entity_offer_dedupe_key(meeting: Dict[str, Any]) -> tuple[str, tuple[str, .
     return date_key, attendee_keys
 
 
+SHIPPED_ENTITY_PAGE_OFFER_LIMIT = 5
+LAB_ENTITY_PAGE_OFFER_LIMIT = 100
+SHIPPED_ENTITY_OFFER_GRANOLA_LIMIT = 20
+LAB_ENTITY_OFFER_GRANOLA_LIMIT = 80
+
+
+def _lab_preview_vault() -> bool:
+    """True when this vault is a /setup-lab preview, not shipped /setup."""
+    return (Path(BASE_DIR) / "System" / ".onboarding-lab").is_file()
+
+
+def _entity_page_offer_limit() -> int:
+    if _lab_preview_vault():
+        return LAB_ENTITY_PAGE_OFFER_LIMIT
+    return SHIPPED_ENTITY_PAGE_OFFER_LIMIT
+
+
 def _collect_entity_offer_meetings() -> List[Dict[str, Any]]:
     """Collect bounded history, preferring transcript-backed Granola duplicates."""
     profile = _load_first_week_profile()
     normalized: Dict[tuple[str, tuple[str, ...]], Dict[str, Any]] = {}
+    granola_limit = (
+        LAB_ENTITY_OFFER_GRANOLA_LIMIT
+        if _lab_preview_vault()
+        else SHIPPED_ENTITY_OFFER_GRANOLA_LIMIT
+    )
     sources = (
         ('calendar', get_calendar_events_for_entity_offer(days_back=28)),
-        ('granola', get_recent_granola_meetings_for_entity_offer(days=28, limit=20)),
+        ('granola', get_recent_granola_meetings_for_entity_offer(
+            days=28,
+            limit=granola_limit,
+        )),
     )
     for source, meetings in sources:
         for meeting in meetings:
@@ -1637,6 +1662,7 @@ def prepare_entity_page_offer() -> Dict[str, Any]:
         'prepare',
         meetings=_collect_entity_offer_meetings(),
         profile=profile,
+        limit=_entity_page_offer_limit(),
     )
     suggestions = result.get('suggestions', [])
     return {
@@ -1656,6 +1682,7 @@ def respond_to_entity_page_offer(
         'respond',
         action=action,
         suggestion_ids=suggestion_ids,
+        limit=_entity_page_offer_limit(),
     )
     return {
         'action': result['action'],
@@ -2145,7 +2172,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="prepare_entity_page_offer",
-            description="After finalization, stage only entity-engine-qualified person/company suggestions for the concrete onboarding offer.",
+            description="After finalization, stage only entity-engine-qualified person/company suggestions for the concrete onboarding offer. A lab preview returns the full last-few-weeks window; shipped setup still stages five.",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -2165,7 +2192,7 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "minItems": 1,
-                        "maxItems": 5,
+                        "maxItems": LAB_ENTITY_PAGE_OFFER_LIMIT,
                     },
                 },
                 "required": ["action", "suggestion_ids"],

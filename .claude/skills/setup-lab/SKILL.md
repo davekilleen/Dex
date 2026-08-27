@@ -40,7 +40,7 @@ Then stop.
 - A conversation, not a form. One spoken question at a time. Never stack tap-cards.
 - Meeting notes in this hour. Ask what she uses (Granola, Fireflies, Zoom, Teams, a folder, nowhere). If Granola, walk `/granola-setup` now. Do not leave notes for the end.
 - Look at **three weeks** of meetings. Find regular cadence. Guess manager / people she keeps close, then ask.
-- Ask whether to automatically file people and company pages. Required.
+- After the last few weeks of meetings, name the full set of people and company pages and file all of them if she says yes. Then keep filing new ones. Required.
 - Invite voice and last year’s review. Do not invent a `/voice` command.
 - End on her week + two or three insights + one live shortcut.
 - Failure copy: situation + it’s normal + one next step.
@@ -56,7 +56,7 @@ Then stop.
 - Looking at only one week of titles.
 - Naming people from the calendar and never asking about automatic people and company pages.
 - Claiming tomorrow’s brief is ready when morning skills cannot use this calendar.
-- Offering hundreds of people pages.
+- Offering a year of people pages, or only naming five when the last few weeks have more.
 - Creating a page for the user themselves.
 - Grepping Dex files to learn allowed values.
 

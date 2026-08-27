@@ -65,7 +65,7 @@ Detect Granola **before** asking for a key. If it is already there, do not make 
 - Not advertising `/connect` (that door is held and not shipped).
 - Not reading Slack / Salesforce / Gong *content* before she says yes.
 - Not creating a page for the user themselves.
-- Not offering 366 people pages in hour one.
+- Not offering a year of people pages in hour one. The last few weeks of meetings are in scope; file that whole set.
 - Not saying “I can’t see your calendar,” “connector,” “tools are on,” “cron,” or “sync failed.”
 - Not editing Dex source in the user’s vault to recover from a crash.
 - Not asking her to connect Slack or Salesforce in hour one.
@@ -159,7 +159,7 @@ Keep as real spoken questions — **role-agnostic**. Look at **three weeks** of 
 - What matters most right now (`role_focus` — this must **feed** draft pillars and goals, not die in the profile).
 - 2–3 themes / pillars (with calendar evidence if we have it; always allow a theme that owns no calendar time).
 - Quarter outcome (confirm a draft if the gold line already named it).
-- Up to five people **and who they are to her**. Then: “Would you like me to automatically file and create people and company pages from your meetings?”
+- Everyone who qualifies from the last few weeks **and who they are to her**. Then: “From the last few weeks I can file pages for [N] people and [M] companies. I’ll create all of those now, and keep filing anyone new from your meetings. Sound right?”
 - Anything a calendar would miss, plus the review if she brought it.
 
 Confirm, don’t quiz:
@@ -245,12 +245,12 @@ In Scenario A, if morning skills still cannot use the company calendar, add one 
 | anything_else | Mirror close. |
 | Calendar source | Record the **real** source on profile `calendar` (Google account, Apple calendar name, or none). Morning skills must be able to use what we claimed, or copy stays scoped to “when we talk.” |
 | Meeting source | `save_meeting_source` on the session at connect time; finalize writes `meeting_sources`. |
-| Person pages | Max 5, cleaned, never her; ask whether to auto-file people and company pages; then auto-vs-suggest. |
+| Person pages | The last few weeks, cleaned, never her; name the full set and file all of them on yes; then keep filing automatically. |
 | Annual review | Ask in this hour if she has last year’s to hand. |
 | Analytics notice | Helping-hand card. |
 | Feedback + doctor + help | Helping-hand card. |
 | Nudge calendar | Replaced by optional 2-week free cue cards, tailored. |
-| Getting-started / 366 backfill | Next session; this week only in hour one. |
+| Getting-started / older history | Next session; hour one files the last few weeks, not a year of names. |
 
 ---
 

@@ -96,20 +96,22 @@ Read the `cadence` block. Use it as conversation, not a dashboard dump:
 
 “From the last three weeks you have a regular 1:1 with [Name], and [recurring]. Is [Name] your manager, or someone you keep close?”
 
-People mapper: max 5 named in this hour, exclude her work email, never a self-page.
+People mapper: every person and company who qualifies from the last few weeks (about 21–28 days). Exclude her work email. Never a self-page. Never a year of names. Do not cap at five.
 
-Then the auto-file question — this is required, not optional colour:
+Then say the real count from that window — this is required, not optional colour:
 
-“Would you like me to automatically file and create people and company pages from your meetings? I’ll still only name up to five in this hour. You can change this later.”
+“From the last few weeks I can file pages for [N] people and [M] companies. I’ll create all of those now, and keep filing anyone new from your meetings. Sound right?”
 
-Save with `save_entity_creation_preference`. After finalize, call `set_entity_creation_default` with the same yes/no, then `prepare_entity_page_offer` for the first few names. If she said no, leave suggest-first and do not push.
+If N is more than about eight, say the count and a few names as examples. If N is small, name them. Do not recite a year of people.
+
+Save with `save_entity_creation_preference`. After finalize, call `set_entity_creation_default` with the same yes/no, then `prepare_entity_page_offer` and `respond_to_entity_page_offer` with every returned suggestion id. Do not take the first five. If she said no, leave suggest-first and do not create pages.
 
 ## 5. Interview (spoken, then the mirror)
 
 Do not open three question cards at once. Infer role, company size, working week, and how Dex should talk. Use the three-week picture and anything she already said (voice, review, notes).
 
 1. What matters most right now (`role_focus` — this feeds pillars and goals). Offer two or three drafts from her calendar if you have them.
-2. Confirm the people she already picked, and who they are to her.
+2. Confirm who the people from those meetings are to her.
 
 Then the mirror. Quarter outcome can be a draft on the mirror, not its own quiz.
 
@@ -145,4 +147,4 @@ Do not call `generate_nudge_calendar`.
 
 Use the exact helping-hand copy in the spec. If morning skills still cannot use this calendar, add the two-minute honest line before it.
 
-Do not offer `/getting-started` backfill of hundreds of people. That is next session.
+Do not offer a year of people pages. This hour files the last few weeks. Older history is next session.

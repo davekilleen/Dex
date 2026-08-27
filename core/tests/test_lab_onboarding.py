@@ -51,16 +51,22 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "Background workers are real subagents" in skill
     assert "builder note" in skill
     assert "three weeks" in skill
-    assert "automatically file people and company pages" in skill
+    assert "file all of them if she says yes" in skill
+    assert "only naming five when the last few weeks have more" in skill
     assert "walk `/granola-setup` now" in skill
     assert "Do not invent a `/voice` command" in skill
     assert "Do not invent a `/voice` command" in hour
     assert "last year’s review" in skill
     assert "Fireflies" in hour
-    assert "Would you like me to automatically file and create people and company pages" in hour
+    assert "I’ll create all of those now" in hour
+    assert "Do not take the first five" in hour
+    assert "Do not cap at five" in hour
     assert "we can do Granola in two minutes at the end" in hour
     assert "last three weeks" in hour
     assert hour.count("/voice") == 1
+    spoken = hour.split("## 1. Welcome", 1)[1]
+    assert "only name up to five" not in spoken
+    assert "max 5 named" not in hour
     for banned in BANNED_IN_HER_EARS:
         assert banned not in hour.split("Banned")[0]
         # The hour may name banned words only in the ban list.
