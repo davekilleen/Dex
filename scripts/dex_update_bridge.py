@@ -2583,6 +2583,7 @@ class _FoundationLifecycleService:
                 "approved_token",
                 "operation",
                 "before_commit",
+                "bind_intent",
             ),
             "_canonical": ("value",),
             "_envelope": ("values",),

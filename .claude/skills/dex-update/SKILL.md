@@ -35,8 +35,9 @@ Only when delivery returns its exact release identity, ask
 that identity. Show every returned write and ask: “Apply this exact update?”
 Only a fresh explicit yes to that unchanged preview permits
 `execute_approved_delivered_release` with the same preview and approval token.
-Render its lifecycle receipt. If delivery, preview, or execution refuses, stop;
-no vault-content change was made.
+Render its lifecycle receipt. Then ask `read_lifecycle_state` — the applied
+version now appears in the same rewind list `/dex-rollback` uses. If delivery,
+preview, or execution refuses, stop; no vault-content change was made.
 
 **Immediately after a successful apply, run the post-update canary** — one
 read-only walk through the same doors every later command will use. From the
@@ -291,9 +292,10 @@ Ask one direct question: “Apply this exact update?” for an adoption preview,
 
 ## Receipt view
 
-After success, render the receipt returned by `execute_approved_adoption` or `execute_approved_conflict_resolution`:
+After success, render the receipt returned by `execute_approved_adoption`,
+`execute_approved_conflict_resolution`, or `execute_approved_delivered_release`:
 
-- adopted items;
+- adopted items (a version update appears as `dex-release` at the installed version);
 - transaction identifier;
 - every receipt-declared file;
 - snapshot reference;

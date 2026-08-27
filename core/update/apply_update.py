@@ -761,7 +761,9 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 def _finalize_release_metadata(
     vault_root: Path,
-    release: VerifiedReleaseRef,
+    *,
+    brain_git: Path,
+    commit: str,
     previous_commit: str,
 ) -> None:
     """Record the installed release, and re-record a relocated vault path.
@@ -774,26 +776,26 @@ def _finalize_release_metadata(
     """
     root = Path(vault_root).resolve()
     topology_path = vault_root / TOPOLOGY_RELATIVE
-    marker_path = release.brain_git / BRAIN_MARKER_NAME
+    marker_path = brain_git / BRAIN_MARKER_NAME
     topology = _read_regular_json(topology_path, "split topology marker")
     marker = _read_regular_json(marker_path, "brain Git marker")
     previous_topology = dict(topology)
     previous_marker = dict(marker)
-    topology["installedRelease"] = release.commit
+    topology["installedRelease"] = commit
     if _relocated_vault(root, topology):
         environment = topology.get("environment")
         if isinstance(environment, dict):
             topology["environment"] = {**environment, "DEX_VAULT": str(root)}
-    marker["installed"] = release.commit
+    marker["installed"] = commit
     try:
         _atomic_json(topology_path, topology)
         _atomic_json(marker_path, marker)
         git_output(
             vault_root,
-            f"--git-dir={release.brain_git}",
+            f"--git-dir={brain_git}",
             "update-ref",
             "refs/dex/installed",
-            release.commit,
+            commit,
             previous_commit,
             profile="mutation",
         )
@@ -801,6 +803,31 @@ def _finalize_release_metadata(
         _atomic_json(topology_path, previous_topology)
         _atomic_json(marker_path, previous_marker)
         raise
+
+
+def restore_installed_release(vault_root: Path, target_commit: str) -> None:
+    """Point the split identity back at ``target_commit``.
+
+    Used when rewinding a delivered release. The live identity must currently
+    agree with itself; the value being left is whatever is installed now.
+    """
+    root = Path(vault_root).resolve()
+    brain_git, topology, marker = _topology(root)
+    current = _brain_text(
+        root, brain_git, "rev-parse", "--verify", "refs/dex/installed^{commit}"
+    )
+    if topology.get("installedRelease") != current or marker.get("installed") != current:
+        raise UpdateError(
+            "installed release identity disagrees across the split topology markers"
+        )
+    if current == target_commit:
+        return
+    _finalize_release_metadata(
+        root,
+        brain_git=brain_git,
+        commit=target_commit,
+        previous_commit=current,
+    )
 
 
 def validated_release_apply_context(
@@ -835,8 +862,9 @@ def apply_verified_release(vault_root: Path, release: VerifiedReleaseRef) -> dic
     transaction_result = transaction.run(
         before_commit=lambda: _finalize_release_metadata(
             root,
-            release,
-            previous_commit,
+            brain_git=release.brain_git,
+            commit=release.commit,
+            previous_commit=previous_commit,
         )
     )
     # Post-commit, best-effort tidy-up shared with the lifecycle service's
