@@ -2,13 +2,13 @@
 
 **Date:** 27 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Codex first. Claude Cowork and later hosts have not started.
+**Sequence:** Codex exact-head native CI is green. Claude Cowork proof is in progress. Later hosts have not started.
 
 ## What “Codex done” means
 
 Dex works in **Codex CLI and Codex desktop**. The Codex editor add-on does not load this plugin; that limit is recorded in the Codex host profile and is intentional.
 
-This file records proof so far. Ubuntu in Cursor Cloud is not macOS or Windows proof.
+This file records proof so far. Ubuntu in Cursor Cloud is not a Codex desktop or Cowork desktop UI journey. Native Mac and Windows proof is the GitHub jobs named below.
 
 ## Exact head
 
@@ -66,29 +66,28 @@ Codex profile truth checked in tests:
 
 ## Exact-head GitHub CI
 
-**Not yet proven on this head.**
+Proven on `cbfc81692809dd78ce74779bc8291514b9fdfdf6`:
 
-Required for Codex acceptance:
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33098144565 — **success**
+  - quality
+  - tests 1–3 and test-results
+  - native macOS portable runtime
+  - native Windows portable runtime
+  - Lens catalog dry-run
+- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33098144559 — **success**
+- Earlier canary on the pre-fix SHA `76ab765a`: https://github.com/davekilleen/Dex/actions/runs/33097749727 — success
+- Formal historic-fleet-darwin job stays skipped on pull requests (workflow_dispatch only)
 
-- Dex CI quality
-- Dex CI test shards 1–3 and test-results
-- Native macOS portable runtime job
-- Native Windows portable runtime job
-- Twelve-journey macOS fleet canary (`historic-fleet-darwin-pr-canary`)
+The first Dex CI run on this work, merge-only SHA `99632651`, failed: https://github.com/davekilleen/Dex/actions/runs/33092456685. Those failures are fixed on this branch.
 
-What we know:
+A later commit that records this proof or starts Cowork is a new head and must earn its own green run.
 
-- The only Dex CI run on this work was merge-only SHA `99632651` (PR #619): https://github.com/davekilleen/Dex/actions/runs/33092456685 — **failed** for stale adapters, keep-both, safety-hook `DROP` text, Lens schema pin, catalog tool total 151 vs 146, provision preview paths, and Ruff import order. Those are fixed on this branch.
-- Native portable jobs on that **old** SHA were already green. That is not this head.
-- Fleet canary on that **old** SHA was green: https://github.com/davekilleen/Dex/actions/runs/33092456455
-- SHA `f4a0fde6` and later had **zero** GitHub Actions check-runs. Workflow dispatch returns 403 for this token. Empty commit, close/reopen, and a second draft PR did not start Actions.
-- This branch still changes `.github/workflows/ci.yml` to add the portable macOS/Windows jobs. Other PRs without workflow edits get CI on every push. That difference is the leading explanation for the silent skip.
+## Claude Cowork (started after Codex CI was green)
 
-Ubuntu results are not a substitute for those native jobs.
+Ubuntu can prove detection, the shared Claude plugin package, and Doctor telling the truth about the public-endpoint MCP limit. It cannot prove the Cowork desktop folder-permission click or a live public connector.
 
 ## Deliberately not started
 
-- Claude Code / Cowork (Phase 1B)
 - Pi, Copilot CLI, and other later hosts (Phase 1C)
 - Capability-exchange privacy repairs in Dex Lens
 - BB revisit
