@@ -35,8 +35,11 @@ ENV_NAME = re.compile(
 JS_REQUIRE = re.compile(r"\brequire\(\s*[\"']([^\"']+)[\"']\s*\)")
 YAML_SCALAR = re.compile(r"^[ \t]*[A-Za-z0-9_.-]+[ \t]*:[ \t]*(.+?)[ \t]*$")
 SHELL_WORD = re.compile(r"""(?:'[^']*'|"[^"]*"|[^\s;&|<>]+)""")
+# A requirement line names a package. Lines opening with a dash are pip options
+# (`-r other.txt`, `--hash=sha256:...` continuations in a locked file), never
+# package names, so they must not become dependency edges.
 REQUIREMENTS_NAME = re.compile(
-    r"^\s*([A-Za-z0-9_.-]{1,256})(?:\[[A-Za-z0-9_,.-]+\])?"
+    r"^\s*(?!-)([A-Za-z0-9_.-]{1,256})(?:\[[A-Za-z0-9_,.-]+\])?"
     r"\s*(?:[<>=!~;@]|$)"
 )
 PACKAGE_NAME = re.compile(r"^[A-Za-z0-9@/_.-]{1,256}$")

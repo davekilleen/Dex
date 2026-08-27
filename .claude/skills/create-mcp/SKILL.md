@@ -395,7 +395,13 @@ Save to: `core/mcp/[service_name]_server.py`
 
 **Step 3.2: Update requirements**
 
-Add any new dependencies to `core/mcp/requirements.txt`
+Add any new dependencies to the `dependencies` list in `pyproject.toml`, then run
+`./scripts/lock-python-deps.sh` to regenerate `uv.lock`, `core/mcp/requirements.txt`
+and `requirements.txt`.
+
+Never hand-edit those three files: they are generated, and every package in them is
+pinned to an exact version with a checksum so an install can never pull an
+unreviewed release. A hand-added line has no checksum and makes the install fail.
 
 **Step 3.3: Create launcher script (if needed)**
 
@@ -418,7 +424,7 @@ Make executable: `chmod +x run_[service_name].sh`
 
 Files generated:
 - `core/mcp/[service_name]_server.py` — The MCP server
-- `core/mcp/requirements.txt` — Updated with dependencies
+- `pyproject.toml` + regenerated lock files — Updated with dependencies
 
 **Before we integrate, you'll need to:**
 
@@ -593,7 +599,7 @@ a remote, HTTP, npm, npx, binary, flagged Python (`-c` or `-m`), absolute, or `.
 Let me verify everything is in place:
 
 ✅ Server created: `core/mcp/[service_name]_server.py`
-✅ Dependencies updated: `core/mcp/requirements.txt`
+✅ Dependencies updated: `pyproject.toml` (lock files regenerated)
 ✅ CLAUDE.md updated with integration docs
 ✅ System Guide updated
 

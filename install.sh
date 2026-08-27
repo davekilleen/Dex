@@ -206,14 +206,30 @@ if [ -n "$PYTHON_CMD" ]; then
             echo ""
             echo "Try manually:"
             echo "  $PYTHON_CMD -m venv .venv"
-            echo "  $VENV_PIP install -r core/mcp/requirements.txt"
+            echo "  $VENV_PIP install --require-hashes -r core/mcp/requirements.txt"
             echo ""
             read -p "Press Enter to continue setup (you can fix this later)..."
         fi
     fi
 
-    # Install dependencies into venv
-    if [ -f "$VENV_PIP" ] && "$VENV_PIP" install -r core/mcp/requirements.txt --quiet 2>/dev/null; then
+    # Install dependencies into venv from the locked list. core/mcp/requirements.txt
+    # is generated from uv.lock: every package is pinned to one exact version with
+    # a checksum, so this can only install the reviewed set — never whatever the
+    # package index happens to serve today. --require-hashes makes an unpinned or
+    # tampered entry a hard failure instead of a silent install.
+    # uv installs the same locked set much faster when the user already has it;
+    # pip installs it identically when they don't.
+    DEX_PY_INSTALLED=0
+    if command -v uv &> /dev/null && [ -f "$VENV_PYTHON" ]; then
+        if uv pip install --python "$VENV_PYTHON" --require-hashes -r core/mcp/requirements.txt --quiet 2>/dev/null; then
+            DEX_PY_INSTALLED=1
+        fi
+    fi
+    if [ "$DEX_PY_INSTALLED" -eq 0 ] && [ -f "$VENV_PIP" ] && "$VENV_PIP" install --require-hashes -r core/mcp/requirements.txt --quiet 2>/dev/null; then
+        DEX_PY_INSTALLED=1
+    fi
+
+    if [ "$DEX_PY_INSTALLED" -eq 1 ]; then
         echo "✅ Work MCP dependencies installed"
     else
         echo "❌ Could not install Python dependencies"
@@ -223,7 +239,7 @@ if [ -n "$PYTHON_CMD" ]; then
         echo ""
         echo "Try manually:"
         echo "  $PYTHON_CMD -m venv .venv"
-        echo "  $VENV_PIP install -r core/mcp/requirements.txt"
+        echo "  $VENV_PIP install --require-hashes -r core/mcp/requirements.txt"
         echo ""
         read -p "Press Enter to continue setup (you can fix this later)..."
     fi

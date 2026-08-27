@@ -1,3 +1,42 @@
+# The single declaration of every Python package Dex installs on a user's
+# machine. `uv.lock` pins this whole tree — direct and transitive — to exact
+# versions, and the two requirements files that installers actually read are
+# generated from that lock with checksums:
+#
+#   core/mcp/requirements.txt   the runtime install.sh puts in .venv
+#   requirements.txt            the same runtime plus the optional scraping extra
+#
+# Regenerate all three with: ./scripts/lock-python-deps.sh
+# Never hand-edit the generated files — change the ranges here and re-lock.
+#
+# Dex is not published to PyPI and this file is not shipped in releases; the
+# version below is a placeholder that uv requires. The real release version
+# lives in package.json.
+[project]
+name = "dex"
+version = "0.0.0"
+description = "Dex — personal knowledge system (dependency declaration only)"
+# install.sh accepts Python 3.10+, so the lock has to stay valid that far back.
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0,<2.0.0",
+    "pyyaml>=6.0",
+    "python-dateutil>=2.8.0",
+    "requests>=2.31.0",
+    "aiohttp>=3.9.0",
+    # Calendar MCP: EventKit for correct recurring events and fast queries (macOS only)
+    "pyobjc-framework-EventKit>=10.0; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+# Web scraping (no API key required) — installed on demand, not by install.sh.
+scraping = ["scrapling[ai]>=0.4.1"]
+
+[tool.uv]
+# Dex is a plain checkout, not an installable distribution: lock and export the
+# dependencies without ever building or installing the project itself.
+package = false
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120
