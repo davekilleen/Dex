@@ -57,6 +57,7 @@ QUICK_IDS = [
     "customizations.skills",
     "customizations.mcp",
     "core.drift",
+    "mail.apple-search",
     "doctor.self",
 ]
 
@@ -69,7 +70,6 @@ DEEP_IDS = [
     "config.claude_composition",
     "update.post-canary",
     "calendar.access",
-    "mail.apple-search",
     "qmd.live",
     "integrations.enabled",
     "mcp.importable",
@@ -4167,12 +4167,12 @@ def test_calendar_sandbox_failure_is_unknown(monkeypatch, context):
     assert doctor._probe_calendar_access(context).verdict == "UNKNOWN"
 
 
-def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
+def test_apple_mail_search_is_a_quick_check_and_adapts_the_focused_probe(
     monkeypatch,
     context,
 ):
-    assert "mail.apple-search" in DEEP_IDS
-    definition = next(check for check in doctor.DEEP_CHECKS if check.id == "mail.apple-search")
+    assert "mail.apple-search" in QUICK_IDS
+    definition = next(check for check in doctor.QUICK_CHECKS if check.id == "mail.apple-search")
     assert definition.probe == "_probe_apple_mail_search"
 
     observed = {}
@@ -4203,6 +4203,70 @@ def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
     assert observed["context"].project_config_path == context.vault_root / ".mcp.json"
     assert observed["context"].macos is True
     assert observed["context"].cli_present is True
+
+
+def test_focused_mail_check_does_not_run_the_deep_registry_or_write_last_run(
+    monkeypatch,
+    context,
+):
+    deep_calls = []
+
+    def mark(name):
+        def probe(_context, *, _name=name):
+            deep_calls.append(_name)
+            return doctor.ProbeResult("OK", f"{_name} should not have run.")
+
+        return probe
+
+    _stub_probes(monkeypatch)
+    for definition in doctor.DEEP_CHECKS:
+        monkeypatch.setattr(doctor, definition.probe, mark(definition.id))
+
+    report = doctor.collect(check_id="mail.apple-search", context=context)
+
+    assert report["mode"] == "focused"
+    assert "adoption" not in report
+    assert [check["id"] for check in report["checks"]] == [
+        "mail.apple-search",
+        "doctor.self",
+    ]
+    assert deep_calls == []
+    assert not context.last_run_path.exists()
+
+
+def test_focused_mail_check_cli_returns_honest_broken_status(
+    monkeypatch,
+    context,
+    capsys,
+):
+    _stub_probes(
+        monkeypatch,
+        overrides={
+            "mail.apple-search": doctor.ProbeResult(
+                "BROKEN",
+                "Apple Mail search has no index, so every mail search returns nothing",
+                heal=doctor.Heal(tier=3, action="Run apple-mail-mcp index.", applied=False),
+                feature_status="broken",
+                user_message="Mail search has never been built, so it silently returns nothing.",
+            )
+        },
+    )
+
+    assert doctor.main(["--check", "mail.apple-search"], context=context) == 0
+    report = json.loads(capsys.readouterr().out)
+    mail = _check(report, "mail.apple-search")
+
+    assert report["mode"] == "focused"
+    assert mail["feature_status"] == "broken"
+    assert mail["user_message"]
+    assert "returns nothing" in mail["user_message"]
+    assert mail.get("emails") is None
+    assert "granola.query_path" not in {check["id"] for check in report["checks"]}
+
+
+def test_focused_check_rejects_an_unknown_id(context):
+    with pytest.raises(ValueError, match="Unknown doctor check"):
+        doctor.collect(check_id="mail.not-a-real-check", context=context)
 
 
 def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, context):

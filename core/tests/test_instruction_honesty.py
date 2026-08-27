@@ -588,7 +588,8 @@ def test_email_aware_plans_do_not_silently_skip_a_broken_mail_index() -> None:
         instructions = _read(relative)
         assert "mail.apple-search" in instructions, relative
         assert "do not silently skip" in instructions.lower(), relative
-        assert "python3 core/utils/doctor.py --deep" in instructions, relative
+        assert "python3 core/utils/doctor.py --check mail.apple-search" in instructions, relative
+        assert "`--deep`" in instructions, relative
 
 
 def test_apple_mail_setup_installs_only_the_runtime_mac_ci_proves() -> None:

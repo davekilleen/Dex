@@ -203,6 +203,49 @@ def test_apple_mail_search_is_broken_when_the_index_was_never_built(monkeypatch,
     assert "returns nothing" in result.user_message
 
 
+def test_email_aware_path_with_no_index_is_visible_not_empty(context):
+    """Linux contract: a missing index is a visible broken state, never []."""
+    _register_apple_mail_user_scope(context)
+
+    state = apple_mail_health.flow_status(context)
+    encoded = json.dumps(state)
+
+    assert state["feature_status"] == "broken"
+    assert state["usable"] is False
+    assert state["search"] == "blocked"
+    assert state["visible"].startswith(apple_mail_health.EMAIL_CONTEXT_OMITTED_PREFIX)
+    assert "never been built" in state["user_message"]
+    assert "apple-mail-mcp index" in state["action"]
+    for key in apple_mail_health._SEARCH_RESULT_KEYS:
+        assert key not in state
+        assert f'"{key}": []' not in encoded
+
+
+def test_email_aware_path_with_index_still_allows_existing_search(context):
+    """Linux contract: a fresh index keeps the existing Mail search path open."""
+    _register_apple_mail_user_scope(context)
+    _write_apple_mail_index(context, age_days=1)
+
+    state = apple_mail_health.flow_status(context)
+
+    assert state["feature_status"] == "ok"
+    assert state["usable"] is True
+    assert state["search"] == "allowed"
+    assert "visible" not in state
+    assert "user_message" not in state
+    for key in apple_mail_health._SEARCH_RESULT_KEYS:
+        assert key not in state
+
+
+def test_email_aware_path_omits_unconnected_mail_without_noise(context):
+    state = apple_mail_health.flow_status(context)
+
+    assert state["feature_status"] == "off"
+    assert state["usable"] is False
+    assert state["search"] == "blocked"
+    assert "visible" not in state
+
+
 def test_apple_mail_search_is_broken_when_the_index_is_empty(monkeypatch, context):
     _register_apple_mail_user_scope(context)
     _write_apple_mail_index(context, size=0)

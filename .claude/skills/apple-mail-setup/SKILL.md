@@ -147,7 +147,8 @@ Then tell them the two maintenance facts that matter:
 
 ## Ongoing health
 
-`/dex-doctor` runs `mail.apple-search` as a deep check and reports:
+`/dex-doctor` runs `mail.apple-search` as a local checkup (also as
+`python3 core/utils/doctor.py --check mail.apple-search`) and reports:
 
 | Verdict | Meaning |
 |---|---|

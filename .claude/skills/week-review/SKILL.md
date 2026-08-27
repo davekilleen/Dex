@@ -256,7 +256,8 @@ Review meeting notes from the week:
 
 Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. Also treat a
 registered `apple-mail-mcp` server as connected. Before querying a connected email source,
-run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+run `python3 core/utils/doctor.py --check mail.apple-search` — a focused local check,
+not `--deep`. Apple Mail search is usable only when the
 `mail.apple-search` check reports `OK` / `feature_status: ok`.
 
 If connected and healthy:

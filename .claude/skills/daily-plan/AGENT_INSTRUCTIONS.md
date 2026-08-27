@@ -116,7 +116,8 @@ from them; triage is an interactive step in the main conversation.
 
 Check `System/integrations/config.yaml`. Also treat a registered `apple-mail-mcp`
 server as connected. Before querying any connected email source, run
-`python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
+`python3 core/utils/doctor.py --check mail.apple-search` — a focused local check,
+not `--deep`. Apple Mail search is usable only when the
 `mail.apple-search` check reports `OK` / `feature_status: ok`.
 
 If the source is connected and healthy:

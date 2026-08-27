@@ -123,7 +123,8 @@ Never read or change the separate analytics consent while handling this choice.
 
 ### Step 2: Offer the deep scan
 
-Quick mode checks configuration, wiring, and background-job freshness. Deep mode
+Quick mode checks configuration, wiring, background-job freshness, and the local
+Mail search index when a community Apple Mail server is registered. Deep mode
 additionally contacts live services (Granola API, Calendar via EventKit, enabled
 integrations). Ask:
 
