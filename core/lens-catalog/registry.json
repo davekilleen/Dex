@@ -4940,8 +4940,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "af3bf49d316081ee1b007ffab441ee383522e1724206defadfd62835b075f70b",
-        "byte_size": 20549
+        "sha256": "6519acc6a7c4b21f2dc062c817adba68f562b7fa686acdf571f302248f253217",
+        "byte_size": 21376
       },
       "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
       "jobs_served": [
