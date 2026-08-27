@@ -31,6 +31,7 @@
 .claude/hooks/post-meeting-person-update.cjs
 .claude/hooks/session-end.sh
 .claude/hooks/session-start.sh
+.claude/hooks/skill-freshness.py
 .claude/hooks/soft-promise-detector.py
 .claude/hooks/tests/adapter-runner.test.cjs
 .claude/hooks/tests/auto-link-gate.test.cjs
@@ -530,7 +531,6 @@
 .claude/skills/calendar-setup/SKILL.md
 .claude/skills/commitments/SKILL.md
 .claude/skills/commitments/evals/trigger-cases.yaml
-.claude/skills/connect/SKILL.md
 .claude/skills/create-mcp/SKILL.md
 .claude/skills/create-skill/SKILL.md
 .claude/skills/create-skill/evals/trigger-cases.yaml
@@ -642,6 +642,7 @@
 .scripts/lib/tests/entity-engine-test-helper.cjs
 .scripts/lib/tests/entity-identity.test.cjs
 .scripts/lib/tests/entity-pages.test.cjs
+.scripts/lib/tests/llm-client.test.cjs
 .scripts/lib/tests/provision.test.cjs
 .scripts/meeting-intel/__tests__/capture-calendar-identity.test.cjs
 .scripts/meeting-intel/__tests__/company-domains.test.cjs
@@ -1129,6 +1130,7 @@ core/tests/test_learning_capture_command_name.py
 core/tests/test_lens_catalog_ci_trigger.py
 core/tests/test_lens_catalog_discovery.py
 core/tests/test_lens_catalog_enriched_discovery.py
+core/tests/test_lens_catalog_release_truth.py
 core/tests/test_lens_catalog_sources.py
 core/tests/test_lifecycle_bridge.py
 core/tests/test_lifecycle_official_capabilities.py
@@ -1194,6 +1196,7 @@ core/tests/test_session_health.py
 core/tests/test_setup_credential_disclosure.py
 core/tests/test_shipped_seed_policy.py
 core/tests/test_skill_delegated_gathering.py
+core/tests/test_skill_freshness.py
 core/tests/test_skill_integrity.py
 core/tests/test_smoke.py
 core/tests/test_smoke_automation.py
@@ -1219,6 +1222,7 @@ core/tests/test_wave3_mature_skill_amendments.py
 core/tests/test_wave3_role_skill_contracts.py
 core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
+core/tests/test_work_server_meeting_context.py
 core/tests/test_work_server_production_paths.py
 core/tests/test_work_server_roundtrip.py
 core/tests/test_work_server_task_priorities.py
@@ -1268,6 +1272,7 @@ core/utils/release_feed.py
 core/utils/release_notes_sweep.py
 core/utils/safe_autosave.py
 core/utils/session_health.py
+core/utils/skill_freshness.py
 core/utils/smoke.py
 core/utils/strict_yaml.py
 core/utils/timezone.py
