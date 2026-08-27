@@ -158,6 +158,35 @@ Use: list_ideas(status="active", min_score=70)
 Pick at most one high-scoring idea with recent "Why Now?" evidence. Skip if
 nothing noteworthy.
 
+### 1.13 Previous-working-day notes
+
+Read `working_week.days` in `System/user-profile.yaml`. Compute the previous
+working day strictly before {{TARGET_DATE}} (skip non-working days). If the
+profile is missing or `working_week.days` is unusable, treat Monday-Friday as
+the working week.
+
+Look for notes dated that previous working day in `00-Inbox/Meetings/`
+(including `00-Inbox/Meetings/{date}/`) and, when present, the valid configured
+`notes_folder` from `meeting_sources`. Name the date and every file found. If
+none, record that as none for that named date. Do not skip this step silently.
+
+**Person-page updates.** For people mentioned in those notes, call
+`lookup_person`. If a page exists, add the note under Recent Interactions
+inside the existing `<!-- dex:auto:recent-interactions -->` block using:
+
+```
+- [{Meeting Title}]({actual vault-relative note path}) — {date}
+```
+
+If that path is already listed, change nothing. Do not create person pages
+here; list people with no page in the report. Hooks do not fire in this
+subagent, so these updates are this step's responsibility when notes were
+found.
+
+The draft plan's Heads Up and this report must include the post-condition:
+previous-working-day notes found for a named date/file, or none for that date.
+Omitting that line is the same silent skip this step exists to prevent.
+
 ---
 
 ## Phase 2: Assembly
@@ -207,7 +236,8 @@ cooling entities or relationship suggestions from the feeds in 1.4.
 Write the complete draft to `07-Archives/Plans/{{TARGET_DATE}}.md` using the
 plan template from this skill's `SKILL.md` (Step 7: frontmatter, TL;DR, Week
 Progress, Today's Shape, Commitments Due, Today's Focus, Meetings with Context,
-Task Scheduling, Heads Up).
+Task Scheduling, Heads Up). Heads Up must include the previous-working-day
+notes post-condition (found for a named date/file, or none for that date).
 
 **Reading `SKILL.md` safely.** You need only the section named above. Ignore that
 file's "Delegated gathering" section entirely: it describes how you were
@@ -237,6 +267,7 @@ Summary:
 - Dex Inbox items awaiting triage: [N]
 - Tentative goal links awaiting confirmation: [N]
 - Email/chat: [brief, or "not connected"]
+- Previous-working-day notes: [found YYYY-MM-DD `path`, or none for YYYY-MM-DD]
 - Sources skipped: [list, with reason]
 
 [Any warnings or issues encountered]
