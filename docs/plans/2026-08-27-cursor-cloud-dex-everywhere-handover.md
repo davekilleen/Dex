@@ -118,13 +118,16 @@ already green.
   is also green:
   <https://github.com/davekilleen/Dex/actions/runs/32872374450> and
   <https://github.com/davekilleen/Dex/actions/runs/32872374477>.
-- The latest verified local Core continuation before this handover was
-  `3b4a88342c4b83ff660fe7ced95232cbb31f73d4`, eight commits after the published PR
-  head. The accompanying handover branch also contains the nested custom-skill repair and
-  this document. Treat the SHA in the founder handoff as canonical.
-- GitHub `main` was `6b1d60ae4ec73e1f3fb0176458c4b619a4098201` at handover.
-- Latest public release was `v1.97.2`. The continuation branch must merge current `main`
-  before final evidence; use a normal merge, not a rebase or history rewrite.
+- Cloud continuation branch: `codex/dex-everywhere-cursor-handoff`.
+- Latest verified implementation head before this documentation-only reconciliation:
+  `1773da6a41f13e5c0ab45cf750b7619d35f2fd74`. Resolve the branch tip after cloning and
+  use that newer pushed tip as the starting point.
+- The branch has normally merged GitHub `main` through
+  `5d1c7027676a2fecd8bd26b42de8b823300c7bf8` (`v1.97.3`). It also contains the nested
+  custom-skill repair, transactional keep-both conflict sidecars, Lens catalogue
+  reconciliation, and the shared safety-gate repair.
+- Re-fetch `main` before final evidence. If it has advanced, use another normal merge,
+  not a rebase or history rewrite.
 
 The canonical Devbox Core worktree is dirty with preserved concurrent edits. Do not try to
 clean, reset, or overwrite it from another session. The handover branch was made from a
@@ -174,7 +177,8 @@ clean isolated clone.
 
 ## 6. Local Core verification already run
 
-Against exact local Core head `3b4a88342c4b83ff660fe7ced95232cbb31f73d4`:
+The first trustworthy clean-suite baseline was exact local Core head
+`3b4a88342c4b83ff660fe7ced95232cbb31f73d4`:
 
 - `npm ci`: passed; 96 packages, zero vulnerabilities.
 - Hook tests: 221/221 passed.
@@ -202,8 +206,9 @@ quote that run as product evidence.
 
 A clean dependency-isolated rerun with a private temporary directory completed in 898.28
 seconds: **4,577 passed, 34 failed, two skipped, and two deselected**. It contained no
-inode-exhaustion or missing-MCP setup errors, so its 34 failures are the trustworthy
-starting list. Failure families included:
+inode-exhaustion or missing-MCP setup errors, so those 34 failures were a trustworthy
+historical baseline. They are **not** the current open-failure count. Failure families
+included:
 
 - nested `*-custom` gitignore/update composition;
 - a provision receipt `declared_paths` mismatch;
@@ -213,8 +218,8 @@ starting list. Failure families included:
 
 The full log is retained on the Devbox at
 `/srv/dex-dev/verification-tmp/core-codex-local-gates-3b4a883/full-pytest-venv.log`.
-Cursor Cloud cannot read that local path; the exact failed-test names are captured by the
-following list and should be reproduced after merging current `main`:
+Cursor Cloud cannot read that local path; the exact formerly failed test names are
+captured by the following list for regression reference:
 
 ```text
 core/tests/test_apply_update.py::test_composed_gitignore_appends_contract_derived_vault_section
@@ -253,10 +258,30 @@ core/tests/test_tracked_ignored.py::test_real_fast_forward_and_rollback_preserve
 core/tests/test_transaction_core.py::test_engine_rechecks_deletion_content_immediately_before_unlink
 ```
 
-The first nine apply-update failures are expected to be covered by the handover branch's
-nested custom-skill repair, but re-run them. Several distribution failures may collapse
-once the branch is based on today's release truth, but do not classify any failure as
-inherited or fixed without rerunning it.
+Current disposition at implementation head `1773da6a`:
+
+- all nine apply-update failures are covered by the nested custom-skill repair; the full
+  `test_apply_update.py` target passed **81/81**;
+- the conflict, lifecycle, provision, portable-contract, transaction, adoption, bridge,
+  and MCP-registration family passed **301 tests** after the transaction repair;
+- the transaction engine's content-and-mode precondition was deliberately preserved;
+  the two file-mode failures were reproduced as an artificial `umask 0077` environment,
+  not fixed by weakening the approval contract;
+- the three release-fleet tests correctly skip on Linux and still require native CI;
+- the safety thin-wrapper failure is fixed by keeping the Python gate authoritative and
+  failing closed if it is unavailable; **7 safety tests** and **221 hook tests** passed;
+- Lens catalogue/inventory reconciliation passed **92 focused tests**, with generated
+  drift checks and Ruff green;
+- Doctor and smoke focused targets pass on the integrated branch.
+
+This is focused proof, not a replacement for the full clean suite. The first Cursor task
+is to run the formerly failing focused set, then the complete local verification contract,
+on the pushed branch tip. Pay particular attention to the expensive distribution-artifact
+family and the release-version test against `v1.97.3` truth.
+
+Re-run the first nine apply-update cases despite their focused green proof. Several
+distribution failures are expected to collapse against today's release truth, but do not
+classify any failure as inherited or fixed without rerunning it.
 
 The nested custom-skill repair has already been implemented on the handover branch:
 
@@ -273,9 +298,8 @@ Focused proof for that repair:
 - three release-builder tests passed;
 - Ruff passed for the changed Python files.
 
-Do not assume the remaining Python failures share one cause. Reproduce each independently
-on current `main` plus the handover branch, add or retain a failing regression, and make
-the smallest contract-preserving repair.
+Do not assume any remaining Python failure shares one cause. Reproduce it independently,
+retain or add a failing regression, and make the smallest contract-preserving repair.
 
 ## 7. Genuine Fable review already performed
 
@@ -391,15 +415,16 @@ suite and inventory, then commission a fresh independent review.
 
 ### Phase 1A — freeze a trustworthy Core/Codex head
 
-1. Clone `davekilleen/Dex` and start from the handover branch/SHA.
+1. Clone `davekilleen/Dex` and start from
+   `codex/dex-everywhere-cursor-handoff` at its exact pushed tip.
 2. Run `python3 scripts/dex_state.py --digest`, then read:
    `docs/architecture/DEX-CORE-MAP.md`, generated
    `docs/architecture/INVENTORY.md`, `CHANGELOG.md`, the Dex Everywhere plan, platform
    docs, and press release.
-3. Fetch current `main` and merge it normally into the isolated continuation branch.
-   Preserve all new main work. Do not rebase or force-push.
-4. Reproduce the remaining Python failures in a clean virtual environment with a private
-   temporary directory. Fix only genuine branch regressions.
+3. Fetch current `main`. The branch already includes `5d1c7027`; merge normally only if
+   `main` has advanced. Preserve all new main work. Do not rebase or force-push.
+4. Re-run the historical failing set, then the full Python suite in a clean virtual
+   environment with a private temporary directory. Fix only genuine branch regressions.
 5. Run the complete local Core gate list in section 10.
 6. Push a draft-PR head and wait for exact-head GitHub CI. Both native macOS and native
    Windows portable jobs must be green, as must the twelve-journey macOS fleet canary.
@@ -567,9 +592,10 @@ branch:
 
 > Continue the unreleased Dex Everywhere programme from
 > `docs/plans/2026-08-27-cursor-cloud-dex-everywhere-handover.md`. Verify the checked-out
-> commit matches the founder's handoff. Work only on an isolated branch. Preserve all
-> unrelated work. Begin with Phase 1A: merge current `origin/main` normally, reproduce and
-> fix the remaining genuine Core failures test-first, then run the complete Core local
+> commit matches the pushed branch tip. Work only on an isolated branch. Preserve all
+> unrelated work. Begin with Phase 1A: fetch `origin/main` and merge it normally only if it
+> is newer than integrated main `5d1c7027`; rerun the historical failing set and fix any
+> remaining genuine Core failures test-first, then run the complete Core local
 > verification contract. Prioritise the Codex golden journey. Do not move to Claude
 > Code/Cowork until the Core/Codex head is clean and exact-head native CI is green. Do not
 > merge main, publish, deploy, install for users, change billing, copy credentials, or
