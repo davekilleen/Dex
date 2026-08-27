@@ -228,10 +228,6 @@
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"
     },
-    "connect": {
-      "classification": "portable",
-      "reason": "no host-only body command or broken local reference"
-    },
     "create-mcp": {
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"
