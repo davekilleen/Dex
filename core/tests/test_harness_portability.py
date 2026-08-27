@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR_PATH = REPO_ROOT / "scripts" / "generate-agents-skills.py"
+PORTABILITY_GENERATOR_PATH = REPO_ROOT / "scripts" / "generate-harness-portability.py"
 
 
 def _load_generator():
@@ -17,6 +19,31 @@ def _load_generator():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _load_portability_generator():
+    spec = importlib.util.spec_from_file_location(
+        "generate_harness_portability", PORTABILITY_GENERATOR_PATH
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_portability_manifest_is_current() -> None:
+    assert _load_portability_generator().check_manifest(REPO_ROOT) == 0
+
+
+def test_portability_generator_check_detects_drift_in_a_fixture(tmp_path: Path) -> None:
+    fixture = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT / ".claude" / "skills", fixture / ".claude" / "skills")
+    destination = fixture / "core" / "harnesses" / "portability.json"
+    destination.parent.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "core" / "harnesses" / "portability.json", destination)
+    destination.write_text(destination.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    assert _load_portability_generator().check_manifest(fixture) == 1
 
 
 def test_manifest_classifies_every_canonical_skill() -> None:

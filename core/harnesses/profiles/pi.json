@@ -1,8 +1,32 @@
 {
   "adapter": {
+    "evidence": {
+      "claims": {
+        "agent-skills": {
+          "marker": "\"pi\"",
+          "path": "extensions/dex/package.json"
+        },
+        "interactive-prompts": {
+          "marker": "pi.registerCommand(\"status\"",
+          "path": "extensions/dex/index.ts"
+        },
+        "session-lifecycle": {
+          "marker": "pi.on(\"session_start\"",
+          "path": "extensions/dex/index.ts"
+        },
+        "vault": {
+          "marker": "export function detectVault",
+          "path": "extensions/dex/lib/vault-detection.ts"
+        }
+      },
+      "commit": "5bf33ad7b23a06a890b25445cb1b4f4077b2ac19",
+      "manifest_path": "extensions/dex/package.json",
+      "manifest_sha256": "6ff6cefcc9f7c89a74a9e33c385ff60df80b44142ae79a868fb4b690266b388b",
+      "repository_url": "https://github.com/davekilleen/dex-pi.git"
+    },
     "install_guide": "core/harnesses/adapters/pi.json",
     "kind": "pi-extension",
-    "manifest": "dex-pi/extensions/dex/package.json",
+    "manifest": "extensions/dex/package.json",
     "status": "native"
   },
   "capabilities": [

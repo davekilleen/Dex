@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,6 +22,8 @@ from core.harnesses.registry import (
     standard_detection_paths,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 EXPECTED_IDS = {
     "claude-code",
     "claude-desktop",
@@ -34,6 +38,16 @@ EXPECTED_IDS = {
     "bb",
 }
 
+REGISTRY_GENERATOR = REPO_ROOT / "scripts" / "generate-harness-registry.py"
+
+
+def _load_registry_generator():
+    spec = importlib.util.spec_from_file_location("generate_harness_registry", REGISTRY_GENERATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 def test_registry_is_versioned_and_contains_the_supported_harnesses() -> None:
     payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
@@ -47,6 +61,36 @@ def test_registry_is_versioned_and_contains_the_supported_harnesses() -> None:
         for profile in payload["profiles"]
         for row in profile["capabilities"]
     )
+
+
+def test_registry_capability_statuses_use_a_closed_vocabulary() -> None:
+    allowed_statuses = {"native", "partial", "none", "not-verified", "portable", "scheduled"}
+    payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    statuses = {
+        row["status"]
+        for profile in payload["profiles"]
+        for row in profile["capabilities"]
+    }
+    assert statuses
+    assert statuses <= allowed_statuses
+
+
+def test_generated_harness_profiles_are_current() -> None:
+    assert _load_registry_generator().check_profiles(REPO_ROOT) == 0
+
+
+def test_profile_generator_check_detects_drift_in_a_fixture(tmp_path: Path) -> None:
+    fixture = tmp_path / "repo"
+    source = REPO_ROOT / "core" / "harnesses"
+    profile_root = fixture / "core" / "harnesses"
+    profile_root.mkdir(parents=True)
+    shutil.copy2(source / "registry.json", profile_root / "registry.json")
+    shutil.copytree(source / "profiles", profile_root / "profiles")
+
+    target = profile_root / "profiles" / "bb.json"
+    target.write_text(target.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    assert _load_registry_generator().check_profiles(fixture) == 1
 
 
 def test_registry_names_release_ready_platforms_and_linux_deferral() -> None:
@@ -118,6 +162,19 @@ def test_every_profile_has_a_reviewable_adapter_descriptor() -> None:
         assert payload["harness_id"] == profile.id
         assert payload["adapter_schema_version"] == "1.0.0"
         assert payload["example"]
+
+
+def test_bb_adapter_matches_the_standalone_package_layout() -> None:
+    adapter_path = REPO_ROOT / "core" / "harnesses" / "adapters" / "bb.json"
+    adapter = json.loads(adapter_path.read_text(encoding="utf-8"))
+    assert adapter["native_paths"] == [
+        "package.json (bb field)",
+        "server.ts",
+        "app.tsx",
+        "skills/",
+    ]
+    assert adapter["example"]["manifest"] == "bb-plugin-dex/package.json"
+    assert get_profile("bb").adapter["manifest"] == "package.json#bb"
 
 
 def test_get_profile_rejects_unknown_ids() -> None:

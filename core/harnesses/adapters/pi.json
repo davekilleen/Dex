@@ -4,6 +4,30 @@
   "status": "supported",
   "kind": "pi-extension",
   "native_paths": ["AGENTS.md", ".agents/skills/", "extensions/dex/package.json"],
+  "evidence": {
+    "repository_url": "https://github.com/davekilleen/dex-pi.git",
+    "commit": "5bf33ad7b23a06a890b25445cb1b4f4077b2ac19",
+    "manifest_path": "extensions/dex/package.json",
+    "manifest_sha256": "6ff6cefcc9f7c89a74a9e33c385ff60df80b44142ae79a868fb4b690266b388b",
+    "claims": {
+      "vault": {
+        "path": "extensions/dex/lib/vault-detection.ts",
+        "marker": "export function detectVault"
+      },
+      "agent-skills": {
+        "path": "extensions/dex/package.json",
+        "marker": "\"pi\""
+      },
+      "session-lifecycle": {
+        "path": "extensions/dex/index.ts",
+        "marker": "pi.on(\"session_start\""
+      },
+      "interactive-prompts": {
+        "path": "extensions/dex/index.ts",
+        "marker": "pi.registerCommand(\"status\""
+      }
+    }
+  },
   "example": {
     "manifest": "dex-pi/extensions/dex/package.json",
     "install_guide": "Open the full Dex vault and install the native Dex Pi extension. Pi has no built-in MCP client; use extension tools rather than pretending MCP parity.",

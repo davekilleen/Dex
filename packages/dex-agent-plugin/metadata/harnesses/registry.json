@@ -56,7 +56,7 @@
       "display_name": "BB",
       "vendor": "Dex",
       "summary": "Native BB plugin for read-only Dex status, capability inspection, and work briefing.",
-      "adapter": {"kind": "bb-plugin", "status": "native", "manifest": "bb-plugin.json", "install_guide": "core/harnesses/adapters/bb.json"},
+      "adapter": {"kind": "bb-plugin", "status": "native", "manifest": "package.json#bb", "install_guide": "core/harnesses/adapters/bb.json"},
       "support_level": "supported",
       "capabilities": [
         {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The plugin reads the user-selected local Dex vault with containment checks."},
@@ -269,7 +269,36 @@
       "display_name": "Pi",
       "vendor": "Pi coding agent",
       "summary": "Local coding agent with workspace files, Agent Skills, and lifecycle events, but no built-in Dex MCP or scheduler promise.",
-      "adapter": {"kind": "pi-extension", "status": "native", "manifest": "dex-pi/extensions/dex/package.json", "install_guide": "core/harnesses/adapters/pi.json"},
+      "adapter": {
+        "kind": "pi-extension",
+        "status": "native",
+        "manifest": "extensions/dex/package.json",
+        "install_guide": "core/harnesses/adapters/pi.json",
+        "evidence": {
+          "repository_url": "https://github.com/davekilleen/dex-pi.git",
+          "commit": "5bf33ad7b23a06a890b25445cb1b4f4077b2ac19",
+          "manifest_path": "extensions/dex/package.json",
+          "manifest_sha256": "6ff6cefcc9f7c89a74a9e33c385ff60df80b44142ae79a868fb4b690266b388b",
+          "claims": {
+            "vault": {
+              "path": "extensions/dex/lib/vault-detection.ts",
+              "marker": "export function detectVault"
+            },
+            "agent-skills": {
+              "path": "extensions/dex/package.json",
+              "marker": "\"pi\""
+            },
+            "session-lifecycle": {
+              "path": "extensions/dex/index.ts",
+              "marker": "pi.on(\"session_start\""
+            },
+            "interactive-prompts": {
+              "path": "extensions/dex/index.ts",
+              "marker": "pi.registerCommand(\"status\""
+            }
+          }
+        }
+      },
       "support_level": "supported",
       "capabilities": [
         {"id": "vault", "status": "native", "tier": 0, "mode": "on_demand", "notes": "The workspace is available to Pi extensions and skills."},

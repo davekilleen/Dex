@@ -2,7 +2,7 @@
   "adapter": {
     "install_guide": "core/harnesses/adapters/bb.json",
     "kind": "bb-plugin",
-    "manifest": "bb-plugin.json",
+    "manifest": "package.json#bb",
     "status": "native"
   },
   "capabilities": [

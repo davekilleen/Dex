@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 
 from core.harnesses.registry import get_profile, list_profiles
 from core.onboarding.harness_receipt import (
@@ -108,6 +113,74 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert get_profile("pi").adapter["kind"] == "pi-extension"
     assert pi["session-lifecycle"]["mode"] == "automatic"
     assert pi["mcp"]["mode"] == "unavailable"
+
+
+def _pi_checkout() -> Path | None:
+    """Return an explicitly supplied or canonical local Pi checkout, if present."""
+    candidates = []
+    configured = os.environ.get("DEX_PI_CHECKOUT", "").strip()
+    if configured:
+        candidate = Path(configured).expanduser()
+        return candidate if (candidate / ".git").exists() and candidate.is_dir() else None
+    candidates.extend((REPO_ROOT.parent / "dex-pi", Path("/srv/dex-dev/src/dex-pi")))
+    for candidate in candidates:
+        if (candidate / ".git").exists() and candidate.is_dir():
+            return candidate
+    return None
+
+
+def test_pi_descriptor_pins_an_exact_repository_manifest_and_claim_evidence() -> None:
+    """Native/automatic Pi claims must carry reviewable, exact-head evidence."""
+    adapter = get_profile("pi").adapter
+    evidence = adapter.get("evidence")
+
+    assert isinstance(evidence, dict)
+    assert evidence["repository_url"].startswith("https://")
+    assert len(evidence["commit"]) == 40
+    assert all(character in "0123456789abcdef" for character in evidence["commit"])
+    assert evidence["manifest_path"] == "extensions/dex/package.json"
+    assert len(evidence["manifest_sha256"]) == 64
+    assert set(evidence["claims"]) == {
+        row["id"]
+        for row in get_profile("pi").capability_rows()
+        if row["status"] == "native" or row["mode"] == "automatic"
+    }
+
+
+def test_pi_pinned_checkout_matches_manifest_and_lifecycle_evidence() -> None:
+    """When the pinned Pi checkout is available, verify its actual source bytes."""
+    checkout = _pi_checkout()
+    if checkout is None:
+        message = (
+            "Pi checkout unavailable; set DEX_PI_CHECKOUT for exact-head conformance "
+            "(release verification must fail with DEX_PI_REQUIRE_CONFORMANCE=1)."
+        )
+        if os.environ.get("DEX_PI_REQUIRE_CONFORMANCE") == "1":
+            pytest.fail(message)
+        pytest.skip(message)
+
+    evidence = get_profile("pi").adapter["evidence"]
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=checkout, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=checkout,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert head == evidence["commit"]
+    assert status == ""
+
+    manifest = checkout / evidence["manifest_path"]
+    assert manifest.is_file()
+    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == evidence["manifest_sha256"]
+
+    for claim in evidence["claims"].values():
+        source = checkout / claim["path"]
+        assert source.is_file(), claim["path"]
+        assert claim["marker"] in source.read_text(encoding="utf-8"), claim["marker"]
 
 
 def test_native_package_manifests_point_only_inside_the_package() -> None:
