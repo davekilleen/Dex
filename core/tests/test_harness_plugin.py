@@ -315,6 +315,28 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
     assert desktop_responses[0]["id"] == 2
 
 
+def test_artifact_builder_marks_release_assets_with_the_declared_channel(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            str(ARTIFACT_BUILDER),
+            "--output-dir",
+            str(tmp_path),
+            "--release-status",
+            "stable",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    artifact_index = json.loads((tmp_path / "artifacts.json").read_text())
+    assert artifact_index["release_status"] == "stable"
+
+
 def test_launcher_selects_platform_specific_python_candidates() -> None:
     script = """
       import { pythonCandidates } from './packages/dex-agent-plugin/bin/dex-launcher-lib.mjs';

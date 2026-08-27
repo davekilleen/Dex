@@ -62,7 +62,11 @@ python3 scripts/build-portable-harness-artifacts.py --output-dir build/portable-
 The builder validates and packs `dex-claude-desktop.mcpb`, builds the complete
 `dex-gemini-extension/` install directory and deterministic archive, and writes
 `artifacts.json` with unreleased status, sizes, and SHA-256 checksums. It does
-not publish, install, or release anything.
+not publish, install, or release anything. The stable and beta release jobs run
+the same builder with the matching channel recorded in `artifacts.json`, then
+attach both archives and the index through Dex's draft-first, byte-verified
+publication path. No attachment is public until the release itself is approved
+and the final publication step succeeds.
 
 | Harness | Local package journey | Honest boundary |
 | --- | --- | --- |

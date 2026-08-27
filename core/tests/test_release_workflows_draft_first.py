@@ -161,6 +161,42 @@ def test_both_release_lanes_publish_through_the_verified_script() -> None:
     assert "--channel beta" in beta_step["run"]
 
 
+def test_both_release_lanes_build_and_attach_portable_harness_assets() -> None:
+    workflow = _load(CI_WORKFLOW)
+    expected_status = {
+        "build-release": "stable",
+        "build-release-beta": "beta",
+    }
+    expected_assets = {
+        "dist/portable-harness/dex-claude-desktop.mcpb",
+        "dist/portable-harness/dex-gemini-extension.tar.gz",
+        "dist/portable-harness/artifacts.json",
+    }
+
+    for job_name, release_status in expected_status.items():
+        named = {
+            step["name"]: step
+            for step in workflow["jobs"][job_name]["steps"]
+            if "name" in step
+        }
+        build = named["Build portable harness release assets"]["run"]
+        assert "scripts/build-portable-harness-artifacts.py" in build
+        assert "--output-dir dist/portable-harness" in build
+        assert f"--release-status {release_status}" in build
+
+        publish_name = (
+            "Attach assets, verify them, then make the release public"
+            if job_name == "build-release"
+            else "Attach beta assets, verify them, then publish the prerelease"
+        )
+        publish = named[publish_name]["run"]
+        attached = {
+            match.group(1)
+            for match in re.finditer(r'--extra-asset "([^"]+)"', publish)
+        }
+        assert expected_assets <= attached
+
+
 def test_the_publishing_step_still_runs_only_after_all_release_gates() -> None:
     """A release waits for the full suite and every native portable runtime gate."""
     workflow = _load(CI_WORKFLOW)

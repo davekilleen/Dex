@@ -473,6 +473,12 @@ jobs:
       - name: Build self-contained vault bundle
         if: steps.release_guard.outputs.already_published != 'true'
         run: bash scripts/build-vault-bundle.sh
+      - name: Build portable harness release assets
+        if: steps.release_guard.outputs.already_published != 'true'
+        run: |
+          python3 scripts/build-portable-harness-artifacts.py \
+            --output-dir dist/portable-harness \
+            --release-status stable
       - name: Generate signed Dex Lens catalog
         if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
         env:
@@ -535,6 +541,9 @@ jobs:
             EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json")
             EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json.sha256")
           fi
+          EXTRA+=(--extra-asset "dist/portable-harness/dex-claude-desktop.mcpb")
+          EXTRA+=(--extra-asset "dist/portable-harness/dex-gemini-extension.tar.gz")
+          EXTRA+=(--extra-asset "dist/portable-harness/artifacts.json")
           python3 scripts/release_publish.py publish \
             --version "$VERSION" \
             --channel stable \
@@ -578,6 +587,11 @@ jobs:
           git push origin "${{ steps.release_build.outputs.release_tag }}"
       - name: Build self-contained vault bundle
         run: bash scripts/build-vault-bundle.sh
+      - name: Build portable harness release assets
+        run: |
+          python3 scripts/build-portable-harness-artifacts.py \
+            --output-dir dist/portable-harness \
+            --release-status beta
       # Same draft-first path as the stable lane, staying marked as a prerelease
       # when it goes live. Both of this lane's long-standing safety guards now live
       # in scripts/release_publish.py, where they are unit-tested rather than only
@@ -590,11 +604,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
+          EXTRA=(
+            --extra-asset "dist/portable-harness/dex-claude-desktop.mcpb"
+            --extra-asset "dist/portable-harness/dex-gemini-extension.tar.gz"
+            --extra-asset "dist/portable-harness/artifacts.json"
+          )
           python3 scripts/release_publish.py publish \
             --version "$VERSION" \
             --channel beta \
             --dist dist \
-            --target "$GITHUB_SHA"
+            --target "$GITHUB_SHA" \
+            "${EXTRA[@]}"
 
   deploy-health:
     needs: [quality, build-release]

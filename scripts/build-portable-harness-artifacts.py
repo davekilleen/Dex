@@ -71,7 +71,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def build(output_dir: Path) -> list[Path]:
+def build(output_dir: Path, *, release_status: str = "unreleased") -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     gemini = output_dir / "dex-gemini-extension"
     desktop = output_dir / "dex-claude-desktop"
@@ -98,7 +98,7 @@ def build(output_dir: Path) -> list[Path]:
     artifacts = [desktop_archive, gemini_archive]
     payload = {
         "schema_version": "1.0.0",
-        "release_status": "unreleased",
+        "release_status": release_status,
         "artifacts": [
             {
                 "name": path.name,
@@ -115,9 +115,15 @@ def build(output_dir: Path) -> list[Path]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--release-status",
+        choices=("unreleased", "stable", "beta"),
+        default="unreleased",
+        help="Release channel recorded in artifacts.json.",
+    )
     args = parser.parse_args()
     output = args.output_dir.expanduser().resolve()
-    artifacts = build(output)
+    artifacts = build(output, release_status=args.release_status)
     for artifact in artifacts:
         print(f"Built {artifact.name}: {_sha256(artifact)}")
     return 0
