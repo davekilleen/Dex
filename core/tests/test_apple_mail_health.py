@@ -203,6 +203,93 @@ def test_apple_mail_search_is_broken_when_the_index_was_never_built(monkeypatch,
     assert "returns nothing" in result.user_message
 
 
+_MAIL_CONTENT_MARKERS = (
+    "Fixture subject",
+    "fixture@example.com",
+    "Fixture body",
+    "Searchable body",
+)
+
+
+def _assert_fail_closed_flow(state, *, status="broken"):
+    encoded = json.dumps(state)
+    assert state["feature_status"] == status
+    assert state["usable"] is False
+    assert state["search"] == "blocked"
+    if status != "off":
+        assert state["visible"].startswith(apple_mail_health.EMAIL_CONTEXT_OMITTED_PREFIX)
+    for key in apple_mail_health._SEARCH_RESULT_KEYS:
+        assert key not in state
+        assert f'"{key}": []' not in encoded
+    for marker in _MAIL_CONTENT_MARKERS:
+        assert marker not in encoded
+
+
+def test_email_aware_path_with_no_index_is_visible_not_empty(context):
+    """Linux contract: a missing index is a visible broken state, never []."""
+    _register_apple_mail_user_scope(context)
+
+    state = apple_mail_health.flow_status(context)
+
+    _assert_fail_closed_flow(state)
+    assert "never been built" in state["user_message"]
+    assert "apple-mail-mcp index" in state["action"]
+
+
+def test_email_aware_path_with_index_still_allows_existing_search(context):
+    """Linux contract: a fresh index keeps the existing Mail search path open."""
+    _register_apple_mail_user_scope(context)
+    _write_apple_mail_index(context, age_days=1)
+
+    state = apple_mail_health.flow_status(context)
+    encoded = json.dumps(state)
+
+    assert state["feature_status"] == "ok"
+    assert state["usable"] is True
+    assert state["search"] == "allowed"
+    assert "visible" not in state
+    assert "user_message" not in state
+    for key in apple_mail_health._SEARCH_RESULT_KEYS:
+        assert key not in state
+        assert f'"{key}": []' not in encoded
+    for marker in _MAIL_CONTENT_MARKERS:
+        assert marker not in encoded
+
+
+def test_email_aware_path_omits_unconnected_mail_without_noise(context):
+    state = apple_mail_health.flow_status(context)
+
+    _assert_fail_closed_flow(state, status="off")
+    assert "visible" not in state
+
+
+@pytest.mark.parametrize(
+    "broken_shape",
+    ["empty-file", "dummy-bytes", "empty-schema", "empty-fts", "stale"],
+)
+def test_email_aware_path_dummy_or_unusable_index_is_visible_not_empty(context, broken_shape):
+    """Dummy or silent-empty indexes must not look like search worked."""
+    _register_apple_mail_user_scope(context)
+    index = context.home / ".apple-mail-mcp" / "index.db"
+    if broken_shape == "empty-file":
+        _write_apple_mail_index(context, size=0)
+    elif broken_shape == "dummy-bytes":
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_bytes(b"not a sqlite database")
+        index.chmod(0o600)
+    elif broken_shape == "empty-schema":
+        _write_real_apple_mail_index(index, email_count=0)
+    elif broken_shape == "empty-fts":
+        _write_real_apple_mail_index(index, fts_searchable=False)
+    else:
+        _write_apple_mail_index(context, age_days=30)
+
+    state = apple_mail_health.flow_status(context)
+
+    _assert_fail_closed_flow(state)
+    assert state["feature_status"] != "ok"
+
+
 def test_apple_mail_search_is_broken_when_the_index_is_empty(monkeypatch, context):
     _register_apple_mail_user_scope(context)
     _write_apple_mail_index(context, size=0)

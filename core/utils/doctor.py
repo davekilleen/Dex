@@ -639,6 +639,7 @@ QUICK_CHECKS = (
         "_probe_customization_mcp",
     ),
     CheckDefinition("core.drift", "Shipped-file drift", "_probe_core_drift"),
+    CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
 
@@ -659,7 +660,6 @@ DEEP_CHECKS = (
     CheckDefinition("config.claude_composition", "CLAUDE customisations live", "_probe_claude_composition"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
-    CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
@@ -1021,15 +1021,35 @@ def _write_last_run(report: dict[str, Any], context: DoctorContext) -> None:
     )
 
 
+def _check_definition(check_id: str) -> CheckDefinition:
+    for definition in (*QUICK_CHECKS, *DEEP_CHECKS):
+        if definition.id == check_id:
+            return definition
+    raise ValueError(f"Unknown doctor check {check_id!r}")
+
+
 def collect(
     *,
     deep: bool = False,
     heal: bool = False,
     context: DoctorContext | None = None,
+    check_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the selected registry and return its JSON-serializable report."""
     context = context or DoctorContext.from_environment()
-    definitions = [*QUICK_CHECKS, *DEEP_CHECKS] if deep else list(QUICK_CHECKS)
+    focused = check_id is not None
+    if focused and deep:
+        raise ValueError("A focused check cannot run the full deep registry")
+    if focused:
+        assert check_id is not None
+        target = _check_definition(check_id)
+        definitions = [target]
+        if target.id != "doctor.self":
+            definitions.append(_check_definition("doctor.self"))
+    elif deep:
+        definitions = [*QUICK_CHECKS, *DEEP_CHECKS]
+    else:
+        definitions = list(QUICK_CHECKS)
     results: dict[str, ProbeResult] = {}
     failed: list[dict[str, str]] = []
 
@@ -1151,10 +1171,9 @@ def collect(
     results["doctor.self"] = self_result
 
     checks = [_result_json(definition, results[definition.id]) for definition in definitions]
-    adoption = collect_adoption_report(context)
     report = {
         "generated_at": context.now.isoformat(),
-        "mode": "deep" if deep else "quick",
+        "mode": "focused" if focused else ("deep" if deep else "quick"),
         "instruments": {
             "attempted": len(definitions),
             "completed": len(definitions) - len(failed),
@@ -1162,8 +1181,9 @@ def collect(
         },
         "checks": checks,
         "summary": _summary(checks),
-        "adoption": adoption.to_dict(),
     }
+    if not focused:
+        report["adoption"] = collect_adoption_report(context).to_dict()
     if deep:
         assessment_result = results.get("customizations.assessment")
         if (
@@ -1179,6 +1199,9 @@ def collect(
             report["customization_migration_status"] = (
                 migration_status_result.structured_detail
             )
+
+    if focused:
+        return report
 
     try:
         _write_last_run(report, context)
@@ -5764,6 +5787,11 @@ def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
 def main(argv: list[str] | None = None, *, context: DoctorContext | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deep", action="store_true", help="Run live service probes.")
+    parser.add_argument(
+        "--check",
+        metavar="ID",
+        help="Run one named check. Email-aware flows use --check mail.apple-search instead of --deep.",
+    )
     parser.add_argument("--heal", action="store_true", help="Apply safe Tier-1 repairs before checking.")
     parser.add_argument("--credential-scan", action="store_true", help="Run the bounded local credential scan.")
     parser.add_argument("--credential-migrate", action="store_true", help="Run safe local credential migration.")
@@ -5789,7 +5817,14 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
             credential_report = run_credential_workflow(root, action, journal_id=journal_id)
             print(json.dumps(credential_report, indent=2))
             return 2 if credential_report.get("migration_state") == "refused" and action != "status" else 0
-        report = collect(deep=args.deep, heal=args.heal, context=context)
+        if args.check and args.deep:
+            parser.error("--check cannot be combined with --deep")
+        report = collect(
+            deep=args.deep,
+            heal=args.heal,
+            context=context,
+            check_id=args.check,
+        )
         output = json.dumps(report, indent=2)
     except Exception as error:
         print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)
