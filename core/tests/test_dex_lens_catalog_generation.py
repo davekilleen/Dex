@@ -24,7 +24,12 @@ GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
 RELEASED_LENS_SCHEMA = REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json"
 ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
-LENS_0_1_9_SCHEMA_SHA256 = "5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7"
+# Lens v0.1.9 producer bytes plus the host-adapter pattern
+# `^[a-z][a-z0-9-]{1,80}$`, which is required so two-character harness
+# ids (`bb`, `pi`) can appear in compatibility.host_adapters.
+LENS_PRODUCER_SCHEMA_SHA256 = (
+    "030a3bdb4471e7bc57753fbb9bef3a12511bc08de726e5614f94da706de9fe0d"
+)
 
 WAVE3_IDS = (
     "account-plan",
@@ -634,11 +639,11 @@ def test_enriched_preview_rejects_duplicate_discovered_capability_ids(
         generator._build_enriched_catalogue(REPO_ROOT)
 
 
-def test_vendored_lens_schema_is_exact_v0_1_9_release() -> None:
+def test_vendored_lens_schema_matches_pinned_producer_bytes() -> None:
     schema_bytes = RELEASED_LENS_SCHEMA.read_bytes()
     schema = json.loads(schema_bytes)
 
-    assert hashlib.sha256(schema_bytes).hexdigest() == LENS_0_1_9_SCHEMA_SHA256
+    assert hashlib.sha256(schema_bytes).hexdigest() == LENS_PRODUCER_SCHEMA_SHA256
     assert schema["x-dex-lens-minimum-version"] == "0.1.9"
     assert [
         branch["$ref"].rsplit("/", 1)[1]
@@ -743,7 +748,7 @@ def test_corrected_catalogue_has_complete_truthful_identity_sets(
     assert "connect" not in by_id
     assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
     assert by_id["connection-manager-engine"]["availability"] == "parked"
-    assert sum(entry.get("tool_count", 0) for entry in entries) == 146
+    assert sum(entry.get("tool_count", 0) for entry in entries) == 151
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:
