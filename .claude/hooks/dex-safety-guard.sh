@@ -55,13 +55,16 @@ case "$TOOL_LOWER" in
         ;;
 esac
 
-# A missing helper or interpreter is a hook failure, not a shared gate result;
-# preserve fail-open so this file stays a thin wrapper around the Python gate.
+# A missing helper or interpreter means the shared decision cannot be made.
+# Fail closed instead of duplicating matchers here or silently allowing work.
 if [[ ! -f "$SAFETY_PY" ]]; then
-    exit 0
+    echo "BLOCKED: the shared Dex safety gate is unavailable. Restore Core before running tools."
+    exit 2
 fi
+
 if [[ "${#PYTHON_CMD[@]}" -eq 0 ]]; then
-    exit 0
+    echo "BLOCKED: the shared Dex safety gate needs Python 3. Install Python or set DEX_PYTHON."
+    exit 2
 fi
 
 SAFETY_ARGS=(--hook)
