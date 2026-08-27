@@ -270,3 +270,142 @@ def test_link_with_blank_code_does_not_reuse_the_connection_needed_exit_code(cap
     out = capsys.readouterr().out
     assert "sign-in code is required" in out
     assert "CONNECTION NEEDED" not in out
+
+
+def test_save_auth_does_not_persist_dexdiff_beta(tmp_path):
+    client = _load_script()
+    path = client.save_auth(
+        {
+            "sessionToken": "tok",
+            "email": "user@example.com",
+            "dexdiffBeta": False,
+            "isBeta": True,
+            "beta": True,
+        },
+        destination=tmp_path / "heydex-auth.json",
+        timestamp_ms=client.now_ms(),
+    )
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    blob = json.dumps(stored).lower()
+    assert "beta" not in blob
+    assert stored["sessionToken"] == "tok"
+
+
+def test_contract_and_client_do_not_require_dexdiff_beta_to_send():
+    client = _load_script()
+    contract = (REPO_ROOT / "docs" / "feedback-loop-contract.md").read_text(encoding="utf-8")
+
+    assert client.DEXDIFF_BETA_REQUIRED_TO_SEND is False
+    assert "DexDiff beta membership is NOT" in contract
+    assert "not a client-side send refusal" in contract
+
+
+def test_linked_session_without_dexdiff_beta_is_enough_to_send():
+    client = _load_script()
+    now = client.now_ms()
+    linked = {
+        "sessionToken": "tok",
+        "timestamp": now,
+        "email": "user@example.com",
+        "dexdiffBeta": False,
+        "isBeta": False,
+        "beta": False,
+    }
+    assert client.session_permits_feedback_send(linked) is True
+    assert client.session_permits_feedback_send({"sessionToken": "tok", "timestamp": now}) is True
+    assert client.session_permits_feedback_send({"timestamp": now, "dexdiffBeta": True}) is False
+    assert client.session_permits_feedback_send(None) is False
+
+
+def test_report_posts_when_linked_session_has_no_dexdiff_beta(
+    tmp_path, monkeypatch, capsys
+):
+    client = _load_script()
+    draft_path = tmp_path / "draft.json"
+    draft_path.write_text(json.dumps(_draft()), encoding="utf-8")
+    posted = {}
+
+    def capture(method, api_base, path, payload=None, bearer=None, timeout=20):
+        posted["method"] = method
+        posted["path"] = path
+        posted["bearer"] = bearer
+        posted["payload"] = payload
+        return {"ticket": "DEX-142", "receivedAt": 1754640001000}
+
+    monkeypatch.setattr(
+        client,
+        "load_auth",
+        lambda **kwargs: {
+            "sessionToken": "tok",
+            "timestamp": client.now_ms(),
+            "dexdiffBeta": False,
+            "isBeta": False,
+            "beta": False,
+        },
+    )
+    monkeypatch.setattr(client, "_request_json", capture)
+
+    args = client.build_parser().parse_args(
+        ["report", "--file", str(draft_path), "--vault", str(tmp_path)]
+    )
+    assert client.command_report(args) == 0
+    assert "DEX-142" in capsys.readouterr().out
+    assert posted["method"] == "POST"
+    assert posted["path"] == "/api/feedback/report"
+    assert posted["bearer"] == "tok"
+    assert "beta" not in json.dumps(posted["payload"]).lower()
+
+
+def test_check_succeeds_for_linked_session_marked_not_beta(tmp_path, monkeypatch, capsys):
+    client = _load_script()
+    auth = tmp_path / "auth.json"
+    auth.write_text(
+        json.dumps(
+            {
+                "sessionToken": "token",
+                "timestamp": client.now_ms(),
+                "email": "user@example.com",
+                "dexdiffBeta": False,
+                "isBeta": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(client, "auth_file_path", lambda: auth)
+
+    code = client.main(["check", "--vault", str(tmp_path)])
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "LINKED" in out
+    assert "beta" not in out.lower()
+
+
+def _http_error(status: int, body: str) -> object:
+    import io
+    import urllib.error
+
+    return urllib.error.HTTPError(
+        url="https://example.test/api/feedback/report",
+        code=status,
+        msg="error",
+        hdrs=None,
+        fp=io.BytesIO(body.encode("utf-8")),
+    )
+
+
+def test_beta_gate_http_error_is_not_a_dexdiff_membership_refusal():
+    client = _load_script()
+    denied = client._http_error_to_feedback_error(
+        _http_error(401, '{"error":"BETA_ACCESS_DENIED"}')
+    )
+    forbidden = client._http_error_to_feedback_error(
+        _http_error(403, '{"error":"private beta"}')
+    )
+
+    for converted in (denied, forbidden):
+        lowered = converted.user_message.lower()
+        assert "beta" not in lowered
+        assert "dexdiff" not in lowered
+        assert "membership" not in lowered
+        assert converted.exit_code != 0
