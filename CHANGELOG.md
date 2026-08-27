@@ -17,6 +17,9 @@ Setup used to assume Apple Calendar, and the morning plan kept talking to Apple 
 * **A preview first hour is available as `/setup-lab`.** It confirms who you are from your work email, shows your week, and runs one shortcut. Everyone’s usual `/setup` is unchanged.
 * **The practice first hour starts with a hello.** The starter finishes the behind-the-scenes setup before you open the folder, so you are not asked to restart after a wall of setup talk.
 * **That hello comes before any looking.** The first message is a welcome, not a wait. If the last step cannot build the folder, your answers stay saved and you are not put through the questions again.
+* **The preview hour is a conversation, not a form.** Dex asks you to talk — hold the microphone if that is easier — and to share last year’s review if you have it. It looks at three weeks of meetings, not one, so it can spot regular 1:1s and people you keep close.
+* **Meeting notes are connected in that first sitting.** Dex asks what you use — Granola, Fireflies, Zoom, Teams, a folder of notes, or nowhere — and walks you through it then. Granola is set up in the chat, not saved for later.
+* **People and company pages are an explicit yes.** After those meetings, Dex asks whether to file people and company pages for you automatically.
 * **Granola points at the real setup.** When notes are not connected yet, Dex says `/granola-setup`, not a door that is not shipped.
 * **The getting-started tour no longer dies on a Mac with the built-in Python.** Date-only meeting dates are read instead of crashing.
 

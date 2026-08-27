@@ -51,7 +51,7 @@ Hour one only chases **three** things. Everything else (Slack, Salesforce, Gong)
 |---|---|---|
 | **Email** | Host Gmail / Google Workspace / Apple Mail already signed in | Company door or `/google-workspace-setup` / Apple Mail, after she says what matters |
 | **Calendar** | Host Google Calendar, or Calendar.app | Same — this is what makes “her week” real |
-| **Meeting notes** | Granola already signed in on the host, or a Granola key, or another recorder Dex can actually read (Zoom / Teams / a folder of notes) | If Granola is detected, use it and **record it**. If not, ask for Granola (key in chat is fine) or the recorder she actually uses |
+| **Meeting notes** | Granola already signed in on the host, or a Granola key, or another recorder Dex can actually read (Zoom / Teams / a folder of notes) | Ask what she uses **now** (Granola, Fireflies, Zoom, Teams, a folder, nowhere). If Granola, walk `/granola-setup` in this hour. Fireflies has no door today — take a folder of notes, and say the direct connection is next time |
 
 Detect Granola **before** asking for a key. If it is already there, do not make her paste one.
 
@@ -92,7 +92,7 @@ Right time to connect:
 
 1. After “what matters most right now” — so the ask has a reason.
 2. **Email + calendar** (so we can show her week and know who she is).
-3. **Meeting notes** — Granola if we detected it; otherwise the recorder she uses, or a folder of notes.
+3. **Meeting notes — in this hour, not later.** Ask what she uses. If Granola, walk `/granola-setup` now (key in chat). If Fireflies, take a folder of notes today. If Zoom or Teams, walk that setup now.
 4. Everything else later.
 
 Two honest doors (never `/connect`):
@@ -100,7 +100,7 @@ Two honest doors (never `/connect`):
 - **Company door:** “If your company has already put Calendar or Slack inside Claude or Codex, you can switch on the one you want me to use. I can use it while we talk.”
 - **Dex door:** the real setup skills (`/granola-setup`, `/google-workspace-setup`, Apple calendar permission on a Mac). “If you want this in a morning brief even when you’re not asking, we add it to Dex. About two minutes.”
 
-Until something is connected, the wow is built from **what she told us** (and an optional annual review next session). Do not invent a busy Thursday.
+Until something is connected, the wow is built from **what she told us**, including last year’s review if she has it to hand in this hour. Do not invent a busy Thursday.
 
 ---
 
@@ -111,8 +111,8 @@ They never speak in the chat. They write only **staged suggestions**. They stop 
 | Worker | When it starts | Reads | Produces |
 |---|---|---|---|
 | Sweeper | Second zero | Which apps are signed in; her own work-email identity | Recognition card |
-| Week reader | After consent (A) or after calendar connects (B) | This week + last 4 weeks of calendar; recent meeting notes once a source exists | Week snapshot, busiest day, working-week guess |
-| People mapper | After week reader has people | Attendees; exclude her confirmed email; clean names | At most 5 people, no self-page |
+| Week reader | After notes are named, and calendar is allowed | This week + the last **three weeks** of calendar; recent meeting notes once a source exists | Week snapshot, regular cadence (1:1s, recurring), working-week guess, possible manager to ask about |
+| People mapper | After week reader has three weeks of meetings | Attendees; exclude her confirmed email; clean names | At most 5 people, no self-page; then the auto-file people/company question |
 | Wow agent | After pillars exist | Her answers + week/notes only in hour one | The closing card: how to use Dex, 2–3 pillar-tied insights, 3 shortcut choices |
 
 Hard timeout at interview end. Salesforce/Gong content is **not** hour-one fuel unless she later gives a second yes (default: session two).
@@ -133,24 +133,34 @@ First identity card uses **email only**: “From your work email: you’re Doire
 
 **B:** “Hey — welcome to Dex. You’re taking the leap, and this is going to be good. I’ll help you keep meetings, people, and follow-ups in one place you own. About fifteen minutes and we’ll have your week in front of you. What’s your name?” Then the short interview. Connect calendar after she names what matters.
 
-### 2. Early meeting notes (when a source exists or she wants one)
+### 2. Voice and last year’s review (after she answers the hello)
 
-Granola key in chat is allowed. Record `meeting_sources` the moment she connects, or later skills forget.
+This is a spoken conversation, not a stack of tap-cards. One question at a time.
 
-### 3. Offer voice
+Invite her to hold the microphone in Claude or Codex and dump as much as she can — how she works, who matters, what this quarter is for. If she has last year’s review to hand, ask her to paste it or drop the file in. Do not invent a `/voice` command.
 
-“You can type or talk — `/voice` if talking is easier.”
+### 3. Meeting notes — now, not later
+
+Ask what she uses: Granola, Fireflies, Zoom, Teams, a folder of notes, or nowhere. Then walk that door **in this hour**.
+
+- Granola already signed in on this host: use it, record it, do not ask for a key.
+- Granola and we need a stored key: walk `/granola-setup` now. She pastes the key in chat.
+- Fireflies: no direct door today. Take a folder of those notes. Say the direct connection is next time.
+- Zoom / Teams: walk that setup now.
+- Nowhere: record `none` and keep going.
+
+Record `meeting_sources` the moment she connects, or later skills forget. Do not say “we can do Granola in two minutes at the end.”
 
 ### 4. Short interview (context we keep)
 
-Keep as real questions or one-tap confirms — **role-agnostic**:
+Keep as real spoken questions — **role-agnostic**. Look at **three weeks** of meetings first. Find regular cadence. Guess a manager or people she keeps close, then ask — do not state it as fact.
 
 - Role (guess if we have a title *after* consent; else ask; keep hybrid free text).
 - What matters most right now (`role_focus` — this must **feed** draft pillars and goals, not die in the profile).
 - 2–3 themes / pillars (with calendar evidence if we have it; always allow a theme that owns no calendar time).
 - Quarter outcome (confirm a draft if the gold line already named it).
-- Up to five people **and who they are to her** (manager cannot be inferred).
-- Anything a calendar would miss.
+- Up to five people **and who they are to her**. Then: “Would you like me to automatically file and create people and company pages from your meetings?”
+- Anything a calendar would miss, plus the review if she brought it.
 
 Confirm, don’t quiz:
 
@@ -165,7 +175,7 @@ Workspace is created after this mirror is approved. Nothing important is written
 
 Three beats, then one ask:
 
-1. **Her week** — real meetings if we have a calendar; otherwise “here’s the week as you described it.”
+1. **Her week** — this week’s meetings if we have a calendar, plus two or three cadence insights from the last three weeks; otherwise “here’s the week as you described it.”
 2. **Insights tied to *her* pillars** — two or three, each with a source clause (“from your calendar this week” / “from what you told me”). Never invented counts.
 3. **How to use Dex** — not a catalogue. One line: “Treat me like a person. Ask what I can do for you — I’ll answer from your role, your company, and what’s signed in. You can say that any time: ‘what can you do for me?’”
 
@@ -235,7 +245,8 @@ In Scenario A, if morning skills still cannot use the company calendar, add one 
 | anything_else | Mirror close. |
 | Calendar source | Record the **real** source on profile `calendar` (Google account, Apple calendar name, or none). Morning skills must be able to use what we claimed, or copy stays scoped to “when we talk.” |
 | Meeting source | `save_meeting_source` on the session at connect time; finalize writes `meeting_sources`. |
-| Person pages | Max 5, cleaned, never her; then auto-vs-suggest. |
+| Person pages | Max 5, cleaned, never her; ask whether to auto-file people and company pages; then auto-vs-suggest. |
+| Annual review | Ask in this hour if she has last year’s to hand. |
 | Analytics notice | Helping-hand card. |
 | Feedback + doctor + help | Helping-hand card. |
 | Nudge calendar | Replaced by optional 2-week free cue cards, tailored. |
@@ -294,5 +305,7 @@ Empty-connector testing is mandatory: run Scenario B on a machine/account with c
 - Empty-apps path is first-class.
 - Preview first; do not ship over everyone’s `/setup`.
 - Use the existing onboarding MCP; widen it — do not bypass it.
-- Hour-one connects are email, calendar, and Granola (or her meeting recorder). Detect Granola.
+- Hour-one connects are email, calendar, and her meeting notes. Ask what she uses. Walk Granola now if that is the answer.
+- Look at three weeks of meetings. Find cadence. Ask about automatic people and company pages.
+- Invite voice and last year’s review in this hour.
 - Daily plan uses that same calendar. That fix ships with the preview.

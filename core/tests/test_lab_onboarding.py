@@ -45,8 +45,19 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "Never read or edit Dex source" in skill
     assert "Do not narrate" in skill
     assert "I won’t try to fix the folder from here" in skill
-    assert "spoken beats" in skill
+    assert "A conversation, not a form" in skill
     assert "builder note" in skill
+    assert "three weeks" in skill
+    assert "automatically file people and company pages" in skill
+    assert "walk `/granola-setup` now" in skill
+    assert "Do not invent a `/voice` command" in skill
+    assert "Do not invent a `/voice` command" in hour
+    assert "last year’s review" in skill
+    assert "Fireflies" in hour
+    assert "Would you like me to automatically file and create people and company pages" in hour
+    assert "we can do Granola in two minutes at the end" in hour
+    assert "last three weeks" in hour
+    assert hour.count("/voice") == 1
     for banned in BANNED_IN_HER_EARS:
         assert banned not in hour.split("Banned")[0]
         # The hour may name banned words only in the ban list.

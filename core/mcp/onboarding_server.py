@@ -398,6 +398,25 @@ def save_meeting_source(
     )
 
 
+def save_entity_creation_preference(
+    session: Dict[str, Any],
+    *,
+    automatic: bool,
+) -> Dict[str, Any]:
+    """Record the people/company auto-file answer until after finalize."""
+    if not isinstance(automatic, bool):
+        return create_error_response(
+            "automatic must be true or false",
+            field="automatic",
+        )
+    session["data"]["entity_creation_automatic"] = automatic
+    save_session(session)
+    return create_success_response(
+        {"automatic": automatic},
+        "People and company page default recorded",
+    )
+
+
 def _next_required_step_before(
     step_number: int,
     completed_steps: List[int],
@@ -1163,6 +1182,114 @@ Based on your calendar and pillars, here are suggested priorities:
     
     return content
 
+MEETING_CADENCE_DAYS = 21
+
+
+def _normalize_meeting_title(title: str) -> str:
+    """Collapse a meeting title so the same series can be counted."""
+    return re.sub(r"\s+", " ", (title or "").strip().casefold())
+
+
+def _is_one_on_one(event: Dict) -> bool:
+    """Treat titled 1:1s and two-person meetings as one-on-ones."""
+    title = (event.get("title") or "").casefold()
+    if any(
+        marker in title
+        for marker in ("1:1", "1-1", "one on one", "one-on-one", "1 / 1")
+    ):
+        return True
+    return len(_meeting_attendees(event)) == 2
+
+
+def _event_day(event: Dict) -> Optional[date]:
+    start = _calendar_event_datetime(event.get("start"))
+    if start is None:
+        return None
+    return start.date()
+
+
+def _events_in_current_week(events: List[Dict]) -> List[Dict]:
+    """Keep only timed meetings in the current working week."""
+    today = datetime.now().date()
+    week_start = first_working_day_of_week(today)
+    week_end = week_start + timedelta(days=6)
+    this_week = []
+    for event in _timed_calendar_events(events):
+        day = _event_day(event)
+        if day is None:
+            continue
+        if week_start <= day <= week_end:
+            this_week.append(event)
+    return this_week
+
+
+def summarize_meeting_cadence(events: List[Dict]) -> Dict[str, Any]:
+    """Find recurring series and regular people across the lookback window."""
+    timed_events = _timed_calendar_events(events)
+    by_title: Dict[str, Dict[str, Any]] = {}
+    people: Dict[str, Dict[str, Any]] = {}
+
+    for event in timed_events:
+        title = (event.get("title") or "Untitled meeting").strip()
+        key = _normalize_meeting_title(title)
+        bucket = by_title.setdefault(key, {"title": title, "count": 0})
+        bucket["count"] += 1
+
+        one_on_one = _is_one_on_one(event)
+        for attendee in _meeting_attendees(event):
+            if attendee.get("is_current_user") is True:
+                continue
+            email = (attendee.get("email") or "").strip()
+            name = (attendee.get("name") or email).strip()
+            if not name:
+                continue
+            person_key = email or name.casefold()
+            person = people.setdefault(
+                person_key,
+                {
+                    "name": name,
+                    "email": email,
+                    "meeting_count": 0,
+                    "one_on_one_count": 0,
+                },
+            )
+            person["meeting_count"] += 1
+            if one_on_one:
+                person["one_on_one_count"] += 1
+
+    recurring = [
+        {"title": item["title"], "count": item["count"]}
+        for item in sorted(by_title.values(), key=lambda item: item["count"], reverse=True)
+        if item["count"] >= 2
+    ][:8]
+    regular_people = [
+        person
+        for person in people.values()
+        if person["one_on_one_count"] >= 2 or person["meeting_count"] >= 3
+    ]
+    regular_people.sort(
+        key=lambda person: (person["one_on_one_count"], person["meeting_count"]),
+        reverse=True,
+    )
+    likely_manager = None
+    if regular_people and regular_people[0]["one_on_one_count"] >= 2:
+        top = regular_people[0]
+        likely_manager = {
+            "name": top["name"],
+            "email": top["email"],
+            "one_on_one_count": top["one_on_one_count"],
+            "guess": "regular 1:1 — ask, do not assume they are the manager",
+        }
+
+    return {
+        "window_days": MEETING_CADENCE_DAYS,
+        "meeting_count": len(timed_events),
+        "recurring": recurring,
+        "regular_people": regular_people[:8],
+        "likely_manager": likely_manager,
+    }
+
+
 def get_frequent_attendees(events: List[Dict], limit: int = 3) -> List[Dict]:
     """Get most frequent meeting attendees"""
     attendee_data = {}
@@ -1674,11 +1801,15 @@ def run_first_week_analysis(events: Optional[List[Dict]] = None) -> Dict[str, An
         }
     events = loaded_events
 
-    timed_events = _timed_calendar_events(events)
-    calendar_analysis = analyze_calendar_events(timed_events)
-    top_contacts = get_frequent_attendees(timed_events)
-    recent_meetings = get_recent_granola_meetings(days=7)
-    combined_meetings = [*timed_events, *recent_meetings]
+    lookback_events = _timed_calendar_events(events)
+    this_week_events = _events_in_current_week(events)
+    # Hosts that only fetched this week still get a this-week reveal.
+    week_events = this_week_events or lookback_events
+    calendar_analysis = analyze_calendar_events(week_events)
+    top_contacts = get_frequent_attendees(lookback_events, limit=8)
+    cadence = summarize_meeting_cadence(lookback_events)
+    recent_meetings = get_recent_granola_meetings(days=MEETING_CADENCE_DAYS)
+    combined_meetings = [*lookback_events, *recent_meetings]
 
     profile = _load_first_week_profile()
     pillars = [
@@ -1711,14 +1842,15 @@ def run_first_week_analysis(events: Optional[List[Dict]] = None) -> Dict[str, An
         ),
         "recent_meeting_count": len(recent_meetings),
         "pillar_evidence": build_pillar_evidence(
-            timed_events,
+            week_events,
             profile.get('email_domain', ''),
         ),
         "draft_weekly_plan": generate_weekly_plan(
-            timed_events,
+            week_events,
             pillars,
             profile.get('role', ''),
         ),
+        "cadence": cadence,
     }
 
 
@@ -1869,6 +2001,21 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="save_entity_creation_preference",
+            description=(
+                "Record whether the user wants people and company pages "
+                "created automatically. Call set_entity_creation_default "
+                "with the same answer after finalize_onboarding."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "automatic": {"type": "boolean"},
+                },
+                "required": ["automatic"],
+            },
+        ),
+        types.Tool(
             name="save_calendar_selection",
             description=(
                 "Validate a proposed calendar selection for later explicit "
@@ -1972,9 +2119,10 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="run_first_week_analysis",
             description=(
-                "Analyze this week's timed calendar meetings and return an honest, "
-                "structured onboarding reveal. Pass events the host already fetched "
-                "when the calendar is Google (this server cannot call host Google tools)."
+                "Analyze this week's timed calendar meetings and a three-week "
+                "cadence lookback. Pass events the host already fetched "
+                "when the calendar is Google (this server cannot call host Google tools). "
+                "For the lab hour, pass this week plus the last 21 days."
             ),
             inputSchema={
                 "type": "object",
@@ -2190,6 +2338,17 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 session,
                 primary=str(arguments.get("primary") or ""),
                 notes_folder=str(arguments.get("notes_folder") or ""),
+            )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_entity_creation_preference":
+            session = load_session()
+            if not session:
+                result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = save_entity_creation_preference(
+                session,
+                automatic=arguments.get("automatic"),
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         

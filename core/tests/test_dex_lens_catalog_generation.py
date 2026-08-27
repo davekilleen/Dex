@@ -701,7 +701,7 @@ def test_corrected_catalogue_has_complete_truthful_identity_sets(
     assert "connect" not in by_id
     assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
     assert by_id["connection-manager-engine"]["availability"] == "parked"
-    assert sum(entry.get("tool_count", 0) for entry in entries) == 148
+    assert sum(entry.get("tool_count", 0) for entry in entries) == 149
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:

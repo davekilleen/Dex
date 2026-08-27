@@ -104,12 +104,35 @@ def test_save_meeting_source_stays_on_session(lab_session) -> None:
     }
 
 
+def test_save_entity_creation_preference_stays_on_session(lab_session) -> None:
+    _call_tool("start_onboarding_session", {"force_new": True, "lab": True})
+    payload = _call_tool(
+        "save_entity_creation_preference",
+        {"automatic": True},
+    )
+    assert payload["success"] is True
+    session = onboarding_server.load_session()
+    assert session["data"]["entity_creation_automatic"] is True
+
+
 def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatch) -> None:
     def boom():
         raise AssertionError("must not read Calendar.app when events are passed")
 
     monkeypatch.setattr(onboarding_server, "get_calendar_events_for_week", boom)
-    monkeypatch.setattr(onboarding_server, "get_recent_granola_meetings", lambda days=7: [])
+    granola_days = []
+
+    def capture_granola(days=7):
+        granola_days.append(days)
+        return []
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 8, 27, 12, 0)
+
+    monkeypatch.setattr(onboarding_server, "datetime", FrozenDateTime)
+    monkeypatch.setattr(onboarding_server, "get_recent_granola_meetings", capture_granola)
     (lab_session / "System" / "user-profile.yaml").write_text(
         "role: Customer Engineer\nemail_domain: pendo.io\npillars:\n  - name: Retention\n",
         encoding="utf-8",
@@ -130,13 +153,49 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
                             "email": "doireann.marron@pendo.io",
                         }
                     ],
-                }
+                },
+                {
+                    "title": "Doireann / Alex 1:1",
+                    "start": datetime(2026, 8, 13, 15, 0),
+                    "end": datetime(2026, 8, 13, 15, 30),
+                    "duration_minutes": 30,
+                    "attendees": [
+                        {
+                            "name": "Doireann Marron",
+                            "email": "doireann.marron@pendo.io",
+                            "is_current_user": True,
+                        },
+                        {"name": "Alex Rivera", "email": "alex.rivera@pendo.io"},
+                    ],
+                },
+                {
+                    "title": "Doireann / Alex 1:1",
+                    "start": datetime(2026, 8, 20, 15, 0),
+                    "end": datetime(2026, 8, 20, 15, 30),
+                    "duration_minutes": 30,
+                    "attendees": [
+                        {
+                            "name": "Doireann Marron",
+                            "email": "doireann.marron@pendo.io",
+                            "is_current_user": True,
+                        },
+                        {"name": "Alex Rivera", "email": "alex.rivera@pendo.io"},
+                    ],
+                },
             ]
         },
     )
     assert payload["success"] is True
     assert payload["data"]["available"] is True
     assert payload["data"]["meeting_count"] == 1
+    assert granola_days == [21]
+    cadence = payload["data"]["cadence"]
+    assert cadence["window_days"] == 21
+    assert cadence["meeting_count"] == 3
+    assert cadence["recurring"][0]["title"] == "Doireann / Alex 1:1"
+    assert cadence["recurring"][0]["count"] == 2
+    assert cadence["likely_manager"]["name"] == "Alex Rivera"
+    assert "ask, do not assume" in cadence["likely_manager"]["guess"]
 
 
 def test_parse_provisioner_receipt_reads_json_wrapped_in_node_noise() -> None:
@@ -161,3 +220,4 @@ def test_lab_tools_are_registered() -> None:
     names = {tool.name for tool in asyncio.run(onboarding_server.handle_list_tools())}
     assert "save_identity_confirm" in names
     assert "save_meeting_source" in names
+    assert "save_entity_creation_preference" in names
