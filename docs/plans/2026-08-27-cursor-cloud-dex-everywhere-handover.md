@@ -200,15 +200,63 @@ filesystem ran out of inodes and subprocesses lacked the isolated MCP dependency
 reported 4,239 pass, 80 fail, 289 setup errors, five skips, and two deselections. Do not
 quote that run as product evidence.
 
-A clean dependency-isolated rerun was started with a private temporary directory. It
-confirmed real failures without the infrastructure noise. At handover it was still
-running, and its visible genuine failure families included:
+A clean dependency-isolated rerun with a private temporary directory completed in 898.28
+seconds: **4,577 passed, 34 failed, two skipped, and two deselected**. It contained no
+inode-exhaustion or missing-MCP setup errors, so its 34 failures are the trustworthy
+starting list. Failure families included:
 
 - nested `*-custom` gitignore/update composition;
 - a provision receipt `declared_paths` mismatch;
 - one conflict-resolution case;
 - distribution-artifact expectations;
 - one safety-gate case.
+
+The full log is retained on the Devbox at
+`/srv/dex-dev/verification-tmp/core-codex-local-gates-3b4a883/full-pytest-venv.log`.
+Cursor Cloud cannot read that local path; the exact failed-test names are captured by the
+following list and should be reproduced after merging current `main`:
+
+```text
+core/tests/test_apply_update.py::test_composed_gitignore_appends_contract_derived_vault_section
+core/tests/test_apply_update.py::test_applied_shipped_gitignore_saves_user_files_and_excludes_product_files
+core/tests/test_apply_update.py::test_composed_gitignore_reincludes_every_vault_region
+core/tests/test_apply_update.py::test_composed_gitignore_reignores_product_files_inside_vault_regions
+core/tests/test_apply_update.py::test_composed_gitignore_leaves_user_files_in_a_vault_region_tracked
+core/tests/test_apply_update.py::test_composed_gitignore_vault_regions_track_the_contract
+core/tests/test_apply_update.py::test_composed_gitignore_is_idempotent_and_replaces_stale_section
+core/tests/test_apply_update.py::test_compose_gitignore_import_does_not_require_pyyaml
+core/tests/test_apply_update.py::test_vault_section_assumes_direct_child_exceptions_only
+core/tests/test_conflict_resolution.py::test_keep_both_writes_sidecar_and_rewind_removes_it
+core/tests/test_distribution_artifacts.py::test_first_release_with_vault_gitignore_repair_tracks_para_files
+core/tests/test_distribution_artifacts.py::test_release_branch_strips_dev_files_and_untracks_v1_local_only_files
+core/tests/test_distribution_artifacts.py::test_beta_release_branch_uses_same_stripping_and_manifest
+core/tests/test_distribution_artifacts.py::test_release_build_uses_selected_source_version_for_tree_profile_manifest_and_tag
+core/tests/test_distribution_artifacts.py::test_raw_vault_bundle_has_package_profile_manifest_agreement
+core/tests/test_distribution_artifacts.py::test_raw_vault_bundle_publishes_standalone_verified_bridge
+core/tests/test_distribution_artifacts.py::test_release_script_synchronizes_all_bumped_version_metadata
+core/tests/test_distribution_artifacts.py::test_release_build_uses_safe_selected_source_despite_unsafe_current_checkout
+core/tests/test_distribution_artifacts.py::test_release_build_creates_immutable_versioned_tags
+core/tests/test_distribution_artifacts.py::test_release_build_does_not_repeat_v1_96_2_catalog_tag_lie
+core/tests/test_distribution_artifacts.py::test_vault_bundle_tree_manifest_and_archive_contain_no_tau
+core/tests/test_doctor.py::test_post_split_core_drift_accepts_the_composed_vault_mode_gitignore
+core/tests/test_harness_safety_gates.py::test_safety_hook_is_a_thin_wrapper
+core/tests/test_lifecycle_service_contract.py::test_frozen_service_inputs_and_outputs_conform_to_schema
+core/tests/test_provision_parity.py::test_completed_vault_records_only_its_confirmed_harness_receipt
+core/tests/test_provision_transaction.py::test_execute_commits_marker_and_session_deletion_together
+core/tests/test_provision_transaction.py::test_recover_restores_a_real_killed_first_run_transaction
+core/tests/test_release_fleet_acceptance.py::test_forged_executor_runs_cannot_mint_a_platform_receipt
+core/tests/test_release_fleet_acceptance.py::test_changed_evidence_validator_cannot_mint_a_platform_receipt
+core/tests/test_release_fleet_acceptance.py::test_live_finalization_rejects_a_spoofed_host_platform
+core/tests/test_smoke.py::test_hooks_are_syntax_checked_without_executing_commands
+core/tests/test_tracked_ignored.py::test_update_journey_capture_before_release_restores_files_removed_by_release
+core/tests/test_tracked_ignored.py::test_real_fast_forward_and_rollback_preserve_local_only_bytes_modes_and_deletions
+core/tests/test_transaction_core.py::test_engine_rechecks_deletion_content_immediately_before_unlink
+```
+
+The first nine apply-update failures are expected to be covered by the handover branch's
+nested custom-skill repair, but re-run them. Several distribution failures may collapse
+once the branch is based on today's release truth, but do not classify any failure as
+inherited or fixed without rerunning it.
 
 The nested custom-skill repair has already been implemented on the handover branch:
 
