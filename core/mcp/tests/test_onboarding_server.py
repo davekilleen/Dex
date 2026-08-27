@@ -272,6 +272,18 @@ class TestHarnessSelection:
         assert "mcp" in " ".join(by_id["pi"]["limitations"]).lower()
         assert "macos" in " ".join(by_id["bb"]["limitations"]).lower()
 
+    def test_preview_includes_live_chatgpt_work_web_limit(self):
+        from core.harnesses.registry import get_profile
+
+        inspected = onboarding_server.inspect_harnesses(["chatgpt-work"])
+
+        assert inspected["selected"] == ["chatgpt-work"]
+        by_id = {row["id"]: row for row in inspected["profiles"]}
+        assert by_id["chatgpt-work"]["limitations"] == list(get_profile("chatgpt-work").limitations)
+        joined = " ".join(by_id["chatgpt-work"]["limitations"]).lower()
+        assert "web" in joined
+        assert "https" in joined
+
     def test_inspection_supplies_existing_home_path_evidence(self, monkeypatch):
         evidence = (Path("/fixture/.codex"), Path("/fixture/.pi"))
         captured = []

@@ -195,12 +195,20 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
     assert [profile.id for profile in detect_harnesses(env={"PI_CODING_AGENT": "1"})] == ["pi"]
     assert [profile.id for profile in detect_harnesses(env={"BB_HARNESS": "1"})] == ["bb"]
     assert [profile.id for profile in detect_harnesses(env={"BB_RUNNER": "1"})] == ["bb"]
+    assert [profile.id for profile in detect_harnesses(env={"CHATGPT_WORK": "1"})] == ["chatgpt-work"]
+    assert [profile.id for profile in detect_harnesses(env={"OPENAI_WORK": "1"})] == ["chatgpt-work"]
+    assert [profile.id for profile in detect_harnesses(env={"CHATGPT_WORK_COMPANION": "1"})] == [
+        "chatgpt-work"
+    ]
 
 
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.bb/worktrees/x")])] == ["bb"]
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.cowork/task")])] == ["cowork"]
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.pi/session")])] == ["pi"]
+    assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.chatgpt-work/app")])] == [
+        "chatgpt-work"
+    ]
     assert detect_harnesses(env={}, paths=[]) == ()
 
 

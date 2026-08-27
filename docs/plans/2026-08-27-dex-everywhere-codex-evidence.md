@@ -2,7 +2,7 @@
 
 **Date:** 27 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Codex, Claude Cowork, and Pi/BB exact-head native CI are green, including the Mac fleet.
+**Sequence:** Codex, Claude Cowork, and Pi/BB exact-head native CI are green, including the Mac fleet. ChatGPT Work desktop proof is in progress. Copilot waits.
 
 ## What “Codex done” means
 
@@ -114,10 +114,19 @@ A later commit that records this proof is a new head and must earn its own green
 
 GitHub did not schedule Dex CI on `42f2ea30` or `6b8cc267` at the time those heads landed. This note records the green fleet on `616618e4` and is a new head that must earn its own Dex CI.
 
+## ChatGPT Work (started after Pi/BB CI was green)
+
+Desktop only. This does not claim ChatGPT in the browser.
+
+- Detects ChatGPT Work from `CHATGPT_WORK` / `OPENAI_WORK` / `CHATGPT_WORK_COMPANION` and a `/.chatgpt-work/` path
+- Doctor and setup preview name the browser limit: ChatGPT on the web needs a separate public door. The local Dex folder is not exposed that way
+- Copilot stays unstarted until this head earns exact-head Dex CI and the Mac fleet
+
 ## Deliberately not started
 
 - Live BB install, or publishing `dex-bb-plugin`
-- Copilot CLI and other remaining later hosts
+- ChatGPT in the browser, or a public door for a local Dex folder
+- GitHub Copilot in the terminal (next, after ChatGPT Work desktop is proven)
 - Capability-exchange privacy repairs in Dex Lens
 - Final genuine Fable reviews (wait until heads are frozen and native CI is green)
 - Merge, publish, marketplace, user install, or release

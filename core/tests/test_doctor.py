@@ -917,6 +917,31 @@ def test_harness_capability_probe_reports_pi_and_bb_limits(context, monkeypatch)
     }
 
 
+def test_harness_capability_probe_reports_chatgpt_work_web_limit(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["chatgpt-work"],
+        detected_ids=("chatgpt-work",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "ChatGPT Work" in result.detail
+    assert "web" in result.detail.lower()
+    assert "https" in result.detail.lower()
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail["selected"] == ["chatgpt-work"]
+    assert result.structured_detail["limitations"] == {
+        "chatgpt-work": list(get_profile("chatgpt-work").limitations),
+    }
+
+
 def test_harness_capability_probe_reports_malformed_receipt_as_broken(context):
     receipt_path = context.vault_root / "System/.dex/harness-profile.json"
     receipt_path.parent.mkdir(parents=True)
