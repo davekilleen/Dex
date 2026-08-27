@@ -112,6 +112,8 @@ Core proof on `616618e45fbe26adc71cc7c3ce5d3bceb090af67` after Cowork CI was gre
 
 A later commit that records this proof is a new head and must earn its own green Dex CI. The fleet canary on `616618e4` keeps running and is not cancelled by a later push.
 
+GitHub did not schedule Dex CI on `42f2ea30`. This follow-up exists so the setup-preview head can earn its own run.
+
 ## Deliberately not started
 
 - Live BB install, or publishing `dex-bb-plugin`
