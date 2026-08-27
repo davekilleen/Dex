@@ -91,11 +91,18 @@ earlier update approval as approval for this connection change.
 
 ## Deeply customised setup
 
-Before applying an update, use the deep Doctor report to decide whether to offer this branch.
-Offer it when `customization_assessment.completeness` is `OK` and
+Before applying an update, collect the deep Doctor report with
+`python3 core/utils/doctor.py --deep`. JSON is stdout-only; progress is stderr.
+This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
+Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
+ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`.
+If the collector itself fails to run: that IS the
+finding. Report it first, with the error. Use that report to decide whether to offer this
+branch. Offer it when `customization_assessment.completeness` is `OK` and
 `customization_assessment.identity.customization_count` is at least 1, or when the user says
 they have customised Dex heavily. If the verified count is zero, follow the normal lightweight update
-path and do not mention this branch. If completeness is `UNKNOWN`, show Doctor's uncertainty
+path and do not mention this branch. If completeness is `UNKNOWN`, or the report has no
+`customization_assessment`, show Doctor's uncertainty
 and do not infer a zero count. When Doctor returns `partial: true`, show the observed
 records and every exclusion path, reason, and guidance as a partial inventory. Do not
 run the Capsule preview or ask for Capsule approval until reassessment returns
