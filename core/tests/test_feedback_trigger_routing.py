@@ -136,3 +136,18 @@ def test_the_feedback_skill_advertises_the_same_casual_route() -> None:
     # And the skill must keep declining the two things that are not Dex defects.
     assert "improvements backlog" in description
     assert "never a Dex defect" in description
+
+
+def test_feedback_skill_invokes_client_with_vault_interpreter() -> None:
+    """Bare python3 is fallback only; prefer the vault interpreter other Dex scripts use."""
+    skill = _read(".claude/skills/feedback/SKILL.md")
+
+    assert 'python3 .claude/skills/feedback/scripts/feedback_client.py' not in skill
+    assert "|| python3" not in skill
+    assert "${CLAUDE_DIR:-}/.venv/bin/python" in skill
+    assert "${VAULT_PATH:-}/.venv/bin/python" in skill
+    assert 'FEEDBACK_PYTHON="python3"' in skill
+    for subcommand in ("check", "report", "status", "answer"):
+        assert f'"$FEEDBACK_PYTHON" .claude/skills/feedback/scripts/feedback_client.py {subcommand}' in skill
+    assert "do not switch to bare `python3` even if the printed example uses it" in skill
+    assert 'run the `link` subcommand with `"$FEEDBACK_PYTHON"`' in skill

@@ -5436,8 +5436,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/feedback/SKILL.md",
-        "sha256": "60c3bad9e6dec3c89a999affd9ee4aec8379304e93d6b71dbc39b6e76fe401b1",
-        "byte_size": 8782
+        "sha256": "3b91b60876c626ed7794970d07a904750a0b4a460d5ce6bd99b78d631aa8fe81",
+        "byte_size": 9490
       },
       "value": "Report a Dex bug to the Dex team with zero homework.",
       "jobs_served": [

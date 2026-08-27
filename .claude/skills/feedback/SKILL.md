@@ -32,22 +32,36 @@ with the user doing nothing but approving. Contract: `docs/feedback-loop-contrac
    - **Answers to questions are always reviewed** regardless of the dial.
 4. **Never send without the script.** All sends go through the client script so
    every attempt lands in the local receipt log (`System/.dex/feedback-log.jsonl`).
+5. **Prefer the vault interpreter.** Resolve it once, then use `"$FEEDBACK_PYTHON"`
+   for every `feedback_client.py` call (check, report, status, answer, and link).
+   Bare `python3` is the fallback only when neither vault path is executable.
+
+   ```bash
+   FEEDBACK_PYTHON="python3"
+   if [ -x "${CLAUDE_DIR:-}/.venv/bin/python" ]; then
+     FEEDBACK_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+   elif [ -x "${VAULT_PATH:-}/.venv/bin/python" ]; then
+     FEEDBACK_PYTHON="$VAULT_PATH/.venv/bin/python"
+   fi
+   ```
 
 ## Filing a report
 
 0. **Preflight the connection first** — before investigating or drafting anything:
 
    ```bash
-   python3 .claude/skills/feedback/scripts/feedback_client.py check --vault "$VAULT_PATH"
+   "$FEEDBACK_PYTHON" .claude/skills/feedback/scripts/feedback_client.py check --vault "$VAULT_PATH"
    ```
 
    - Exit 0 (LINKED): carry on.
    - Exit 2 (CONNECTION NEEDED): tell the user now, not after drafting: "One-time
      setup first (~30 seconds): open the connect page, sign in, create a code, and
-     I'll link this terminal." Show the script's instructions, run the `link`
-     subcommand with their code, then continue. If they'd rather not link right
-     now, offer to draft the report anyway and save it locally so nothing is lost —
-     but never let them discover the missing link only after approving a draft.
+     I'll link this terminal." Show the script's instructions, then run the
+     `link` subcommand with their code using the same `"$FEEDBACK_PYTHON"` —
+     do not switch to bare `python3` even if the printed example uses it.
+     If they'd rather not link right now, offer to draft the report anyway and
+     save it locally so nothing is lost — but never let them discover the
+     missing link only after approving a draft.
 1. **Establish the facts.** From the conversation and quick local checks:
    - Dex version: read `version` from `package.json` at the vault root.
    - Feature: which skill/command/automation misbehaved.
@@ -88,15 +102,16 @@ with the user doing nothing but approving. Contract: `docs/feedback-loop-contrac
 6. **Send:**
 
    ```bash
-   python3 .claude/skills/feedback/scripts/feedback_client.py report --file /tmp/dex-feedback-draft.json --vault "$VAULT_PATH"
+   "$FEEDBACK_PYTHON" .claude/skills/feedback/scripts/feedback_client.py report --file /tmp/dex-feedback-draft.json --vault "$VAULT_PATH"
    ```
 
    - Exit 0: confirm with the ticket reference the script printed, e.g.
      "Sent — reference DEX-142. I'll tell you when there's news."
    - Exit 2 (CONNECTION NEEDED): the terminal isn't linked yet. Show the
      script's instructions — the user opens the connect page, signs in, creates
-     a code, and you run the `link` subcommand with it. This is a one-time,
-     ~30-second step; after linking, send the report without re-asking.
+     a code, and you run the `link` subcommand with `"$FEEDBACK_PYTHON"` (not
+     bare `python3`). This is a one-time, ~30-second step; after linking, send
+     the report without re-asking.
    - Other exits: relay the script's plain-language message; don't invent detail.
 7. **First-approval upgrade offer.** If the user approved without changing
    anything and their dial is `always-review`, offer once: "Want me to just send
@@ -109,7 +124,7 @@ with the user doing nothing but approving. Contract: `docs/feedback-loop-contrac
 When the user asks about their reports (or after filing):
 
 ```bash
-python3 .claude/skills/feedback/scripts/feedback_client.py status --vault "$VAULT_PATH"
+"$FEEDBACK_PYTHON" .claude/skills/feedback/scripts/feedback_client.py status --vault "$VAULT_PATH"
 ```
 
 Relay the script's list plainly. Statuses mean: RECEIVED (on the team's desk),
@@ -130,7 +145,7 @@ When a ticket is NEEDS INFO (surfaced by the session-start sweep or status):
 4. Send:
 
    ```bash
-   python3 .claude/skills/feedback/scripts/feedback_client.py answer --ticket DEX-158 --text "<approved answer>" --vault "$VAULT_PATH"
+   "$FEEDBACK_PYTHON" .claude/skills/feedback/scripts/feedback_client.py answer --ticket DEX-158 --text "<approved answer>" --vault "$VAULT_PATH"
    ```
 
 If the user declines, drop it without pressure; the question stays available in

@@ -7,6 +7,28 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.3] — ↩️ After an update you can undo it, and Doctor talks while it heals (2026-08-27)
+
+An update could look finished while undo had nothing to go back to. New skills
+could sit unused until you restarted. Sending a problem report could be refused
+if you were not in a closed test group. And the checkup could go quiet for a
+long stretch while it repaired things, so it was hard to tell whether it was
+still working.
+
+**What this fixes for you:**
+
+* **After an update, you can undo it and see a receipt.** The new version is
+  recorded like other Dex changes. Undo restores the previous Dex files and the
+  previous installed version. Your notes stay as they were. This lands in the
+  install people can download now — it was described earlier, but it was not in
+  the last published download.
+* **New skills work in this session.** You do not have to restart Dex for a
+  newly arrived skill to be usable. If your Heydex account is linked, you can
+  send `/feedback`. That is no longer limited to a closed test group.
+* **Doctor speaks in full sentences while it heals.** Each check has a time
+  limit, so a stuck step cannot sit silent. A repair that has already started
+  either finishes or fails in place — it does not hang halfway.
+
 ## [1.97.2] — 🔎 Dex Lens catalogue tells the complete release truth (2026-08-27)
 
 Dex's architecture inventory could see the optional Pipedrive server and its 15 tools,
