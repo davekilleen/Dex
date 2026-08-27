@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 7ba8ec7109a89d06cdce1684e0845688e27cd7141fb9513c915c41f63bb70292 -->
+<!-- Content SHA-256: 7faccbf1c1dc82a59b1bc93bc5b3187484a74c7012d22628f3084d826ccfa3a0 -->
 
 # Architecture Inventory
 
@@ -128,7 +128,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
 | `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
-| `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`) |
+| `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`inspect_harnesses`, `save_harness_selection`, `start_onboarding_session`) |
 | `dex-pipedrive-mcp` | 2 | normal | `pipedrive-setup` (`pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_status`); `pipeline-sync` (`pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
@@ -154,7 +154,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | `brain` | 46 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
-| `vault` | 17 | `never` |
+| `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
 
 <details><summary><code>brain</code> declared paths (46)</summary>
@@ -265,9 +265,11 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>vault</code> declared paths (17)</summary>
+<details><summary><code>vault</code> declared paths (19)</summary>
 
+- `.agents/skills/*-custom` (dir; `vault-agents-skills-custom`)
 - `.claude/skills-custom` (dir; `vault-skills-custom`)
+- `.claude/skills/*-custom` (dir; `vault-claude-skills-custom`)
 - `.env` (file; `vault-env`)
 - `.mcp.json` (file; `vault-mcp-json`)
 - `00-Inbox` (dir; `vault-inbox`)

@@ -55,6 +55,13 @@
       "ownership": "brain"
     },
     {
+      "id": "vault-agents-skills-custom",
+      "path": ".agents/skills/*-custom",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "user-authored portable skill convention; never replace a generated skill"
+    },
+    {
       "id": "brain-ci",
       "path": ".ci",
       "kind": "dir",
@@ -73,6 +80,13 @@
       "path": ".claude/skills-custom",
       "kind": "dir",
       "ownership": "vault"
+    },
+    {
+      "id": "vault-claude-skills-custom",
+      "path": ".claude/skills/*-custom",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "user-authored skill convention; never replace a generated or shipped skill"
     },
     {
       "id": "brain-cursor",

@@ -98,7 +98,10 @@ class Rule:
     """One ownership rule. ``path`` is vault-relative, POSIX separators.
 
     ``kind`` is ``"file"`` (exact match) or ``"dir"`` (the path itself and
-    everything under it). ``note`` documents WHY, for humans and reviews.
+    everything under it). Directory paths may contain shell-style wildcards;
+    matching is segment-aware so a ``*-custom`` namespace cannot consume a
+    slash and accidentally classify a sibling subtree. ``note`` documents WHY,
+    for humans and reviews.
     """
 
     rule_id: str
@@ -354,6 +357,10 @@ RULES: tuple[Rule, ...] = (
        "removal approval"),
     _r("vault-claude-custom", "CLAUDE-custom.md", "file", "vault",
        "the one canonical home for user instructions (Vault_Contract §5)"),
+    _r("vault-claude-skills-custom", ".claude/skills/*-custom", "dir", "vault",
+       "user-authored skill convention; never replace a generated or shipped skill"),
+    _r("vault-agents-skills-custom", ".agents/skills/*-custom", "dir", "vault",
+       "user-authored portable skill convention; never replace a generated skill"),
     _r("vault-skills-custom", ".claude/skills-custom", "dir", "vault"),
     _r("vault-mcp-custom", "core/mcp-custom", "dir", "vault"),
     _r("vault-mcp-premium", "core/mcp-premium", "dir", "vault"),
@@ -957,6 +964,25 @@ def is_denied(path: str) -> bool:
     return False
 
 
+def _matches_dir_rule(candidate: str, rule_path: str) -> bool:
+    """Return whether ``candidate`` is a directory rule's path or descendant.
+
+    Most rules are literal prefixes. A small number intentionally use a
+    segment wildcard (currently ``*-custom``) to describe user namespaces;
+    matching each segment independently keeps ``*`` from crossing a slash.
+    """
+    rule_segments = rule_path.split("/")
+    candidate_segments = candidate.split("/")
+    if len(candidate_segments) < len(rule_segments):
+        return False
+    return all(
+        fnmatch.fnmatchcase(candidate_segment, rule_segment)
+        for candidate_segment, rule_segment in zip(
+            candidate_segments[: len(rule_segments)], rule_segments, strict=True
+        )
+    )
+
+
 def resolve(path: str) -> Resolution:
     """Resolve ``path`` to its ownership class.
 
@@ -975,7 +1001,7 @@ def resolve(path: str) -> Resolution:
                 # Exact file match always wins outright.
                 return Resolution(candidate, rule.ownership, rule.rule_id, denied)
         else:
-            if candidate == rule.path or candidate.startswith(rule.path + "/"):
+            if _matches_dir_rule(candidate, rule.path):
                 specificity = rule.path.count("/") + 1
                 if specificity > best_specificity:
                     best = rule

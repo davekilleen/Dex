@@ -144,6 +144,8 @@ def _tracked_paths() -> list[str]:
         ("01-Quarter_Goals/my-goals-2027.md", "vault", False),
         ("06-Resources/my-research/notes.md", "vault", False),
         (".claude/skills-custom/mine/SKILL.md", "vault", False),
+        (".claude/skills/daily-plan-custom/SKILL.md", "vault", False),
+        (".agents/skills/weekly-reflection-custom/SKILL.md", "vault", False),
         ("CLAUDE-custom.md", "vault", False),
         (".mcp.json", "vault", False),
         ("System/folder-paths.yaml", "vault", False),
@@ -183,6 +185,17 @@ def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
     assert resolution.rule_id == "vault-resources"
     verdict = portable_contract.update_write_verdict("06-Resources/Dex_System/my-notes.md", exists=True)
     assert verdict.allowed is False
+
+
+def test_custom_agent_skill_namespace_is_vault_owned_without_widening_brain_rule() -> None:
+    """Generated ``.agents`` skills preserve user ``-custom`` directories."""
+    custom = portable_contract.resolve(".agents/skills/my-skill-custom/SKILL.md")
+    shipped = portable_contract.resolve(".agents/skills/my-skill/SKILL.md")
+
+    assert custom.ownership == "vault"
+    assert custom.rule_id == "vault-agents-skills-custom"
+    assert shipped.ownership == "brain"
+    assert shipped.rule_id == "brain-agents"
 
 
 def test_deny_check_is_case_folded_for_macos() -> None:
