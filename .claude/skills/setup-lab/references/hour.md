@@ -1,6 +1,6 @@
 # The hour — `/setup-lab` script
 
-Banned in anything she hears: “connector,” “tools are on,” “I can’t see your calendar,” “permission,” “sync failed,” “cron,” “MCP,” “server,” “vault,” “Python,” “environment,” “wiring,” “install.”
+Banned in anything she hears: “connector,” “tools are on,” “I can’t see your calendar,” “permission,” “sync failed,” “cron,” “MCP,” “server,” “vault,” “Python,” “environment,” “wiring,” “install,” “/connect.”
 
 ## 0. Sweep (silent)
 
@@ -17,7 +17,7 @@ Start silent subagents only at the beats below. They write staged notes. They ne
 
 Hard timeout when the interview ends. Show only what is ready.
 
-## 1. Welcome (first words, this turn)
+## 1. Welcome (first words, this turn — no tools)
 
 Warm. A little excited. She is taking a leap. Fifteen minutes. What Dex is great at: meetings, people, and follow-ups in one place she owns.
 
@@ -42,23 +42,37 @@ Doors (never `/connect`):
 - Company: “If your company has already put Calendar or Slack inside Claude or Codex, you can switch on the one you want me to use. I can use it while we talk.”
 - Dex: `/granola-setup`, `/google-workspace-setup`, or Apple calendar on a Mac. “If you want this in a morning brief even when you’re not asking, we add it to Dex. About two minutes.”
 
-## 2. Meeting notes
+## 2. Meeting notes (do not quiz)
 
-Granola states: (a) the Mac app is installed — not enough for Tuesday; (b) signed in on this host — good for this chat; (c) a stored key — the only unattended brief. Detect (b) before asking for a key. Key in chat is allowed. Call `save_meeting_source` the moment a source exists.
+Detect silently. Granola states: (a) the Mac app is installed — not enough for Tuesday; (b) signed in on this host — good for this chat; (c) a stored key — the only unattended brief. Detect (b) before asking for a key.
+
+If (a) only: record `save_meeting_source(primary="granola")` and keep going. After the week is on screen, one line: “When you want notes in a morning brief, `/granola-setup` takes about two minutes.” Do not stop the hour for it.
+
+Never say `/connect`.
 
 ## 3. Voice
 
-“You can type or talk — `/voice` if talking is easier.”
+One light line after the welcome is answered: “You can type or talk — `/voice` if talking is easier.”
 
-## 4. Interview
+## 4. Interview (two beats, then the mirror)
 
-Keep: role (hybrid free text), what matters most right now (`role_focus` — this feeds pillars and goals), 2–3 pillars, quarter outcome, up to five people **and who they are to her**, anything a calendar would miss.
+Do not open three question cards at once. Infer role, company size, working week, and how Dex should talk.
 
-Confirm, don’t quiz: company + domain, company size, working days, how Dex should talk. Career level stays visible.
+1. What matters most right now (`role_focus` — this feeds pillars and goals). Offer two or three drafts from her calendar if you have them.
+2. Up to five people **and who they are to her**. Skip anyone she does not pick. Never a self-page.
 
-Use `validate_and_save_step` for role (2), pillars (5), communication (6), working week (7). Skip asking step 8; rooms stay on.
+Then the mirror. Quarter outcome can be a draft on the mirror, not its own quiz.
 
-When she approves the mirror: `finalize_onboarding`, then preview/apply working context + the real `calendar_source` (`apple` / `google` / `none`).
+Save with `validate_and_save_step` — do not open Dex source to learn the values:
+
+- 2 role (hybrid free text)
+- 5 pillars (from the gold line)
+- 6 communication: `formality=professional_casual`, `directness=balanced`, `career_level=leadership` unless she said otherwise
+- 7 working week: Monday–Friday unless the calendar says different
+
+Skip asking step 8; rooms stay on.
+
+When she approves the mirror: `finalize_onboarding`, then preview/apply working context + the real `calendar_source` (`apple` / `google` / `none`). If finalize fails, answers are saved — do not restart the interview.
 
 ## 5. Wow card
 

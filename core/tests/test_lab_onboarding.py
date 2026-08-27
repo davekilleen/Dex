@@ -37,12 +37,16 @@ def test_lab_starter_is_valid_bash() -> None:
 def test_setup_lab_leads_with_a_welcome() -> None:
     skill = SKILL.read_text(encoding="utf-8")
     hour = HOUR.read_text(encoding="utf-8")
-    assert "First thing she hears" in skill
+    assert "Turn 1 — welcome only" in skill
+    assert "Zero tool calls on this turn" in skill
     assert "Hey [first name] — welcome to Dex" in hour
     assert "taking the leap" in hour
     assert "fifteen minutes" in hour
+    assert "Never read or edit Dex source" in skill
     assert "Do not narrate" in skill
     assert "I won’t try to fix the folder from here" in skill
+    assert "spoken beats" in skill
+    assert "builder note" in skill
     for banned in BANNED_IN_HER_EARS:
         assert banned not in hour.split("Banned")[0]
         # The hour may name banned words only in the ban list.

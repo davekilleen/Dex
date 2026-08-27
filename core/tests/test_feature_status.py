@@ -99,6 +99,8 @@ def test_granola_without_api_key_reports_off_and_preserves_legacy_keys(monkeypat
     assert payload["feature"] == "Granola meeting sync"
     assert payload["feature_status"] == "off"
     assert payload["user_message"] == granola_server.NOT_CONNECTED_MESSAGE
+    assert "/granola-setup" in payload["user_message"]
+    assert "/connect" not in payload["user_message"]
     assert payload["success"] is False
     assert payload["connected"] is False
     assert payload["message"] == granola_server.NOT_CONNECTED_MESSAGE

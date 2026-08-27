@@ -16,6 +16,8 @@ Setup used to assume Apple Calendar, and the morning plan kept talking to Apple 
 * **The morning plan uses the same calendar you connected.** If your work calendar is Google, Dex asks that calendar. Existing Apple Calendar people see no change.
 * **A preview first hour is available as `/setup-lab`.** It confirms who you are from your work email, shows your week, and runs one shortcut. Everyone’s usual `/setup` is unchanged.
 * **The practice first hour starts with a hello.** The starter finishes the behind-the-scenes setup before you open the folder, so you are not asked to restart after a wall of setup talk.
+* **That hello comes before any looking.** The first message is a welcome, not a wait. If the last step cannot build the folder, your answers stay saved and you are not put through the questions again.
+* **Granola points at the real setup.** When notes are not connected yet, Dex says `/granola-setup`, not a door that is not shipped.
 * **The getting-started tour no longer dies on a Mac with the built-in Python.** Date-only meeting dates are read instead of crashing.
 
 ## [1.97.2] — 🔎 Dex Lens catalogue tells the complete release truth (2026-08-27)

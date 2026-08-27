@@ -139,6 +139,24 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
     assert payload["data"]["meeting_count"] == 1
 
 
+def test_parse_provisioner_receipt_reads_json_wrapped_in_node_noise() -> None:
+    receipt = onboarding_server._parse_provisioner_receipt(
+        "npm warn old lockfile\n{\"ok\": true, \"created\": []}\n",
+        "",
+        lab=True,
+    )
+    assert receipt["ok"] is True
+
+
+def test_parse_provisioner_receipt_lab_missing_helper_is_honest() -> None:
+    with pytest.raises(RuntimeError, match="practice folder is missing a helper"):
+        onboarding_server._parse_provisioner_receipt(
+            "",
+            "Error: Cannot find module 'js-yaml'",
+            lab=True,
+        )
+
+
 def test_lab_tools_are_registered() -> None:
     names = {tool.name for tool in asyncio.run(onboarding_server.handle_list_tools())}
     assert "save_identity_confirm" in names

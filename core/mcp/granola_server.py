@@ -59,7 +59,8 @@ VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path.cwd()))
 
 # Friendly message shown when no API key is configured (shared convention).
 NOT_CONNECTED_MESSAGE = (
-    "Granola not connected — run /connect granola to add your Granola API key."
+    "Granola not connected — run /granola-setup to add your Granola API key "
+    "(requires a Granola Business plan)."
 )
 
 # Set up logging

@@ -603,6 +603,41 @@ def _capability_states(
     return states
 
 
+def _parse_provisioner_receipt(
+    stdout: str,
+    stderr: str,
+    *,
+    lab: bool,
+) -> Dict[str, Any]:
+    """Read the provisioner's JSON even if Node printed noise around it."""
+    text = (stdout or "").strip()
+    candidates = [text] if text else []
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(text[start : end + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    detail = (stderr or "").strip() or text[:300]
+    if "Cannot find module" in detail or "js-yaml" in detail:
+        if lab:
+            raise RuntimeError(
+                "This practice folder is missing a helper. Close this chat, "
+                "run the starter in Terminal again, then type /setup-lab. "
+                "Your answers are saved."
+            )
+        raise RuntimeError(
+            "Dex couldn't finish building your workspace. Close this chat, "
+            "run ./install.sh in this folder, then type /setup again."
+        )
+    raise RuntimeError(detail or "the builder printed nothing")
+
+
 def _run_onboarding_provisioner(
     session: Dict,
     *,
@@ -656,10 +691,11 @@ def _run_onboarding_provisioner(
             check=False,
             env={**os.environ, "DEX_LIFECYCLE_PYTHON": sys.executable},
         )
-        try:
-            receipt = json.loads(completed.stdout)
-        except json.JSONDecodeError as error:
-            raise RuntimeError("Provisioner returned an invalid receipt") from error
+        receipt = _parse_provisioner_receipt(
+            completed.stdout,
+            completed.stderr,
+            lab=_is_lab_session(session),
+        )
         if completed.returncode != 0 or receipt.get("ok") is not True:
             detail = "; ".join(receipt.get("errors", [])) or completed.stderr.strip()
             raise RuntimeError(detail or "Provisioner refused onboarding")
@@ -2839,9 +2875,14 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 
             except Exception as e:
                 logger.error(f"Error during finalization: {e}")
+                suggestion = (
+                    "Close this chat, run the starter in Terminal again, then type /setup-lab. Your answers are saved."
+                    if _is_lab_session(session)
+                    else "Close this chat, run ./install.sh in this folder, then type /setup again."
+                )
                 result = create_error_response(
-                    f"Finalization failed: {e}",
-                    suggestion="Check logs and retry"
+                    str(e),
+                    suggestion=suggestion,
                 )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
