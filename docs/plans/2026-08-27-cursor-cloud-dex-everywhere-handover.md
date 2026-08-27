@@ -1,9 +1,13 @@
 # Dex Everywhere — Cursor Cloud continuation handover
 
-**Prepared:** 27 August 2026  
-**Programme state:** unreleased; release remains closed  
-**Primary repository:** `davekilleen/Dex` (Dex Core)  
-**Primary draft PR:** <https://github.com/davekilleen/Dex/pull/594>  
+**Prepared:** 27 August 2026
+
+**Programme state:** unreleased; release remains closed
+
+**Primary repository:** `davekilleen/Dex` (Dex Core)
+
+**Primary draft PR:** <https://github.com/davekilleen/Dex/pull/594>
+
 **Historical Codex source thread:** `01a03796-e4eb-7583-a9c2-645747d86be7`
 
 ## 1. Read this first
@@ -521,4 +525,3 @@ branch:
 > merge main, publish, deploy, install for users, change billing, copy credentials, or
 > release. Report exact commits, commands, counts, and CI links; distinguish Ubuntu runner
 > evidence from native macOS/Windows evidence.
-
