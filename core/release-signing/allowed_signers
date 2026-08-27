@@ -1,0 +1,22 @@
+# Dex release signing — trusted publisher keys
+#
+# This file is Git's `gpg.ssh.allowedSignersFile`. Every line names one key
+# that is allowed to sign a Dex release tag:
+#
+#   <principal> <key-type> <key-material>
+#
+# for example:
+#
+#   releases@heydex.ai ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
+#
+# Lines that are blank or start with "#" are ignored. While this file names no
+# key at all — as it does right now — Dex's release verification behaves
+# exactly as it did before signing existed: releases are still checked for
+# integrity, but not for who published them.
+#
+# The release that first lists a real key here turns publisher checking on for
+# every update after it. See docs/release-signing-runbook.md for how to create
+# the key, sign a release, and rotate keys later.
+#
+# Do not paste a PRIVATE key here. Only the public half belongs in this file,
+# and this file is public.

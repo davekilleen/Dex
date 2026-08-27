@@ -552,6 +552,58 @@ def _topology(vault_root: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     return brain_git, topology, brain_marker
 
 
+def _verify_release_publisher(
+    vault_root: Path,
+    brain_git: Path,
+    tag_object: str,
+    tag_payload: str,
+) -> None:
+    """Refuse a release that is not signed by a trusted Dex release key.
+
+    This is the last gate before a release can be previewed or applied, so the
+    signature is re-checked here against the bytes actually fetched into this
+    vault's brain store, not only against the evidence copy.
+
+    The trust anchor is the allowed-signers file ALREADY INSTALLED in this
+    vault, delivered by a release the user previously accepted — never the copy
+    inside the candidate, which anyone able to forge the candidate could forge
+    too. See ``core.utils.update_verifier.ALLOWED_SIGNERS_PATH`` for the
+    bootstrap caveat: the first release carrying the file is trusted the old
+    way, and the protection is real from the next update onward.
+
+    While no anchor is installed this is a no-op and update behavior is
+    unchanged.
+    """
+    from core.utils import update_verifier
+
+    try:
+        anchor = update_verifier.load_allowed_signers(vault_root)
+        if anchor is None:
+            return
+        update_verifier.assert_signature_verifiable(
+            tag_payload,
+            git_version_output=git_output(
+                vault_root,
+                "--version",
+                profile="read-only",
+            ).decode("utf-8", errors="replace"),
+        )
+    except update_verifier.EvidenceError as error:
+        raise ReleaseVerificationError(str(error)) from error
+    try:
+        _brain_output(
+            vault_root,
+            brain_git,
+            *update_verifier.allowed_signers_config(anchor),
+            "verify-tag",
+            tag_object,
+        )
+    except RuntimeError as error:
+        raise ReleaseVerificationError(
+            update_verifier.SIGNATURE_UNTRUSTED_MESSAGE
+        ) from error
+
+
 def _verify_official_origin(vault_root: Path, brain_git: Path) -> None:
     configured = _brain_text(vault_root, brain_git, "config", "--get", "remote.origin.url")
     effective = _brain_text(vault_root, brain_git, "remote", "get-url", "origin")
@@ -595,6 +647,7 @@ def verify_release_ref(
         headers[key] = value
     if headers.get("type") != "commit" or headers.get("tag") != tag or headers.get("object") != commit:
         raise ReleaseVerificationError("annotated release tag identity contradicts the evidence pin")
+    _verify_release_publisher(root, brain_git, tag_object, tag_payload)
     if not commit.startswith(match.group("short")):
         raise ReleaseVerificationError("immutable tag suffix does not pin the full release commit")
     if _brain_text(root, brain_git, "rev-parse", "--verify", f"{commit}^{{tree}}") != tree:

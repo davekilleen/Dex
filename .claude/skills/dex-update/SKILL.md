@@ -56,6 +56,16 @@ on disk, Read that file and follow it. Do not tell them to restart first.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 
+**A refused signature is the one refusal you never soften.** When the reason is
+`signature-untrusted` or `signature-unverifiable`, the release either was not
+published by the Dex maintainer or could not be checked at all. Relay the
+returned `message` as written, confirm nothing on their computer changed, and
+stop. Do not re-run the update hoping for a different answer, do not download
+the release another way, and do not suggest any route that installs it without
+the check — there isn't a safe one. `signature-untrusted` is worth reporting at
+https://github.com/davekilleen/Dex/issues; `signature-unverifiable` usually
+means their Git is older than 2.34 and updating Git fixes it.
+
 ## One-time brain and vault upgrade
 
 The topology check can report that this Dex still keeps the product and the user's notes in one combined history. In that case, the service runs the shipped migrator in `dry-run` mode. This only prepares the local report; it does not start the move.

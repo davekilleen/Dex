@@ -2235,3 +2235,166 @@ def test_vault_section_assumes_direct_child_exceptions_only() -> None:
         root = rule.path.split("/", 1)[0]
         if root in tops:
             assert rule.path.count("/") == 1, rule.path
+
+
+# ---------------------------------------------------------------------------
+# Signed release tags at the apply gate.
+#
+# verify_release_ref is the last thing that runs before a delivered release can
+# be previewed or applied, so it re-checks the signature against the bytes
+# actually fetched into this vault's brain store.
+# ---------------------------------------------------------------------------
+
+_SSH_KEYGEN = shutil.which("ssh-keygen")
+requires_ssh_signing = pytest.mark.skipif(
+    _SSH_KEYGEN is None,
+    reason="SSH release-signature verification needs the ssh-keygen tool",
+)
+
+
+def _release_signing_key(directory: Path, name: str) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    key = directory / name
+    subprocess.run(
+        [str(_SSH_KEYGEN), "-t", "ed25519", "-N", "", "-C", f"dex-{name}", "-f", str(key), "-q"],
+        check=True,
+        capture_output=True,
+    )
+    return key
+
+
+def _install_release_trust_anchor(vault: Path, *keys: Path) -> None:
+    anchor = vault / update_verifier.ALLOWED_SIGNERS_PATH
+    anchor.parent.mkdir(parents=True, exist_ok=True)
+    anchor.write_text(
+        "".join(
+            "releases@heydex.ai "
+            + " ".join(Path(f"{key}.pub").read_text(encoding="utf-8").split()[:2])
+            + "\n"
+            for key in keys
+        ),
+        encoding="utf-8",
+    )
+
+
+def _sign_and_refetch_target(fixture: dict[str, object], key: Path) -> tuple[str, str, str, str]:
+    """Re-sign the fixture's target tag and refresh the vault's brain store."""
+    release = fixture["release"]
+    tag, _tag_object, commit, tree = fixture["target"]
+    environment = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    subprocess.run(
+        ["git", "-C", str(release), "tag", "-d", tag],
+        check=True,
+        capture_output=True,
+        env=environment,
+    )
+    subprocess.run(
+        [
+            "git", "-C", str(release),
+            "-c", "gpg.format=ssh",
+            "-c", "gpg.ssh.program=ssh-keygen",
+            "-c", f"user.signingkey={key}",
+            "tag", "-s", "-m", f"Dex {tag}", tag, commit,
+        ],
+        check=True,
+        capture_output=True,
+        env=environment,
+    )
+    subprocess.run(
+        [
+            "git", f"--git-dir={fixture['brain']}", "fetch", "--quiet", "--force",
+            str(release), f"+refs/tags/{tag}:refs/tags/{tag}",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    tag_object = _git(release, "rev-parse", f"refs/tags/{tag}")
+    fixture["target"] = (tag, tag_object, commit, tree)
+    return fixture["target"]
+
+
+@requires_ssh_signing
+def test_apply_gate_accepts_a_release_signed_by_the_installed_trust_anchor(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    key = _release_signing_key(vault.parent / "keys", "release")
+    _install_release_trust_anchor(vault, key)
+    tag, tag_object, commit, tree = _sign_and_refetch_target(split_release_fixture, key)
+
+    verified = apply_update.verify_release_ref(
+        vault, tag=tag, tag_object=tag_object, commit=commit, tree=tree
+    )
+
+    assert verified.tag == tag
+    assert verified.commit == commit
+
+
+@requires_ssh_signing
+def test_apply_gate_refuses_a_release_signed_by_an_unlisted_key(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    _install_release_trust_anchor(vault, _release_signing_key(vault.parent / "keys", "release"))
+    attacker = _release_signing_key(vault.parent / "keys", "attacker")
+    tag, tag_object, commit, tree = _sign_and_refetch_target(split_release_fixture, attacker)
+
+    with pytest.raises(apply_update.ReleaseVerificationError) as failure:
+        apply_update.verify_release_ref(
+            vault, tag=tag, tag_object=tag_object, commit=commit, tree=tree
+        )
+
+    assert "does not match any key Dex trusts" in str(failure.value)
+    assert _visible_vault_content(vault)["README.md"] == b"old brain\n"
+
+
+@requires_ssh_signing
+def test_apply_gate_refuses_an_unsigned_release_and_never_writes(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    _install_release_trust_anchor(vault, _release_signing_key(vault.parent / "keys", "release"))
+    tag, tag_object, commit, tree = split_release_fixture["target"]
+
+    with pytest.raises(apply_update.ReleaseVerificationError) as failure:
+        apply_update.verify_release_ref(
+            vault, tag=tag, tag_object=tag_object, commit=commit, tree=tree
+        )
+
+    assert "not signed by the Dex maintainer" in str(failure.value)
+    assert _visible_vault_content(vault)["README.md"] == b"old brain\n"
+
+
+def test_apply_gate_is_inert_without_an_installed_trust_anchor(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """Pre-signing era: an unsigned release still verifies exactly as before."""
+    vault = split_release_fixture["vault"]
+    assert update_verifier.load_allowed_signers(vault) is None
+    tag, tag_object, commit, tree = split_release_fixture["target"]
+
+    verified = apply_update.verify_release_ref(
+        vault, tag=tag, tag_object=tag_object, commit=commit, tree=tree
+    )
+
+    assert verified.tag == tag
+
+
+@requires_ssh_signing
+def test_apply_gate_refuses_when_the_signature_cannot_be_checked_at_all(
+    split_release_fixture: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = split_release_fixture["vault"]
+    key = _release_signing_key(vault.parent / "keys", "release")
+    _install_release_trust_anchor(vault, key)
+    tag, tag_object, commit, tree = _sign_and_refetch_target(split_release_fixture, key)
+    monkeypatch.setattr(update_verifier, "MIN_SSH_VERIFY_GIT_VERSION", (99, 0, 0))
+
+    with pytest.raises(apply_update.ReleaseVerificationError) as failure:
+        apply_update.verify_release_ref(
+            vault, tag=tag, tag_object=tag_object, commit=commit, tree=tree
+        )
+
+    assert "Git 2.34 or newer" in str(failure.value)
+    assert "does not match" not in str(failure.value)

@@ -64,6 +64,12 @@ _SAFE_DELIVERY_FAILURE_REASONS = frozenset(
         "io-error",
         "network-unavailable",
         "query-setup-invalid",
+        # A release the fleet refuses because it is unsigned, signed by an
+        # untrusted key, or unverifiable on that host. Deliberately NOT in
+        # _TRANSIENT_NETWORK_DELIVERY_REASONS: retrying cannot change a
+        # publisher-authentication verdict, and must never look like it might.
+        "signature-untrusted",
+        "signature-unverifiable",
         "state-write-failed",
         "subprocess-failed",
         "tag-object-mismatch",

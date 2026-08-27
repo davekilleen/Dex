@@ -75,6 +75,66 @@ _TRANSIENT_HTTP_REJECTION_RE = re.compile(
     r"(?:\bHTTP(?:/[0-9.]+)?\s+429\b|\brequested URL returned error:\s*429\b)",
     re.IGNORECASE,
 )
+
+# --- publisher authentication: signed release tags -------------------------
+#
+# Everything else in this module proves a release is INTACT — the manifest,
+# the catalog, and the per-artifact hashes all agree with one immutable tag.
+# None of it proved WHO published that release: trust terminated at whoever
+# could push a tag to the canonical GitHub repository. A signed release tag
+# closes that gap. The maintainer signs each dist/release/v* tag with an SSH
+# key, and the public half of that key travels inside the release itself, in
+# the allowed-signers file named below (Git's gpg.ssh.allowedSignersFile
+# format: one "principal <key-type> <key-material>" line per key).
+#
+# THREAT MODEL — the bootstrap caveat, stated plainly rather than hidden:
+# the allowed-signers file arrives through the very channel it protects, so
+# the FIRST release that carries it is trusted the old way (integrity only).
+# From the NEXT update onward the protection is real, because the anchor being
+# consulted is the copy ALREADY INSTALLED on this machine, delivered by a
+# release the user previously accepted — never the copy sitting inside the
+# candidate, which anyone able to forge the candidate could also forge.
+# Key rotation follows the same rule: a new key is published by shipping a new
+# allowed-signers file inside a release signed by the OLD key, so each
+# rotation is itself authenticated by the key it replaces.
+#
+# ROLLOUT: while this file is absent, empty, or contains only comments, the
+# checks below are inert and release verification behaves exactly as it did
+# before. The release that first ships a real key turns verification on for
+# every subsequent update, with no flag for a user to set or forget.
+ALLOWED_SIGNERS_PATH = "core/release-signing/allowed_signers"
+MAX_ALLOWED_SIGNERS_BYTES = 64 * 1024
+SSH_SIGNATURE_MARKER = "-----BEGIN SSH SIGNATURE-----"
+# Git learned `gpg.format = ssh`, and therefore SSH signature verification,
+# in 2.34. Older Git hands an SSH signature to gpg, which cannot read it, and
+# fails with a message about gpg rather than about the signature — so we must
+# detect the old toolchain ourselves and say what is actually wrong.
+MIN_SSH_VERIFY_GIT_VERSION = (2, 34, 0)
+_GIT_VERSION_RE = re.compile(r"^git version (\d+)\.(\d+)(?:\.(\d+))?")
+_ISSUE_URL = "https://github.com/davekilleen/Dex/issues"
+# These messages are shown to the person running the update. They say what
+# happened, that nothing was changed, and what to do next. They never offer a
+# way around the check, because there is no safe way around it.
+SIGNATURE_MISSING_MESSAGE = (
+    "Dex stopped this update: the release is not signed by the Dex maintainer. "
+    "Every genuine Dex release carries a signature that Dex checks before it "
+    "installs anything. Your copy of Dex has not been changed. Please report "
+    f"this at {_ISSUE_URL}."
+)
+SIGNATURE_UNTRUSTED_MESSAGE = (
+    "Dex stopped this update: the release's signature does not match any key "
+    "Dex trusts. Either it was not published by the Dex maintainer, or it was "
+    "altered after it was published. Your copy of Dex has not been changed. "
+    f"Please report this at {_ISSUE_URL}."
+)
+SIGNATURE_UNVERIFIABLE_MESSAGE = (
+    "Dex could not check who published this release, so it did not install "
+    "it. Checking a release signature needs Git 2.34 or newer, along with the "
+    "ssh-keygen tool that ships with Git and OpenSSH. Update Git (on a Mac: "
+    "`brew install git`; on Windows: reinstall Git for Windows; on Linux: your "
+    "usual package manager), then run /dex-update again. Nothing on your "
+    "computer was changed."
+)
 _FORBIDDEN_GIT_ENV_NAMES = {
     "ALL_PROXY",
     "HTTP_PROXY",
@@ -134,6 +194,23 @@ class TlsTrustError(EvidenceError):
     It is surfaced as its own reason so users behind a TLS-inspecting proxy are
     never told their release evidence is invalid. Dex never responds to it by
     weakening or bypassing certificate verification.
+    """
+
+
+class ReleaseSignatureError(EvidenceError):
+    """The release tag is unsigned, or signed by a key Dex does not trust.
+
+    This is a publisher-authentication failure, not an integrity failure: the
+    bytes may hash perfectly and still have been published by the wrong party.
+    """
+
+
+class SignatureUnverifiableError(EvidenceError):
+    """The signature could not be checked at all on this machine.
+
+    Distinct from :class:`ReleaseSignatureError` on purpose. "The signature is
+    wrong" and "we were unable to look" are different facts, and telling a user
+    the first when the second is true would be a lie. Both refuse the update.
     """
 
 
@@ -252,11 +329,16 @@ _FAILURE_REASONS: tuple[tuple[type[BaseException], str], ...] = (
     (TagObjectMovedError, "tag-object-moved"),
     (TagObjectMismatchError, "tag-object-mismatch"),
     (TlsTrustError, "tls-untrusted"),
+    (SignatureUnverifiableError, "signature-unverifiable"),
+    (ReleaseSignatureError, "signature-untrusted"),
     (EvidenceError, "evidence-invalid"),
     (UnicodeError, "encoding-invalid"),
     (OSError, "io-error"),
     (subprocess.SubprocessError, "subprocess-failed"),
 )
+
+
+SIGNATURE_FAILURE_REASONS = frozenset({"signature-untrusted", "signature-unverifiable"})
 
 
 def _failure_reason(error: BaseException) -> str:
@@ -608,6 +690,128 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _bounded_regular_file(path: Path, *, max_bytes: int, description: str) -> bytes:
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise EvidenceError(f"{description} is not a regular file")
+        size = path.stat().st_size
+        if size < 0 or size > max_bytes:
+            raise EvidenceError(f"{description} exceeded its bound")
+        raw = path.read_bytes()
+    except OSError as error:
+        raise EvidenceError(f"{description} is unreadable") from error
+    if len(raw) != size:
+        raise EvidenceError(f"{description} changed while being read")
+    return raw
+
+
+@dataclass(frozen=True)
+class ReleaseTrustAnchor:
+    """The installed allowed-signers file that gates the next update.
+
+    ``path`` is absolute because Git resolves ``gpg.ssh.allowedSignersFile``
+    relative to its own working directory, which is not the vault.
+    """
+
+    path: Path
+    principals: tuple[str, ...]
+
+
+def _parse_allowed_signers(raw: bytes) -> tuple[str, ...]:
+    """Return the meaningful allowed-signers lines, ignoring comments."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise EvidenceError("release signing trust anchor is not UTF-8") from error
+    if "\x00" in text:
+        raise EvidenceError("release signing trust anchor is not a text file")
+    return tuple(
+        stripped
+        for line in text.splitlines()
+        if (stripped := line.strip()) and not stripped.startswith("#")
+    )
+
+
+def load_allowed_signers(vault_root: Path) -> ReleaseTrustAnchor | None:
+    """Return this install's release-signing trust anchor, or None.
+
+    None means "no trust anchor is installed", which is the pre-signing era
+    and leaves release verification exactly as it was. A file that exists but
+    holds only comments or blank lines — the placeholder this repository ships
+    until the maintainer's key is published — counts as absent for the same
+    reason: it names no key, so it can authorize nothing.
+
+    The anchor is deliberately read from the INSTALLED vault, never from the
+    candidate release, for the reason given at ALLOWED_SIGNERS_PATH above.
+    """
+    path = (Path(vault_root) / ALLOWED_SIGNERS_PATH).resolve()
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise EvidenceError("release signing trust anchor is unreadable") from error
+    principals = _parse_allowed_signers(
+        _bounded_regular_file(
+            path,
+            max_bytes=MAX_ALLOWED_SIGNERS_BYTES,
+            description="release signing trust anchor",
+        )
+    )
+    if not principals:
+        return None
+    return ReleaseTrustAnchor(path, principals)
+
+
+def parse_git_version(raw: str) -> tuple[int, int, int] | None:
+    """Parse ``git version X.Y.Z`` output, or None when it is unrecognizable."""
+    match = _GIT_VERSION_RE.match(raw.strip())
+    if match is None:
+        return None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3) or 0))
+
+
+def _ssh_keygen_available() -> bool:
+    # Git shells out to `ssh-keygen -Y verify` for gpg.format=ssh. Its absence
+    # is an environment gap, not a bad signature, and must say so.
+    return (
+        shutil.which("ssh-keygen") is not None
+        or shutil.which("ssh-keygen", path=os.defpath) is not None
+    )
+
+
+def assert_signature_verifiable(tag_payload: str, *, git_version_output: str) -> None:
+    """Fail closed BEFORE running verify-tag, with an honest reason.
+
+    Detecting an unsigned tag here rather than from Git's exit status keeps
+    "no signature at all" separate from "signature rejected", and refuses a
+    PGP-signed tag too: an allowed-signers file can only authorize SSH keys,
+    so a PGP signature is a key Dex has no way to trust.
+    """
+    if SSH_SIGNATURE_MARKER not in tag_payload:
+        raise ReleaseSignatureError(SIGNATURE_MISSING_MESSAGE)
+    version = parse_git_version(git_version_output)
+    if version is None or version < MIN_SSH_VERIFY_GIT_VERSION:
+        raise SignatureUnverifiableError(SIGNATURE_UNVERIFIABLE_MESSAGE)
+    if not _ssh_keygen_available():
+        raise SignatureUnverifiableError(SIGNATURE_UNVERIFIABLE_MESSAGE)
+
+
+def allowed_signers_config(anchor: ReleaseTrustAnchor) -> tuple[str, ...]:
+    """Return the ``-c`` pair Git needs to verify against this anchor.
+
+    ``gpg.format`` is set for completeness; Git detects an SSH signature from
+    the payload itself, and ``assert_signature_verifiable`` has already refused
+    anything that is not one.
+    """
+    return (
+        "-c",
+        f"gpg.ssh.allowedSignersFile={anchor.path}",
+        "-c",
+        "gpg.format=ssh",
+    )
+
+
 def _default_state_root(vault_root: Path) -> Path:
     vault_id = hashlib.sha256(str(vault_root.resolve()).encode("utf-8")).hexdigest()[:24]
     if sys.platform == "darwin":
@@ -717,6 +921,8 @@ class UpdateVerifier:
         self.wall_clock_seconds = wall_clock_seconds
         self._evidence_cache = self.state_root / "objects.git"
         self._budget: ExecutionBudget | None = None
+        self._trust_anchor_loaded = False
+        self._trust_anchor_value: ReleaseTrustAnchor | None = None
 
     @property
     def state_path(self) -> Path:
@@ -728,18 +934,7 @@ class UpdateVerifier:
 
     @staticmethod
     def _bounded_regular_file(path: Path, *, max_bytes: int, description: str) -> bytes:
-        try:
-            if path.is_symlink() or not path.is_file():
-                raise EvidenceError(f"{description} is not a regular file")
-            size = path.stat().st_size
-            if size < 0 or size > max_bytes:
-                raise EvidenceError(f"{description} exceeded its bound")
-            raw = path.read_bytes()
-        except OSError as error:
-            raise EvidenceError(f"{description} is unreadable") from error
-        if len(raw) != size:
-            raise EvidenceError(f"{description} changed while being read")
-        return raw
+        return _bounded_regular_file(path, max_bytes=max_bytes, description=description)
 
     def _current_version(self) -> str:
         try:
@@ -974,6 +1169,45 @@ class UpdateVerifier:
             raise EvidenceError(f"required release artifact size changed: {path}")
         return raw
 
+    def _trust_anchor(self) -> ReleaseTrustAnchor | None:
+        if not self._trust_anchor_loaded:
+            self._trust_anchor_value = load_allowed_signers(self.vault_root)
+            self._trust_anchor_loaded = True
+        return self._trust_anchor_value
+
+    def _verify_tag_signature(
+        self,
+        tag_object_id: str,
+        tag_payload: str,
+        anchor: ReleaseTrustAnchor,
+    ) -> None:
+        """Prove WHO published this release before any of it is believed."""
+        assert_signature_verifiable(
+            tag_payload,
+            git_version_output=self.git.run_plain(
+                "--version",
+                max_output_bytes=1024,
+            ).decode("utf-8", errors="replace"),
+        )
+        budget = self.git.budget
+        try:
+            self.git.run(
+                self.cache_path,
+                *allowed_signers_config(anchor),
+                "verify-tag",
+                tag_object_id,
+                max_output_bytes=4096,
+            )
+        except CancelledError:
+            raise
+        except EvidenceError as error:
+            # A command cut short by the session budget proves nothing about
+            # the signature, so it must keep its own reason rather than be
+            # reported as an untrusted publisher.
+            if budget is not None and time.monotonic() >= budget.deadline:
+                raise
+            raise ReleaseSignatureError(SIGNATURE_UNTRUSTED_MESSAGE) from error
+
     def _verify_manifest(self, entries: dict[str, tuple[str, str]]) -> None:
         raw = self._blob(entries, MANIFEST_PATH, max_bytes=MAX_MANIFEST_BYTES)
         try:
@@ -1053,6 +1287,13 @@ class UpdateVerifier:
         resolved_commit = self.git.run(self.cache_path, "rev-parse", "--verify", f"{tag}^{{commit}}").decode().strip()
         if resolved_commit != commit or not commit.startswith(expected_short):
             raise EvidenceError("tag suffix and immutable full commit identity disagree")
+
+        # Publisher authentication runs before the tree is read: an unsigned or
+        # untrusted candidate should never get as far as having its contents
+        # inspected. Inert while no trust anchor is installed.
+        anchor = self._trust_anchor()
+        if anchor is not None:
+            self._verify_tag_signature(fetched_tag_object, tag_object, anchor)
 
         tree, entries = self._blob_tree(commit)
         if sum(path == PROFILE_PATH for path in entries) != 1:
@@ -1150,6 +1391,8 @@ class UpdateVerifier:
                     "reason": reason,
                     "message": TLS_UNTRUSTED_MESSAGE,
                 }
+            if reason in SIGNATURE_FAILURE_REASONS:
+                return {"status": STATUS_UNKNOWN, "reason": reason, "message": str(error)}
             return {"status": STATUS_UNKNOWN, "reason": reason}
         finally:
             self._budget = None
@@ -1447,10 +1690,14 @@ class UpdateVerifier:
             return {**result, "status": STATUS_OFFLINE, "reason": reason}
         except (CancelledError, EvidenceError, OSError, UnicodeError, subprocess.SubprocessError) as error:
             reason = _failure_reason(error)
+            message = str(error) if reason in SIGNATURE_FAILURE_REASONS else None
             if not self._persist_failure(today=today, status=STATUS_UNKNOWN, reason=reason):
                 reason = "state-write-failed"
+                message = None
             if reason == "tls-untrusted":
                 return {**result, "reason": reason, "message": TLS_UNTRUSTED_MESSAGE}
+            if message is not None:
+                return {**result, "reason": reason, "message": message}
             return {**result, "reason": reason}
         finally:
             self._budget = None

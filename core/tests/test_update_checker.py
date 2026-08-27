@@ -18,6 +18,7 @@ import pytest
 from core.mcp import update_checker as update_checker_module
 from core.utils import update_verifier as update_verifier_module
 from core.utils.update_verifier import (
+    ALLOWED_SIGNERS_PATH,
     CATALOG_PATH,
     MANIFEST_PATH,
     PROFILE_PATH,
@@ -38,8 +39,12 @@ from core.utils.update_verifier import (
     UpdateVerifier,
     canonical_profile_bytes,
     legacy_profile_bytes,
+    load_allowed_signers,
     parse_profile,
+    prove_latest_release,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 APPROVED_NOTICE_AVAILABLE = "A newer version of Dex is available:"
 APPROVED_NOTICE_GUIDANCE = (
@@ -1417,3 +1422,305 @@ def test_no_certificate_verification_escape_hatch_exists_in_the_verifier() -> No
         "--no-verify-ssl",
     ):
         assert forbidden not in source
+
+
+# ---------------------------------------------------------------------------
+# Signed release tags (publisher authentication).
+#
+# Every test below signs a real tag with a throwaway SSH key and lets Git do
+# the verifying. Nothing about Git or ssh-keygen is mocked, because a mock
+# would only prove that the mock agrees with itself.
+# ---------------------------------------------------------------------------
+
+_SSH_KEYGEN = shutil.which("ssh-keygen")
+requires_ssh_signing = pytest.mark.skipif(
+    _SSH_KEYGEN is None,
+    reason="SSH release-signature verification needs the ssh-keygen tool",
+)
+
+
+def _isolated_git(repo: Path, *args: str) -> str:
+    """Run Git with no ambient global/system config.
+
+    A developer machine or CI image may configure its own commit signing; the
+    signatures these tests make must come from the test key and nothing else.
+    """
+    environment = {
+        **os.environ,
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+    }
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    ).stdout.strip()
+
+
+def _signing_key(directory: Path, name: str) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    key = directory / name
+    subprocess.run(
+        [str(_SSH_KEYGEN), "-t", "ed25519", "-N", "", "-C", f"dex-{name}", "-f", str(key), "-q"],
+        check=True,
+        capture_output=True,
+    )
+    return key
+
+
+def _install_trust_anchor(vault: Path, *keys: Path, preamble: str = "") -> Path:
+    lines = list(preamble.splitlines())
+    for key in keys:
+        material = " ".join(Path(f"{key}.pub").read_text(encoding="utf-8").split()[:2])
+        lines.append(f"releases@heydex.ai {material}")
+    anchor = vault / ALLOWED_SIGNERS_PATH
+    anchor.parent.mkdir(parents=True, exist_ok=True)
+    anchor.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return anchor
+
+
+def _sign_release_tag(repo: Path, tag: str, key: Path) -> str:
+    """Replace ``tag`` with an SSH-signed annotated tag on the same commit."""
+    commit = _isolated_git(repo, "rev-parse", f"{tag}^{{commit}}")
+    _isolated_git(repo, "tag", "-d", tag)
+    _isolated_git(
+        repo,
+        "-c",
+        "gpg.format=ssh",
+        "-c",
+        "gpg.ssh.program=ssh-keygen",
+        "-c",
+        f"user.signingkey={key}",
+        "-c",
+        "user.name=Dex Release Signing",
+        "-c",
+        "user.email=releases@example.com",
+        "tag",
+        "-s",
+        "-m",
+        f"Dex release {tag}",
+        tag,
+        commit,
+    )
+    return _tag_object(repo, tag)
+
+
+def test_trust_anchor_is_absent_until_a_release_lists_a_real_key(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    _installed_vault(vault)
+    assert load_allowed_signers(vault) is None
+
+    shutil.copy(REPO_ROOT / ALLOWED_SIGNERS_PATH, _install_trust_anchor(vault))
+    assert load_allowed_signers(vault) is None, "the shipped placeholder names no key"
+
+    (vault / ALLOWED_SIGNERS_PATH).write_text(
+        "# a comment\n\n   \n# another comment\n", encoding="utf-8"
+    )
+    assert load_allowed_signers(vault) is None
+
+    (vault / ALLOWED_SIGNERS_PATH).write_text(
+        "# leading comment\nreleases@heydex.ai ssh-ed25519 AAAAC3Nza\n\n",
+        encoding="utf-8",
+    )
+    anchor = load_allowed_signers(vault)
+    assert anchor is not None
+    assert anchor.principals == ("releases@heydex.ai ssh-ed25519 AAAAC3Nza",)
+    assert anchor.path.is_absolute()
+
+
+def test_unsigned_release_is_still_noticed_while_no_trust_anchor_is_installed(
+    tmp_path: Path,
+) -> None:
+    """Pre-signing era: behavior is byte-for-byte what it was before."""
+    vault = _installed_vault(tmp_path / "vault")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+    assert result["version"] == "1.62.0"
+
+
+def test_shipped_placeholder_anchor_does_not_switch_verification_on(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    anchor = vault / ALLOWED_SIGNERS_PATH
+    anchor.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO_ROOT / ALLOWED_SIGNERS_PATH, anchor)
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+
+
+@requires_ssh_signing
+def test_release_signed_by_an_allowed_key_is_accepted(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    key = _signing_key(tmp_path / "keys", "release")
+    _install_trust_anchor(vault, key)
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, _commit = _release(remote, "1.62.0")
+    tag_object = _sign_release_tag(remote, tag, key)
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+    assert result["tag_object"] == tag_object
+    assert result["notice"].startswith(f"{APPROVED_NOTICE_AVAILABLE} v1.62.0\n")
+
+
+@requires_ssh_signing
+def test_unsigned_release_is_refused_once_a_trust_anchor_is_installed(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    _install_trust_anchor(vault, _signing_key(tmp_path / "keys", "release"))
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+    state = tmp_path / "state"
+
+    result = _verifier(vault, remote, state).check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["should_notify"] is False
+    assert result["reason"] == "signature-untrusted"
+    assert "not signed by the Dex maintainer" in result["message"]
+    assert "notice" not in result
+    persisted = json.loads((state / "state.json").read_text())
+    assert persisted["last_status"] == STATUS_UNKNOWN
+    assert persisted["last_reason"] == "signature-untrusted"
+    assert persisted["noticed_releases"] == []
+
+
+@requires_ssh_signing
+def test_release_signed_by_an_unlisted_key_is_refused(tmp_path: Path) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    _install_trust_anchor(vault, _signing_key(tmp_path / "keys", "release"))
+    attacker = _signing_key(tmp_path / "keys", "attacker")
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, _commit = _release(remote, "1.62.0")
+    _sign_release_tag(remote, tag, attacker)
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["should_notify"] is False
+    assert result["reason"] == "signature-untrusted"
+    assert "does not match any key Dex trusts" in result["message"]
+    assert "notice" not in result
+
+
+@requires_ssh_signing
+def test_rotation_keeps_the_previous_key_trusted_while_it_is_still_listed(
+    tmp_path: Path,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    old_key = _signing_key(tmp_path / "keys", "old")
+    new_key = _signing_key(tmp_path / "keys", "new")
+    _install_trust_anchor(vault, old_key, new_key)
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, _commit = _release(remote, "1.62.0")
+    _sign_release_tag(remote, tag, new_key)
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_RELEASE
+    assert result["should_notify"] is True
+
+
+@requires_ssh_signing
+@pytest.mark.parametrize("gap", ["old-git", "no-ssh-keygen"])
+def test_uncheckable_signature_refuses_without_claiming_a_bad_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    gap: str,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    key = _signing_key(tmp_path / "keys", "release")
+    _install_trust_anchor(vault, key)
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    tag, _commit = _release(remote, "1.62.0")
+    _sign_release_tag(remote, tag, key)
+    if gap == "old-git":
+        monkeypatch.setattr(update_verifier_module, "MIN_SSH_VERIFY_GIT_VERSION", (99, 0, 0))
+    else:
+        monkeypatch.setattr(update_verifier_module, "_ssh_keygen_available", lambda: False)
+
+    result = _verifier(vault, remote, tmp_path / "state").check()
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["should_notify"] is False
+    assert result["reason"] == "signature-unverifiable"
+    assert "Git 2.34 or newer" in result["message"]
+    message = result["message"].lower()
+    assert "does not match" not in message, "an unchecked signature is not a bad signature"
+    assert "notice" not in result
+
+
+@requires_ssh_signing
+def test_release_identity_proof_refuses_an_untrusted_publisher(tmp_path: Path) -> None:
+    """The delivery route proves identity through the same gate."""
+    vault = _installed_vault(tmp_path / "vault")
+    _install_trust_anchor(vault, _signing_key(tmp_path / "keys", "release"))
+    remote = tmp_path / "remote"
+    _init_repo(remote)
+    _release(remote, "1.62.0")
+
+    result = prove_latest_release(
+        vault,
+        "stable",
+        state_root=tmp_path / "state",
+        remote_url=str(remote),
+        allow_test_transport=True,
+        wall_clock_seconds=3600.0,
+    )
+
+    assert result["status"] == STATUS_UNKNOWN
+    assert result["reason"] == "signature-untrusted"
+    assert "has not been changed" in result["message"]
+
+
+def test_git_version_parsing_covers_the_shapes_git_actually_prints() -> None:
+    assert update_verifier_module.parse_git_version("git version 2.34.0") == (2, 34, 0)
+    assert update_verifier_module.parse_git_version("git version 2.39") == (2, 39, 0)
+    assert update_verifier_module.parse_git_version(
+        "git version 2.39.5 (Apple Git-154)"
+    ) == (2, 39, 5)
+    assert update_verifier_module.parse_git_version("not git at all") is None
+    assert update_verifier_module.parse_git_version("") is None
+
+
+def test_signature_refusals_never_offer_a_way_around_the_check() -> None:
+    """A refusal that teaches the bypass is worse than no check at all."""
+    messages = (
+        update_verifier_module.SIGNATURE_MISSING_MESSAGE,
+        update_verifier_module.SIGNATURE_UNTRUSTED_MESSAGE,
+        update_verifier_module.SIGNATURE_UNVERIFIABLE_MESSAGE,
+    )
+    for message in messages:
+        lowered = message.lower()
+        for forbidden in (
+            "bypass",
+            "skip",
+            "override",
+            "disable",
+            "turn off",
+            "ignore this",
+            "--no-verify",
+            "force",
+            "anyway",
+        ):
+            assert forbidden not in lowered, f"{forbidden!r} appears in: {message}"
+        assert "not been changed" in lowered or "was changed" in lowered
