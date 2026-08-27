@@ -50,6 +50,19 @@ def _response_error(response: object) -> str | None:
     return None
 
 
+def _kill_process_handle(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
     """Stop the server and any children, escalating when it ignores SIGTERM."""
     if process.stdin is not None:
@@ -67,6 +80,14 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
             process.terminate()
     except ProcessLookupError:
         return
+    except PermissionError:
+        # macOS CI can deny killpg with EPERM while the child is still
+        # ours to kill, or while the group is already being reaped.
+        # Fall back to the process handle so a finished handshake stays
+        # finished instead of "internal smoke journey refused:
+        # Operation not permitted".
+        _kill_process_handle(process)
+        return
 
     try:
         process.wait(timeout=1)
@@ -81,7 +102,13 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
             process.kill()
     except ProcessLookupError:
         return
-    process.wait(timeout=1)
+    except PermissionError:
+        _kill_process_handle(process)
+        return
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def mcp_stdio_handshake(
@@ -154,7 +181,10 @@ def mcp_stdio_handshake(
             error = f"could not complete initialize handshake: {exc}"
         finally:
             if process is not None:
-                _terminate_process_group(process)
+                try:
+                    _terminate_process_group(process)
+                except OSError:
+                    _kill_process_handle(process)
                 returncode = process.returncode
             stderr_file.flush()
             stderr_file.seek(0)

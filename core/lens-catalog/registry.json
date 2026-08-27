@@ -4878,8 +4878,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-rollback/SKILL.md",
-        "sha256": "040769cdb433688b68c56080746c0c112140461265a7c2cbfe0087df697d8b63",
-        "byte_size": 3933
+        "sha256": "4f8a144391265784e9d6670da58ac52580922a9b712d0683e5c90207b5c17522",
+        "byte_size": 4155
       },
       "value": "Rewind one receipt-backed Dex adoption through the frozen lifecycle service.",
       "jobs_served": [
@@ -4940,8 +4940,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "7fb3230ececaaddf93a10cc4846ba1f5f374f1f5127dca5ec5c57b9fd114a8d6",
-        "byte_size": 20327
+        "sha256": "af3bf49d316081ee1b007ffab441ee383522e1724206defadfd62835b075f70b",
+        "byte_size": 20549
       },
       "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
       "jobs_served": [

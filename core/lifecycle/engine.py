@@ -11,7 +11,7 @@ import re
 import secrets
 import shutil
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +27,7 @@ from core.lifecycle.conflict import (
     sidecar_path,
 )
 from core.lifecycle.inventory import build_inventory
-from core.lifecycle.model import HEX_SHA256, ITEM_ID, SEMVER, ReleaseCatalog
+from core.lifecycle.model import FULL_COMMIT, HEX_SHA256, ITEM_ID, SEMVER, ReleaseCatalog
 from core.lifecycle.plan import (
     PLAN_VERSION,
     AdoptionPlan,
@@ -52,6 +52,10 @@ RECEIPT_VERSION = 1
 REWIND_RECEIPT_VERSION = 1
 CATALOG_RELATIVE = "System/.release-catalog.json"
 ADOPTION_RECEIPTS_RELATIVE = Path("System") / ".dex" / "adoptions"
+DELIVERED_RELEASE_ITEM_ID = "dex-release"
+# Sentinel for a path the adoption deleted. SHA-256 of any real content is not
+# 64 zero digits, so this cannot collide with a written file's digest.
+ABSENT_CONTENT_SHA256 = "0" * 64
 TRANSACTION_ID = re.compile(r"^[0-9]{8}T[0-9]{6}-[0-9a-f]{8}$")
 TOPOLOGY_MIGRATOR_RELATIVE = Path(
     "core/migrations/v1-to-v2-brain-vault-split.cjs"
@@ -179,6 +183,97 @@ class ReceiptFile:
             "sha256": self.sha256,
             "byte_size": self.byte_size,
         }
+
+
+def _is_absent_receipt_file(entry: ReceiptFile) -> bool:
+    return entry.sha256 == ABSENT_CONTENT_SHA256 and entry.byte_size == 0
+
+
+def delivered_release_receipt_files(plan: Sequence[PlanEntry]) -> tuple[ReceiptFile, ...]:
+    """Map one delivered-release plan onto closed adoption receipt files."""
+    files: list[ReceiptFile] = []
+    for entry in plan:
+        if entry.content is None:
+            files.append(
+                ReceiptFile(
+                    DELIVERED_RELEASE_ITEM_ID,
+                    entry.relative,
+                    ABSENT_CONTENT_SHA256,
+                    0,
+                )
+            )
+            continue
+        digest = entry.sha256()
+        if digest is None:
+            raise _refuse("delivered-release write is missing its content digest")
+        files.append(
+            ReceiptFile(
+                DELIVERED_RELEASE_ITEM_ID,
+                entry.relative,
+                digest,
+                len(entry.content),
+            )
+        )
+    return tuple(sorted(files, key=lambda entry: (entry.path, entry.item_id)))
+
+
+def build_delivered_release_receipt(
+    *,
+    transaction_id: str,
+    plan: Sequence[PlanEntry],
+    catalog_sha256: str,
+    inventory_sha256: str,
+    preview_sha256: str,
+) -> AdoptionReceipt:
+    """Construct the adoption receipt a later rewind consumes for one release."""
+    files = delivered_release_receipt_files(plan)
+    if not files:
+        raise _refuse("delivered release wrote no files")
+    if TRANSACTION_ID.fullmatch(transaction_id) is None:
+        raise _refuse("delivered-release transaction_id is not canonical")
+    return AdoptionReceipt(
+        RECEIPT_VERSION,
+        (DELIVERED_RELEASE_ITEM_ID,),
+        files,
+        transaction_id,
+        f"System/.dex/tx/{transaction_id}/snapshot",
+        _sha256(catalog_sha256, "delivered-release catalog_sha256"),
+        _sha256(inventory_sha256, "delivered-release inventory_sha256"),
+        _sha256(preview_sha256, "delivered-release preview_sha256"),
+    )
+
+
+def publish_delivered_release_adoption(
+    vault_root: Path,
+    receipt: AdoptionReceipt,
+    release_version: str,
+) -> None:
+    """Persist the receipt and record it in the ledger after the commit."""
+    if receipt.items_adopted != (DELIVERED_RELEASE_ITEM_ID,):
+        raise _refuse("delivered-release receipt must name only dex-release")
+    if not isinstance(release_version, str) or SEMVER.fullmatch(release_version) is None:
+        raise _refuse("delivered-release version is not strict SemVer")
+    root = Path(vault_root)
+    try:
+        _persist_adoption_receipt(root, receipt)
+    except AdoptionReceiptPersistenceError:
+        raise
+    except (OSError, AdoptionExecutionError) as error:
+        raise AdoptionReceiptPersistenceError(
+            f"adoption {receipt.transaction_id} committed, but its receipt could not be "
+            f"persisted; the transaction journal is authoritative: {error}"
+        ) from error
+    try:
+        from core.lifecycle.ledger import LedgerError, record_adoption
+
+        record_adoption(root, receipt, {DELIVERED_RELEASE_ITEM_ID: release_version})
+    except (LedgerError, OSError) as error:
+        raise LifecycleLedgerPersistenceError(
+            f"adoption {receipt.transaction_id} committed, but its lifecycle ledger refresh did not "
+            f"complete; its event may already be durable and the transaction journal is "
+            f"authoritative: {error}. Run 'python3 -m core.lifecycle.cli --vault-root "
+            f"{root} rebuild-state' to repair the lifecycle ledger"
+        ) from error
 
 
 @dataclass(frozen=True)
@@ -585,9 +680,17 @@ def _receipt_from_adoption_intent(
             f"committed adoption {tx_dir.name} has ambiguous journal evidence"
         )
     payload = intents[0].payload
-    if set(payload) != {"receipt", "item_versions"}:
+    extra = set(payload) - {"receipt", "item_versions", "previous_commit"}
+    if extra or "receipt" not in payload or "item_versions" not in payload:
         raise AdoptionReceiptPersistenceError(
             f"committed adoption {tx_dir.name} intent is not closed"
+        )
+    previous_commit = payload.get("previous_commit")
+    if previous_commit is not None and (
+        not isinstance(previous_commit, str) or FULL_COMMIT.fullmatch(previous_commit) is None
+    ):
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} intent has an invalid previous commit"
         )
     try:
         receipt = AdoptionReceipt.from_dict(payload["receipt"])
@@ -620,28 +723,44 @@ def _receipt_from_adoption_intent(
     if (
         begins[0].payload.get("operation") != "update"
         or not isinstance(raw_plan, list)
-        or not all(
-            isinstance(entry, Mapping)
-            and entry.get("operation") == "write"
-            and isinstance(entry.get("relative"), str)
-            and isinstance(entry.get("sha256"), str)
-            and HEX_SHA256.fullmatch(str(entry.get("sha256"))) is not None
-            and type(entry.get("size")) is int
-            and int(entry.get("size")) >= 0
-            for entry in raw_plan
-        )
+        or not all(isinstance(entry, Mapping) for entry in raw_plan)
     ):
         raise AdoptionReceiptPersistenceError(
             f"committed adoption {tx_dir.name} has an invalid transaction plan"
         )
-    planned = sorted(
-        (
-            str(entry["relative"]),
-            str(entry["sha256"]),
-            int(entry["size"]),
+    planned: list[tuple[str, str, int]] = []
+    for entry in raw_plan:
+        operation = entry.get("operation")
+        relative = entry.get("relative")
+        if not isinstance(relative, str):
+            raise AdoptionReceiptPersistenceError(
+                f"committed adoption {tx_dir.name} has an invalid transaction plan"
+            )
+        if operation == "write":
+            sha256 = entry.get("sha256")
+            size = entry.get("size")
+            if (
+                not isinstance(sha256, str)
+                or HEX_SHA256.fullmatch(sha256) is None
+                or type(size) is not int
+                or int(size) < 0
+            ):
+                raise AdoptionReceiptPersistenceError(
+                    f"committed adoption {tx_dir.name} has an invalid transaction plan"
+                )
+            planned.append((relative, sha256, int(size)))
+            continue
+        if operation == "delete":
+            if entry.get("sha256") is not None or entry.get("size") is not None:
+                raise AdoptionReceiptPersistenceError(
+                    f"committed adoption {tx_dir.name} has an invalid transaction plan"
+                )
+            planned.append((relative, ABSENT_CONTENT_SHA256, 0))
+            continue
+        raise AdoptionReceiptPersistenceError(
+            f"committed adoption {tx_dir.name} has an invalid transaction plan"
         )
-        for entry in raw_plan
-    )
+    planned.sort()
     receipted = sorted(
         (entry.path, entry.sha256, entry.byte_size)
         for entry in receipt.files_written
@@ -733,6 +852,10 @@ def _current_adopted_modes(
     drifted: list[str] = []
     for entry in receipt.files_written:
         target = root / entry.path
+        if _is_absent_receipt_file(entry):
+            if target.exists() or target.is_symlink():
+                drifted.append(entry.path)
+            continue
         if target.is_symlink() or not target.is_file():
             drifted.append(entry.path)
             continue
@@ -901,6 +1024,45 @@ def _valid_existing_snapshot_entry(entry: SnapshotEntry) -> bool:
     )
 
 
+def _rewound_file_has_late_drift(
+    entry: ReceiptFile,
+    captured: SnapshotEntry | None,
+) -> bool:
+    if captured is None:
+        return True
+    if _is_absent_receipt_file(entry):
+        return bool(captured.existed)
+    return (
+        not captured.existed
+        or captured.sha256 != entry.sha256
+        or captured.size != entry.byte_size
+    )
+
+
+def _delivered_release_previous_commit(root: Path, receipt: AdoptionReceipt) -> str | None:
+    """Return the prior installed commit a delivered-release rewind must restore."""
+    if DELIVERED_RELEASE_ITEM_ID not in receipt.items_adopted:
+        return None
+    journal = (root / receipt.snapshot_ref).parent / "journal.jsonl"
+    try:
+        entries = Journal(journal).read()
+    except JournalCorruptError as error:
+        raise _rewind_refuse(
+            "the adoption transaction journal is damaged; no files were changed"
+        ) from error
+    intents = [entry for entry in entries if entry.event == "ADOPTION-INTENT"]
+    if len(intents) != 1:
+        raise _rewind_refuse(
+            "the release update is missing rewind identity evidence; no files were changed"
+        )
+    previous_commit = intents[0].payload.get("previous_commit")
+    if not isinstance(previous_commit, str) or FULL_COMMIT.fullmatch(previous_commit) is None:
+        raise _rewind_refuse(
+            "the release update is missing rewind identity evidence; no files were changed"
+        )
+    return previous_commit
+
+
 def rewind_adoption(
     vault_root: Path,
     receipt: object,
@@ -930,6 +1092,7 @@ def rewind_adoption(
             "this adoption can no longer be rewound"
         )
     _verify_adoption_commit(root, validated)
+    previous_commit = _delivered_release_previous_commit(root, validated)
     plan, restored = _snapshot_rewind_plan(root, validated, current_modes)
 
     try:
@@ -952,14 +1115,21 @@ def rewind_adoption(
                 sorted(
                     entry.path
                     for entry in validated.files_written
-                    if entry.path not in captured
-                    or not captured[entry.path].existed
-                    or captured[entry.path].sha256 != entry.sha256
-                    or captured[entry.path].size != entry.byte_size
+                    if _rewound_file_has_late_drift(entry, captured.get(entry.path))
                 )
             )
             if late_drift:
                 raise _drift_refusal(late_drift)
+            if previous_commit is not None:
+                try:
+                    from core.update.apply_update import restore_installed_release
+
+                    restore_installed_release(root, previous_commit)
+                except Exception as error:
+                    raise _rewind_refuse(
+                        "the installed release identity could not be restored; "
+                        f"no files were changed ({error})"
+                    ) from error
 
         result = transaction.run(before_commit=verify_no_late_drift)
     except PlanRejected as error:
@@ -2079,14 +2249,17 @@ __all__ = [
     "AdoptionReceiptPersistenceError",
     "AdoptionRewindError",
     "LifecycleLedgerPersistenceError",
+    "DELIVERED_RELEASE_ITEM_ID",
     "ReceiptFile",
     "RewindReceipt",
     "RewindReceiptFile",
+    "build_delivered_release_receipt",
     "canonical_adoption_receipt_bytes",
     "canonical_rewind_receipt_bytes",
     "execute_adoption",
     "execute_conflict_resolution",
     "load_adoption_receipt",
+    "publish_delivered_release_adoption",
     "recover_committed_adoption_evidence",
     "rewind_acknowledgement_token",
     "rewind_adoption",
