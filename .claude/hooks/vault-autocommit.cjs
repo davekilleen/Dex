@@ -11,6 +11,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const FEATURE = 'Vault auto-commit';
+// spawnSync defaults to 1 MiB. A vault note larger than that used to fail
+// `git show` and get counted with protected files. Raise the cap, and keep
+// unread/too-large distinct from a secret hold.
+const GIT_SPAWN_MAX_BUFFER = 64 * 1024 * 1024;
 const CONTRACT_RELATIVE = path.join(
   'packages',
   'dex-contracts',
@@ -218,6 +222,7 @@ function git(root, args, options = {}) {
     ...args,
   ], {
     encoding: options.encoding === undefined ? 'utf8' : options.encoding,
+    maxBuffer: options.maxBuffer || GIT_SPAWN_MAX_BUFFER,
     env: {
       PATH: `${path.dirname(executable)}:/usr/bin:/bin`,
       HOME: fs.existsSync('/var/empty') ? '/var/empty' : os.tmpdir(),
@@ -280,21 +285,69 @@ function candidateWorktreePaths(root, contract) {
   return [...new Set(paths)].sort();
 }
 
-function stagedRejectedPaths(root, contract) {
+function blobMaxBuffer(options = {}) {
+  const requested = options.gitShowMaxBuffer;
+  if (Number.isSafeInteger(requested) && requested > 0) return requested;
+  return GIT_SPAWN_MAX_BUFFER;
+}
+
+function stagedBlobKind(root, relative, maxBuffer) {
+  const sizeResult = git(root, ['cat-file', '-s', `:${relative}`]);
+  if (sizeResult.status !== 0) return 'unread';
+  const size = Number.parseInt(String(sizeResult.stdout).trim(), 10);
+  if (!Number.isSafeInteger(size) || size < 0 || size > maxBuffer) return 'unread';
+  const blob = git(root, ['show', `:${relative}`], { encoding: null, maxBuffer });
+  if (blob.error || blob.status !== 0) return 'unread';
+  if (containsSecretContent(blob.stdout)) return 'protected';
+  return 'ok';
+}
+
+function stagedRejectedPaths(root, contract, maxBuffer) {
   const staged = nulPaths(
     git(root, ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], { encoding: null }),
   );
   if (staged === null) return null;
-  const rejected = [];
+  const protectedPaths = [];
+  const unreadPaths = [];
   for (const relative of staged) {
     if (!eligiblePath(contract, relative)) {
-      rejected.push(relative);
+      protectedPaths.push(relative);
       continue;
     }
-    const blob = git(root, ['show', `:${relative}`], { encoding: null });
-    if (blob.status !== 0 || containsSecretContent(blob.stdout)) rejected.push(relative);
+    const kind = stagedBlobKind(root, relative, maxBuffer);
+    if (kind === 'protected') protectedPaths.push(relative);
+    else if (kind === 'unread') unreadPaths.push(relative);
   }
-  return rejected;
+  return { protectedPaths, unreadPaths };
+}
+
+function counted(noun, count) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function snapshotMessage(committed, protectedCount, unreadCount) {
+  const held = protectedCount > 0
+    ? `held back ${counted('protected file', protectedCount)}`
+    : '';
+  const unread = unreadCount > 0
+    ? `could not read ${counted('file', unreadCount)}`
+    : '';
+  if (!committed && protectedCount === 0 && unreadCount === 0) {
+    return 'Your vault was already saved; there were no new changes to commit.';
+  }
+  if (committed && protectedCount === 0 && unreadCount === 0) {
+    return 'Dex saved this session to local vault history. It did not run a push.';
+  }
+  if (!committed) {
+    if (protectedCount > 0 && unreadCount > 0) {
+      return `Dex ${held} and ${unread}; there were no other changes to save.`;
+    }
+    return `Dex ${held || unread}; there were no other changes to save.`;
+  }
+  if (protectedCount > 0 && unreadCount > 0) {
+    return `Dex saved eligible changes locally, ${held}, and ${unread}. It did not run a push.`;
+  }
+  return `Dex saved eligible changes locally and ${held || unread}. It did not run a push.`;
 }
 
 function unstagePaths(root, paths) {
@@ -358,18 +411,19 @@ function run(options = {}) {
     if (eligible.length > 0 && git(root, ['add', '-A', '-f', '--', ...eligible]).status !== 0) {
       return status('broken', 'Vault auto-commit could not prepare the local snapshot. Files are unchanged.');
     }
-    const rejected = stagedRejectedPaths(root, contract);
-    if (rejected === null || !unstagePaths(root, rejected)) {
-      return status('broken', 'Vault auto-commit found protected files but could not unstage them safely.');
+    const verdicts = stagedRejectedPaths(root, contract, blobMaxBuffer(options));
+    if (verdicts === null) {
+      return status('broken', 'Vault auto-commit could not inspect staged files. Files are unchanged.');
     }
+    const heldBack = [...verdicts.protectedPaths, ...verdicts.unreadPaths];
+    if (!unstagePaths(root, heldBack)) {
+      return status('broken', 'Vault auto-commit could not unstage files safely. Files are unchanged.');
+    }
+    const protectedCount = verdicts.protectedPaths.length;
+    const unreadCount = verdicts.unreadPaths.length;
     const staged = git(root, ['diff', '--cached', '--quiet']);
     if (staged.status === 0) {
-      return status(
-        'ok',
-        rejected.length > 0
-          ? `Dex held back ${rejected.length} protected ${rejected.length === 1 ? 'file' : 'files'}; there were no other changes to save.`
-          : 'Your vault was already saved; there were no new changes to commit.',
-      );
+      return status('ok', snapshotMessage(false, protectedCount, unreadCount));
     }
     if (staged.status !== 1) {
       return status('unknown', 'Vault auto-commit could not determine whether a snapshot was needed.');
@@ -379,12 +433,7 @@ function run(options = {}) {
     if (committed.status !== 0) {
       return status('broken', 'Vault auto-commit could not create the local snapshot. Files remain in the vault.');
     }
-    return status(
-      'ok',
-      rejected.length > 0
-        ? `Dex saved eligible changes locally and held back ${rejected.length} protected ${rejected.length === 1 ? 'file' : 'files'}. It did not run a push.`
-        : 'Dex saved this session to local vault history. It did not run a push.',
-    );
+    return status('ok', snapshotMessage(true, protectedCount, unreadCount));
   } catch {
     return status('unknown', 'Vault auto-commit could not check this session, so it left the vault alone.');
   } finally {
@@ -392,7 +441,7 @@ function run(options = {}) {
   }
 }
 
-module.exports = { classify, parseVaultAutoCommit, run };
+module.exports = { classify, parseVaultAutoCommit, run, GIT_SPAWN_MAX_BUFFER };
 
 if (require.main === module) {
   run();

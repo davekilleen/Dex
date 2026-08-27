@@ -6,11 +6,17 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { loadPaths } = require('./paths.cjs');
 
-const vaultRoot = process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '../..');
+const paths = loadPaths();
+const planDir = paths.DAILY_PLANS_DIR;
+if (!planDir) {
+  process.exit(0);
+}
+
 const today = new Date().toISOString().split('T')[0];
-const planPath = path.join(vaultRoot, '00-Inbox/Daily_Prep', `${today}.md`);
-const quickRefPath = path.join(vaultRoot, '00-Inbox/Daily_Prep', `${today}-quickref.md`);
+const planPath = path.join(planDir, `${today}.md`);
+const quickRefPath = path.join(planDir, `${today}-quickref.md`);
 
 // Only run if today's plan exists
 if (!fs.existsSync(planPath)) {

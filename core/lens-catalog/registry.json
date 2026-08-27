@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "639a0cfa35a5f126acfcd7325c8caebf26b45cea82d250a8b4b76a3201067a71",
-        "byte_size": 32926
+        "sha256": "579345c38cf39ff73fa5f178b9aac80b71e28f8a1e6648618b832ed78961a01d",
+        "byte_size": 32932
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "df2e77a13ccd34cce7c9b34b1d92d99b1c09fbe93ebce60e486bbfa5b878ae8a",
-        "byte_size": 19256
+        "sha256": "bdaa24a66374f77568bcab0ba35c1e78dd163bc97bae53bc49cf7290c0854c0b",
+        "byte_size": 19259
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with \u2014 so the loop finishes instead of drifting.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "7972089ecf86d0ce8cc23281f490afabbd11ce8683856cf91479a856444ff905",
-        "byte_size": 19021
+        "sha256": "cc07404a8f174739e9e3028638f358f74f24c366b6c646edc4bf26fa8714dbea",
+        "byte_size": 19027
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
@@ -5560,8 +5560,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/google-workspace-setup/SKILL.md",
-        "sha256": "1315f76bfa9f738cf23b4ecd5de575350c2b4f231539a39177de54cf2bf7f7a8",
-        "byte_size": 10002
+        "sha256": "65a6a4a6b58f943ea6eea9ce04d778fc5885b2cc6f239fd155176aeee44e9ea1",
+        "byte_size": 12450
       },
       "value": "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep.",
       "jobs_served": [

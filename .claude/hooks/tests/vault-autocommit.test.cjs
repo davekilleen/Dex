@@ -16,6 +16,9 @@ const CONTRACT_PATH = path.join(
   'dist',
   'portable-vault.contract.json',
 );
+// Files only slightly over 1 MiB can still exit 0 with ENOBUFS on some
+// runtimes. 2 MiB is the size that actually gets SIGTERM + truncated stdout.
+const OVER_DEFAULT_SPAWN_BUFFER = (2 * 1024 * 1024) + 16;
 
 function git(root, ...args) {
   // -c safe.bareRepository=all: these tests create their own throwaway bare
@@ -105,7 +108,10 @@ test('enabled hook holds back contract-denied paths and staged content secrets',
   const result = hook.run({ root, now: new Date('2026-07-13T10:00:00Z') });
 
   assert.equal(result.feature_status, 'ok');
-  assert.match(result.user_message, /held back|protected/i);
+  assert.equal(
+    result.user_message,
+    'Dex saved eligible changes locally and held back 1 protected file. It did not run a push.',
+  );
   assert.equal(git(root, 'show', 'HEAD:04-Projects/safe.md'), 'safe note');
   for (const relative of ['04-Projects/session.md', '.env']) {
     assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
@@ -125,7 +131,10 @@ test('enabled hook scans NUL-containing buffers for secret content', (t) => {
   const result = hook.run({ root, now: new Date('2026-07-13T10:00:00Z') });
 
   assert.equal(result.feature_status, 'ok');
-  assert.match(result.user_message, /held back|protected/i);
+  assert.equal(
+    result.user_message,
+    'Dex saved eligible changes locally and held back 1 protected file. It did not run a push.',
+  );
   assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', '04-Projects/binary-note.bin'), '');
   assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
 });
@@ -249,6 +258,154 @@ test('the ignored-path sweep is scoped to vault regions and never widens to priv
     assert.equal(git(root, 'ls-tree', '-r', '--name-only', 'HEAD', '--', relative), '', relative);
   }
   assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+});
+
+test('the spawn buffer is raised past the 1 MiB child-process default', () => {
+  const hook = require(HOOK_PATH);
+  assert.ok(hook.GIT_SPAWN_MAX_BUFFER > 1024 * 1024);
+});
+
+test('enabled hook commits a vault note larger than the default spawn buffer and does not call it protected', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  const large = Buffer.concat([
+    Buffer.alloc(OVER_DEFAULT_SPAWN_BUFFER, 0x61),
+    Buffer.from('\nmeeting note\n'),
+  ]);
+  fs.writeFileSync(path.join(root, '04-Projects', 'large-note.md'), large);
+  fs.writeFileSync(path.join(root, '04-Projects', 'small.md'), 'small note\n');
+
+  const result = hook.run({ root, now: new Date('2026-08-27T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(result.success, true);
+  assert.equal(
+    result.user_message,
+    'Dex saved this session to local vault history. It did not run a push.',
+  );
+  assert.doesNotMatch(result.user_message, /protected|held back/i);
+  assert.equal(git(root, 'show', 'HEAD:04-Projects/small.md'), 'small note');
+  assert.equal(
+    git(root, 'cat-file', '-s', 'HEAD:04-Projects/large-note.md'),
+    String(large.length),
+  );
+});
+
+test('enabled hook still holds back secret content past the default spawn buffer', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  const largeClean = Buffer.concat([
+    Buffer.alloc(OVER_DEFAULT_SPAWN_BUFFER, 0x62),
+    Buffer.from('\nclean note\n'),
+  ]);
+  const largeSecret = Buffer.concat([
+    Buffer.alloc(OVER_DEFAULT_SPAWN_BUFFER, 0x63),
+    Buffer.from('{"access_token":"scanner-positive-fixture-value"}\n'),
+  ]);
+  fs.writeFileSync(path.join(root, '04-Projects', 'large-clean.md'), largeClean);
+  fs.writeFileSync(path.join(root, '04-Projects', 'large-secret.md'), largeSecret);
+
+  const result = hook.run({ root, now: new Date('2026-08-27T10:00:00Z') });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(
+    result.user_message,
+    'Dex saved eligible changes locally and held back 1 protected file. It did not run a push.',
+  );
+  assert.equal(
+    git(root, 'cat-file', '-s', 'HEAD:04-Projects/large-clean.md'),
+    String(largeClean.length),
+  );
+  assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', '04-Projects/large-secret.md'), '');
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+});
+
+test('enabled hook says it could not read an oversized blob instead of calling it protected', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  git(root, 'add', '--', 'System/user-profile.yaml');
+  git(root, '-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '--quiet', '-m', 'seed');
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  fs.writeFileSync(path.join(root, '04-Projects', 'too-large.md'), `${'note text\n'.repeat(20)}`);
+
+  const result = hook.run({
+    root,
+    now: new Date('2026-08-27T10:00:00Z'),
+    gitShowMaxBuffer: 64,
+  });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(
+    result.user_message,
+    'Dex could not read 1 file; there were no other changes to save.',
+  );
+  assert.doesNotMatch(result.user_message, /protected|held back|secret/i);
+  assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', '04-Projects/too-large.md'), '');
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+  assert.equal(
+    fs.readFileSync(path.join(root, '04-Projects', 'too-large.md'), 'utf8').startsWith('note text'),
+    true,
+  );
+});
+
+test('enabled hook names protected files and unread files separately', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  fs.writeFileSync(path.join(root, '04-Projects', 'ok.md'), 'ok\n');
+  fs.writeFileSync(
+    path.join(root, '04-Projects', 'session.md'),
+    '{"access_token":"scanner-positive-fixture-value"}\n',
+  );
+  fs.writeFileSync(path.join(root, '04-Projects', 'too-large.md'), `${'unread note\n'.repeat(20)}`);
+
+  const result = hook.run({
+    root,
+    now: new Date('2026-08-27T10:00:00Z'),
+    gitShowMaxBuffer: 64,
+  });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(
+    result.user_message,
+    'Dex saved eligible changes locally, held back 1 protected file, and could not read 1 file. It did not run a push.',
+  );
+  assert.equal(git(root, 'show', 'HEAD:04-Projects/ok.md'), 'ok');
+  for (const relative of ['04-Projects/session.md', '04-Projects/too-large.md']) {
+    assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
+  }
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), '');
+});
+
+test('enabled hook keeps protected and unread copy distinct when nothing else saved', (t) => {
+  const hook = require(HOOK_PATH);
+  const root = fixture(t, true);
+  git(root, 'add', '--', 'System/user-profile.yaml');
+  git(root, '-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '--quiet', '-m', 'seed');
+  fs.mkdirSync(path.join(root, '04-Projects'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, '04-Projects', 'session.md'),
+    '{"access_token":"scanner-positive-fixture-value"}\n',
+  );
+  fs.writeFileSync(path.join(root, '04-Projects', 'too-large.md'), `${'unread note\n'.repeat(20)}`);
+
+  const result = hook.run({
+    root,
+    now: new Date('2026-08-27T10:00:00Z'),
+    gitShowMaxBuffer: 64,
+  });
+
+  assert.equal(result.feature_status, 'ok');
+  assert.equal(
+    result.user_message,
+    'Dex held back 1 protected file and could not read 1 file; there were no other changes to save.',
+  );
+  assert.doesNotMatch(result.user_message, /secret/i);
+  for (const relative of ['04-Projects/session.md', '04-Projects/too-large.md']) {
+    assert.equal(git(root, 'ls-tree', '--name-only', 'HEAD', '--', relative), '', relative);
+  }
 });
 
 test('settings wires the opt-in hook after session-end and the shipped profile defaults off', () => {

@@ -40,7 +40,7 @@ These hooks are declared in skill frontmatter and exist only while that skill ru
 | Skill | Event | Matcher | Hook | Purpose |
 |---|---|---|---|---|
 | `/process-meetings` | `PostToolUse` | `Write` | `post-meeting-person-update.cjs` | Update recent interactions on existing person pages after a meeting note is written. |
-| `/daily-plan` | `Stop` | all | `daily-plan-quick-ref.cjs` | Generate `00-Inbox/Daily_Prep/YYYY-MM-DD-quickref.md` from the daily plan. |
+| `/daily-plan` | `Stop` | all | `daily-plan-quick-ref.cjs` | Generate `00-Inbox/Daily_Plans/YYYY-MM-DD-quickref.md` from the daily plan. |
 | `/career-coach` | `PostToolUse` | `Write` | `career-evidence-capture.cjs` | Detect possible career evidence and return a provenance-bearing, unconfirmed candidate; the hook never writes evidence. |
 
 `post-meeting-person-update.cjs` and `career-evidence-capture.cjs` are not global `PostToolUse` hooks.

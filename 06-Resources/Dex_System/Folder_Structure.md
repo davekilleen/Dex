@@ -159,18 +159,19 @@ Archives = historical record, rarely consulted
 ```
 07-Archives/
 ├── Projects/        # Completed or cancelled projects
-├── Plans/           # Daily and weekly plans (auto-archived)
+├── Plans/           # Weekly plans (auto-archived)
 └── Reviews/         # Daily, weekly, and quarterly reviews (auto-archived)
 ```
 
 ### Auto-Archiving
 
 Plans and reviews automatically move here:
-- Daily plans → after `/daily-plan` runs
 - Daily reviews → after `/daily-review` runs
 - Weekly plans → after `/week-plan` runs
 - Weekly reviews → after `/week-review` runs
 - Quarterly reviews → after `/quarter-review` runs
+
+Daily plans stay in `00-Inbox/Daily_Plans/` so today's plan is with the rest of today's capture.
 
 ### Manual Archiving
 
@@ -193,6 +194,7 @@ Keep archives indefinitely—they're your historical record and learning source 
 00-Inbox/
 ├── Meetings/        # Meeting notes (auto-created by /process-meetings)
 │   └── YYYY-MM-DD/  # Meetings organized by date
+├── Daily_Plans/     # Today's plan from /daily-plan
 └── Ideas/           # Quick captures and random thoughts
 ```
 
@@ -253,8 +255,8 @@ If you enable quarterly and weekly planning, everything connects from pillars �
 3. **Week Priorities** (`02-Week_Priorities/Week_Priorities.md`)  
    Top 3 this week advancing quarterly goals (via `/week-plan`)
 
-4. **Daily Plan** (`07-Archives/Plans/`)  
-   Today's work supporting weekly priorities (auto-archived after `/daily-plan`)
+4. **Daily Plan** (`00-Inbox/Daily_Plans/`)  
+   Today's work supporting weekly priorities (created by `/daily-plan`)
 
 5. **Tasks** (`03-Tasks/Tasks.md`)  
    Backlog tagged with `#pillar [Q1-2] [Week-1]` connecting to goals

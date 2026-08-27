@@ -1,26 +1,25 @@
 # Archived Plans
 
-Historical daily and weekly plans.
+Historical weekly plans.
 
 ## What Goes Here
 
-Plans automatically archive here:
-- **Daily plans** — Created by `/daily-plan`
-- **Weekly plans** — Created by `/week-plan`
+- **Weekly plans** — archived by `/week-plan` as `YYYY-Wxx.md`
+
+Daily plans live in `00-Inbox/Daily_Plans/`, not here. `/daily-plan` writes today's plan there; `/daily-review` and `/week-review` read it from there.
 
 ## Naming Convention
 
-- Daily: `YYYY-MM-DD.md`
 - Weekly: `YYYY-Wxx.md` (e.g., `2026-W04.md`)
 
 ## Purpose
 
-Archived plans help you:
+Archived weekly plans help you:
 - Review how you planned vs executed
-- Spot patterns in your daily workflow
+- Spot patterns in your weekly workflow
 - Reference past priorities and decisions
 - Track your planning evolution over time
-- Prepare for weekly/quarterly reviews
+- Prepare for quarterly reviews
 
 ## Retention
 
@@ -28,6 +27,6 @@ Keep indefinitely. Plans are lightweight and valuable for understanding your wor
 
 ## Integration
 
-- Weekly reviews reference recent daily plans
+- Weekly reviews reference recent daily plans in `00-Inbox/Daily_Plans/`
 - Quarterly reviews aggregate weekly plans
 - Work MCP's `get_pillar_summary` tool analyzes task distribution across strategic pillars

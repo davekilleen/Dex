@@ -56,10 +56,13 @@ Dex reads your email **on demand** -- nothing is stored permanently. Emails are 
 
 ### Step 1: Check if Already Connected
 
-1. Check `System/integrations/config.yaml` for `google-workspace.enabled: true`
-2. If enabled, try a test query via Google Workspace MCP (e.g., search for a recent email)
-3. If healthy and responding, skip to **Step 5** (Configure Labels)
-4. If the tool is not available or errors, continue to Step 2
+Do not treat `System/integrations/config.yaml` as the only connectedness signal. Google Workspace email may already be usable through a **Gmail session connector** already available in this session, even when that file does not say `google-workspace.enabled: true`.
+
+1. **Session connectors already available.** Inspect the tools already present in this session for Gmail, Google Calendar, and Google Drive.
+   - A **Calendar-only** or **Drive-only** connector is not a full Google Workspace connection. Do not skip setup in those cases — this skill's job includes email, and those connectors do not provide Gmail.
+   - If a **Gmail** session connector is available, try a test query (search a recent email) **without** requiring Dex config to be enabled first. If Gmail responds, treat email as already connected: do not add a second MCP server, and skip to **Step 5** (Configure Labels). Note missing Calendar or Drive tools, but do not install a duplicate Gmail server when Gmail already works.
+2. **Dex config.** Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. If enabled, try a **Gmail** test query via `google-workspace-mcp` (search a recent email). Calendar or Drive responding is not enough to skip. If Gmail responds, skip to **Step 5**. If Gmail fails, continue to Step 2 even when Calendar looks healthy — do not bypass re-auth.
+3. If Gmail is not healthy on either path, continue to Step 2.
 
 ### Step 2: Explain What We're Setting Up
 
@@ -87,6 +90,8 @@ Wait for confirmation.
 
 ### Step 3: Add the Google Workspace MCP Server
 
+If Step 1 already found a healthy **Gmail** session connector, skip this step — do not register a second Gmail/Workspace server. A healthy Calendar or Drive connector alone is not a reason to skip.
+
 Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 
 1. Explain what we're adding:
@@ -94,7 +99,7 @@ Check the user's MCP configuration. If `google-workspace-mcp` is not listed:
 ```
 I need to add the Google Workspace connector to your Dex configuration.
 
-This is an open-source bridge (github.com/taylorwilsdon/google_workspace_mcp)
+This is an open-source bridge (`google-workspace-mcp`)
 that connects to Google's APIs via OAuth. Your credentials stay on your machine.
 ```
 
@@ -109,6 +114,8 @@ that connects to Google's APIs via OAuth. Your credentials stay on your machine.
   }
 }
 ```
+
+The config key, the `npx` package, and the name in the explanation must all be `google-workspace-mcp`. Do not substitute a different repository or package name.
 
 3. Tell the user the MCP server needs to restart for changes to take effect.
 
@@ -171,10 +178,10 @@ Save their preference. Map choice 1 to `draft_and_send: true`, choice 2 to `draf
 
 ### Step 6: Test the Connection
 
-Run a quick test to confirm everything works:
+Run a quick test to confirm everything works. **Email is the connectedness bar.** Calendar is extra.
 
-1. Search for a recent email (e.g., from the last 24 hours)
-2. Verify calendar access (list today's events)
+1. **Email (required).** Search for a recent email (e.g., from the last 24 hours). If this fails, troubleshoot before proceeding — do not write `google-workspace.enabled: true` until Gmail responds.
+2. **Calendar (optional).** If a Calendar connector is available, list today's events. If Calendar is missing — including a Gmail-only session connector — note it and continue. Do not block saving config on a missing calendar.
 
 Show a brief summary:
 
@@ -182,11 +189,10 @@ Show a brief summary:
 **Quick test results:**
 - Email search: Working (found [N] recent emails)
 - Calendar: Working (found [N] events today)
-
-Everything looks good!
+  # or: Not available in this session — email still counts as connected
 ```
 
-If either fails, troubleshoot before proceeding.
+If email works, proceed to Step 7 even when Calendar is missing. Only email failure blocks saving configuration.
 
 ### Step 7: Save Configuration
 
@@ -275,7 +281,7 @@ Google OAuth tokens typically last 1 hour, but refresh tokens are longer-lived. 
 
 ### "Google Workspace MCP not found"
 
-The server might not be in your configuration. Re-run `/google-workspace-setup` and it will detect and fix this.
+First check whether a **Gmail** session connector is already available in this session. If Gmail is healthy, Dex can use it and does not need a second server. A Calendar-only or Drive-only connector is not enough — continue and add `google-workspace-mcp` so email works. If Gmail is missing or unhealthy, re-run `/google-workspace-setup` and it will detect and add `google-workspace-mcp`.
 
 ### Permission Errors
 
@@ -307,8 +313,8 @@ Some organizations restrict OAuth access for third-party apps:
 
 If the user runs `/google-workspace-setup` when already configured:
 
-1. Check current status via a test query
-2. Show current config from `System/integrations/config.yaml`
+1. Check current status via a test query — including a Gmail session connector already available in this session, not only `System/integrations/config.yaml`. Calendar-only or Drive-only is not enough to treat Gmail as connected.
+2. Show current config from `System/integrations/config.yaml` if present
 3. Offer options:
    - Update watched labels
    - Change write preferences (auto-draft vs ask each time)

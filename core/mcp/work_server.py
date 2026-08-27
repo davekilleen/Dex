@@ -170,7 +170,11 @@ from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
 from core.soft_promise import detect_soft_promises
-from core.utils.company_domains import registrable_domain
+from core.utils.company_domains import (
+    company_name_from_domain,
+    is_freemail,
+    registrable_domain,
+)
 from core.utils.entity_pages import parse_entity_page, render_person_page
 from core.utils.feature_status import feature_status
 
@@ -1135,24 +1139,24 @@ def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
     
     return people
 
+def _structured_company_fields(company_filepath: Path) -> tuple[str, List[str]]:
+    """Return page name and domains from structured fields only."""
+    entity = parse_entity_page(company_filepath)
+    name = entity.get('name') or company_filepath.stem.replace('_', ' ')
+    return name, list(entity.get('domains') or [])
+
+
 def get_company_domains(company_filepath: Path) -> List[str]:
-    """Extract domains from a company page"""
+    """Extract domains from a company page's structured fields.
+
+    Canonical pages store domains in frontmatter. Legacy pages keep them in a
+    Domains table row or an inline bold field. parse_entity_page already applies
+    that precedence; notes and other free text are not a domain source.
+    """
     if not company_filepath.exists():
         return []
-    
-    content = company_filepath.read_text()
-    domains = []
-    
-    for line in content.split('\n'):
-        if '**Domains**' in line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 3:
-                domain_str = parts[2].strip()
-                # Parse comma-separated domains
-                domains = [d.strip() for d in domain_str.split(',') if d.strip()]
-                break
-    
-    return domains
+
+    return _structured_company_fields(company_filepath)[1]
 
 # ============================================================================
 # PEOPLE DIRECTORY INDEX
@@ -3154,42 +3158,109 @@ def find_project_for_meeting(attendees: List[str], meeting_title: str) -> Option
     
     return best_match if best_score > 0 else None
 
+def _folded_company_text(value: str) -> str:
+    """Return a stable comparison key for a company or attendee name."""
+    return unicodedata.normalize(
+        'NFC',
+        re.sub(r'[\s_]+', ' ', value).strip(),
+    ).casefold()
+
+
+def _attendee_email_domain(attendee: str) -> Optional[str]:
+    """Return the host from an attendee email, if one is present."""
+    if '@' not in attendee:
+        return None
+    host = attendee.rsplit('@', 1)[1].strip().strip('>')
+    if not host:
+        return None
+    token = host.split(None, 1)[0].rstrip('.,;')
+    return token or None
+
+
+def _company_match_record(
+    company_file: Path,
+    name: str,
+    domains: List[str],
+) -> Dict[str, Any]:
+    return {
+        'path': str(company_file.relative_to(BASE_DIR)),
+        'name': name,
+        'domains': domains,
+    }
+
+
 def find_company_for_attendees(attendees: List[str], domains: List[str] = None) -> Optional[Dict[str, Any]]:
-    """Find a company page based on attendees or email domains"""
+    """Find a company page from attendee email domains or structured names.
+
+    Pins only from structured company fields: frontmatter or legacy table/inline
+    domains, plus the page name. A mention in notes is not a match.
+    """
     if not COMPANIES_DIR.exists():
         return None
-    
-    search_terms = []
-    for attendee in attendees:
-        search_terms.append(attendee.lower())
-        # Extract potential company name from email
-        if '@' in attendee:
-            domain = attendee.split('@')[1].split('.')[0]
-            search_terms.append(domain)
-    
+
+    lookup_domains: List[str] = []
+    lookup_names: List[str] = []
+    for attendee in attendees or []:
+        email_domain = _attendee_email_domain(attendee)
+        if email_domain:
+            if is_freemail(email_domain):
+                continue
+            lookup_domains.append(email_domain)
+            derived = company_name_from_domain(email_domain)
+            if derived:
+                lookup_names.append(derived)
+        else:
+            stripped = attendee.strip()
+            if stripped:
+                lookup_names.append(stripped)
+
     if domains:
-        search_terms.extend([d.lower() for d in domains])
-    
+        lookup_domains.extend(
+            domain for domain in domains
+            if domain and not is_freemail(domain)
+        )
+
+    target_domains = {
+        registrable_domain(domain)
+        for domain in lookup_domains
+        if registrable_domain(domain)
+    }
+    target_names = {
+        _folded_company_text(name)
+        for name in lookup_names
+        if _folded_company_text(name)
+    }
+    if not target_domains and not target_names:
+        return None
+
+    name_match = None
     for company_file in COMPANIES_DIR.glob('*.md'):
         try:
-            content = company_file.read_text()
-            content_lower = content.lower()
-            company_name = company_file.stem.lower().replace('_', ' ')
-            
-            for term in search_terms:
-                if term in company_name or term in content_lower:
-                    # Extract company domains
-                    company_domains = get_company_domains(company_file)
-                    
-                    return {
-                        'path': str(company_file.relative_to(BASE_DIR)),
-                        'name': company_file.stem.replace('_', ' '),
-                        'domains': company_domains
-                    }
+            company_name, company_domains = _structured_company_fields(company_file)
+            structured_domains = {
+                registrable_domain(domain)
+                for domain in company_domains
+                if registrable_domain(domain)
+            }
+            if target_domains & structured_domains:
+                return _company_match_record(
+                    company_file,
+                    company_name,
+                    company_domains,
+                )
+            if (
+                name_match is None
+                and _folded_company_text(company_name) in target_names
+            ):
+                name_match = _company_match_record(
+                    company_file,
+                    company_name,
+                    company_domains,
+                )
         except Exception:
             continue
-    
-    return None
+
+    return name_match
 
 def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = None) -> Dict[str, Any]:
     """Get comprehensive context for a meeting based on attendees and title"""

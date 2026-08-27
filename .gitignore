@@ -87,18 +87,38 @@ core/mcp-premium/
 System/my-customizations.md
 
 # ============================================
-# Claude hook tracking
+# Hook tracking
 # ============================================
 
-# Hooks copied from templates during setup
-.claude/hooks/
-# But track core hooks — these ship with Dex
-!.claude/hooks/
+# Local copies and experiments stay untracked. Git will not re-include a file
+# whose parent directory is excluded, so this is the three-step form: ignore
+# the tree, re-include directories so Git can traverse, then negate the files
+# this repository already tracks.
+.claude/hooks/**
+!.claude/hooks/**/
+!.claude/hooks/README.md
 !.claude/hooks/dex-safety-guard.sh
 !.claude/hooks/person-context-injector.cjs
 !.claude/hooks/company-context-injector.cjs
 !.claude/hooks/paths.cjs
-!.claude/hooks/tests/
+!.claude/hooks/session-start.sh
+!.claude/hooks/session-end.sh
+!.claude/hooks/vault-autocommit.cjs
+!.claude/hooks/health-pulse.sh
+!.claude/hooks/skill-freshness.py
+!.claude/hooks/soft-promise-detector.py
+!.claude/hooks/claude-composition-refresh.sh
+!.claude/hooks/dex-core-orientation.sh
+!.claude/hooks/ensure-mcp-user-scope.cjs
+!.claude/hooks/connection-health-checker.cjs
+!.claude/hooks/career-evidence-capture.cjs
+!.claude/hooks/daily-plan-quick-ref.cjs
+!.claude/hooks/post-meeting-person-update.cjs
+!.claude/hooks/meeting-cache-builder.cjs
+!.claude/hooks/meeting-queue-check.cjs
+!.claude/hooks/integration-concierge.cjs
+!.claude/hooks/maintenance.cjs
+!.claude/hooks/adapters/**
 !.claude/hooks/tests/*.test.cjs
 
 # ============================================

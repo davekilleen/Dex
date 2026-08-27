@@ -641,7 +641,7 @@ Quarter Goals (01-Quarter_Goals/)
     ↓
 Week Priorities (02-Week_Priorities/)
     ↓
-Daily Plan (07-Archives/Plans/)
+Daily Plan (00-Inbox/Daily_Plans/)
     ↓
 Tasks (03-Tasks/)
 ```
