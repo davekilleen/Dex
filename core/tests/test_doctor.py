@@ -942,6 +942,30 @@ def test_harness_capability_probe_reports_chatgpt_work_web_limit(context, monkey
     }
 
 
+def test_harness_capability_probe_reports_copilot_cli_hook_limit(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["copilot-cli"],
+        detected_ids=("copilot-cli",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "GitHub Copilot CLI" in result.detail
+    assert "hook" in result.detail.lower()
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail["selected"] == ["copilot-cli"]
+    assert result.structured_detail["limitations"] == {
+        "copilot-cli": list(get_profile("copilot-cli").limitations),
+    }
+
+
 def test_harness_capability_probe_reports_malformed_receipt_as_broken(context):
     receipt_path = context.vault_root / "System/.dex/harness-profile.json"
     receipt_path.parent.mkdir(parents=True)

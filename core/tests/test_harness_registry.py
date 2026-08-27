@@ -200,6 +200,11 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
     assert [profile.id for profile in detect_harnesses(env={"CHATGPT_WORK_COMPANION": "1"})] == [
         "chatgpt-work"
     ]
+    assert [profile.id for profile in detect_harnesses(env={"COPILOT_CLI": "1"})] == ["copilot-cli"]
+    assert [profile.id for profile in detect_harnesses(env={"GH_COPILOT": "1"})] == ["copilot-cli"]
+    assert [profile.id for profile in detect_harnesses(env={"GITHUB_COPILOT": "1"})] == [
+        "copilot-cli"
+    ]
 
 
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:
@@ -208,6 +213,9 @@ def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() 
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.pi/session")])] == ["pi"]
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.chatgpt-work/app")])] == [
         "chatgpt-work"
+    ]
+    assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.copilot/session")])] == [
+        "copilot-cli"
     ]
     assert detect_harnesses(env={}, paths=[]) == ()
 

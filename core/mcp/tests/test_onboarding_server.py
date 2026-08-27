@@ -284,6 +284,17 @@ class TestHarnessSelection:
         assert "web" in joined
         assert "https" in joined
 
+    def test_preview_includes_live_copilot_cli_hook_limit(self):
+        from core.harnesses.registry import get_profile
+
+        inspected = onboarding_server.inspect_harnesses(["copilot-cli"])
+
+        assert inspected["selected"] == ["copilot-cli"]
+        by_id = {row["id"]: row for row in inspected["profiles"]}
+        assert by_id["copilot-cli"]["limitations"] == list(get_profile("copilot-cli").limitations)
+        joined = " ".join(by_id["copilot-cli"]["limitations"]).lower()
+        assert "hook" in joined
+
     def test_inspection_supplies_existing_home_path_evidence(self, monkeypatch):
         evidence = (Path("/fixture/.codex"), Path("/fixture/.pi"))
         captured = []
