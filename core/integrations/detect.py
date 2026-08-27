@@ -35,7 +35,9 @@ RECOMMENDED = {
         "benefits": ["Official from Notion", "Best maintained", "Full API coverage"]
     },
     "slack": {
-        "package": "slack-mcp-server",
+        # Pinned exactly: npx must never resolve "latest" at launch while holding a
+        # Slack credential. Keep in sync with core/integrations/slack/setup.py.
+        "package": "slack-mcp-server@1.3.0",
         "name": "Slack MCP Server",
         "benefits": ["No bot required", "Cookie auth supported", "Full history access"]
     },
@@ -46,7 +48,9 @@ RECOMMENDED = {
     }
 }
 
-# Known alternative packages (for detection)
+# Known alternative packages (for detection only — matched as substrings of the
+# configured npx argument, so entries stay unversioned to match pinned and
+# unpinned installs alike. Never use these to install or launch anything.)
 KNOWN_PACKAGES = {
     "notion": [
         "@notionhq/notion-mcp-server",  # Official (recommended)

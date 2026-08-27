@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 PACKAGE = "slack-mcp-server"  # Well-maintained community MCP
+# Pinned exactly: npx must never resolve "latest" at launch while holding a Slack
+# credential. Bump this deliberately after reviewing the upstream release.
+PACKAGE_VERSION = "1.3.0"
+PACKAGE_SPEC = f"{PACKAGE}@{PACKAGE_VERSION}"
 ALT_PACKAGE = "@kazuph/mcp-slack"  # Alternative option
 MCP_CONFIG_KEY = "slack"
 
@@ -109,7 +113,7 @@ def install(credential: str, workspace_url: Optional[str] = None) -> Tuple[bool,
     # Add Slack MCP configuration
     mcp_config = {
         "command": "npx",
-        "args": ["-y", "slack-mcp-server"],
+        "args": ["-y", PACKAGE_SPEC],
         "env": {
             env_key: credential
         }
@@ -130,7 +134,7 @@ def install(credential: str, workspace_url: Optional[str] = None) -> Tuple[bool,
 # Configured: {__import__('datetime').datetime.now().isoformat()}
 
 enabled: true
-package: {PACKAGE}
+package: {PACKAGE_SPEC}
 auth_type: {auth_type}
 # Credential stored in Claude Desktop config for security
 
@@ -156,7 +160,7 @@ priority_users: []
 ✅ **Slack Integration Configured!**
 
 **What's set up:**
-- MCP Server: `{PACKAGE}`
+- MCP Server: `{PACKAGE_SPEC}`
 - Auth type: {auth_desc}
 - Credential: Securely stored in Claude Desktop config
 
