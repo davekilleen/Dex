@@ -34,8 +34,14 @@ not_started), warnings for priorities with no activity.
 
 ### 1.2 Calendar + Capacity
 
+Read `System/user-profile.yaml` → `calendar`. Use the calendar tools this session actually has.
+
+- `provider: apple` — `calendar_get_events_with_attendees` on `work_calendar`.
+- `provider: google` — this host's signed-in Google Calendar tools for `calendar.account`. Do not call calendar-mcp for events.
+- `provider: none` or missing — ask; do not invent meetings.
+
 ```
-Use: calendar_get_events_with_attendees(start_date="{{TARGET_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")
+Use: the calendar tools this session actually has for {{TARGET_DATE}}
 Use: analyze_calendar_capacity(days_ahead=1, events=[...from above...])
 ```
 

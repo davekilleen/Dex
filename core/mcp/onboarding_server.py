@@ -12,6 +12,7 @@ Features:
 - Automatic MCP configuration
 - PARA folder structure creation
 """
+from __future__ import annotations
 
 import hashlib
 import json
@@ -24,7 +25,7 @@ import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import mcp.server.stdio
 import mcp.types as types
@@ -53,6 +54,7 @@ from core.mcp.analytics_receipts import (
     unavailable_analytics_delivery,
 )
 from core.paths import (
+    LAB_MARKER_FILE,
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
     SESSION_FILE,
@@ -162,6 +164,14 @@ ROLE_AREAS = {
 }
 
 COMPANY_SIZES = ["startup", "scaling", "enterprise", "large_enterprise"]
+MEETING_SOURCE_PRIMARIES = (
+    "granola",
+    "zoom",
+    "teams",
+    "exported-folder",
+    "wispr",
+    "none",
+)
 FORMALITY_LEVELS = ["formal", "professional_casual", "casual"]
 DIRECTNESS_LEVELS = ["very_direct", "balanced", "supportive"]
 CAREER_LEVELS = ["junior", "mid", "senior", "leadership", "c_suite"]
@@ -260,8 +270,13 @@ def create_new_session() -> Dict:
         "last_updated": datetime.now().isoformat(),
         "completed_steps": [],
         "current_step": 1,
-        "data": {}
+        "data": {},
+        "lab": False,
     }
+
+
+def _is_lab_session(session: Dict[str, Any]) -> bool:
+    return session.get("lab") is True
 
 
 def _calendar_addressed(session: Dict[str, Any]) -> bool:
@@ -274,9 +289,113 @@ def _calendar_addressed(session: Dict[str, Any]) -> bool:
 def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
     """Exclude context that requires a separate explicit lifecycle approval."""
     data = dict(session["data"])
-    for field in ("calendar", "calendar_source", "work_email", "working_context"):
+    for field in ("calendar", "calendar_source", "working_context"):
         data.pop(field, None)
+    meeting_sources = data.get("meeting_sources")
+    if isinstance(meeting_sources, Mapping):
+        primary = meeting_sources.get("primary", "none")
+        notes_folder = meeting_sources.get("notes_folder", "")
+        if primary not in MEETING_SOURCE_PRIMARIES:
+            data.pop("meeting_sources", None)
+        else:
+            data["meeting_sources"] = {
+                "primary": primary,
+                "notes_folder": notes_folder if isinstance(notes_folder, str) else "",
+            }
+    work_email = data.get("work_email")
+    if not _is_lab_session(session) or not (
+        isinstance(work_email, str) and "@" in work_email.strip()
+    ):
+        data.pop("work_email", None)
     return data
+
+
+def _mark_step_complete(session: Dict[str, Any], step_number: int) -> None:
+    if step_number not in session["completed_steps"]:
+        session["completed_steps"].append(step_number)
+
+
+def save_identity_confirm(
+    session: Dict[str, Any],
+    *,
+    name: str,
+    company: str,
+    company_size: str,
+    email_domain: str,
+    no_company_domain: bool,
+    work_email: str,
+) -> Dict[str, Any]:
+    """Save name, company, size, and domain in one confirm for the lab hour."""
+    cleaned_name = name.strip()
+    if not cleaned_name:
+        return create_error_response("Name is required", field="name", suggestion="Keep the surname")
+    if company_size not in COMPANY_SIZES:
+        return create_error_response(
+            f"Invalid company_size: {company_size}",
+            field="company_size",
+            suggestion=f"Must be one of: {', '.join(COMPANY_SIZES)}",
+        )
+    if not email_domain.strip() and no_company_domain:
+        valid, error_msg, normalized_domain = True, None, ""
+    else:
+        valid, error_msg, normalized_domain = validate_email_domain(email_domain)
+    if not valid:
+        return create_error_response(
+            error_msg,
+            field="email_domain",
+            suggestion="Provide a domain (e.g., 'pendo.io'). If none, set no_company_domain to true.",
+        )
+    session["data"]["name"] = cleaned_name
+    session["data"]["company"] = company.strip()
+    session["data"]["company_size"] = company_size
+    session["data"]["email_domain"] = normalized_domain
+    cleaned_email = work_email.strip()
+    if cleaned_email:
+        if "@" not in cleaned_email:
+            return create_error_response(
+                "work_email must be an email address",
+                field="work_email",
+            )
+        session["data"]["work_email"] = cleaned_email
+    for step_number in (1, 3, 4):
+        _mark_step_complete(session, step_number)
+    session["current_step"] = 2 if 2 not in session["completed_steps"] else session.get("current_step", 5)
+    save_session(session)
+    return create_success_response(
+        {
+            "completed_steps": [1, 3, 4],
+            "name": cleaned_name,
+            "company": session["data"]["company"],
+            "company_size": company_size,
+            "email_domain": normalized_domain,
+            "work_email": session["data"].get("work_email", ""),
+        },
+        "Identity confirmed",
+    )
+
+
+def save_meeting_source(
+    session: Dict[str, Any],
+    *,
+    primary: str,
+    notes_folder: str,
+) -> Dict[str, Any]:
+    """Record the meeting source on the session until finalize persists it."""
+    if primary not in MEETING_SOURCE_PRIMARIES:
+        return create_error_response(
+            f"Invalid meeting source: {primary}",
+            field="primary",
+            suggestion=f"Must be one of: {', '.join(MEETING_SOURCE_PRIMARIES)}",
+        )
+    session["data"]["meeting_sources"] = {
+        "primary": primary,
+        "notes_folder": notes_folder.strip(),
+    }
+    save_session(session)
+    return create_success_response(
+        session["data"]["meeting_sources"],
+        "Meeting source recorded for finalize",
+    )
 
 
 def _next_required_step_before(
@@ -1139,13 +1258,13 @@ def _entity_offer_attendees(
 ) -> List[Dict[str, str]]:
     """Normalize attendees to the entity engine's name/email/location shape."""
     internal_domains = _profile_email_domains(profile)
+    calendar = profile.get('calendar') if isinstance(profile.get('calendar'), dict) else {}
     current_user_emails = {
         str(value).strip().lower()
         for value in (
             profile.get('work_email'),
-            profile.get('calendar', {}).get('work_calendar')
-            if isinstance(profile.get('calendar'), dict)
-            else None,
+            calendar.get('account'),
+            calendar.get('work_calendar'),
         )
         if isinstance(value, str) and '@' in value
     }
@@ -1503,15 +1622,21 @@ def set_entity_creation_default(automatic: bool) -> Dict[str, Any]:
     }
 
 
-def run_first_week_analysis() -> Dict[str, Any]:
+def run_first_week_analysis(events: Optional[List[Dict]] = None) -> Dict[str, Any]:
     """Build the honest, structured first-week reveal used after finalization."""
     try:
-        events = get_calendar_events_for_week()
+        loaded_events = events if events is not None else get_calendar_events_for_week()
     except Exception as e:
         return {
             "available": False,
             "reason": str(e) or "Calendar data could not be read.",
         }
+    if not isinstance(loaded_events, list):
+        return {
+            "available": False,
+            "reason": "Calendar events must be a list the host already fetched.",
+        }
+    events = loaded_events
 
     timed_events = _timed_calendar_events(events)
     calendar_analysis = analyze_calendar_events(timed_events)
@@ -1634,6 +1759,11 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "boolean",
                         "description": "Force create a new session even if one exists",
                         "default": False
+                    },
+                    "lab": {
+                        "type": "boolean",
+                        "description": "Preview /setup-lab hour: name can come before calendar",
+                        "default": False
                     }
                 }
             }
@@ -1659,24 +1789,78 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
-            name="save_calendar_selection",
+            name="save_identity_confirm",
             description=(
-                "Validate a proposed Apple Calendar selection for later explicit "
-                "profile approval, or choose no calendar."
+                "Save name, company, email domain, and company size in one confirm. "
+                "Used by /setup-lab. Email domain is still validated."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "name": {"type": "string"},
+                    "company": {"type": "string", "default": ""},
+                    "company_size": {
+                        "type": "string",
+                        "enum": COMPANY_SIZES,
+                    },
+                    "email_domain": {"type": "string", "default": ""},
+                    "no_company_domain": {"type": "boolean", "default": False},
+                    "work_email": {
+                        "type": "string",
+                        "default": "",
+                        "description": "Confirmed work email; persisted at finalize for self-page exclusion",
+                    },
+                },
+                "required": ["name", "company_size"],
+            },
+        ),
+        types.Tool(
+            name="save_meeting_source",
+            description=(
+                "Record the meeting source on the onboarding session. "
+                "finalize_onboarding writes meeting_sources to the profile."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "primary": {
+                        "type": "string",
+                        "enum": list(MEETING_SOURCE_PRIMARIES),
+                    },
+                    "notes_folder": {"type": "string", "default": ""},
+                },
+                "required": ["primary"],
+            },
+        ),
+        types.Tool(
+            name="save_calendar_selection",
+            description=(
+                "Validate a proposed calendar selection for later explicit "
+                "profile approval: Apple Calendar, already-signed-in Google, or none."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["apple", "google", "none"],
+                        "description": "Calendar provider. Omit with work_calendar for Apple.",
+                    },
                     "work_calendar": {
                         "type": "string",
                         "description": "Exact work calendar name returned by Calendar.app",
+                        "default": ""
+                    },
+                    "account": {
+                        "type": "string",
+                        "description": "Signed-in Google work email when provider=google",
                         "default": ""
                     },
                     "work_email": {
                         "type": "string",
                         "description": (
                             "Transient identity hint when the calendar name is an "
-                            "email address; never stored in the onboarding session"
+                            "email address; never stored from this tool"
                         ),
                         "default": ""
                     },
@@ -1697,7 +1881,7 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="preview_confirmed_onboarding_context",
             description=(
-                "Preview the reviewed working context and Apple Calendar source after "
+                "Preview the reviewed working context and calendar source after "
                 "onboarding is complete. This does not write anything."
             ),
             inputSchema={
@@ -1709,7 +1893,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "calendar_source": {
                         "type": "object",
-                        "description": "Apple Calendar selection or provider=none; Google is not supported here.",
+                        "description": (
+                            "Apple {provider, work_calendar}, Google {provider, account}, "
+                            "or {provider: none}."
+                        ),
                     },
                 },
                 "required": ["working_context", "calendar_source"],
@@ -1748,10 +1935,20 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="run_first_week_analysis",
-            description="Analyze this week's timed calendar meetings and return an honest, structured onboarding reveal.",
+            description=(
+                "Analyze this week's timed calendar meetings and return an honest, "
+                "structured onboarding reveal. Pass events the host already fetched "
+                "when the calendar is Google (this server cannot call host Google tools)."
+            ),
             inputSchema={
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "events": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Host-fetched calendar events. Omit to read Calendar.app.",
+                    }
+                }
             }
         ),
         types.Tool(
@@ -1903,10 +2100,14 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
+            lab = arguments.get('lab') is True
             
             session = load_session()
             
             if session and not force_new:
+                if lab:
+                    session["lab"] = True
+                    save_session(session)
                 result = create_success_response(
                     session,
                     f"Resuming onboarding session. Completed steps: {len(session['completed_steps'])}/{ONBOARDING_STEPS}"
@@ -1916,12 +2117,44 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     logger.info("Creating new session (force_new=True)")
                 
                 session = create_new_session()
+                session["lab"] = lab
                 save_session(session)
                 result = create_success_response(
                     session,
                     "New onboarding session created"
                 )
             
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_identity_confirm":
+            session = load_session()
+            if not session:
+                result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            if not _calendar_addressed(session) and not _is_lab_session(session):
+                result = create_error_response(CALENDAR_REQUIRED_ERROR)
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = save_identity_confirm(
+                session,
+                name=str(arguments.get("name") or ""),
+                company=str(arguments.get("company") or ""),
+                company_size=str(arguments.get("company_size") or ""),
+                email_domain=str(arguments.get("email_domain") or ""),
+                no_company_domain=arguments.get("no_company_domain") is True,
+                work_email=str(arguments.get("work_email") or ""),
+            )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_meeting_source":
+            session = load_session()
+            if not session:
+                result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = save_meeting_source(
+                session,
+                primary=str(arguments.get("primary") or ""),
+                notes_folder=str(arguments.get("notes_folder") or ""),
+            )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
         elif name == "validate_and_save_step":
@@ -1947,7 +2180,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
-            if step_number == 1 and not _calendar_addressed(session):
+            if (
+                step_number == 1
+                and not _calendar_addressed(session)
+                and not _is_lab_session(session)
+            ):
                 result = create_error_response(CALENDAR_REQUIRED_ERROR)
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -2236,7 +2473,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "save_calendar_selection":
             skipped = arguments.get('skipped', False)
+            provider = (arguments.get('provider') or '').strip().lower()
             work_calendar = (arguments.get('work_calendar') or '').strip()
+            account = (arguments.get('account') or arguments.get('work_email') or '').strip()
             work_email = (arguments.get('work_email') or '').strip()
 
             session = load_session()
@@ -2247,7 +2486,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
-            if skipped:
+            if skipped or provider == "none":
                 session["calendar_addressed"] = True
                 for field in ("calendar", "calendar_source", "work_email"):
                     session["data"].pop(field, None)
@@ -2258,6 +2497,33 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         "working_week_suggestion": default_working_week_suggestion(),
                     },
                     "Calendar setup skipped for now. /dex-doctor will pick this up later."
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if provider == "google":
+                if "@" not in account:
+                    result = create_error_response(
+                        "Google Calendar needs the signed-in work email",
+                        field="account",
+                        suggestion="Pass account as the signed-in Google work email",
+                    )
+                    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+                calendar_source = {
+                    "provider": "google",
+                    "account": account.lower(),
+                }
+                session["calendar_addressed"] = True
+                for field in ("calendar", "calendar_source", "work_email"):
+                    session["data"].pop(field, None)
+                save_session(session)
+                result = create_success_response(
+                    {
+                        "work_email": account,
+                        "calendar_source": calendar_source,
+                        "derived_identity": derive_identity_from_email(account),
+                        "working_week_suggestion": default_working_week_suggestion(),
+                    },
+                    "Google calendar validated for later approval.",
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -2385,7 +2651,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "run_first_week_analysis":
-            result = create_success_response(run_first_week_analysis())
+            host_events = arguments.get("events")
+            result = create_success_response(
+                run_first_week_analysis(host_events if isinstance(host_events, list) else None)
+            )
             return [types.TextContent(
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),
@@ -2552,6 +2821,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             try:
                 logger.info("Routing onboarding finalization through the provision contract")
                 summary = _finalize_through_provisioner(session)
+                if _is_lab_session(session):
+                    lab_marker = lifecycle_service.write_onboarding_lab_marker(BASE_DIR)
+                    summary["lab"] = True
+                    summary["lab_marker"] = str(LAB_MARKER_FILE)
+                    summary["lab_receipt"] = lab_marker.get("receipt")
 
                 result = create_success_response(
                     summary,

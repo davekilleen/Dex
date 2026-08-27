@@ -725,11 +725,21 @@ The plan works at multiple levels:
 
 ---
 
+## Calendar source (read this first)
+
+Read `System/user-profile.yaml` → `calendar`. Use the calendar this session actually has. Do not assume Calendar.app.
+
+- `provider: apple` — today's calendar-mcp tools, using the Apple calendar name stored on the profile.
+- `provider: google` — use this host's signed-in Google Calendar tools for `calendar.account`. Do **not** call calendar-mcp for events. Google Workspace setup is email, not calendar.
+- `provider: none` or missing — optional absence. Ask the user. Do not invent an empty week.
+
+Pass whatever events you fetched into `analyze_calendar_capacity(..., events=[...])`.
+
 ## MCP Dependencies (Updated)
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | calendar-mcp | `calendar_get_today`, `calendar_get_events_with_attendees` |
+| Calendar | the tools this session actually has (see Calendar source) | host Google Calendar tools, or calendar-mcp `calendar_get_today` / `calendar_get_events_with_attendees` |
 | Reminders | calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
 | Granola | granola-mcp | `granola_get_recent_meetings` |
 | Work | work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |

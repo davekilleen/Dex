@@ -64,8 +64,9 @@ with the user doing nothing but approving. Contract: `docs/feedback-loop-contrac
 3. **Machine state.** Assemble a small `machine_state` object from cheap facts:
    `os` (from `uname -s`, lowercased), `host_app` (e.g. claude-code), and — when
    `System/.dex/smoke-last-run.json` or a recent Doctor report exists — a
-   `features` map of health states (values like ok/off/broken only). Skip
-   anything you can't check cheaply; an empty machine_state is fine.
+   `features` map of health states (values like ok/off/broken only). If
+   `System/.onboarding-lab` exists, set `lab: true` so beta reports stay
+   separable. Skip anything you can't check cheaply; an empty machine_state is fine.
 4. **Write the draft** to a temp file (e.g. `/tmp/dex-feedback-draft.json`):
 
    ```json

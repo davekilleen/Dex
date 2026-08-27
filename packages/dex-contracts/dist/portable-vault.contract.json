@@ -562,6 +562,13 @@
       "ownership": "runtime"
     },
     {
+      "id": "runtime-onboarding-lab",
+      "path": "System/.onboarding-lab",
+      "kind": "file",
+      "ownership": "runtime",
+      "note": "preview onboarding marker; analytics and feedback tag events lab=true"
+    },
+    {
       "id": "runtime-onboarding-session",
       "path": "System/.onboarding-session.json",
       "kind": "file",

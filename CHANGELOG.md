@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.3] — 🗓️ The first hour can use the calendar you already have (2026-08-27)
+
+Setup used to assume Apple Calendar, and the morning plan kept talking to Apple even when Google was already signed in. Separately, the getting-started tour could crash on a Mac using the built-in Python.
+
+**What this fixes for you:**
+
+* **The morning plan uses the same calendar you connected.** If your work calendar is Google, Dex asks that calendar. Existing Apple Calendar people see no change.
+* **A preview first hour is available as `/setup-lab`.** It confirms who you are from your work email, shows your week, and runs one shortcut. Everyone’s usual `/setup` is unchanged.
+* **The getting-started tour no longer dies on a Mac with the built-in Python.** Date-only meeting dates are read instead of crashing.
+
 ## [1.97.2] — 🔎 Dex Lens catalogue tells the complete release truth (2026-08-27)
 
 Dex's architecture inventory could see the optional Pipedrive server and its 15 tools,

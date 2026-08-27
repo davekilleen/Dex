@@ -12,6 +12,7 @@ const portableContract = require('../packages/dex-contracts/dist/portable-vault.
 const PROFILE_KEYS = new Set([
   'name', 'role', 'company', 'company_size', 'email_domain', 'work_email',
   'obsidian_mode', 'pillars', 'working_week', 'communication', 'capabilities',
+  'meeting_sources',
 ]);
 
 const CAPABILITY_CATALOG = path.join(

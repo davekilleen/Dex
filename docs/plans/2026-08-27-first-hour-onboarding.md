@@ -1,6 +1,6 @@
 # First-hour onboarding — spec (not shipped)
 
-Status: **draft for founder approval**. Do not change shipped `/setup` until a lab/preview path exists and this spec is approved.
+Status: **preview implemented**. Shipped `/setup` is unchanged. Use `/setup-lab` on a fresh vault.
 
 Audience: non-technical professionals (Doireann is one example, not the template).  
 Promise: more useful context than today’s questionnaire, in about **fifteen minutes** of her attention, ending on a real demo of *her* week. Every user-facing clock says fifteen. Do not also say ten, or “the hour.”

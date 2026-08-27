@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: ab1af48d6358265d8f1071ebb8645af1bdc23733f7c1f7458658127b1065e1b7 -->
+<!-- Content SHA-256: 93bd7f977e676b7f2f4b6f7dd77fdebf602f8f6dd12187f023ea13d335c3fa06 -->
 
 # Architecture Inventory
 
@@ -18,7 +18,7 @@ This inventory is derived only from repository code and shipped skill files.
 | `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 7 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_blob`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
 | `dex-granola-mcp` | `core/mcp/granola_server.py` | 6 | yes | `granola_check_available`, `granola_get_extent`, `granola_get_meeting_details`, `granola_get_recent_meetings`, `granola_get_today_meetings`, `granola_search_meetings` |
 | `dex-improvements-mcp` | `core/mcp/dex_improvements_server.py` | 9 | no | `capture_idea`, `enrich_idea`, `get_backlog_stats`, `get_idea_details`, `list_ideas`, `mark_implemented`, `synthesize_changelog`, `synthesize_learnings`, `validate_backlog` |
-| `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 15 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
+| `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 17 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `save_identity_confirm`, `save_meeting_source`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
 | `dex-pipedrive-mcp` | `core/integrations/pipedrive/pipedrive_server.py` | 15 | yes | `pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal` |
 | `dex-resume-mcp` | `core/mcp/resume_server.py` | 12 | yes | `add_role`, `compile_resume`, `export_resume`, `extract_achievements`, `generate_linkedin`, `generate_role_writeup`, `list_sessions`, `load_session`, `pull_career_evidence`, `save_session`, `start_session`, `validate_metrics` |
 | `dex-session-memory` | `core/mcp/session_memory_server.py` | 8 | no | `get_entity_timeline`, `get_observation_timeline`, `get_recent_decisions`, `get_recent_tool_usage`, `get_session_context`, `get_session_summary`, `search_observations`, `search_sessions` |
@@ -26,7 +26,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 81<br>
+**Skill count:** 82<br>
 **Discoverability-risk count:** 3
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -103,7 +103,8 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `review` | `.claude/skills/review/SKILL.md` | Deprecation alias for `daily-review`. The end-of-day review was renamed; `/review` now redirects to `daily-review` and will be removed after one release. Use when the user types `/review` out of habit — hand straight off to `daily-review`, which owns end-of-day review and learning capture. Not for running the review here; use `daily-review`. | 343 | when |
 | `save-insight` | `.claude/skills/save-insight/SKILL.md` | Capture a reusable learning from completed work so future similar work is easier. Use when the user says 'save this learning', 'capture this insight', or finishes something tricky. Also use proactively after non-routine work. Not for recording a *decision* and its rationale; use `decision-log`. | 295 | when |
 | `scrape` | `.claude/skills/scrape/SKILL.md` | Scrape web pages via Scrapling — stealth fetching, anti-bot bypass, CSS selectors, no API key. Use when the user says 'scrape', 'pull data from this URL', 'extract from this site'. Not for meaning-based search of the user's own vault; use `enable-semantic-search`. | 264 | when |
-| `setup` | `.claude/skills/setup/SKILL.md` | Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `System/.onboarding-complete` is absent or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`. | 304 | when |
+| `setup` | `.claude/skills/setup/SKILL.md` | Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `System/.onboarding-complete` is absent or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`. Not for the preview first hour; use `setup-lab`. | 353 | when |
+| `setup-lab` | `.claude/skills/setup-lab/SKILL.md` | Run the fifteen-minute Dex preview onboarding: confirm who you are from work email, organise this week, and make one shortcut live. Use when the user says '/setup-lab', 'lab onboarding', 'preview setup', or 'try the new first hour'. Not for everyone's shipped first setup; use `setup`. Not for the post-setup tour; use `getting-started`. | 337 | when |
 | `skill-score` | `.claude/skills/skill-score/SKILL.md` | Grade a Dex skill against the shape-aware quality rubric and report a ship/revise/no verdict with the exact fixes. Use when you finish writing or editing a skill, when create-skill hands off a new package, before shipping a first-party skill, or when the user asks "is this skill any good / will it fire / score my skill". Also use proactively right after any SKILL.md is created or its description changes. Not for authoring a new skill from scratch (use create-skill) or fixing broken YAML frontmatter alone (create-skill's validator does that); skill-score judges architecture and routing, not just format. | 609 | when |
 | `things-setup` | `.claude/skills/things-setup/SKILL.md` | Connect Things 3 (macOS only) so Dex reads and updates your Things tasks. Use when the user says 'I use Things', 'sync my Things inbox', or pastes a `things://` link. Not for Todoist (`todoist-setup`) or Trello (`trello-setup`). | 228 | when |
 | `todoist-setup` | `.claude/skills/todoist-setup/SKILL.md` | Connect Todoist so Dex reads and updates your Todoist tasks two ways. Use when the user says 'I use Todoist', 'sync Todoist', or pastes a todoist.com link. Not for Things 3 (`things-setup`) or Trello (`trello-setup`); not for Jira tickets (`atlassian-setup`). | 259 | when |
@@ -127,7 +128,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
 | `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
-| `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`) |
+| `dex-onboarding-mcp` | 4 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`); `setup-lab` (`apply_confirmed_onboarding_context`, `finalize_onboarding`, `preview_confirmed_onboarding_context`, `save_calendar_selection`, `save_identity_confirm`, `save_meeting_source`, `start_onboarding_session`, `validate_and_save_step`) |
 | `dex-pipedrive-mcp` | 2 | normal | `pipedrive-setup` (`pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_status`); `pipeline-sync` (`pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
@@ -154,7 +155,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 17 | `never` |
-| `runtime` | 15 | `never` |
+| `runtime` | 16 | `never` |
 
 <details><summary><code>brain</code> declared paths (45)</summary>
 
@@ -285,7 +286,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>runtime</code> declared paths (15)</summary>
+<details><summary><code>runtime</code> declared paths (16)</summary>
 
 - `.logs` (dir; `runtime-logs`)
 - `System/.dex` (dir; `runtime-dex-dir`)
@@ -296,6 +297,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/.last-learning-check` (file; `runtime-last-learning-check`)
 - `System/.onboarding` (dir; `runtime-onboarding`)
 - `System/.onboarding-complete` (file; `runtime-onboarding-marker`)
+- `System/.onboarding-lab` (file; `runtime-onboarding-lab`)
 - `System/.onboarding-session.json` (file; `runtime-onboarding-session`)
 - `System/Session_Learnings` (dir; `runtime-session-learnings`)
 - `System/Session_Memory` (dir; `runtime-session-memory`)

@@ -310,6 +310,8 @@ RULES: tuple[Rule, ...] = (
        "because no released contract before v1.95 can classify it"),
     _r("runtime-onboarding", "System/.onboarding", "dir", "runtime"),
     _r("runtime-onboarding-marker", "System/.onboarding-complete", "file", "runtime"),
+    _r("runtime-onboarding-lab", "System/.onboarding-lab", "file", "runtime",
+       "preview onboarding marker; analytics and feedback tag events lab=true"),
     _r("runtime-logs", ".logs", "dir", "runtime"),
 
     # --- vault: the user's content and values (mostly untracked in-repo) ----
@@ -524,6 +526,7 @@ ONBOARDING_PROVISION_PATHS = frozenset(
         "System/user-profile.yaml",
         "System/pillars.yaml",
         "System/.onboarding-complete",
+        "System/.onboarding-lab",
         "System/.onboarding-session.json",
         "CLAUDE.md",
         ".mcp.json",

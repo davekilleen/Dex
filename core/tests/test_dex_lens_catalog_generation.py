@@ -1150,8 +1150,8 @@ def test_real_registry_annotates_the_complete_active_set_and_marks_dormant_entri
 
     assert registry["catalog_version"] == 5
     assert tuple(job["job_id"] for job in registry["jobs"]) == CANONICAL_JOB_IDS
-    assert len(registry["entries"]) == 94
-    assert len(active_entries) == 65
+    assert len(registry["entries"]) == 95
+    assert len(active_entries) == 66
     assert len(dormant_entries) == 29
     assert {entry["id"] for entry in active_entries} == discovered_ids
     assert all(entry["capability_class"] == "active-skill" for entry in registry["entries"])
@@ -1166,7 +1166,7 @@ def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> Non
 
     assert registry["catalog_version"] == 5
     assert len(registry["jobs"]) == 8
-    assert len(registry["entries"]) == 94
+    assert len(registry["entries"]) == 95
     assert tuple(entry["id"] for entry in wave3) == WAVE3_IDS
     assert all(entry["capability_class"] == "active-skill" for entry in wave3)
     assert all(
@@ -1293,7 +1293,7 @@ def test_shipped_registry_builds_the_release_catalogue(tmp_path: Path, signing_k
     assert [capability["capability_id"] for capability in envelope["catalogue"]["capabilities"]] == [
         candidate.capability_id for candidate in discover_active_skills(REPO_ROOT)
     ]
-    assert len(envelope["catalogue"]["capabilities"]) == 65
+    assert len(envelope["catalogue"]["capabilities"]) == 66
 
 
 def _rewrite_registry_evidence(root: Path, evidence: list[dict[str, str]]) -> None:

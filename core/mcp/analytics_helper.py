@@ -493,6 +493,7 @@ def fire_event(
                 'most_active_area': journey['most_active_area'],
                 'role': profile.get('role_group', 'unknown'),
                 'company_size': profile.get('company_size', 'unknown'),
+                'lab': (get_vault_path() / 'System' / '.onboarding-lab').is_file(),
                 **(properties or {})
             }
 

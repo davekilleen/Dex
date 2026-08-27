@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -57,10 +58,43 @@ def test_confirmed_onboarding_context_is_previewed_then_transactionally_applied(
     assert executed["receipt"]["purpose"] == "onboarding-context"
 
 
-def test_confirmed_onboarding_context_refuses_google_calendar(tmp_path: Path) -> None:
+def test_confirmed_onboarding_context_accepts_google_calendar_account(tmp_path: Path) -> None:
     vault = _vault(tmp_path)
 
-    with pytest.raises(PlanRejected, match="Apple Calendar or no calendar"):
+    previewed = service.build_and_preview_onboarding_context(
+        vault,
+        working_context={"role_focus": "Lead product work", "key_people": []},
+        calendar_source={"provider": "google", "account": "doireann.marron@pendo.io"},
+    )
+
+    assert previewed["preview"]["calendar_source"] == {
+        "provider": "google",
+        "account": "doireann.marron@pendo.io",
+    }
+
+    service.execute_approved_onboarding_context(
+        vault,
+        previewed["preview"],
+        previewed["approval_token"],
+    )
+    saved = yaml.safe_load((vault / "System" / "user-profile.yaml").read_text(encoding="utf-8"))
+    assert saved["calendar"] == {"provider": "google", "account": "doireann.marron@pendo.io"}
+
+
+def test_write_onboarding_lab_marker_creates_runtime_file(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    result = service.write_onboarding_lab_marker(vault)
+    marker = vault / "System" / ".onboarding-lab"
+    assert marker.is_file()
+    saved = json.loads(marker.read_text(encoding="utf-8"))
+    assert saved["lab"] is True
+    assert result["receipt"]["purpose"] == "onboarding-lab"
+
+
+def test_confirmed_onboarding_context_refuses_google_without_account(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+
+    with pytest.raises(PlanRejected, match="account email"):
         service.build_and_preview_onboarding_context(
             vault,
             working_context={"role_focus": "Lead product work", "key_people": []},
