@@ -6248,8 +6248,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/setup/SKILL.md",
-        "sha256": "f3a25ca77065cbd25f4e042a9476f596fafe651b1089c669f5a14c6b8e5c8eee",
-        "byte_size": 1547
+        "sha256": "d18889c5cc43bac018a3ece071cafee5e2ddefc88a11e009e31a864555de37a4",
+        "byte_size": 1576
       },
       "value": "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs.",
       "jobs_served": [

@@ -69,6 +69,11 @@ review check, Dex Inbox triage, the meeting-task review and goal-link
 confirmations, inbound external task review, pushing focus tasks to Reminders,
 and usage tracking. These need the user, so they must not be delegated.
 
+Previous-working-day notes (Step 5.10c) are gathering, not the yesterday's
+review check. That step lives in `AGENT_INSTRUCTIONS.md` so a customization of
+it reaches the subagent. The written plan must show the post-condition: notes
+found for a named date/file, or none.
+
 ## Purpose
 
 Generate your daily plan with full context awareness. Automatically gathers information from your calendar, tasks, meetings, relationships, and weekly progress to create a focused plan with genuine situational awareness.
@@ -411,6 +416,31 @@ Also gather:
 - **Self-Learning Alerts**: Changelog updates, pending learnings
 - **System health**: Only when the overnight smoke report has `summary.broken > 0`, note that a self-check found a problem and point to `/dex-doctor` for diagnosis
 
+### 5.10c Previous-working-day notes
+
+Read `working_week.days` in `System/user-profile.yaml`. Compute the previous
+working day strictly before the target date (skip non-working days). If the
+profile is missing or `working_week.days` is unusable, treat Monday-Friday as
+the working week.
+
+Look for notes dated that previous working day in `00-Inbox/Meetings/`
+(including `00-Inbox/Meetings/{date}/`) and, when present, the valid configured
+`notes_folder` from `meeting_sources`. Name the date and every file found. If
+none, record that as none for that named date. Do not skip this step silently.
+
+**Person-page updates.** For people mentioned in those notes, call
+`lookup_person`. If a page exists, add the note under Recent Interactions
+inside the existing `<!-- dex:auto:recent-interactions -->` block using:
+
+```
+- [{Meeting Title}]({actual vault-relative note path}) — {date}
+```
+
+If that path is already listed, change nothing. Do not create person pages
+here; list people with no page for the conversation to handle. The written plan
+must include the post-condition: previous-working-day notes found for a named
+date/file, or none for that date.
+
 ### 5.11 Meeting-Task Review (NEW)
 
 Give the user one place to review what their meetings turned into. Work from the
@@ -641,6 +671,7 @@ integrations_used: [calendar, tasks, people, work-intelligence]
 
 ## ⚠️ Heads Up
 
+- {{Previous-working-day notes: found YYYY-MM-DD `path` / none for YYYY-MM-DD}}
 - {{❄️ Going cold: consequential people/accounts from the cooling feed, when present}}
 - {{🔗 Relationships to confirm: suggested typed relationships from the feed, when present}}
 - {{Warning about lagging weekly priority}}
