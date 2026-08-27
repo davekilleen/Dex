@@ -891,6 +891,32 @@ def test_harness_capability_probe_reports_cowork_public_endpoint_limit(context, 
     }
 
 
+def test_harness_capability_probe_reports_pi_and_bb_limits(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["pi", "bb"],
+        detected_ids=("pi", "bb"),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "Pi" in result.detail
+    assert "BB" in result.detail
+    assert "mcp" in result.detail.lower()
+    assert "macos" in result.detail.lower()
+    assert result.structured_detail["selected"] == ["bb", "pi"]
+    assert result.structured_detail["limitations"] == {
+        "bb": list(get_profile("bb").limitations),
+        "pi": list(get_profile("pi").limitations),
+    }
+
+
 def test_harness_capability_probe_reports_malformed_receipt_as_broken(context):
     receipt_path = context.vault_root / "System/.dex/harness-profile.json"
     receipt_path.parent.mkdir(parents=True)

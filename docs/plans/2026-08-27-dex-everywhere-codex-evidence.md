@@ -2,7 +2,7 @@
 
 **Date:** 27 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Codex exact-head native CI is green. Claude Cowork proof is in progress. Later hosts have not started.
+**Sequence:** Codex exact-head native CI is green. Claude Cowork exact-head CI is green. Pi and BB Core proof is in progress.
 
 ## What “Codex done” means
 
@@ -84,12 +84,30 @@ A later commit that records this proof or starts Cowork is a new head and must e
 
 ## Claude Cowork (started after Codex CI was green)
 
-Ubuntu can prove detection, the shared Claude plugin package, and Doctor telling the truth about the public-endpoint MCP limit. It cannot prove the Cowork desktop folder-permission click or a live public connector.
+Proven on `ff2a24ba81d05beacb3e4bfe936d0d57a21908b7` after Codex CI was green:
+
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33102943819 — **success**
+- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33102943828 — **success**
+- Local detection + Doctor public-endpoint tests: 9 passed, 1 skipped
+
+Ubuntu still cannot click Cowork’s desktop folder permission or prove a live public connector. Those stay named limits, not silent gaps.
+
+## Pi and BB (started after Cowork CI was green)
+
+Core proof only. This does not claim a live Pi checkout or a live BB install.
+
+- Detects Pi from `PI_CLI` / `PI_CODING_AGENT` and a `/.pi/` path
+- Detects BB from `BB_HARNESS` / `BB_RUNNER` and a `/.bb/` path
+- Doctor names Pi’s missing built-in MCP door and BB’s macOS-only unreleased limit
+- The Pi source-byte check stays skipped unless a pinned checkout is present. `DEX_PI_REQUIRE_CONFORMANCE=1` still fails closed
+- The BB plugin stays private and unreleased. WSL2 and Windows stay deferred
+
+This later-host commit must earn its own green exact-head Dex CI and fleet canary.
 
 ## Deliberately not started
 
-- Pi, Copilot CLI, and other later hosts (Phase 1C)
+- Live Pi checkout byte-match, live BB install, or publishing `dex-bb-plugin`
+- Copilot CLI and other remaining later hosts
 - Capability-exchange privacy repairs in Dex Lens
-- BB revisit
 - Final genuine Fable reviews (wait until heads are frozen and native CI is green)
 - Merge, publish, marketplace, user install, or release
