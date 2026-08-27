@@ -12,7 +12,7 @@ This file records proof so far. Ubuntu in Cursor Cloud is not macOS or Windows p
 
 ## Exact head
 
-Recorded at the commit that adds this file. Confirm with `git rev-parse HEAD` on `cursor/dex-everywhere-codex-first-c346`.
+Exact commit: `8ea5cb310a361e2269ecdaa850b542fafd15aa06` on `cursor/dex-everywhere-codex-first-c346`.
 
 - Isolated branch: `cursor/dex-everywhere-codex-first-c346`
 - Draft PR: https://github.com/davekilleen/Dex/pull/620
