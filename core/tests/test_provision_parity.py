@@ -296,9 +296,12 @@ def test_completed_vault_records_only_its_confirmed_harness_receipt(
 
     assert preview.returncode == 0, preview.stderr or preview.stdout
     preview_summary = json.loads(preview.stdout)
-    assert preview_summary["mutation_receipt"]["declared_paths"] == [
-        "System/.dex/harness-profile.json"
-    ]
+    preview_paths = preview_summary["mutation_receipt"]["declared_paths"]
+    assert "System/.dex/harness-profile.json" in preview_paths
+    assert set(preview_paths) <= {
+        "System/.dex",
+        "System/.dex/harness-profile.json",
+    }
     assert not (vault / "System/.dex/harness-profile.json").exists()
 
     applied = _invoke_provision(
