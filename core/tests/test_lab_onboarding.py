@@ -28,6 +28,8 @@ def test_lab_starter_finishes_helpers_before_anyone_opens_chat() -> None:
     assert "onboarding.md" not in text or "Do not follow" in text
     assert "/setup-lab" in text
     assert "hello" in text.lower()
+    assert 'System/.onboarding-lab' in text
+    assert '{"lab": true}' in text
 
 
 def test_lab_starter_is_valid_bash() -> None:
@@ -46,6 +48,7 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "Do not narrate" in skill
     assert "I won’t try to fix the folder from here" in skill
     assert "A conversation, not a form" in skill
+    assert "Background workers are real subagents" in skill
     assert "builder note" in skill
     assert "three weeks" in skill
     assert "automatically file people and company pages" in skill

@@ -106,6 +106,10 @@ bootstrap_practice_folder() {
 
 copy_practice_tree
 mark_first_command
+mkdir -p "$TARGET/System"
+if [ ! -f "$TARGET/System/.onboarding-lab" ]; then
+  printf '%s\n' '{"lab": true}' > "$TARGET/System/.onboarding-lab"
+fi
 bootstrap_practice_folder
 
 echo

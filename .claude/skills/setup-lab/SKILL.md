@@ -67,6 +67,6 @@ Then stop.
 3. Persist only through onboarding-mcp: `save_identity_confirm`, `save_calendar_selection`, `save_meeting_source`, `save_entity_creation_preference`, `validate_and_save_step` for later steps, `finalize_onboarding`, then `set_entity_creation_default`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context` / `apply_confirmed_onboarding_context`.
 4. Defaults — do not look them up in source: formality `professional_casual`, directness `balanced`, career_level `leadership` unless she said otherwise. Working week Monday–Friday unless the calendar says different.
 5. Finalize after the interview mirror is approved, before the wow card.
-6. Background workers are subagents at named beats. They do not chatter.
+6. Background workers are real subagents. After notes are named, start the week reader immediately (three weeks of meetings). After it has people, start the people mapper. They do not chatter. Do not skip them and quiz from titles instead.
 
 If finalize fails, her answers are already saved. Do not restart the interview. One next step: close the chat, run the starter, type `/setup-lab`. Do not patch Dex files here.
