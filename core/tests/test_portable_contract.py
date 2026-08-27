@@ -378,6 +378,24 @@ def test_conflict_resolution_may_create_absent_custom_skill_sidecar(path: str) -
     assert existing.action == "write-if-absent"
 
 
+def test_custom_skill_wildcard_matches_one_segment_only() -> None:
+    assert portable_contract._matches_dir_rule(
+        ".claude/skills/alpha-custom/SKILL.md",
+        ".claude/skills/*-custom",
+    )
+    assert not portable_contract._matches_dir_rule(
+        ".claude/skills/nested/alpha-custom/SKILL.md",
+        ".claude/skills/*-custom",
+    )
+
+
+def test_dir_rule_matcher_stays_runnable_on_macos_system_python() -> None:
+    """The quality job runs this module with /usr/bin/python3 on macOS (3.9)."""
+    source = inspect.getsource(portable_contract._matches_dir_rule)
+    assert "zip(" in source
+    assert "strict=" not in source
+
+
 def test_conflict_resolution_still_replaces_the_canonical_skill() -> None:
     verdict = portable_contract.update_write_verdict(
         ".claude/skills/alpha/SKILL.md",

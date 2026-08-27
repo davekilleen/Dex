@@ -1043,11 +1043,10 @@ def _matches_dir_rule(candidate: str, rule_path: str) -> bool:
     candidate_segments = candidate.split("/")
     if len(candidate_segments) < len(rule_segments):
         return False
+    matched_segments = candidate_segments[: len(rule_segments)]
     return all(
         fnmatch.fnmatchcase(candidate_segment, rule_segment)
-        for candidate_segment, rule_segment in zip(
-            candidate_segments[: len(rule_segments)], rule_segments, strict=True
-        )
+        for candidate_segment, rule_segment in zip(matched_segments, rule_segments)
     )
 
 
