@@ -35,8 +35,9 @@ Only when delivery returns its exact release identity, ask
 that identity. Show every returned write and ask: “Apply this exact update?”
 Only a fresh explicit yes to that unchanged preview permits
 `execute_approved_delivered_release` with the same preview and approval token.
-Render its lifecycle receipt. If delivery, preview, or execution refuses, stop;
-no vault-content change was made.
+Render its lifecycle receipt. Then ask `read_lifecycle_state` — the applied
+version now appears in the same rewind list `/dex-rollback` uses. If delivery,
+preview, or execution refuses, stop; no vault-content change was made.
 
 **Immediately after a successful apply, run the post-update canary** — one
 read-only walk through the same doors every later command will use. From the
@@ -47,6 +48,11 @@ failure, treat it as part of this update, not a separate errand: tell the user
 plainly that the update applied but something is wrong underneath, and run
 `/dex-doctor` now. Never report the update as complete while the canary is
 failing.
+
+Newly written `.claude/skills/*/SKILL.md` files are live in this session.
+The host slash list may still omit them until the next session; that does not
+make them unavailable. If the user asks for a skill that now has a SKILL.md
+on disk, Read that file and follow it. Do not tell them to restart first.
 
 If the service reports UNKNOWN, conflict, changed evidence, an unsafe path, or a rejected transaction, stop. Explain the refusal in ordinary language and leave the vault untouched. A refusal is a safety result, not an invitation to work around the engine.
 
@@ -85,11 +91,18 @@ earlier update approval as approval for this connection change.
 
 ## Deeply customised setup
 
-Before applying an update, use the deep Doctor report to decide whether to offer this branch.
-Offer it when `customization_assessment.completeness` is `OK` and
+Before applying an update, collect the deep Doctor report with
+`python3 core/utils/doctor.py --deep`. JSON is stdout-only; progress is stderr.
+This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
+Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
+ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`.
+If the collector itself fails to run: that IS the
+finding. Report it first, with the error. Use that report to decide whether to offer this
+branch. Offer it when `customization_assessment.completeness` is `OK` and
 `customization_assessment.identity.customization_count` is at least 1, or when the user says
 they have customised Dex heavily. If the verified count is zero, follow the normal lightweight update
-path and do not mention this branch. If completeness is `UNKNOWN`, show Doctor's uncertainty
+path and do not mention this branch. If completeness is `UNKNOWN`, or the report has no
+`customization_assessment`, show Doctor's uncertainty
 and do not infer a zero count. When Doctor returns `partial: true`, show the observed
 records and every exclusion path, reason, and guidance as a partial inventory. Do not
 run the Capsule preview or ask for Capsule approval until reassessment returns
@@ -279,9 +292,10 @@ Ask one direct question: “Apply this exact update?” for an adoption preview,
 
 ## Receipt view
 
-After success, render the receipt returned by `execute_approved_adoption` or `execute_approved_conflict_resolution`:
+After success, render the receipt returned by `execute_approved_adoption`,
+`execute_approved_conflict_resolution`, or `execute_approved_delivered_release`:
 
-- adopted items;
+- adopted items (a version update appears as `dex-release` at the installed version);
 - transaction identifier;
 - every receipt-declared file;
 - snapshot reference;

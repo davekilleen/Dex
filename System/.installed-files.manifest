@@ -946,7 +946,6 @@ core/tests/__init__.py
 core/tests/brain-vault-migrator-integration.test.cjs
 core/tests/brain-vault-migrator-unit.test.cjs
 core/tests/conftest.py
-core/tests/fixtures/dex-lens-catalogue-enriched-preview.schema.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.expected.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.md
 core/tests/fixtures/entity_pages/02-pipe-table.expected.json

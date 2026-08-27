@@ -161,6 +161,47 @@ def test_add_missing_calendar_warning_skips_calendar_list_for_nonempty_results(
     assert "warning" not in unchanged
 
 
+def test_calendar_get_events_filters_offset_all_day_events_by_calendar_date(
+    monkeypatch,
+):
+    events = [
+        {
+            "title": "In range",
+            "start": "2026-08-20T00:00:00-07:00",
+            "all_day": True,
+        },
+        {
+            "title": "Outside range",
+            "start": "2026-08-21T00:00:00+01:00",
+            "all_day": True,
+        },
+    ]
+    monkeypatch.setattr(calendar_server, "_HAS_HEALTH", False)
+    monkeypatch.setattr(calendar_server, "_tz_today", lambda: calendar_server.date(2026, 8, 20))
+    monkeypatch.setattr(
+        calendar_server,
+        "run_shell_script",
+        lambda *args: (True, json.dumps(events)),
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server.handle_call_tool(
+                "calendar_get_events",
+                {
+                    "calendar_name": "Work",
+                    "start_date": "2026-08-20",
+                    "end_date": "2026-08-21",
+                },
+            )
+        )
+    )
+
+    assert payload["success"] is True
+    assert payload["events"] == [events[0]]
+    assert payload["count"] == 1
+
+
 @pytest.mark.parametrize(
     ("tool_name", "arguments"),
     [

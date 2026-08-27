@@ -38,11 +38,11 @@ def _write_mcp_server(root: Path, *, duplicate_server: bool = False) -> Path:
     return path
 
 
-def test_discovers_exact_core_mcp_boundary_and_136_tools() -> None:
+def test_discovers_every_core_and_integration_mcp_server() -> None:
     servers = discover_mcp_servers(REPO_ROOT)
 
-    assert len(servers) == 10
-    assert sum(server.tool_count for server in servers) == 136
+    assert len(servers) == 11
+    assert sum(server.tool_count for server in servers) == 151
     assert {server.server_name: server.tool_count for server in servers} == {
         "dex-analytics": 4,
         "dex-calendar-mcp": 15,
@@ -51,15 +51,17 @@ def test_discovers_exact_core_mcp_boundary_and_136_tools() -> None:
         "dex-granola-mcp": 6,
         "dex-improvements-mcp": 9,
         "dex-onboarding-mcp": 17,
+        "dex-pipedrive-mcp": 15,
         "dex-resume-mcp": 12,
         "dex-session-memory": 8,
         "dex-work-mcp": 50,
     }
     assert all(server.capability_id == server.server_name for server in servers)
-    assert all(server.source_path.startswith("core/mcp/") for server in servers)
     assert all(server.source_path.endswith("_server.py") for server in servers)
     assert all(1 <= len(server.example_tools) <= 5 for server in servers)
     assert all(tuple(sorted(server.example_tools)) == server.example_tools for server in servers)
+    pipedrive = next(server for server in servers if server.server_name == "dex-pipedrive-mcp")
+    assert pipedrive.source_path == "core/integrations/pipedrive/pipedrive_server.py"
 
 
 def test_mcp_discovery_rejects_untracked_source(tmp_path: Path) -> None:
@@ -119,10 +121,11 @@ def test_automation_cadence_rejects_invalid_or_nondaily_calendar_fields(
         _automation_cadence({"StartCalendarInterval": calendar}, source="invalid.plist")
 
 
-def test_discovers_four_reviewed_system_engine_groups() -> None:
+def test_discovers_five_reviewed_system_engine_groups() -> None:
     engines = discover_system_engines(REPO_ROOT)
 
     assert [engine.capability_id for engine in engines] == [
+        "connection-manager-engine",
         "entity-temperature-engine",
         "proactive-promise-engine",
         "ritual-intelligence-engine",
@@ -148,8 +151,8 @@ def test_enriched_registry_exactly_annotates_every_non_skill_candidate() -> None
     }
 
     assert registry["registry_version"] == 1
-    assert len(entries) == 19
-    assert len({entry["id"] for entry in entries}) == 19
+    assert len(entries) == 21
+    assert len({entry["id"] for entry in entries}) == 21
     for capability_class, expected_ids in discovered.items():
         assert {entry["id"] for entry in entries if entry["capability_class"] == capability_class} == expected_ids
     assert all(entry["impact_tier"] in {"core", "high", "medium", "niche"} for entry in entries)

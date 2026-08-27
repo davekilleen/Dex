@@ -3242,36 +3242,77 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
     result['related_company'] = find_company_for_attendees(attendees)
     
     # Get attendee details from People directory
+    attendee_pages: Dict[str, List[Path]] = {}
     for attendee in attendees:
-        attendee_normalized = attendee.lower().replace(' ', '_')
+        attendee_normalized = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
         
         # Check both Internal and External directories
         for subdir in ['External', 'Internal']:
             people_subdir = get_people_dir() / subdir
             if not people_subdir.exists():
                 continue
-            
+
             for person_file in people_subdir.glob('*.md'):
-                if attendee_normalized in person_file.stem.lower():
+                person_normalized = re.sub(
+                    r'[\s_]+', ' ', person_file.stem
+                ).strip().casefold()
+                if attendee_normalized == person_normalized:
                     person_data = parse_person_page(person_file)
                     result['attendee_details'].append(person_data)
+                    attendee_pages.setdefault(attendee, []).append(person_file)
                     break
-    
+
     # Find outstanding tasks related to attendees
+    seen_outstanding_tasks = set()
+
+    def add_outstanding_task(title: str, attendee: str) -> None:
+        clean_title = title.strip()
+        placeholder = clean_title.casefold()
+        if (
+            not clean_title
+            or placeholder in {
+                '{{action item}}',
+                '[action item]',
+                '(none yet)',
+                'none yet',
+            }
+            or ('{{' in clean_title and '}}' in clean_title)
+        ):
+            return
+        task_key = (attendee.casefold(), clean_title.casefold())
+        if task_key in seen_outstanding_tasks:
+            return
+        seen_outstanding_tasks.add(task_key)
+        result['outstanding_tasks'].append({
+            'title': clean_title,
+            'related_to': attendee,
+        })
+
     tasks_file = get_tasks_file()
     if tasks_file.exists():
         content = tasks_file.read_text()
         for attendee in attendees:
-            attendee_lower = attendee.lower()
+            attendee_key = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
             for line in content.split('\n'):
-                if '- [ ]' in line and attendee_lower in line.lower():
-                    # Extract task title
-                    title_match = re.match(r'-\s*\[ \]\s*\*?\*?(.+?)\*?\*?(?:\s*\^|\s*$)', line.strip())
-                    if title_match:
-                        result['outstanding_tasks'].append({
-                            'title': title_match.group(1).strip(),
-                            'related_to': attendee
-                        })
+                line_key = re.sub(r'[\s_]+', ' ', line).casefold()
+                attendee_pattern = rf'(?<!\w){re.escape(attendee_key)}(?!\w)'
+                if (
+                    re.match(r'^\s*-\s*\[ \]\s+', line)
+                    and re.search(attendee_pattern, line_key)
+                ):
+                    add_outstanding_task(_task_title_from_line(line), attendee)
+
+    # Person pages also hold legitimate open items that may not yet be in the
+    # canonical backlog. Meeting prep must not drop that attendee context.
+    for attendee, person_files in attendee_pages.items():
+        for person_file in person_files:
+            try:
+                person_content = person_file.read_text()
+            except OSError:
+                continue
+            for line in person_content.splitlines():
+                if re.match(r'^\s*-\s*\[ \]\s+', line):
+                    add_outstanding_task(_task_title_from_line(line), attendee)
     
     # --- QMD: Surface thematically related past discussions ---
     result['semantic_context'] = []

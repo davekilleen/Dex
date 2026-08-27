@@ -456,14 +456,14 @@ def _validate_against_lens_schema(
     schema = _mapping(_closed_json(selected_schema), context=str(selected_schema))
     if required_lens_version is not None and schema.get("x-dex-lens-minimum-version") != required_lens_version:
         raise LensCatalogError(
-            f"enriched preview schema must declare x-dex-lens-minimum-version {required_lens_version}"
+            f"enriched catalogue schema must declare x-dex-lens-minimum-version {required_lens_version}"
         )
     wire_envelope = json.loads(_canonical_json(envelope))
     try:
         jsonschema.Draft202012Validator(schema).validate(wire_envelope)
     except jsonschema.ValidationError as error:
         path = ".".join(str(part) for part in error.absolute_path) or "<root>"
-        label = "enriched preview" if required_lens_version is not None else "emitted Lens catalogue"
+        label = "enriched catalogue" if required_lens_version is not None else "emitted Lens catalogue"
         raise LensCatalogError(f"{label} violates the supplied Lens schema at {path}: {error.message}") from error
 
 
@@ -918,21 +918,33 @@ def generate_lens_catalog(
     signing_key_env: str = "DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64",
     key_id: str = "dex-core-lens-1",
     test_deterministic_signature: bool = False,
+    enriched: bool = False,
 ) -> tuple[Path, Path]:
     release_root = release_root.resolve()
     issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
-    catalog_version, release_version, catalogue = _build_catalogue(release_root)
+    if enriched:
+        catalog_version, release_version, catalogue = _build_enriched_catalogue(release_root)
+    else:
+        catalog_version, release_version, catalogue = _build_catalogue(release_root)
     metadata = {
         "contract_version": CONTRACT_VERSION,
         "catalog_version": catalog_version,
         "produced_at": issued.isoformat().replace("+00:00", "Z"),
         "expires_at": (issued + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
-        "producer": f"Dex Core release pipeline v{release_version}",
+        "producer": (
+            f"Dex Core enriched release pipeline v{release_version}"
+            if enriched
+            else f"Dex Core release pipeline v{release_version}"
+        ),
         "core_release": f"v{release_version}",
         "key_id": key_id,
     }
     signed_payload = {"metadata": metadata, "catalogue": catalogue}
-    _validate_against_lens_schema(release_root, {**signed_payload, "signature": "schema-validation-placeholder"})
+    _validate_against_lens_schema(
+        release_root,
+        {**signed_payload, "signature": "schema-validation-placeholder"},
+        required_lens_version="0.1.9" if enriched else None,
+    )
     payload = _canonical_json(signed_payload)
     signature = ""
     if sign:
@@ -1003,11 +1015,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--signing-key-env", default="DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64")
     parser.add_argument("--key-id", default="dex-core-lens-1")
     parser.add_argument("--test-deterministic-signature", action="store_true")
+    parser.add_argument("--enriched", action="store_true")
     parser.add_argument("--enriched-preview", action="store_true")
     parser.add_argument("--lens-schema", type=Path)
     args = parser.parse_args(raw_argv)
 
     try:
+        if args.enriched and args.enriched_preview:
+            raise LensCatalogError("--enriched and --enriched-preview are mutually exclusive")
         if args.enriched_preview:
             if args.sign:
                 raise LensCatalogError("enriched previews cannot be signed or published")
@@ -1039,6 +1054,7 @@ def main(argv: list[str] | None = None) -> int:
             signing_key_env=args.signing_key_env,
             key_id=args.key_id,
             test_deterministic_signature=args.test_deterministic_signature,
+            enriched=args.enriched,
         )
     except LensCatalogError as error:
         parser.exit(1, f"Dex Lens catalog generation failed: {error}\n")

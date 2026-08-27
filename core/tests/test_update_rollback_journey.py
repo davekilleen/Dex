@@ -101,6 +101,8 @@ def test_update_and_rollback_renderers_do_not_duplicate_baseline_mutation_logic(
     assert "read_lifecycle_state" in update
     assert "read_lifecycle_state" in rollback
     assert "rewind_adoption_by_receipt" in rollback
+    assert "execute_approved_delivered_release" in update
+    assert "dex-release" in rollback
 
 
 def test_release_cut_stamps_transition_metadata_from_the_bumped_package(tmp_path: Path, capsys) -> None:

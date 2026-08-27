@@ -16,11 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.lens_catalog_discovery import LensDiscoveryError, discover_mcp_server_source
+from core.lens_catalog_discovery import LensDiscoveryError, discover_mcp_servers
 
 DEFAULT_OUTPUT = REPO_ROOT / "docs/architecture/INVENTORY.md"
 GENERATOR_PATH = "scripts/generate-architecture-inventory.py"
-TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 TRIGGER = re.compile(r"\b(?:when|whenever)\b", re.IGNORECASE)
 OWNERSHIP_ORDER = ("brain", "seed", "generated", "vault", "runtime")
 UNDER_SURFACED_MAX = 0
@@ -73,77 +72,20 @@ def _string(node: ast.AST) -> str | None:
     return None
 
 
-def _keyword_string(call: ast.Call, keyword: str) -> str | None:
-    for item in call.keywords:
-        if item.arg == keyword:
-            return _string(item.value)
-    return None
-
-
-def _literal_tool_names(node: ast.AST) -> set[str]:
-    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
-        return {
-            value
-            for item in node.elts
-            if (value := _string(item)) is not None and TOOL_NAME.fullmatch(value)
-        }
-    value = _string(node)
-    if value is not None and TOOL_NAME.fullmatch(value):
-        return {value}
-    return set()
-
-
-def _dispatch_tool_names(compare: ast.Compare) -> set[str]:
-    """Extract literal ``name`` dispatch values, including reversed equality."""
-    names: set[str] = set()
-    operands = [compare.left, *compare.comparators]
-    for index, operator in enumerate(compare.ops):
-        left = operands[index]
-        right = operands[index + 1]
-        left_is_name = isinstance(left, ast.Name) and left.id == "name"
-        right_is_name = isinstance(right, ast.Name) and right.id == "name"
-        if isinstance(operator, ast.Eq):
-            if left_is_name:
-                names.update(_literal_tool_names(right))
-            elif right_is_name:
-                names.update(_literal_tool_names(left))
-        elif isinstance(operator, ast.In) and left_is_name:
-            names.update(_literal_tool_names(right))
-    return names
-
-
-def _server_sources(repo_root: Path) -> list[Path]:
-    """Every MCP server Dex ships: the core set, plus opt-in integrations.
-
-    Integration servers live at ``core/integrations/<name>/<name>_server.py``
-    rather than in the core ``core/mcp`` namespace, because a core server has
-    to be registered in every vault and an update cannot add a registration to
-    an install that already exists. They are still Dex's own engines, so the
-    inventory has to see them.
-    """
-    return sorted(
-        (repo_root / "core/mcp").glob("*_server.py"),
-    ) + sorted(
-        (repo_root / "core/integrations").glob("*/*_server.py"),
-    )
-
-
 def discover_engines(repo_root: Path) -> list[Engine]:
-    engines: list[Engine] = []
-    for path in _server_sources(repo_root):
-        try:
-            candidate = discover_mcp_server_source(repo_root, path)
-        except LensDiscoveryError as error:
-            raise InventoryError(str(error)) from error
-        engines.append(
-            Engine(
-                source=candidate.source_path,
-                server_name=candidate.server_name,
-                tools=candidate.tools,
-                has_feature_status=candidate.has_feature_status,
-            )
+    try:
+        candidates = discover_mcp_servers(repo_root)
+    except LensDiscoveryError as error:
+        raise InventoryError(str(error)) from error
+    return [
+        Engine(
+            source=candidate.source_path,
+            server_name=candidate.server_name,
+            tools=candidate.tools,
+            has_feature_status=candidate.has_feature_status,
         )
-    return sorted(engines, key=lambda engine: (engine.server_name, engine.source))
+        for candidate in candidates
+    ]
 
 
 def _frontmatter_value(frontmatter: str, key: str) -> str | None:

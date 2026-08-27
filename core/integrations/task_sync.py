@@ -32,6 +32,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _json_default(value: object) -> str:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    raise TypeError(
+        f"Object of type {value.__class__.__name__} is not JSON serializable"
+    )
+
+
 def _new_service_state(last_sync: str | None = None) -> dict[str, Any]:
     return {
         "last_sync": last_sync or _now_iso(),
@@ -129,9 +137,9 @@ def _enabled_services(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     legacy = config.get("enabled")
     if isinstance(legacy, dict):
         for name, value in legacy.items():
-            if value is True:
-                settings = config.get(name)
-                enabled[str(name)] = settings if isinstance(settings, dict) else {}
+            settings = config.get(name)
+            if value is True and isinstance(settings, dict):
+                enabled[str(name)] = settings
 
     for name, settings in config.items():
         if name == "enabled" or not isinstance(settings, dict):
@@ -208,7 +216,7 @@ def _run_adapter(
     runner = ADAPTERS_DIR / "run.cjs"
     result = subprocess.run(
         [_find_node(), str(runner), service, operation],
-        input=json.dumps({"config": config, "args": args}),
+        input=json.dumps({"config": config, "args": args}, default=_json_default),
         capture_output=True,
         text=True,
         timeout=30,

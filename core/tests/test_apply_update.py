@@ -18,6 +18,11 @@ from core import portable_contract
 from core.lifecycle import service
 from core.lifecycle.bridge import ACTIVATION_RELATIVE, activate_vault
 from core.lifecycle.catalog import canonical_catalog_bytes, load_catalog
+from core.lifecycle.engine import (
+    DELIVERED_RELEASE_ITEM_ID,
+    load_adoption_receipt,
+    rewind_acknowledgement_token,
+)
 from core.lifecycle.inventory import build_inventory
 from core.tests.lifecycle_test_helpers import (
     canonical_json_bytes,
@@ -364,6 +369,93 @@ def test_delivery_previews_and_applies_only_the_exact_pinned_release(
     assert executed["receipt"]["transaction_id"]
     assert _git(brain, "rev-parse", "refs/dex/installed") == target_commit
     assert (vault / "README.md").read_bytes() == b"new brain\n"
+
+
+def test_delivered_release_records_a_rewindable_receipt_and_rollback_restores_it(
+    split_release_fixture: dict[str, object],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A version update must leave a receipt /dex-rollback can actually rewind.
+
+    Issue #585: execute_approved_delivered_release used to return only a
+    transaction receipt, so read_lifecycle_state had nothing for the release
+    and rewind_adoption_by_receipt could not undo it.
+    """
+    vault = split_release_fixture["vault"]
+    brain = split_release_fixture["brain"]
+    old_tag, _old_tag_object, old_commit, _old_tree = split_release_fixture["old"]
+    del old_tag
+
+    _equip_with_lifecycle_state(vault, "1.63.0")
+    user_tasks = (vault / "03-Tasks/Tasks.md").read_bytes()
+    user_project = (vault / "04-Projects/private.md").read_bytes()
+    old_readme = (vault / "README.md").read_bytes()
+    old_obsolete = (vault / "core/obsolete.py").read_bytes()
+    assert old_obsolete
+
+    delivered, previewed = _deliver_and_preview_equipped_release(
+        split_release_fixture, tmp_path
+    )
+    _target_tag, _target_tag_object, target_commit, _target_tree = split_release_fixture[
+        "target"
+    ]
+
+    def direct_apply_must_not_run(*_args, **_kwargs):
+        raise AssertionError("delivery execution bypassed core.lifecycle.service")
+
+    monkeypatch.setattr(apply_update, "apply_verified_release", direct_apply_must_not_run)
+    executed = service.execute_approved_delivered_release(
+        vault,
+        previewed["preview"],
+        previewed["approval_token"],
+    )
+
+    assert executed["release"] == delivered["release"]
+    assert _git(brain, "rev-parse", "refs/dex/installed") == target_commit
+    assert (vault / "README.md").read_bytes() == b"new brain\n"
+    assert not (vault / "core/obsolete.py").exists()
+    assert (vault / "03-Tasks/Tasks.md").read_bytes() == user_tasks
+    assert (vault / "04-Projects/private.md").read_bytes() == user_project
+
+    state = service.read_lifecycle_state(vault)
+    adopted = state["ledger_state"]["adopted"]
+    assert isinstance(adopted, dict)
+    assert DELIVERED_RELEASE_ITEM_ID in adopted
+    entry = adopted[DELIVERED_RELEASE_ITEM_ID]
+    assert entry["tx_id"] == executed["receipt"]["transaction_id"]
+    assert entry["version"] == delivered["release"]["version"]
+    assert entry["receipt_path"] == (
+        f"System/.dex/adoptions/{entry['tx_id']}.receipt.json"
+    )
+
+    receipt = load_adoption_receipt(vault, str(entry["tx_id"]))
+    assert receipt.items_adopted == (DELIVERED_RELEASE_ITEM_ID,)
+    assert receipt.snapshot_ref == f"System/.dex/tx/{entry['tx_id']}/snapshot"
+    assert (vault / receipt.snapshot_ref).is_dir()
+
+    rewound = service.rewind_adoption_by_receipt(
+        vault,
+        receipt,
+        rewind_acknowledgement_token(receipt),
+    )
+    rewind_receipt = rewound["rewind_receipt"]
+    assert rewind_receipt["adoption_transaction_id"] == entry["tx_id"]
+
+    assert (vault / "README.md").read_bytes() == old_readme
+    assert (vault / "core/obsolete.py").read_bytes() == old_obsolete
+    assert (vault / "03-Tasks/Tasks.md").read_bytes() == user_tasks
+    assert (vault / "04-Projects/private.md").read_bytes() == user_project
+    assert _git(brain, "rev-parse", "refs/dex/installed") == old_commit
+    assert json.loads((vault / "System/.dex/topology.json").read_text())[
+        "installedRelease"
+    ] == old_commit
+    assert json.loads((vault / ".dex/brain.git/dex-brain-v2").read_text())[
+        "installed"
+    ] == old_commit
+
+    after = service.read_lifecycle_state(vault)
+    assert DELIVERED_RELEASE_ITEM_ID not in after["ledger_state"]["adopted"]
 
 
 def test_default_delivery_budget_remains_ten_seconds_and_evidence_failure_is_not_retried(

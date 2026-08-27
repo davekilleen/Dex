@@ -387,7 +387,8 @@ jobs:
           .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
           .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
-            --output-dir "$OUTPUT_DIR"
+            --output-dir "$OUTPUT_DIR" \
+            --enriched
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json"
           test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json.sha256"
@@ -482,8 +483,8 @@ jobs:
       - name: Generate signed Dex Lens catalog
         if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
         env:
-          # Front Desk release review and Lens M1 verifier confirmation are required before
-          # setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
+          # Dex Lens v0.1.9 release verification and Front Desk release review are required
+          # before setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
           # The value must be a base64-encoded Ed25519 PEM private key stored as an
           # environment secret; no generated private key belongs in the repo.
           DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
@@ -501,6 +502,7 @@ jobs:
           .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
             --output-dir dist \
+            --enriched \
             --sign \
             --key-id dex-core-lens-1
       - name: Upload Dex Lens catalog for Pages

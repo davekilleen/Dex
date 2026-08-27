@@ -279,8 +279,23 @@ def test_lens_catalog_release_environment_has_a_pr_dry_run() -> None:
     assert ".lens-venv/bin/python scripts/generate-dex-lens-catalog.py" in run
     assert "--release-root \"$PWD\"" in run
     assert "--output-dir \"$OUTPUT_DIR\"" in run
+    assert "--enriched" in run
     assert "--sign" not in run
     assert "dex-lens-catalog-latest.json" in run
+
+
+def test_stable_release_signs_the_enriched_catalogue_path() -> None:
+    workflow = _load(CI_WORKFLOW)
+    steps = {
+        step["name"]: step
+        for step in workflow["jobs"]["build-release"]["steps"]
+        if "name" in step
+    }
+    run = steps["Generate signed Dex Lens catalog"]["run"]
+
+    assert "--enriched" in run
+    assert "--sign" in run
+    assert "--key-id dex-core-lens-1" in run
 
 
 def test_lens_catalog_is_generated_before_the_immutable_release_tag_is_pushed() -> None:

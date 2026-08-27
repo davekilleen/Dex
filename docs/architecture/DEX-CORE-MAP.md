@@ -21,7 +21,7 @@
 | Portable ownership contract | **SHIPPED** (v1.64+) | `core/portable_contract.py` | Source of truth: every path is brain/seed/generated/vault/runtime; decides what an update may write |
 | Release catalog + bridge | **SHIPPED** (v1.65–v1.68) | `core/lifecycle/catalog/*`, `bridge.py` | Publisher-declared packing list per release; one-release handoff from the legacy updater |
 | Historic updater journey protocol + executor | **SHIPPED** (v1.81.0), acceptance pending | `core/update/journey-protocol-v1.json`, `core/update/journey_protocol.py`, `scripts/release_fleet_executor.py` | Closed release-owned machine contract and evidence-owning implementation for the pinned bridge and lifecycle delivery route |
-| 10 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (see INVENTORY) |
+| 11 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py`, `core/integrations/*/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (see INVENTORY) |
 | Connection Manager (OAuth/token) | **SHIPPED ENGINE, `/connect` HELD** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; hardened through security Phases 0–5g, but the `/connect` doorway stays held (draft PR #231) |
 | Customization migration | **SHIPPED** assess/capsule/guided-journey (v1.75.x) / **LOCAL** rebuild engine and doorway | `core/customization_migration/*`, `core/mcp/customization_migration_server.py` | Inventories customizations, preserves a Capsule, and offers a human-confirmed, receipt-backed rebuild and rewind; the doorway is authorized but remains unshipped until its release |
 | DexDiff (methodology sharing) | **SHIPPED** cmd surface / **PARKED** redesign | `.claude/skills/diff-*`, `core/dexdiff_profile_adopt.py` | Generate→publish→adopt-regenerates-locally; redesign parked for the desktop "Vorflux" rebuild |
@@ -109,7 +109,7 @@ the foundation and closed journey contract, but the separate follow-up and full
 170-tree macOS journey have not yet completed. The fleet-acceptance result
 therefore remains false.
 
-## 5. The 10 MCP servers — SHIPPED
+## 5. The 11 MCP servers — SHIPPED
 
 **What they are.** The tool surface Dex acts through. **Do not restate the tool lists — read `docs/architecture/INVENTORY.md` § "MCP engines" for exact per-server tool names.** Summary:
 
@@ -117,16 +117,17 @@ therefore remains false.
 | --- | --- | ---: | :---: |
 | `dex-work-mcp` | `work_server.py` (247 KB) | **50** | yes |
 | `dex-calendar-mcp` | `calendar_server.py` | 15 | yes |
+| `dex-pipedrive-mcp` | `core/integrations/pipedrive/pipedrive_server.py` | 15 | yes |
 | `dex-resume-mcp` | `resume_server.py` | 12 | yes |
 | `dex-improvements-mcp` | `dex_improvements_server.py` | 9 | **no** |
 | `dex-career-mcp` | `career_server.py` | 8 | yes |
-| `dex-onboarding-mcp` | `onboarding_server.py` | 8 | **no** |
+| `dex-onboarding-mcp` | `onboarding_server.py` | 17 | **no** |
 | `dex-session-memory` | `session_memory_server.py` | 8 | **no** |
 | `dex-granola-mcp` | `granola_server.py` | 6 | yes |
 | `dex-customization-migration-mcp` | `customization_migration_server.py` | 7 | yes |
 | `dex-analytics` | `analytics_server.py` | 4 | yes |
 
-**The big one.** `dex-work-mcp` is the spine of `/daily-plan`, `/week-plan`, `/process-meetings` (tasks, people/company indexes, goals, priorities, meeting cache, plus `boot_today` / `get_person_context` / `check_safety_gate` for harness-portable context and advisory gates). Per INVENTORY's connectedness section, three servers are **under-surfaced** (0 skills reference them): `dex-career-mcp`, `dex-resume-mcp`, and `dex-session-memory`. The customization-migration MCP is now surfaced through `/dex-update` for Capsule evidence and readable blob access. `dex-analytics` is **over-surfaced** (28 skills call `track_event`).
+**The big one.** `dex-work-mcp` is 50 tools (tasks, people/company indexes, goals, priorities, meeting cache, external task sync, focus/scheduling, relationship confirm/dismiss, soft-commitment detection, plus `boot_today` / `get_person_context` / `check_safety_gate` for harness-portable context and advisory gates). It is the spine of `/daily-plan`, `/week-plan`, `/process-meetings`. Per INVENTORY's connectedness section, three servers are **under-surfaced** (0 skills reference them): `dex-career-mcp`, `dex-resume-mcp`, and `dex-session-memory`. The customization-migration MCP is now surfaced through `/dex-update` for Capsule evidence and readable blob access; the optional Pipedrive server lives under `core/integrations/` but is part of the same canonical inventory. `dex-analytics` is **over-surfaced** (28 skills call `track_event`).
 
 **Honesty-contract gap.** Three servers lack `feature_status` (`dex-improvements-mcp`, `dex-onboarding-mcp`, `dex-session-memory`) — meaning they don't return the ok/off/not_installed/broken/unknown status envelope the rest do. That's the honest weak spot in the "every MCP tells you its health" story.
 

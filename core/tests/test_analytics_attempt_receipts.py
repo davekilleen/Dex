@@ -161,6 +161,7 @@ def test_analytics_receipt_keeps_historical_lifecycle_helper_signatures() -> Non
             "approved_token",
             "operation",
             "before_commit",
+            "bind_intent",
         ),
     }
 

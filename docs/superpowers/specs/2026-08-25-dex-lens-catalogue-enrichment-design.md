@@ -1,10 +1,10 @@
 # Dex Lens Catalogue Enrichment Design
 
-**Status:** Guarded implementation complete; publication is held until Dex Lens releases a compatible schema and verifier.
+**Status:** Lens `v0.1.9` released the compatible schema and verifier. Core's signed catalogue-v5 promotion is implemented; live publication follows the protected Core release path.
 
-**Decision:** Ship the active-skill correction through the current signed v2
-catalogue first. Build the four-class model as a guarded preview that cannot enter
-the signing path until Dex Lens exports the matching schema.
+**Decision:** Phase 1 shipped the active-skill correction through the legacy-compatible
+v2 shape. Phase 2 keeps the historical preview non-publishable and adds a distinct
+`--enriched` production path, pinned to the exact Lens `v0.1.9` schema.
 
 ## Outcome
 
@@ -13,8 +13,9 @@ subset of Dex.
 
 Phase 1 publishes every active first-party skill through the existing Lens v2
 contract. Phase 2 discovers skills, MCP servers, scheduled automations, and system
-engines in one normalized model, ranks them, and produces a validated example
-without claiming that the current Lens verifier can consume it.
+engines in one normalized model, ranks them, and produces both a permanently
+unsigned example and the signed catalogue version 5 release payload accepted by
+Lens `v0.1.9`.
 
 ## Verified Baseline
 
@@ -138,7 +139,7 @@ It builds the 66-entry active-skill catalogue and calls
 `_validate_against_lens_schema` against the current vendored Lens schema before any
 output is signed or written.
 
-## Phase 2: Four-Class Guarded Preview
+## Phase 2: Four-Class Catalogue and Guarded Preview
 
 ### Normalized candidates
 
@@ -241,7 +242,7 @@ Add an explicit preview command-line mode:
 ```text
 python3 scripts/generate-dex-lens-catalog.py \
   --enriched-preview \
-  --lens-schema <path-to-proposed-exported-lens-schema> \
+  --lens-schema core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json \
   --output-dir <temporary-output>
 ```
 
@@ -250,15 +251,22 @@ Rules:
 - `--enriched-preview` requires an explicit schema path;
 - signing flags are rejected in preview mode;
 - output filenames contain `preview` and cannot match release upload globs;
-- the default release path remains Phase 1 only;
+- the default generator remains available for the legacy Phase 1 compatibility proof;
 - `_validate_against_lens_schema` receives the explicit schema and must pass before
   the preview is written;
-- the checked-in example is generated from a test schema fixture matching the schema
-  delta, never hand-edited.
+- the checked-in example is generated against the exact released schema, never hand-edited.
 
-When Dex Lens lands and exports the agreed schema, Dex Core vendors that exact export,
-adds cross-repo identity evidence, and only then promotes enriched generation into the
-signed release path.
+Dex Lens `v0.1.9` now exports the agreed schema. Dex Core vendors that exact export,
+pins its SHA-256 in tests, and exposes a separate `--enriched` release mode. The
+preview command remains unsigned and writes a non-release filename; the stable
+release workflow alone selects the enriched signing mode.
+
+```text
+python3 scripts/generate-dex-lens-catalog.py \
+  --enriched \
+  --sign \
+  --output-dir dist
+```
 
 ## Dex Lens Schema Delta
 
@@ -306,7 +314,7 @@ Generation fails before signing or output when:
 - an automation cadence or installer cannot be resolved;
 - a system-engine group is empty;
 - preview mode has no explicit schema or attempts to sign;
-- either current or proposed schema validation fails.
+- either legacy or released enriched-schema validation fails.
 
 The generator removes no existing release artifacts. As today, validation occurs
 before writes so a failed run leaves nothing publishable behind.
@@ -335,25 +343,27 @@ Phase 2 tests prove:
 - four plist automations and the backup scheduler resolve with honest cadences;
 - all four system-engine groups resolve, with ritual intelligence parked;
 - each per-class resolver rejects a wrong source shape;
-- the current Lens schema rejects the enriched example;
-- the proposed schema fixture accepts the enriched example through
+- the historical Lens `v0.1.8` schema rejects the enriched example;
+- the released Lens `v0.1.9` schema accepts the enriched example through
   `_validate_against_lens_schema`;
+- a real Ed25519 test signature verifies through the released Lens wheel;
+- the signed production mode emits catalogue version 5 through the normal versioned
+  and `latest` release filenames;
 - the example contains at least one entry of every class;
 - preview mode cannot sign or create release-named artifacts.
 
 ## Delivery and Truthfulness
 
-Phase 1 is ready for the normal signed catalogue release path only after all current
-Core checks pass and the generated 66-entry v2 catalogue validates.
+Phase 1 shipped as signed catalogue version 4 with 66 active skills and remains the
+legacy compatibility proof for the Lens transition schema.
 
-Phase 2 is implemented and testable but remains explicitly preview-only. Completion
-language must distinguish:
+Phase 2 is implemented against the released Lens contract. Completion language must
+still distinguish:
 
 - Phase 1 implemented in Core versus actually merged or released;
-- Phase 2 Core discovery implemented versus accepted by Dex Lens;
+- Phase 2 Core discovery implemented versus signed and served by a Core release;
 - a generated example versus a signed published catalogue;
 - parked system code versus live capability.
 
-No customer-facing full-Dex claim is valid until the Dex Lens schema/model change,
-the matching Core schema export, signing, live publication, and Lens acceptance all
-land together.
+No customer-facing full-Dex claim is valid until catalogue version 5 is signed,
+served from the canonical route, and accepted there by a released Lens build.

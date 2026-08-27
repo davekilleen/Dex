@@ -72,9 +72,9 @@ def validate_user_profile_config(config: object) -> list[str]:
             errors.append("feedback.review_mode must be always-review or auto-send")
     capabilities = config.get("capabilities")
     if isinstance(capabilities, Mapping):
-        from core.capabilities import room_ids
+        from core.portable_contract import CAPABILITIES
 
-        declared = set(room_ids())
+        declared = set(CAPABILITIES)
         for room, state in capabilities.items():
             if room not in declared:
                 errors.append(f"capabilities contains unknown room {room!r}")

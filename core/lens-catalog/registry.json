@@ -1,6 +1,6 @@
 {
   "registry_version": 1,
-  "catalog_version": 4,
+  "catalog_version": 5,
   "jobs": [
     {
       "job_id": "capture-without-friction",
@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "d0562bec5c7110093f239e29dcd01628f2b8e08c2ce7a562b8948f5fa18bfa6a",
-        "byte_size": 18134
+        "sha256": "167a7d57681520ef9c58ab4a275dcb74f1a1404918f71c1c89b1b3a5e10f4a41",
+        "byte_size": 18255
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -486,7 +486,7 @@
         "sha256": "df2e77a13ccd34cce7c9b34b1d92d99b1c09fbe93ebce60e486bbfa5b878ae8a",
         "byte_size": 19256
       },
-      "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
+      "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with \u2014 so the loop finishes instead of drifting.",
       "jobs_served": [
         "start-each-day-focused",
         "reflect-and-improve-continuously"
@@ -608,7 +608,7 @@
         "goal": "Create a weekly review that reports concrete finished work and honest gaps instead of a synthetic progress score.",
         "method_outline": [
           "Gather the week's priorities, completed work and meeting record first.",
-          "Report what finished, what did not, and what changed — in countable terms.",
+          "Report what finished, what did not, and what changed \u2014 in countable terms.",
           "Surface repeating patterns as questions for the person rather than verdicts.",
           "Confirm next week's priorities with the person before recording them."
         ],
@@ -743,7 +743,7 @@
         "privacy-minimal-disclosure"
       ],
       "prerequisites": [
-        "Notes from the meeting — pasted, dictated, or already saved wherever the person keeps them.",
+        "Notes from the meeting \u2014 pasted, dictated, or already saved wherever the person keeps them.",
         "Somewhere to write the follow-ups the person approves."
       ],
       "trade_offs": [
@@ -807,7 +807,7 @@
         "sha256": "8936fea6f6e7a0e8a3f67bbe3fbede95dde26e752f339d86fa34e01d9dfc90b7",
         "byte_size": 6092
       },
-      "value": "Pulls the small promises — “I’ll send that over”, “can you review this” — out of meetings and notes into one list of who owes what, and tracks only the ones the person confirms are real.",
+      "value": "Pulls the small promises \u2014 \u201cI\u2019ll send that over\u201d, \u201ccan you review this\u201d \u2014 out of meetings and notes into one list of who owes what, and tracks only the ones the person confirms are real.",
       "jobs_served": [
         "manage-tasks-reliably"
       ],
@@ -881,7 +881,7 @@
         "sha256": "c4cc8a0bb2c7b48edddf3aa809a0756fa123fb6f6be8c60076357454b96edc34",
         "byte_size": 4435
       },
-      "value": "Shows what was handed to other people, what is moving, what is stuck and the one short nudge worth sending — and reports silence as unknown rather than as progress.",
+      "value": "Shows what was handed to other people, what is moving, what is stuck and the one short nudge worth sending \u2014 and reports silence as unknown rather than as progress.",
       "jobs_served": [
         "manage-tasks-reliably"
       ],
@@ -1023,7 +1023,7 @@
         "sha256": "9196c6be1f953775212c6992f0c099d0c80c67cbb47e0a22b20392d168e937ca",
         "byte_size": 2605
       },
-      "value": "Answers “what’s stuck?” across every active project in one pass: how long since anything moved, what is blocked, and whether the next step is actually clear.",
+      "value": "Answers \u201cwhat\u2019s stuck?\u201d across every active project in one pass: how long since anything moved, what is blocked, and whether the next step is actually clear.",
       "jobs_served": [
         "start-each-day-focused"
       ],
@@ -1043,7 +1043,7 @@
         {
           "kind": "runtime-path",
           "reference": ".claude/skills/project-health/SKILL.md",
-          "summary": "The shipped skill defines the four checks it makes per project — activity, active tasks, blockers and next-step clarity — and the traffic-light thresholds behind them. There is no test of the workflow's own judgement calls; the shipped skill file is the definition of the behaviour, which is why this entry claims support rather than proof."
+          "summary": "The shipped skill defines the four checks it makes per project \u2014 activity, active tasks, blockers and next-step clarity \u2014 and the traffic-light thresholds behind them. There is no test of the workflow's own judgement calls; the shipped skill file is the definition of the behaviour, which is why this entry claims support rather than proof."
         }
       ],
       "brief": {
@@ -1089,7 +1089,7 @@
         "sha256": "e6c5d64940fe7135bfacd06aebcffae7ac40ca0f1971503b6f4a46551c505283",
         "byte_size": 4518
       },
-      "value": "Keeps the reason behind a choice — the options, the rationale, the date to look at it again — so nobody has to reconstruct it from memory months later.",
+      "value": "Keeps the reason behind a choice \u2014 the options, the rationale, the date to look at it again \u2014 so nobody has to reconstruct it from memory months later.",
       "jobs_served": [
         "keep-projects-on-track"
       ],
@@ -1162,7 +1162,7 @@
         "sha256": "0b7db35d2bc39bc85bc94067348b3a3e04066698f7b1886c410e91e11001c9e3",
         "byte_size": 4862
       },
-      "value": "Turns “we’ve decided to do this” into something that can actually start: an outcome, signs of success somebody could check later, a named owner and the first few steps.",
+      "value": "Turns \u201cwe\u2019ve decided to do this\u201d into something that can actually start: an outcome, signs of success somebody could check later, a named owner and the first few steps.",
       "jobs_served": [
         "keep-projects-on-track"
       ],
@@ -1266,7 +1266,7 @@
         "method_outline": [
           "Start from whatever the person has, however rough, without judging it.",
           "Ask two or three questions at a time, conversationally, and wait for answers.",
-          "Fill the gaps that matter — who it is for, what problem, what success looks like.",
+          "Fill the gaps that matter \u2014 who it is for, what problem, what success looks like.",
           "Produce the written brief and keep it where the work will happen."
         ],
         "verification_checklist": [
@@ -1304,7 +1304,7 @@
         "sha256": "b2eb362df0d00962dbdf9fe8a988e499b9f584431e02e585ba3f376453b2b8c0",
         "byte_size": 8712
       },
-      "value": "Makes the beliefs a strategy rests on explicit — what is true today, in six months, in a year — so later decisions can be checked against them instead of quietly assuming them.",
+      "value": "Makes the beliefs a strategy rests on explicit \u2014 what is true today, in six months, in a year \u2014 so later decisions can be checked against them instead of quietly assuming them.",
       "jobs_served": [
         "keep-projects-on-track"
       ],
@@ -1371,7 +1371,7 @@
         "sha256": "9aa571d6fe78dfea5c8d78b32d3ec2ba78a7ea40ca5faf9d62be8b6c47922303",
         "byte_size": 3285
       },
-      "value": "Writes a dated profile of how the person actually works, built from their own accumulated records rather than from what they say about themselves — so drift over months becomes visible.",
+      "value": "Writes a dated profile of how the person actually works, built from their own accumulated records rather than from what they say about themselves \u2014 so drift over months becomes visible.",
       "jobs_served": [
         "reflect-and-improve-continuously"
       ],
@@ -1439,7 +1439,7 @@
         "sha256": "7a8fdd0bf4dfb517bcc076d2f9cc899efa1d678c5efa3f0bd6457d9186ef4ffb",
         "byte_size": 3929
       },
-      "value": "Three questions about how the week felt — what gave energy, what took it, one thing to change — kept deliberately separate from the record of what got done.",
+      "value": "Three questions about how the week felt \u2014 what gave energy, what took it, one thing to change \u2014 kept deliberately separate from the record of what got done.",
       "jobs_served": [
         "reflect-and-improve-continuously"
       ],
@@ -1512,7 +1512,7 @@
         "sha256": "cfd8cda3a6fd2fbd63129ed59a94db64a9dda24007dce2b488144043ee0459af",
         "byte_size": 18978
       },
-      "value": "Makes the person's own notes searchable by meaning rather than exact wording, on their own machine — so looking for “customer churn” still finds the note that said “people keep leaving”.",
+      "value": "Makes the person's own notes searchable by meaning rather than exact wording, on their own machine \u2014 so looking for \u201ccustomer churn\u201d still finds the note that said \u201cpeople keep leaving\u201d.",
       "jobs_served": [
         "reflect-and-improve-continuously"
       ],
@@ -1579,7 +1579,7 @@
         "sha256": "4ac35ac8c17b738e53210200694e027988f7a92dbda04d28a1285a4b1fd27631",
         "byte_size": 25061
       },
-      "value": "Explains what the system just did and why — which files it read, which tools ran, what was loaded before the conversation even started — so the person learns their own setup instead of trusting it blindly.",
+      "value": "Explains what the system just did and why \u2014 which files it read, which tools ran, what was loaded before the conversation even started \u2014 so the person learns their own setup instead of trusting it blindly.",
       "jobs_served": [
         "reflect-and-improve-continuously"
       ],
@@ -1803,7 +1803,7 @@
         "sha256": "eae4e6c405acf8f8bba6bfe0a6ef60186e44e136e20501b66d7d7c56a54773bd",
         "byte_size": 2778
       },
-      "value": "Proves the copies actually come back — fingerprints checked, the whole thing unpacked into a scratch folder — and, when a real recovery is needed, puts it somewhere new instead of over the live work.",
+      "value": "Proves the copies actually come back \u2014 fingerprints checked, the whole thing unpacked into a scratch folder \u2014 and, when a real recovery is needed, puts it somewhere new instead of over the live work.",
       "jobs_served": [
         "evolve-the-system-itself"
       ],
@@ -4373,69 +4373,6 @@
       "changed_in": []
     },
     {
-      "id": "connect",
-      "capability_class": "active-skill",
-      "impact_tier": "core",
-      "availability": "active",
-      "source": {
-        "kind": "active-skill",
-        "path": ".claude/skills/connect/SKILL.md",
-        "sha256": "49f266506e10b4d2feaadc651bf4e2c886da7331e90337a78bbfaceca4e1192a",
-        "byte_size": 22773
-      },
-      "value": "Connect, check and manage your app integrations.",
-      "jobs_served": [
-        "evolve-the-system-itself"
-      ],
-      "foundation_capabilities": [
-        "safe-change-recovery",
-        "compounding-correctability"
-      ],
-      "prerequisites": [
-        "An installed Dex release with its skills directory available.",
-        "Access to the relevant local app or external service, authorized by the person."
-      ],
-      "trade_offs": [
-        "Results depend on the current local data and permissions the skill can inspect.",
-        "External connections remain subject to the provider's availability and authorization."
-      ],
-      "evidence": [
-        {
-          "kind": "runtime-path",
-          "reference": ".claude/skills/connect/SKILL.md",
-          "summary": "The shipped Connect skill defines the workflow Lens is cataloguing."
-        }
-      ],
-      "brief": {
-        "goal": "Connect, check and manage your app integrations.",
-        "method_outline": [
-          "Inspect the current local state and the person's request.",
-          "Run the Connect workflow within its documented safety boundary.",
-          "Verify the intended result and report anything still needing attention."
-        ],
-        "verification_checklist": [
-          "The workflow reports what it found or changed.",
-          "The person keeps control over any consequential action."
-        ],
-        "rollback_advice": "Disable or remove the skill if it is not useful; reverse any external configuration through the same provider-controlled setup path."
-      },
-      "compatibility": {
-        "host_requirements": [
-          "skills-directory"
-        ],
-        "needs_hooks": false,
-        "needs_mcp": true,
-        "platforms": [
-          "macos",
-          "linux",
-          "windows"
-        ]
-      },
-      "docs_url": "https://github.com/davekilleen/Dex",
-      "since_release": "1.77.0",
-      "changed_in": []
-    },
-    {
       "id": "create-mcp",
       "capability_class": "active-skill",
       "impact_tier": "high",
@@ -4941,8 +4878,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-rollback/SKILL.md",
-        "sha256": "040769cdb433688b68c56080746c0c112140461265a7c2cbfe0087df697d8b63",
-        "byte_size": 3933
+        "sha256": "4f8a144391265784e9d6670da58ac52580922a9b712d0683e5c90207b5c17522",
+        "byte_size": 4155
       },
       "value": "Rewind one receipt-backed Dex adoption through the frozen lifecycle service.",
       "jobs_served": [
@@ -5003,10 +4940,10 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "7fb3230ececaaddf93a10cc4846ba1f5f374f1f5127dca5ec5c57b9fd114a8d6",
-        "byte_size": 20327
+        "sha256": "6519acc6a7c4b21f2dc062c817adba68f562b7fa686acdf571f302248f253217",
+        "byte_size": 21376
       },
-      "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
+      "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look \u2192 back up \u2192 apply \u2192 verify \u2192 rewindable).",
       "jobs_served": [
         "evolve-the-system-itself"
       ],
@@ -5029,7 +4966,7 @@
         }
       ],
       "brief": {
-        "goal": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
+        "goal": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look \u2192 back up \u2192 apply \u2192 verify \u2192 rewindable).",
         "method_outline": [
           "Inspect the current local state and the person's request.",
           "Run the Dex Update workflow within its documented safety boundary.",

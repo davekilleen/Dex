@@ -672,6 +672,19 @@ DEEP_CHECKS = (
     CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
+HEAL_PROGRESS = "Apply safe Tier-1 repairs before checking."
+CHECK_PROGRESS = "Checking this Dex install (read-only)..."
+
+
+def _progress(message: str) -> None:
+    """Narrate collector stages on stderr without touching the JSON report.
+
+    Silence used to mean the process was still working. A hang inside a probe
+    produced no output until SIGTERM (exit 143). A stuck repair can still run
+    long; heals are not time-boxed and must finish or fail in-thread.
+    """
+    print(message, file=sys.stderr, flush=True)
+
 
 def _one_line(value: object) -> str:
     return " ".join(str(value).split()) or value.__class__.__name__
@@ -840,6 +853,21 @@ def _tighten_env_permissions(context: DoctorContext) -> None:
         os.close(descriptor)
 
 
+def _t1_stage(
+    errors: list[str],
+    error_prefix: str,
+    operation,
+    *,
+    error_types: tuple[type[BaseException], ...] = (Exception,),
+):
+    """Run one Tier-1 heal in-process. Failures stay in-thread; later stages continue."""
+    try:
+        return operation()
+    except error_types as error:
+        errors.append(f"{error_prefix}: {_one_line(error)}")
+        return None
+
+
 def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[str]]:
     """Preview and apply contract-authorized Tier-1 repairs through the service.
 
@@ -860,7 +888,8 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             f"receipt-declared transaction writes: {names}"
         )
 
-    try:
+    def _plan_paths_export() -> None:
+        nonlocal planned_paths_export
         expected_paths = _paths_export_for(context)
         current_paths: object = None
         try:
@@ -882,13 +911,19 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 )
             )
             planned_paths_export = True
-    except Exception as error:
-        errors.append(f"Path-export heal failed: {_one_line(error)}")
 
-    try:
-        shipped_executables = _repo_shipped_executables(context)
-    except Exception as error:
-        errors.append(f"Executable-mode heal failed: {_one_line(error)}")
+    _t1_stage(
+        errors,
+        "Path-export heal failed",
+        _plan_paths_export,
+    )
+
+    shipped_executables = _t1_stage(
+        errors,
+        "Executable-mode heal failed",
+        lambda: _repo_shipped_executables(context),
+    )
+    if shipped_executables is None:
         shipped_executables = []
     for script in shipped_executables:
         try:
@@ -912,7 +947,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         except OSError as error:
             errors.append(f"Executable-mode heal failed for {script}: {_one_line(error)}")
 
-    try:
+    def _heal_env() -> None:
         finding = _env_permission_finding(context)
         if finding is not None and finding.auto_tighten:
             # Metadata-only repair: never reads, copies, or snapshots the
@@ -923,12 +958,17 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             actions.setdefault("vault.configs", []).append(
                 "tightened .env to owner-only permissions"
             )
-    except OSError as error:
-        errors.append(f".env permission heal failed: {_one_line(error)}")
+
+    _t1_stage(
+        errors,
+        ".env permission heal failed",
+        _heal_env,
+        error_types=(OSError,),
+    )
 
     dead_letter_path = context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
     if dead_letter_path.exists():
-        try:
+        def _heal_dead_letters() -> None:
             healed = _requeue_entity_dead_letters(context)
             requeued = healed["requeued"]
             if requeued:
@@ -936,20 +976,28 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 actions.setdefault("entity.engine", []).append(
                     f"re-queued {requeued} dead-lettered entity {noun} with retry counters reset"
                 )
-        except Exception as error:
-            errors.append(f"Entity-write heal failed: {_one_line(error)}")
 
-    try:
+        _t1_stage(
+            errors,
+            "Entity-write heal failed",
+            _heal_dead_letters,
+        )
+
+    def _heal_preflight() -> None:
         acknowledged = _acknowledge_resolved_preflight_errors(context)
         if acknowledged:
             noun = "error" if acknowledged == 1 else "errors"
             actions.setdefault("preflight.queue", []).append(
                 f"acknowledged {acknowledged} resolved preflight {noun}"
             )
-    except Exception as error:
-        errors.append(f"Preflight-queue heal failed: {_one_line(error)}")
 
-    try:
+    _t1_stage(
+        errors,
+        "Preflight-queue heal failed",
+        _heal_preflight,
+    )
+
+    def _heal_rooms() -> None:
         room_health = _probe_capability_rooms(context)
         if (
             room_health.verdict == "BROKEN"
@@ -967,18 +1015,26 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             actions.setdefault("capabilities.rooms", []).append(
                 "reconciled capability room assets without deleting user content"
             )
-    except Exception as error:
-        errors.append(f"Capability-room heal failed: {_one_line(error)}")
 
-    try:
+    _t1_stage(
+        errors,
+        "Capability-room heal failed",
+        _heal_rooms,
+    )
+
+    def _heal_composition() -> None:
         composition_action = _heal_claude_composition(context)
         if composition_action:
             actions.setdefault("config.claude_composition", []).append(composition_action)
-    except Exception as error:
-        errors.append(f"CLAUDE.md refresh failed: {_one_line(error)}")
+
+    _t1_stage(
+        errors,
+        "CLAUDE.md refresh failed",
+        _heal_composition,
+    )
 
     if planned:
-        try:
+        def _commit_planned() -> None:
             preview = lifecycle_service._preview_transaction(
                 context.vault_root,
                 planned,
@@ -990,9 +1046,6 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 purpose="doctor-tier-1",
                 approved_token=str(preview["approval_token"]),
             )
-        except Exception as error:
-            errors.append(f"Tier-1 transaction failed: {_one_line(error)}")
-        else:
             if planned_paths_export:
                 actions.setdefault("vault.structure", []).append("regenerated core/paths.json")
             if planned_executables:
@@ -1000,6 +1053,12 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 actions.setdefault("vault.structure", []).append(
                     f"restored executable {noun} on {', '.join(planned_executables)}"
                 )
+
+        _t1_stage(
+            errors,
+            "Tier-1 transaction failed",
+            _commit_planned,
+        )
 
     return actions, errors
 
@@ -1030,6 +1089,7 @@ def collect(
     *,
     deep: bool = False,
     heal: bool = False,
+    progress: bool = False,
     context: DoctorContext | None = None,
 ) -> dict[str, Any]:
     """Run the selected registry and return its JSON-serializable report."""
@@ -1040,6 +1100,8 @@ def collect(
 
     t1_actions: dict[str, list[str]] = {}
     if heal:
+        if progress:
+            _progress(HEAL_PROGRESS)
         try:
             t1_actions, t1_errors = _apply_t1_heals(context)
             if t1_errors:
@@ -1047,6 +1109,8 @@ def collect(
         except Exception as error:
             failed.append({"id": "doctor.self", "error": _one_line(error)})
 
+    if progress:
+        _progress(CHECK_PROGRESS)
     # One classification pass over ~/Library/LaunchAgents is shared by
     # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
     _begin_launch_agent_scan_scope(context)
@@ -5848,7 +5912,12 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
             credential_report = run_credential_workflow(root, action, journal_id=journal_id)
             print(json.dumps(credential_report, indent=2))
             return 2 if credential_report.get("migration_state") == "refused" and action != "status" else 0
-        report = collect(deep=args.deep, heal=args.heal, context=context)
+        report = collect(
+            deep=args.deep,
+            heal=args.heal,
+            progress=True,
+            context=context,
+        )
         output = json.dumps(report, indent=2)
     except Exception as error:
         print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)

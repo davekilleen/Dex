@@ -705,6 +705,8 @@ async def _handle_call_tool_inner(
                     if event.get('all_day'):
                         # Only include all-day events that start within our range
                         event_start = datetime.fromisoformat(event['start'].replace(' +0000', ''))
+                        if event_start.tzinfo is not None:
+                            event_start = event_start.replace(tzinfo=None)
                         if start_dt <= event_start < end_dt:
                             filtered_events.append(event)
                     else:
