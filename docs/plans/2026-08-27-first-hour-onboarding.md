@@ -3,7 +3,7 @@
 Status: **draft for founder approval**. Do not change shipped `/setup` until a lab/preview path exists and this spec is approved.
 
 Audience: non-technical professionals (Doireann is one example, not the template).  
-Promise: more useful context than today’s questionnaire, in about 15–20 minutes of her attention, ending on a real demo of *her* week.
+Promise: more useful context than today’s questionnaire, in about **fifteen minutes** of her attention, ending on a real demo of *her* week. Every user-facing clock says fifteen. Do not also say ten, or “the hour.”
 
 This file is the product contract for a **preview / lab** onboarding. Shipped `/setup` stays as it is until the preview is proven.
 
@@ -25,14 +25,21 @@ Today’s MCP cannot run this hour unchanged. These limits are why Doireann’s 
 
 **Same server, widened for lab** (and later for shipped `/setup` once the preview is proven):
 
-1. Calendar source may be `apple`, `google` (already signed in on this host), or `none`.
-2. One confirm can save name + company + email domain + inferred company size (email domain still validated).
-3. Meeting source is written when Granola (or another recorder) is detected or connected.
-4. First-week analysis can use the recorded calendar source, not only Calendar.app.
-5. Cue-card helper: ten free all-day `[Dex]` events, or a chat list if we cannot write.
-6. A lab marker (`System/.onboarding-lab`) so a preview vault is not treated as a normal completed install.
+1. Calendar source may be `apple`, `google` (already signed in on this host), or `none`. This change also lives in the lifecycle/transaction layer, not only the MCP tool text — today those layers reject anything but Apple or none. The session/tool argument stays `calendar_source`; the profile field it writes is today’s `calendar`. Persist Apple as `{provider: apple, work_calendar: "<calendar name>"}` (unchanged). Persist Google as `{provider: google, account: "<the signed-in work email>"}`. Daily-plan asks the host for that account’s calendar. `none` stays `{provider: none}`.
+2. Relax the “calendar must be addressed before name” gate so Scenario B can ask her name first. A one-card identity confirm may save name + company + email domain + inferred company size without requiring role or calendar first. Role stays a later step.
+3. That one confirm still validates email domain. If size cannot be inferred, show a default on the card, tap to change.
+4. A new MCP tool, `save_meeting_source`, records the meeting source on the **session** (do not write `user-profile.yaml` by hand before the vault exists — finalize would overwrite it). `finalize_onboarding` then persists `meeting_sources: {primary, notes_folder}` using today’s allowed primaries (`granola`, `zoom`, `teams`, `exported-folder`, `wispr`, `none`).
+5. First-week analysis accepts **events the host agent already fetched** (same pattern as `analyze_calendar_capacity(events=[...])`). The Python server cannot call Claude/Codex Google tools itself.
+6. Cue-card helper: ten free all-day `[Dex]` events. Apple via calendar-mcp — today’s `calendar_create_event` has no all-day or free/busy flag, so extend that tool. Google via the host agent. If we cannot write, a chat list. The old month-long `.ics` is not this path.
+7. A lab marker (`System/.onboarding-lab`) classified in the portable contract like `.onboarding-complete`. Analytics and feedback **actually read** it and mark those events `lab: true`, so beta signal is separable.
 
-The `/setup-lab` skill still starts with `start_onboarding_session` and still ends with `finalize_onboarding` + approved working context.
+The `/setup-lab` skill still starts with `start_onboarding_session`. `finalize_onboarding` + approved working context run **after the interview mirror is approved** (section 4), **before** the wow card (section 5). The vault has to exist for person-page offers and the wow run; that is mid-hour, not the last step.
+
+**Who does the sweep:** the host agent (Claude/Codex/Cursor) lists its own signed-in tools. The MCP cannot see those. Say that in the skill. Background “workers” are subagents started at named beats; they report when they finish — they do not chatter mid-sentence.
+
+**Granola has three states.** Do not collapse them: (a) the Mac app is installed — not enough for Tuesday; (b) Granola is signed in on this host — good for hour one, “when we talk”; (c) a Granola key Dex can store — the only state `/process-meetings` and a morning brief can use unattended. Detect (b) before asking for a key. Ask for the key only when we promise a brief that must work when she is not in the chat.
+
+**Daily-plan rewiring** is additive: route on the recorded profile `calendar` (`provider` + Apple calendar name or Google account). Existing Apple / none users keep today’s behaviour. Google Workspace setup is **email**, not calendar — do not tell her that skill fixes Tuesday’s meetings. The skill text must say “use the calendar tools this session actually has,” not one hardcoded name. Same preview branch is fine; this wiring must land **before** any lab user sees the hour.
 
 ---
 
@@ -118,7 +125,7 @@ Copy must say what is happening, why, and what she can do next. Failure copy: si
 
 ### 1. Welcome + consent (A) or welcome + name (B)
 
-**A:** “Hi [first name if we have it from the email]. Your work calendar, Slack, Granola, and Salesforce are already signed in here. For the next ten minutes I’d like to read your calendar and meeting notes so I can organise your week. I won’t change anything in those apps. Is that okay?”
+**A:** “Hi [first name if we have it from the email]. Your work calendar, Slack, Granola, and Salesforce are already signed in here. For the next fifteen minutes I’d like to read your calendar and meeting notes so I can organise your week. I won’t change anything in those apps. Is that okay?”
 
 First identity card uses **email only**: “From your work email: you’re Doireann Marron, at Pendo. Right?” Job title waits until after consent.
 
@@ -162,9 +169,9 @@ Three beats, then one ask:
 
 Then shortcuts — **not CS-specific**:
 
-- Look at the shelf for *this* role and *these* apps.
+- Look at the shelf for *this* role and *these* apps. The shelf is **shipped skills plus contract-declared rooms** (today: career, companies, quarter goals). Role packs under `_available` are not rooms until they are declared — do not copy them into the vault by hand. Until then, the create-a-skill path covers a role-specific want.
 - If a shipped skill would make her sit up **and** use her signed-in apps together, recommend that.
-- If the shelf is dull for her mix, **create one** from what we gleaned + what’s signed in.
+- If the shelf is dull for her mix, **create one** from what we gleaned + what’s signed in — only if it can be made and **run** in this session. Otherwise: “I’ll have that ready next time,” and still run the best shelf skill now.
 - Always show **three** choices, recommend one: “Which should I make live? Or say you don’t know and I’ll pick.”
 - Create or switch on **one**. **Run it once on her real work** (or on the story she told us, in Scenario B).
 - Then: “Anytime you want another, just say so. If you’re not sure, say you don’t know — I’ll watch how you work and come back with a couple of ideas. A morning routine, a meeting brief, something that quietly runs while you’re away.”
@@ -173,7 +180,7 @@ Then shortcuts — **not CS-specific**:
 
 Ask once. Skip if she says no. Do not ask again.
 
-“Want a small reminder on your calendar, Monday to Friday, for the next two weeks? All-day, marked **free** — they never make you look busy. Each one has a prompt written for *your* role and what’s in front of you. They’re cue cards, not meetings. Search for [Dex] if you want them gone.”
+“Earlier I said I wouldn’t change anything in your apps. This is the one exception, and only if you want it: a small reminder on your calendar, on your working days, for the next two weeks. All-day, marked **free** — they never make you look busy. Each one has a prompt written for *your* role. They’re cue cards, not meetings. Search for [Dex] if you want them gone.”
 
 Rules:
 
@@ -199,7 +206,7 @@ Say this once, then stop talking:
 
 Treat me like a person. Ask what I can do for you.”
 
-In Scenario A, if morning skills still cannot use the company calendar, add one honest line before this: “When we’re chatting I can use your calendar. For an automatic morning brief we add it to Dex — about three minutes. Want to do that now, or later?”
+In Scenario A, if morning skills still cannot use the company calendar, add one honest line before this: “When we’re chatting I can use your calendar. For an automatic morning brief we add it to Dex — about two minutes. Want to do that now, or later?”
 
 ---
 
@@ -224,8 +231,8 @@ In Scenario A, if morning skills still cannot use the company calendar, add one 
 | quarter_outcome | Confirm a draft in the mirror. |
 | key_people + relationship | Names from meetings or her list; **relationship asked**. |
 | anything_else | Mirror close. |
-| Calendar source | Record the **real** source (company Google, Apple, or none). Morning skills must be able to use what we claimed, or copy stays scoped to “when we talk.” |
-| Meeting source | Written at connect time. |
+| Calendar source | Record the **real** source on profile `calendar` (Google account, Apple calendar name, or none). Morning skills must be able to use what we claimed, or copy stays scoped to “when we talk.” |
+| Meeting source | `save_meeting_source` on the session at connect time; finalize writes `meeting_sources`. |
 | Person pages | Max 5, cleaned, never her; then auto-vs-suggest. |
 | Analytics notice | Helping-hand card. |
 | Feedback + doctor + help | Helping-hand card. |
@@ -256,8 +263,8 @@ Empty-connector testing is mandatory: run Scenario B on a machine/account with c
 
 ## Prerequisites (before any user sees this hour)
 
-1. Finalize must not crash on Apple’s default Python 3.9.
-2. Getting-started date bug must not crash the tour.
+1. Finalize must not crash on Apple’s default Python 3.9. This ships to **everyone** — “don’t replace `/setup`” does not block the crash fix.
+2. Getting-started date bug must not crash the tour (`datetime.fromisoformat` on meeting dates in `.claude/skills/getting-started/SKILL.md`).
 3. An agent must not edit Dex source in the user’s vault to recover.
 4. `/daily-plan` and `/meeting-prep` must read the same calendar and meeting source onboarding just recorded (host Google and Granola included). If they cannot, the first hour must not claim tomorrow’s brief is ready.
 5. Granola is detected if already signed in; we do not ask for a key we already have.
