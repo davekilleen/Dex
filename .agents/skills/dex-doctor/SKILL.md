@@ -100,13 +100,14 @@ recovery bundle.
 ### Step 1: Run the collector (quick mode + safe auto-heals)
 
 ```bash
-cd "$VAULT_PATH" && .venv/bin/python core/utils/doctor.py --heal 2>/dev/null \
+cd "$VAULT_PATH" && .venv/bin/python core/utils/doctor.py --heal \
   || python3 core/utils/doctor.py --heal
 ```
 
-This returns JSON: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
+This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
 Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
-ran completely.
+ran completely. While it runs, stderr prints `Apply safe Tier-1 repairs before checking.`
+then `Checking this Dex install (read-only)...`.
 
 **If the collector itself fails to run:** that IS the finding. Report it first, with the
 error, and continue with whatever manual checks you can do — do not present a partial

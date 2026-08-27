@@ -40,6 +40,10 @@ Example register:
 
 > I found one update that can still be undone exactly. It changed three Dex-owned files, and none of those files has changed since.
 
+A version update appears as `dex-release` at the installed version. Treat it
+the same as any other receipt-backed item: it is rewindable only when the
+verified state says its receipt and retained snapshot pass preflight.
+
 Do not call a receipt rewindable unless the verified state says its receipt and retained snapshot pass preflight.
 
 ## Confirmation
