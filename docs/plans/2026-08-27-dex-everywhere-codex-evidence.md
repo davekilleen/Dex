@@ -2,7 +2,7 @@
 
 **Date:** 27 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Codex exact-head native CI is green. Claude Cowork exact-head CI is green. Pi and BB Dex CI is green. The Mac fleet on that later-host head is still running.
+**Sequence:** Codex, Claude Cowork, and Pi/BB exact-head native CI are green, including the Mac fleet.
 
 ## What “Codex done” means
 
@@ -102,7 +102,7 @@ Core proof on `616618e45fbe26adc71cc7c3ce5d3bceb090af67` after Cowork CI was gre
   - native macOS portable runtime
   - native Windows portable runtime
   - Lens catalog dry-run
-- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33106291751 — still running
+- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33106291751 — **success**
 - Detects Pi from `PI_CLI` / `PI_CODING_AGENT` and a `/.pi/` path
 - Detects BB from `BB_HARNESS` / `BB_RUNNER` and a `/.bb/` path
 - Doctor names Pi’s missing built-in tool door and BB’s Mac-only unreleased limit
@@ -112,7 +112,7 @@ Core proof on `616618e45fbe26adc71cc7c3ce5d3bceb090af67` after Cowork CI was gre
 
 A later commit that records this proof is a new head and must earn its own green Dex CI. The fleet canary on `616618e4` keeps running and is not cancelled by a later push.
 
-GitHub did not schedule Dex CI on `42f2ea30`. This follow-up exists so the setup-preview head can earn its own run.
+GitHub did not schedule Dex CI on `42f2ea30` or `6b8cc267` at the time those heads landed. This note records the green fleet on `616618e4` and is a new head that must earn its own Dex CI.
 
 ## Deliberately not started
 
