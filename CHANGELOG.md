@@ -50,6 +50,11 @@ in Dex itself. Thank you, Sean.
   Security & Trust Boundary section explains what runs on your machine, that
   updates never happen without your say-so, and exactly whose account you are
   trusting when you accept one.
+* **Updates will soon carry the maker's personal seal.** Dex now knows how to
+  check that a new release was genuinely published by its maintainer — a seal
+  only he can produce — and to refuse one that wasn't, leaving your installed
+  Dex untouched and telling you plainly why. The seal itself begins shipping
+  with an upcoming release; from that point on, every update is checked.
 
 ## [1.97.3] — ↩️ After an update you can undo it, and Doctor talks while it heals (2026-08-27)
 
