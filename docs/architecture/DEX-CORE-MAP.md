@@ -4,7 +4,7 @@
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
-> **Ground truth as of** `upstream/main` at `fd335640`, latest release tag **v1.97.0** (2026-08-13). Dex Everywhere portability remains unreleased on this branch; exact-head native macOS/Windows acceptance is green, while the mandatory Fable reviews and live release-candidate installs are still pending.
+> **Ground truth as of** `upstream/main` at `5d1c7027`, latest release tag **v1.97.3** (2026-08-27). Dex Everywhere portability remains unreleased on this branch. Earlier exact-head native macOS/Windows acceptance is green; the integrated review head still needs fresh native evidence, final Fable review, and the advertised release-candidate journeys.
 >
 > **Don't duplicate generated files.** Tool lists, skill lists, ownership-class path tables, and MCP↔skill wiring live in the auto-generated `docs/architecture/INVENTORY.md`. This map cross-references it; it does not restate it.
 >
@@ -28,7 +28,7 @@
 | Entity engine + gardener + relationships | **SHIPPED** (v1.37 / v1.44 / v1.71–v1.73) | `core/entity_engine/*`, `core/entity_maintenance.py` | Auto-creates person/company pages, logs meeting touches, classifies relationship temperature, resurfaces relationships going cold, and maintains typed person↔company relationships (suggested-until-confirmed) |
 | Ritual intelligence | **PARKED** (code-complete, unwired) | `core/ritual_intelligence/*` | Meeting-intelligence pipeline built Mar 2026, tested in CI, but never wired to any skill/hook/MCP; its beta preview surface was explicitly retracted (see CHANGELOG) |
 | Hooks | **SHIPPED** (wired subset) | `.claude/hooks/`, `.claude/settings.json` | Small wired core (context injection, safety guards, release awareness, autocommit); the once-dead career-evidence hook is fixed (PR #180) |
-| Skills (74 on disk) | **SHIPPED** | `.claude/skills/` | `/command` workflows; the description-rewrite + `/skill-score` quality-gate pass landed (discoverability-risk 53 → 3) |
+| Skills | **SHIPPED** | `.claude/skills/` | `/command` workflows; exact current counts and trigger analysis live in the generated INVENTORY |
 | Grounding suite (inventory + state + orient) | **SHIPPED** (v1.69+) | `docs/architecture/INVENTORY.md`, `STATE.md`, `scripts/dex_state.py`, `/dex-orient` | Code-derived inventory + CI drift gate, released-vs-LOCAL state snapshot, and a session orientation skill |
 
 ---
@@ -65,11 +65,11 @@
 ## 3. Portable ownership contract — SHIPPED
 
 **What it is.** The source of truth for who owns every path in a Dex install. Five classes govern what an update may do:
-- `brain` — release-owned, replaced wholesale (44 paths).
+- `brain` — release-owned, replaced wholesale (46 paths).
 - `seed` — shipped once then user-owned, written only if absent (38).
-- `generated` — machine-derived, regenerated (7).
-- `vault` — user content, an update NEVER writes it (17).
-- `runtime` — local machine state, never shipped/updated (13).
+- `generated` — machine-derived, regenerated (9).
+- `vault` — user content, an update NEVER writes it (19).
+- `runtime` — local machine state, never shipped/updated (15).
 
 **Where it lives.** `core/portable_contract.py` (the RULES + MUTATION_POLICY). Generated JSON view: `packages/dex-contracts/dist/portable-vault.contract.json`. Full per-path table: `docs/architecture/INVENTORY.md` § "Portable ownership classes". Design: `docs/portable-vault-contract-design.md`. Ratified in Vault_Contract v1 (2026-06-18).
 
@@ -121,7 +121,7 @@ therefore remains false.
 | `dex-resume-mcp` | `resume_server.py` | 12 | yes |
 | `dex-improvements-mcp` | `dex_improvements_server.py` | 9 | **no** |
 | `dex-career-mcp` | `career_server.py` | 8 | yes |
-| `dex-onboarding-mcp` | `onboarding_server.py` | 15 | **no** |
+| `dex-onboarding-mcp` | `onboarding_server.py` | 17 | **no** |
 | `dex-session-memory` | `session_memory_server.py` | 8 | **no** |
 | `dex-granola-mcp` | `granola_server.py` | 6 | yes |
 | `dex-customization-migration-mcp` | `customization_migration_server.py` | 7 | yes |

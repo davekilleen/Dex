@@ -145,7 +145,7 @@ clean isolated clone.
   <https://github.com/davekilleen/dex-bb-plugin/actions/runs/32949546856>
 - Native macOS PR workflow is green:
   <https://github.com/davekilleen/dex-bb-plugin/actions/runs/32949551083>
-- Both exact-head runs passed install, 14 tests, typecheck, build, package check, and
+- Both exact-head runs passed install, 36 tests, typecheck, build, package check, and
   release-ready macOS platform validation.
 - Local audit/tarball evidence recorded before handover was also green.
 - Scope is macOS only. Linux and WSL2 are deferred; Windows is unavailable for this
@@ -470,7 +470,7 @@ The code and native macOS workflow are already green at exact head. Revisit only
 Core/Codex and Claude/Cowork are stable:
 
 1. Verify the full BB tree, not just the PR diff.
-2. Re-run 14 tests, typecheck, build, package audit, package check, tarball inspection, and
+2. Re-run 36 tests, typecheck, build, package audit, package check, tarball inspection, and
    native macOS CI if any file changes.
 3. Retain `private: true`/the accidental-publication boundary while unreleased.
 4. Confirm the documented getbb.app acquisition route against current first-party BB
