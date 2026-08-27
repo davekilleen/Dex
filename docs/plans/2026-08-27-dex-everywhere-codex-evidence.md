@@ -114,19 +114,33 @@ A later commit that records this proof is a new head and must earn its own green
 
 GitHub did not schedule Dex CI on `42f2ea30` or `6b8cc267` at the time those heads landed. This note records the green fleet on `616618e4` and is a new head that must earn its own Dex CI.
 
-## ChatGPT Work (started after Pi/BB CI was green)
+## ChatGPT Work desktop — frozen at `498740f2205046243f561bac1ee5a19d86f5ef04`
 
 Desktop only. This does not claim ChatGPT in the browser.
 
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33115886053 — **success**
+- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33115886039 — **success**
+- Formal `historic-fleet-darwin` is skipped on pull requests
 - Detects ChatGPT Work from `CHATGPT_WORK` / `OPENAI_WORK` / `CHATGPT_WORK_COMPANION` and a `/.chatgpt-work/` path
 - Doctor and setup preview name the browser limit: ChatGPT on the web needs a separate public door. The local Dex folder is not exposed that way
-- Copilot stays unstarted until this head earns exact-head Dex CI and the Mac fleet
+- ChatGPT Work is not Codex
+
+A later commit that records this proof or starts Copilot is a new head and must earn its own green Dex CI.
+
+## Copilot CLI (started after ChatGPT Work CI was green)
+
+GitHub Copilot in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Live `copilot plugin install` was not run on this Ubuntu runner.
+
+- Detects Copilot CLI from `COPILOT_CLI` / `GH_COPILOT` / `GITHUB_COPILOT` and a `/.copilot/` path
+- Doctor and setup preview name the hook limit: Copilot hooks are not in this release
+- This head must earn its own exact-head Dex CI and Mac fleet canary
 
 ## Deliberately not started
 
 - Live BB install, or publishing `dex-bb-plugin`
 - ChatGPT in the browser, or a public door for a local Dex folder
-- GitHub Copilot in the terminal (next, after ChatGPT Work desktop is proven)
+- Live GitHub Copilot CLI install on this Ubuntu runner
+- Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot
 - Capability-exchange privacy repairs in Dex Lens
 - Final genuine Fable reviews (wait until heads are frozen and native CI is green)
 - Merge, publish, marketplace, user install, or release
