@@ -31,6 +31,29 @@
     CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
     CLAUDE_FILE="$CLAUDE_DIR/CLAUDE.md"
     CUSTOM_FILE="$CLAUDE_DIR/CLAUDE-custom.md"
+    HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    DEX_REPO_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+
+    DEX_PYTHON_CMD=()
+    if [[ -n "${DEX_PYTHON:-}" && -x "$DEX_PYTHON" ]]; then
+        DEX_PYTHON_CMD=("$DEX_PYTHON")
+    elif [[ -x "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        DEX_PYTHON_CMD=("$CLAUDE_DIR/.venv/bin/python")
+    elif [[ -x "$CLAUDE_DIR/.venv/Scripts/python.exe" ]]; then
+        DEX_PYTHON_CMD=("$CLAUDE_DIR/.venv/Scripts/python.exe")
+    elif [[ -x "$DEX_REPO_DIR/.venv/bin/python" ]]; then
+        DEX_PYTHON_CMD=("$DEX_REPO_DIR/.venv/bin/python")
+    elif [[ -x "$DEX_REPO_DIR/.venv/Scripts/python.exe" ]]; then
+        DEX_PYTHON_CMD=("$DEX_REPO_DIR/.venv/Scripts/python.exe")
+    elif command -v py >/dev/null 2>&1 && py -3 -c "raise SystemExit(0)" >/dev/null 2>&1; then
+        DEX_PYTHON_CMD=(py -3)
+    elif command -v python >/dev/null 2>&1; then
+        DEX_PYTHON_CMD=(python)
+    elif command -v python3 >/dev/null 2>&1; then
+        DEX_PYTHON_CMD=(python3)
+    else
+        exit 0
+    fi
 
     # No custom block is a valid state, not drift.
     [ -f "$CUSTOM_FILE" ] || exit 0
@@ -46,7 +69,7 @@
     fi
 
     # Expensive path, reached only when the custom block has actually moved.
-    RESULT=$(cd "$CLAUDE_DIR" && python3 -c '
+    RESULT=$(cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -c '
 import sys
 from pathlib import Path
 from core.utils.claude_composition import recompose_if_needed

@@ -128,7 +128,9 @@ def test_session_start_is_a_wrapper_and_preserves_offload_logic() -> None:
     assert "--format hook-text" in text
     assert "awk '/^  - id:'" not in text
     assert "--offloaded-check" in text
-    assert "AUTOMATION_OWNER_PYTHON" in text
+    assert "DEX_PYTHON_CMD" in text
+    assert ".venv/Scripts/python.exe" in text
+    assert "py -3" in text
 
 
 def test_person_hook_is_a_wrapper() -> None:

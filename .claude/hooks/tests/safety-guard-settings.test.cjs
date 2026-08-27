@@ -31,7 +31,7 @@ function assertSafetyRouting(settings) {
   assert.deepEqual(matchingCommands(settings, 'WebFetch'), []);
 }
 
-function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = undefined) {
+function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = undefined, envOverrides = {}) {
   const env = { ...process.env };
   if (cwd !== undefined) {
     // The shared gate deliberately honours explicit harness vault variables
@@ -42,9 +42,21 @@ function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = unde
   return spawnSync('/bin/bash', [script], {
     encoding: 'utf8',
     cwd,
-    env,
+    timeout: 5000,
+    env: { ...env, ...envOverrides },
     input: JSON.stringify({ tool_name: toolName, tool_input: command ? { command } : {} }),
   });
+}
+
+function restrictedPath(t, { includePython }) {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-safety-path-'));
+  if (includePython) {
+    const located = spawnSync('/bin/bash', ['-lc', 'command -v python3'], { encoding: 'utf8' });
+    assert.equal(located.status, 0, located.stderr);
+    fs.symlinkSync(located.stdout.trim(), path.join(bin, 'python'));
+  }
+  t.after(() => fs.rmSync(bin, { recursive: true, force: true }));
+  return bin;
 }
 
 test('actual settings route Bash and MCP tools to the intended guards only', () => {
@@ -91,7 +103,10 @@ test('blocked-scraper guard-removal mutation loses protection', () => {
   try {
     const mutated = path.join(temporary, 'guard.sh');
     const source = fs.readFileSync(GUARD_PATH, 'utf8');
-    fs.writeFileSync(mutated, source.replace('mcp__firecrawl__*', 'removed_firecrawl_guard'));
+    fs.writeFileSync(
+      mutated,
+      source.replaceAll('mcp__firecrawl__*', 'removed_firecrawl_guard'),
+    );
     assert.equal(runGuard('mcp__firecrawl__firecrawl_scrape', mutated).status, 0);
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
@@ -133,4 +148,51 @@ test('guard ignores stale and non-migration mutation locks', () => {
   } finally {
     fs.rmSync(vault, { recursive: true, force: true });
   }
+});
+
+test('guard falls back to python when python3 is unavailable', (t) => {
+  const result = runGuard(
+    'Bash',
+    GUARD_PATH,
+    'rm -rf /',
+    undefined,
+    { DEX_PYTHON: '', PATH: restrictedPath(t, { includePython: true }) },
+  );
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+});
+
+test('guard retains catastrophic blocks when no Python is available', (t) => {
+  const result = runGuard(
+    'Bash',
+    GUARD_PATH,
+    'rm -rf /',
+    undefined,
+    { DEX_PYTHON: '', PATH: restrictedPath(t, { includePython: false }) },
+  );
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+});
+
+test('guard allows safe absolute paths when no Python is available', (t) => {
+  const result = runGuard(
+    'Bash',
+    GUARD_PATH,
+    'rm -rf /tmp/foo',
+    undefined,
+    { DEX_PYTHON: '', PATH: restrictedPath(t, { includePython: false }) },
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test('guard ignores an unusable DEX_PYTHON and falls back to a supported interpreter', (t) => {
+  const result = runGuard(
+    'Bash',
+    GUARD_PATH,
+    'rm -rf /',
+    undefined,
+    {
+      DEX_PYTHON: path.join(os.tmpdir(), 'missing-dex-python'),
+      PATH: restrictedPath(t, { includePython: true }),
+    },
+  );
+  assert.equal(result.status, 2, result.stdout + result.stderr);
 });

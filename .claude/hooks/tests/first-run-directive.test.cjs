@@ -41,6 +41,7 @@ function runSessionStart(sandbox, { timeoutMs = 10_000 } = {}) {
         path.dirname(sandbox.vault),
         'unused-session-health-calls',
       ),
+      ...(sandbox.pythonCommand ? { DEX_PYTHON: sandbox.pythonCommand } : {}),
     },
     timeout: timeoutMs,
   });
@@ -76,6 +77,22 @@ function installAnalyticsProbe(sandbox) {
       '',
     ].join('\n'),
   );
+}
+
+function installPythonCommandProbe(sandbox) {
+  const realPython = spawnSync('/usr/bin/env', ['sh', '-c', 'command -v python3 || command -v python'], {
+    encoding: 'utf-8',
+  }).stdout.trim();
+  assert.ok(realPython, 'test host needs a Python interpreter');
+  const command = path.join(path.dirname(sandbox.vault), 'python command probe');
+  const calls = path.join(path.dirname(sandbox.vault), 'python-command-calls');
+  fs.writeFileSync(
+    command,
+    `#!/bin/sh\nprintf '%s\\n' invoked >> '${calls}'\nexec '${realPython}' "$@"\n`,
+    { mode: 0o755 },
+  );
+  sandbox.pythonCommand = command;
+  sandbox.pythonCommandCalls = calls;
 }
 
 function installHangingAnalyticsProbe(sandbox) {
@@ -157,6 +174,25 @@ test('a completed vault starts the named session event with a bounded request on
     fs.readFileSync(sandbox.analyticsCalls, 'utf8'),
     '--event session_started --request-timeout-seconds 2\n',
   );
+});
+
+test('a completed vault honors an explicit portable Python command', async (t) => {
+  const sandbox = createSandbox(t);
+  completeOnboarding(sandbox);
+  installAnalyticsProbe(sandbox);
+  installPythonCommandProbe(sandbox);
+
+  runSessionStart(sandbox);
+
+  assert.equal(await waitForFile(sandbox.analyticsCalls), true);
+  assert.equal(fs.existsSync(sandbox.pythonCommandCalls), true);
+});
+
+test('the stock session hook carries native Windows Python discovery', () => {
+  const source = fs.readFileSync(HOOK_PATH, 'utf8');
+  assert.match(source, /\.venv\/Scripts\/python\.exe/);
+  assert.match(source, /py -3/);
+  assert.doesNotMatch(source, /(?:^|\s)python3\s+-[cm]\b/m);
 });
 
 test('a completed vault visibly reports a safe receipt-write failure', (t) => {

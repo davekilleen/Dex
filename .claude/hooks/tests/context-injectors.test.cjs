@@ -34,11 +34,12 @@ function createSandbox(t) {
   return { vault, home };
 }
 
-function runHook(scriptName, stdin, sandbox) {
+function runHook(scriptName, stdin, sandbox, envOverrides = {}) {
   const scriptPath = path.join(__dirname, '..', scriptName);
   return spawnSync(process.execPath, [scriptPath], {
     input: stdin,
     encoding: 'utf-8',
+    timeout: 12000,
     env: {
       CLAUDE_HOOK_CONTEXT: '{}',
       CLAUDE_PROJECT_DIR: sandbox.vault,
@@ -47,8 +48,17 @@ function runHook(scriptName, stdin, sandbox) {
       HOME: sandbox.home,
       PATH: '/usr/bin:/bin',
       VAULT_PATH: sandbox.vault,
+      ...envOverrides,
     },
   });
+}
+
+function pythonOnlyPath(t) {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-python-only-'));
+  const shim = path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python');
+  fs.symlinkSync(PYTHON, shim);
+  t.after(() => fs.rmSync(bin, { recursive: true, force: true }));
+  return bin;
 }
 
 test('person context injector emits skip reason on invalid JSON', (t) => {
@@ -105,6 +115,23 @@ test('person context injector emits fixture person context', (t) => {
   assert.match(result.stdout, /<person_context>/);
   assert.match(result.stdout, /Alice Smith/);
   assert.match(result.stdout, /<\/person_context>/);
+});
+
+test('person context injector falls back to python when python3 is unavailable', (t) => {
+  const sandbox = createSandbox(t);
+  const note = path.join(sandbox.vault, '00-Inbox', 'Meetings', 'person-context.md');
+  fs.writeFileSync(note, '# Meeting\n\nMeeting with Alice Smith about the launch.\n');
+
+  const result = runHook(
+    'person-context-injector.cjs',
+    JSON.stringify({ tool_input: { file_path: note } }),
+    sandbox,
+    { DEX_PYTHON: '', PATH: pythonOnlyPath(t) },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /<person_context>/);
+  assert.match(result.stdout, /Alice Smith/);
 });
 
 test('company context injector emits fixture company context', (t) => {

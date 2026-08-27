@@ -18,15 +18,28 @@ function skip(reason) {
 
 function resolvePython(vaultRoot) {
   const candidates = [
-    process.env.DEX_PYTHON,
-    vaultRoot && path.join(vaultRoot, '.venv', 'bin', 'python'),
-    path.join(__dirname, '..', '..', '.venv', 'bin', 'python'),
-    'python3',
+    [process.env.DEX_PYTHON, []],
+    [vaultRoot && path.join(vaultRoot, '.venv', 'bin', 'python'), []],
+    [vaultRoot && path.join(vaultRoot, '.venv', 'Scripts', 'python.exe'), []],
+    [path.join(__dirname, '..', '..', '.venv', 'bin', 'python'), []],
+    [path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe'), []],
+    ['py', ['-3']],
+    ['python', []],
+    ['python3', []],
   ].filter(Boolean);
-  for (const candidate of candidates) {
-    if (candidate === 'python3' || fs.existsSync(candidate)) return candidate;
+  for (const [command, prefix] of candidates) {
+    if (!command) continue;
+    if (path.isAbsolute(command)) {
+      if (fs.existsSync(command)) return { command, prefix };
+      continue;
+    }
+    const probe = spawnSync(command, [...prefix, '-c', ''], {
+      encoding: 'utf-8',
+      timeout: 2000,
+    });
+    if (probe.status === 0) return { command, prefix };
   }
-  return 'python3';
+  return { command: 'python3', prefix: [] };
 }
 
 let input;
@@ -70,9 +83,10 @@ if (typeof vaultRoot !== 'string' || !vaultRoot) {
 const scriptPath = path.join(__dirname, '..', '..', 'core', 'context', 'person_context.py');
 if (!fs.existsSync(scriptPath)) skip('shared-context-module-not-found');
 const fullFilePath = path.isAbsolute(filePath) ? filePath : path.join(vaultRoot, filePath);
+const python = resolvePython(vaultRoot);
 const result = spawnSync(
-  resolvePython(vaultRoot),
-  [scriptPath, '--vault', vaultRoot, '--from-file', fullFilePath, '--format', 'hook-json'],
+  python.command,
+  [...python.prefix, scriptPath, '--vault', vaultRoot, '--from-file', fullFilePath, '--format', 'hook-json'],
   {
     encoding: 'utf-8',
     timeout: 8000,
