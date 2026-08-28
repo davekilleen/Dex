@@ -218,6 +218,25 @@ google-workspace:
 
 If the file already exists, only update the `google-workspace:` section. Preserve other integration configs.
 
+Read and write `calendar.provider` in `System/user-profile.yaml`, not in `System/integrations/config.yaml`.
+
+If `calendar.provider` is already `apple`, leave it — Apple Calendar remains the calendar source.
+
+If `calendar.provider` is missing and `work_calendar` is set, leave it — that is still Apple Calendar.
+
+If `calendar.provider` is `none`, or the field is missing and no `work_calendar` is set, set `provider: google` only when Google Calendar is actually available in this session.
+That means `google-workspace-mcp` is registered, or a Google Calendar session connector is present.
+A Gmail-only connection must not change the calendar source.
+
+When those conditions hold, write this in `System/user-profile.yaml`:
+
+```yaml
+calendar:
+  provider: google
+```
+
+Keep any existing `work_calendar` value. Do not invent new privacy or consent language; this only records which calendar daily planning should read.
+
 ### Step 8: Confirm with Capability Cascade
 
 ```

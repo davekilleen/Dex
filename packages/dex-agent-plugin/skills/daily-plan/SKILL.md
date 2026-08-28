@@ -198,8 +198,12 @@ This is critical for genuine situational awareness. Extract:
 
 ### 5.2 Calendar Capacity Analysis (NEW)
 
+Calendar events come from the delegated gatherer. That gatherer reads
+`calendar.provider` in `System/user-profile.yaml` and uses Google Workspace MCP
+when the provider is `google`, or calendar-mcp when it is not.
+
 ```
-Use: analyze_calendar_capacity(days_ahead=1, events=[...from calendar MCP...])
+Use: analyze_calendar_capacity(days_ahead=1, events=[...from the configured calendar source...])
 ```
 
 Understand the *shape* of today:
@@ -753,7 +757,7 @@ The plan works at multiple levels:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | calendar-mcp | `calendar_get_today`, `calendar_get_events_with_attendees` |
+| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_today`, `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
 | Reminders | calendar-mcp | `reminders_list_items`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed` |
 | Granola | granola-mcp | `granola_get_recent_meetings` |
 | Work | work-mcp | `list_tasks`, `get_week_progress`, `get_meeting_context`, `get_commitments_due`, `analyze_calendar_capacity`, `suggest_task_scheduling` |
