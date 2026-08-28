@@ -534,6 +534,7 @@ class TestFirstWeekAnalysis:
             "pillar_evidence",
             "draft_weekly_plan",
             "cadence",
+            "next_working_day",
         }
         assert analysis["available"] is True
         assert analysis["meeting_count"] == 1

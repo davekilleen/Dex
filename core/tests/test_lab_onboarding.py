@@ -83,8 +83,20 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "ask once more, gently" in hour
     assert "Ask one question, then stop" in hour
     assert "Do not start a helper until she has submitted" in hour
-    assert "Never hardcode Tuesday" in hour
+    assert "Never hardcode a weekday" in hour
     assert "next working day" in hour
+    assert "your next working morning" in hour
+    assert "Monday 7 September" in hour
+    assert "Do not spawn `@week-reader`" in hour
+    assert "Read the calendar yourself immediately" in hour
+    assert "one moment" in hour
+    assert "helpers on that in the background" not in hour
+    assert "I’ve got a helper looking up" in hour or "I've got a helper looking up" in hour
+    welcome = hour.split("## 1. Welcome", 1)[1].split("## 2.", 1)[0]
+    assert "Monday" not in welcome
+    assert "Tuesday" not in welcome
+    spoken = hour.split("## 1. Welcome", 1)[1]
+    assert "Give me a moment" not in spoken.split("Do not")[0]
     assert hour.count("/voice") == 1
     spoken = hour.split("## 1. Welcome", 1)[1]
     assert "only name up to five" not in spoken

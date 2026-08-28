@@ -25,10 +25,11 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `Stop` | all | `node "$CLAUDE_PROJECT_DIR/.claude/hooks/lab-onboarding-nudge.cjs"` | Practice first hour only: if the chat went quiet after a wait line, one nudge continues the hour. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 
-Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files.
+Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files except the lab-hour nudge on `Stop`.
 
 ## Skill-scoped wiring
 

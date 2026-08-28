@@ -53,7 +53,7 @@ fi
 # cannot bypass it. A completed vault stays silent and continues normally.
 if [[ ! -f "$ONBOARDING_MARKER" ]]; then
     if [[ -f "$LAB_MARKER" ]]; then
-        echo "This is a practice first hour. Wait for /setup-lab. The first words she hears are a hello. Do not follow .claude/flows/onboarding.md. Do not open a stack of question cards. After she answers, start silent workers on three weeks of meetings."
+        echo "This is a practice first hour. Wait for /setup-lab. The first words she hears are a hello. Do not follow .claude/flows/onboarding.md. Do not open a stack of question cards. After she answers, read three weeks of meetings yourself — do not send a meetings helper and wait on it."
     else
         echo "🚨 FIRST-TIME SETUP REQUIRED — THIS VAULT HAS NEVER BEEN SET UP"
         if [[ -f "$CLAUDE_DIR/System/.onboarding-session.json" ]]; then

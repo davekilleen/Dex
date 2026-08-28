@@ -85,6 +85,7 @@ try:
     from core.utils.working_week import (
         DEFAULT_WORKING_DAYS,
         first_working_day_of_week,
+        next_working_day_from_events,
         normalize_working_days,
         working_day_names,
     )
@@ -99,6 +100,17 @@ except ImportError:
 
     def working_day_names():
         return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+    def next_working_day_from_events(today, events=None):
+        candidate = today + timedelta(days=1)
+        while candidate.weekday() >= 5:
+            candidate += timedelta(days=1)
+        return {
+            "date": candidate.isoformat(),
+            "spoken": f"{candidate.strftime('%A')} {candidate.day} {candidate.strftime('%B')}",
+            "skipped_out_of_office": False,
+            "out_until": None,
+        }
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
 ONBOARDING_STEPS = 8
@@ -1878,6 +1890,7 @@ def run_first_week_analysis(events: Optional[List[Dict]] = None) -> Dict[str, An
             profile.get('role', ''),
         ),
         "cadence": cadence,
+        "next_working_day": next_working_day_from_events(date.today(), events),
     }
 
 
@@ -2147,9 +2160,10 @@ async def handle_list_tools() -> list[types.Tool]:
             name="run_first_week_analysis",
             description=(
                 "Analyze this week's timed calendar meetings and a three-week "
-                "cadence lookback. Pass events the host already fetched "
+                "cadence lookback. Also names the next working morning, skipping "
+                "out-of-office. Pass events the host already fetched "
                 "when the calendar is Google (this server cannot call host Google tools). "
-                "For the lab hour, pass this week plus the last 21 days."
+                "For the lab hour, pass this week, the last 21 days, and the next 21 days."
             ),
             inputSchema={
                 "type": "object",

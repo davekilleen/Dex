@@ -91,6 +91,10 @@
           {
             "type": "command",
             "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
+          },
+          {
+            "type": "command",
+            "command": "sh -c 'project=\"$CLAUDE_PROJECT_DIR\"; [ -n \"$project\" ] && [ -f \"$project/.claude/hooks/lab-onboarding-nudge.cjs\" ] || exit 0; exec node \"$project/.claude/hooks/lab-onboarding-nudge.cjs\"'"
           }
         ]
       }

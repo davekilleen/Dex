@@ -514,3 +514,43 @@ def test_profile_template_ships_the_default_working_week() -> None:
         "thursday",
         "friday",
     ]
+
+
+def test_next_working_day_from_events_skips_out_of_office_until_she_is_back() -> None:
+    today = date(2026, 8, 28)
+    without_ooo = working_week.next_working_day_from_events(today, [])
+    assert without_ooo["date"] == "2026-08-31"
+    assert without_ooo["spoken"] == "Monday 31 August"
+    assert without_ooo["skipped_out_of_office"] is False
+
+    with_ooo = working_week.next_working_day_from_events(
+        today,
+        [
+            {
+                "title": "Out of office",
+                "start": "2026-08-29",
+                "end": "2026-09-07",
+                "all_day": True,
+            }
+        ],
+    )
+    assert with_ooo["date"] == "2026-09-07"
+    assert with_ooo["spoken"] == "Monday 7 September"
+    assert with_ooo["skipped_out_of_office"] is True
+    assert with_ooo["out_until"] == "2026-09-06"
+
+
+def test_out_of_office_event_type_covers_google_ooo_blocks() -> None:
+    result = working_week.next_working_day_from_events(
+        date(2026, 8, 28),
+        [
+            {
+                "eventType": "outOfOffice",
+                "start": date(2026, 8, 31),
+                "end": date(2026, 9, 7),
+                "all_day": True,
+            }
+        ],
+    )
+    assert result["date"] == "2026-09-07"
+    assert result["spoken"] == "Monday 7 September"

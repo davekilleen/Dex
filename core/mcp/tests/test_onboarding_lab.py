@@ -215,6 +215,52 @@ def test_first_week_analysis_accepts_host_fetched_events(lab_session, monkeypatc
     assert cadence["recurring"][0]["count"] == 2
     assert cadence["likely_manager"]["name"] == "Alex Rivera"
     assert "ask, do not assume" in cadence["likely_manager"]["guess"]
+    assert "next_working_day" in payload["data"]
+    assert payload["data"]["next_working_day"]["spoken"]
+    assert payload["data"]["next_working_day"]["date"]
+
+
+def test_first_week_analysis_names_the_monday_after_out_of_office(
+    lab_session,
+    monkeypatch,
+) -> None:
+    class FrozenDate(onboarding_server.date):
+        @classmethod
+        def today(cls):
+            return onboarding_server.date(2026, 8, 28)
+
+    monkeypatch.setattr(onboarding_server, "date", FrozenDate)
+    monkeypatch.setattr(
+        onboarding_server,
+        "get_recent_granola_meetings",
+        lambda days=7: [],
+    )
+    payload = _call_tool(
+        "run_first_week_analysis",
+        {
+            "events": [
+                {
+                    "title": "Customer review",
+                    "start": "2026-08-28T09:00:00+01:00",
+                    "end": "2026-08-28T10:00:00+01:00",
+                    "duration_minutes": 60,
+                    "attendees": [{"name": "Alex Rivera", "email": "alex@pendo.io"}],
+                },
+                {
+                    "title": "Out of office",
+                    "start": "2026-08-29",
+                    "end": "2026-09-07",
+                    "all_day": True,
+                },
+            ]
+        },
+    )
+    assert payload["success"] is True
+    nxt = payload["data"]["next_working_day"]
+    assert nxt["date"] == "2026-09-07"
+    assert nxt["spoken"] == "Monday 7 September"
+    assert nxt["skipped_out_of_office"] is True
+    assert nxt["out_until"] == "2026-09-06"
 
 
 def test_parse_provisioner_receipt_reads_json_wrapped_in_node_noise() -> None:
