@@ -142,7 +142,9 @@ First identity card uses **email only**: “From your work email: you’re Doire
 
 This is a spoken conversation, not a stack of tap-cards. One question at a time.
 
-Invite her to hold the microphone in Claude or Codex and dump as much as she can — how she works, who matters, what this quarter is for. If she has last year’s review to hand, ask her to paste it or drop the file in. Do not invent a `/voice` command.
+Invite her to hold the microphone in Claude or Codex and dump as much as she can — how she works, who matters, what this quarter is for. Ask specifically for last year’s annual or performance review, her career ladder, her job spec, or a PDF extract of her LinkedIn. Do not invent a `/voice` command.
+
+A new `/setup-lab` starts a fresh session (`force_new`). Do not resume yesterday’s hour. If a helper sends an idle notice while she is answering, ignore it — do not speak.
 
 ### 3. Meeting notes — now, not later
 

@@ -60,7 +60,16 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "walk `/granola-setup` now" in skill
     assert "Do not invent a `/voice` command" in skill
     assert "Do not invent a `/voice` command" in hour
-    assert "last year’s review" in skill
+    assert "last year’s annual or performance review" in skill
+    assert "LinkedIn" in skill
+    assert "LinkedIn" in hour
+    assert "career ladder" in hour
+    assert "job spec" in hour
+    assert "force_new=true" in hour
+    assert "force_new=true" in skill
+    assert "teammate message" in hour
+    assert "nothing for you here" in skill
+    assert "short version" in skill
     assert "Fireflies" in hour
     assert "I’ll create all of those now" in hour
     assert "Do not take the first five" in hour

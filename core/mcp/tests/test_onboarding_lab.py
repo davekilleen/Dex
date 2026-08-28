@@ -32,6 +32,27 @@ def lab_session(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_lab_setup_starts_fresh_instead_of_resuming_yesterday(lab_session) -> None:
+    first = _call_tool("start_onboarding_session", {"force_new": True, "lab": True})
+    _call_tool(
+        "save_identity_confirm",
+        {
+            "name": "Dave Kelly",
+            "company": "Pendo",
+            "company_size": "enterprise",
+            "email_domain": "pendo.io",
+        },
+    )
+    resumed = _call_tool("start_onboarding_session", {"lab": True})
+    fresh = _call_tool("start_onboarding_session", {"force_new": True, "lab": True})
+
+    assert "Resuming" in resumed["message"]
+    assert resumed["data"]["data"]["name"] == "Dave Kelly"
+    assert fresh["data"]["completed_steps"] == []
+    assert fresh["data"]["data"] == {}
+    assert first["data"]["lab"] is True
+
+
 def test_lab_session_allows_name_before_calendar(lab_session) -> None:
     started = _call_tool("start_onboarding_session", {"force_new": True, "lab": True})
     assert started["success"] is True

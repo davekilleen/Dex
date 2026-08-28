@@ -16,6 +16,8 @@ Ask one question, then stop. Do not speak again until she has sent her answer.
 
 Background helpers may think, but they must not appear in the chat while she is still writing or talking. Do not start a helper until she has submitted the message that unlocks that beat. When a helper finishes, stay silent. Hold the notes. Surface them only after she has answered, at the next beat.
 
+If a teammate message, idle notice, or “another Claude session” arrives while you are waiting, ignore it. Do not fetch their output. Do not reply to her. Do not say “nothing for you here.” Do not dump a “short version.”
+
 Never say a helper’s name. Never say a tool is starting. Never say “Calling onboarding-mcp.” Speak first. Tools after.
 
 ## 0. Sweep (silent)
@@ -60,9 +62,9 @@ First words of this turn, before any tool:
 
 Then invite voice and extra context. Hold the microphone in Claude or Codex if talking is easier. Do not invent a `/voice` command.
 
-“If talking is easier, hold the microphone and tell me as much as you like — how you work, who matters, what this quarter is for. If you have last year’s review to hand, paste it or drop the file in. The more you give me now, the more useful [next working day] is.”
+“If talking is easier, hold the microphone and tell me as much as you like — how you work, who matters, what this quarter is for. If you have last year’s annual or performance review, your career ladder, your job spec, or even a PDF extract of your LinkedIn, paste that in too. The more you give me now, the more useful [next working day] is.”
 
-Then stop and wait for that voice note or a skip. Do not start helpers yet. After she has sent it, silently: `start_onboarding_session(lab=true)`, look at signed-in apps, persist through onboarding tools. Do not narrate any of that.
+Then stop and wait for that voice note or a skip. Do not start helpers yet. After she has sent it, silently: `start_onboarding_session(lab=true, force_new=true)`, look at signed-in apps, persist through onboarding tools. Do not narrate any of that. A new `/setup-lab` must not resume yesterday’s hour. Only skip `force_new` if she asked to pick up a failed finish.
 
 Call `save_identity_confirm` with name, company, inferred company size (show later as “enterprise-sized company”, tap to fix), email domain, and work email when you have them.
 
