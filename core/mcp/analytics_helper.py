@@ -6,15 +6,16 @@ Shared utilities for analytics across Dex skills and MCPs.
 Handles consent checking, journey metadata calculation, and event firing.
 
 Privacy Principles:
+- On by default in the beta; Settings flip (analytics.enabled: false) is zero egress
 - Only tracks Dex built-in features, not user customizations
 - Tracks THAT features were used, not WHAT users did with them
-- Never sends content, names, notes, or conversations
+- Never sends content, names, notes, conversations, or Guide/Coach work patterns
+- Identity is install-scoped only; career-grade surfaces emit nothing
 
 Usage in skills:
     from analytics_helper import fire_event, check_consent, mark_feature_used
 """
 
-import hashlib
 import json
 import os
 import re
@@ -30,6 +31,15 @@ if str(_REPO_ROOT) not in sys.path:
 from core.analytics_events import (
     REDACTED_ANALYTICS_EVENT_NAME,
     is_safe_analytics_event_name,
+)
+from core.analytics_walls import (
+    ANALYTICS_ACCOUNT_SCOPE,
+    WALL_CAREER,
+    build_safe_track_payload,
+    get_or_create_analytics_install_id,
+    inspect_caller_properties,
+    is_career_grade_event,
+    read_analytics_install_id,
 )
 from core.lifecycle import service as lifecycle_service
 
@@ -212,12 +222,27 @@ def check_consent() -> str:
 
 
 def is_analytics_enabled() -> bool:
+    """Return whether anonymous product analytics may leave this install.
+
+    Founder ruling (beta): on by default. The Settings switch is
+    ``analytics.enabled`` in user-profile.yaml. Flip to false → zero egress.
+    A usage_log opted-out decision is also off. Missing Settings is on.
+    Unreadable Settings fails closed (off). Bug reports are a separate path
+    and still wait for an explicit yes.
     """
-    Check if analytics is enabled.
-    
-    Only requires user consent (opted-in via usage_log.md).
-    """
-    return check_consent() == 'opted-in'
+    try:
+        profile = load_user_profile()
+    except Exception:
+        return False
+    analytics = profile.get("analytics") if isinstance(profile, dict) else {}
+    if isinstance(analytics, dict) and analytics.get("enabled") is False:
+        return False
+    try:
+        if check_consent() == "opted-out":
+            return False
+    except Exception:
+        pass
+    return True
 
 
 def load_user_profile() -> dict:
@@ -333,35 +358,29 @@ def calculate_journey_metadata() -> Dict[str, Any]:
 
 
 def get_visitor_info() -> Dict[str, str]:
-    """Get visitor ID and account ID from user-profile.yaml.
-    
-    Priority for visitor_id:
-    1. analytics.visitor_id from user-profile.yaml (explicit config)
-    2. Deterministic hash of user's name (stable across restarts)
-    3. 'anonymous' fallback (never random)
+    """Return the install-scoped analytics identifier only.
+
+    Never vault identity (name, email, profile visitor_id) and never Record
+    keys (ledger install_id, health telemetry id). Missing id is empty so a
+    status check does not create a file.
     """
-    profile = load_user_profile()
-    analytics = profile.get('analytics', {})
-    
-    # Priority 1: Explicit visitor_id in analytics config
-    visitor_id = analytics.get('visitor_id')
-    
-    if not visitor_id:
-        # Priority 2: Deterministic hash of name
-        name = profile.get('name', '')
-        if name:
-            visitor_id = hashlib.sha256(name.encode()).hexdigest()[:16]
-        else:
-            # Priority 3: Fallback
-            visitor_id = 'anonymous'
-    
-    # Account ID from email domain or default
-    account_id = analytics.get('account_id') or profile.get('email_domain', 'dex-users')
-    
+    install_id = read_analytics_install_id(get_vault_path()) or ""
     return {
-        'visitor_id': visitor_id,
-        'account_id': account_id
+        "visitor_id": install_id,
+        "account_id": ANALYTICS_ACCOUNT_SCOPE,
     }
+
+
+def _read_dex_version() -> str | None:
+    """Return the shipped Dex version, or None if it cannot be proved."""
+    try:
+        package = json.loads((_REPO_ROOT / "package.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    version = package.get("version")
+    if isinstance(version, str) and version:
+        return version
+    return None
 
 
 def _with_attempt_receipt(
@@ -400,13 +419,15 @@ def fire_event(
     _request_timeout_seconds: float | None = None,
 ) -> Dict[str, Any]:
     """
-    Fire an analytics event to Pendo.
-    
-    Only fires if user has opted in. Automatically includes journey metadata.
-    
+    Fire an analytics event through the existing transport.
+
+    Only fires when Settings is on (default on). Walls refuse content,
+    Guide/Coach usage patterns, extra identity, and career-grade surfaces.
+    Does not invent a vendor, dashboard, or Dex-held key.
+
     Args:
         event_name: Name of the event (e.g., 'daily_plan_completed')
-        properties: Additional event properties (counts, categories only - no content!)
+        properties: App-level counts or error class only — no content
         _request_timeout_seconds: Private delivery-only timeout for callers
             such as session start. It never interrupts the local receipt.
     
@@ -449,7 +470,25 @@ def fire_event(
             outcome='not_sent',
             reason='analytics_disabled',
         )
-    
+
+    if not _connection_test and is_career_grade_event(event_name):
+        return _with_attempt_receipt(
+            {'fired': False, 'reason': WALL_CAREER},
+            event_name=event_name,
+            outcome='not_sent',
+            reason=WALL_CAREER,
+        )
+
+    if not _connection_test:
+        property_wall = inspect_caller_properties(properties)
+        if property_wall is not None:
+            return _with_attempt_receipt(
+                {'fired': False, 'reason': property_wall},
+                event_name=event_name,
+                outcome='not_sent',
+                reason=property_wall,
+            )
+
     if not HAS_REQUESTS:
         return _with_attempt_receipt(
             {'fired': False, 'reason': 'requests_not_installed'},
@@ -471,39 +510,35 @@ def fire_event(
                 reason=transport_reason,
             )
 
+        timestamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         if _connection_test:
             # A connection check must prove only that the transport works. It
             # must never read or send a person's identity, profile, journey
             # metadata, or caller-supplied properties.
-            visitor_info = {
-                'visitor_id': _CONNECTION_TEST_VISITOR_ID,
-                'account_id': _CONNECTION_TEST_ACCOUNT_ID,
-            }
-            event_props = {'connection_test': True}
+            payload, wall_reason = build_safe_track_payload(
+                event_name=event_name,
+                visitor_id=_CONNECTION_TEST_VISITOR_ID,
+                timestamp_ms=timestamp_ms,
+                properties=None,
+                connection_test=True,
+            )
         else:
-            visitor_info = get_visitor_info()
-            journey = calculate_journey_metadata()
-            profile = load_user_profile()
-
-            # Build properties with journey context.
-            event_props = {
-                'journey_stage': journey['journey_stage'],
-                'days_since_setup': journey['days_since_setup'],
-                'feature_adoption_score': journey['feature_adoption_score'],
-                'most_active_area': journey['most_active_area'],
-                'role': profile.get('role_group', 'unknown'),
-                'company_size': profile.get('company_size', 'unknown'),
-                **(properties or {})
-            }
-
-        payload = {
-            'type': 'track',
-            'event': event_name,
-            'visitorId': visitor_info['visitor_id'],
-            'accountId': visitor_info['account_id'],
-            'timestamp': int(datetime.now(timezone.utc).timestamp() * 1000),
-            'properties': event_props
-        }
+            visitor_id = get_or_create_analytics_install_id(get_vault_path())
+            payload, wall_reason = build_safe_track_payload(
+                event_name=event_name,
+                visitor_id=visitor_id,
+                timestamp_ms=timestamp_ms,
+                properties=properties,
+                dex_version=_read_dex_version(),
+            )
+        if payload is None or wall_reason is not None:
+            blocked = wall_reason or WALL_CAREER
+            return _with_attempt_receipt(
+                {'fired': False, 'reason': blocked},
+                event_name=event_name,
+                outcome='not_sent',
+                reason=blocked,
+            )
 
         response = requests.post(
             transport['endpoint'],

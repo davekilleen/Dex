@@ -78,6 +78,10 @@ _ANALYTICS_RECEIPT_REASONS = frozenset(
         "http_error",
         "invalid_event_name",
         "request_failed",
+        "content_blocked",
+        "usage_pattern_blocked",
+        "identity_blocked",
+        "career_surface_blocked",
     }
 )
 _ANALYTICS_EVENT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,79}$")

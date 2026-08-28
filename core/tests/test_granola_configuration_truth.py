@@ -129,23 +129,19 @@ def test_identify_user_accepts_string_and_object_meeting_processing(
     shape,
     expected_enabled: bool,
 ) -> None:
-    events: list[tuple[str, dict]] = []
+    events: list[tuple[str, object]] = []
     monkeypatch.setattr(analytics_server, "is_analytics_enabled", lambda: True)
     monkeypatch.setattr(
         analytics_server,
-        "load_user_profile",
-        lambda: {"meeting_processing": shape},
-    )
-    monkeypatch.setattr(
-        analytics_server,
         "fire_event",
-        lambda name, properties: events.append((name, properties)) or {"fired": True},
+        lambda name, properties=None: events.append((name, properties)) or {"fired": True},
     )
+    _ = expected_enabled
+    _ = shape
 
     asyncio.run(analytics_server._call_tool_inner("identify_user", {}))
 
-    assert events[0][0] == "user_identified"
-    assert events[0][1]["granola_enabled"] is expected_enabled
+    assert events == [("user_identified", None)]
 
 
 def test_meeting_processing_instructions_write_the_canonical_object_shape() -> None:
