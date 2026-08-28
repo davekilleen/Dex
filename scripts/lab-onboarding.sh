@@ -56,6 +56,8 @@ practice_ready() {
   "$python_bin" -c "import mcp, yaml" >/dev/null 2>&1 || return 1
   [ -f "$TARGET/.mcp.json" ] || return 1
   grep -q '"onboarding-mcp"' "$TARGET/.mcp.json" || return 1
+  [ -d "$TARGET/node_modules/js-yaml" ] || return 1
+  [ -d "$TARGET/05-Areas/People" ] || return 1
   return 0
 }
 
@@ -81,12 +83,10 @@ bootstrap_practice_folder() {
 
   (
     cd "$TARGET"
-    if [ ! -d node_modules/js-yaml ]; then
-      if command -v npm >/dev/null 2>&1; then
-        npm install --silent
-      else
-        plain_fail "This Mac needs npm (it usually arrives with Node.js) before the practice folder can start."
-      fi
+    if command -v npm >/dev/null 2>&1; then
+      npm install --silent
+    else
+      plain_fail "This Mac needs npm (it usually arrives with Node.js) before the practice folder can start."
     fi
 
     local venv_python=".venv/bin/python"
@@ -97,8 +97,18 @@ bootstrap_practice_folder() {
     "$venv_pip" install -r core/mcp/requirements.txt --quiet || \
       plain_fail "Could not install what Dex needs. Try again, or send Dave the last few lines."
 
-    node core/provision.cjs --path "$TARGET" --install-config-only --json >/dev/null || \
-      plain_fail "Could not point this folder at Dex's helpers. Try again, or send Dave the last few lines."
+    DEX_PYTHON="$TARGET/.venv/bin/python" \
+    DEX_LIFECYCLE_PYTHON="$TARGET/.venv/bin/python" \
+    node core/provision.cjs --path "$TARGET" --json >/dev/null || \
+      plain_fail "Could not finish a fresh Dex copy in this folder. Try again, or send Dave the last few lines."
+
+    # Full provision writes a completion marker with no person on it. Remove
+    # that skeleton so /setup-lab can still run the hour. Keep a finished
+    # hour's marker (it names the person).
+    if [ -f "$TARGET/System/.onboarding-complete" ] && \
+       ! grep -q '"user_name"' "$TARGET/System/.onboarding-complete"; then
+      rm -f "$TARGET/System/.onboarding-complete"
+    fi
   )
 
   practice_ready || plain_fail "The practice folder is still not ready. Try the starter once more, or send Dave the last few lines."

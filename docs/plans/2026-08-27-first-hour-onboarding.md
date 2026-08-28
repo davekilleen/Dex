@@ -35,11 +35,11 @@ Today’s MCP cannot run this hour unchanged. These limits are why Doireann’s 
 
 The `/setup-lab` skill still starts with `start_onboarding_session`. `finalize_onboarding` + approved working context run **after the interview mirror is approved** (section 4), **before** the wow card (section 5). The vault has to exist for person-page offers and the wow run; that is mid-hour, not the last step.
 
-**Who does the sweep:** the host agent (Claude/Codex/Cursor) lists its own signed-in tools. The MCP cannot see those. Say that in the skill. Background “workers” are subagents started at named beats; they report when they finish — they do not chatter mid-sentence.
+**Who does the sweep:** the host agent (Claude/Codex/Cursor) lists its own signed-in tools. The MCP cannot see those. Say that in the skill. Background “workers” are subagents started only after she has submitted the message that unlocks that beat. They write notes. They do not speak, and they do not appear in the chat while she is still writing.
 
-**Granola has three states.** Do not collapse them: (a) the Mac app is installed — not enough for Tuesday; (b) Granola is signed in on this host — good for hour one, “when we talk”; (c) a Granola key Dex can store — the only state `/process-meetings` and a morning brief can use unattended. Detect (b) before asking for a key. Ask for the key only when we promise a brief that must work when she is not in the chat.
+**Granola has three states.** Do not collapse them: (a) the Mac app is installed — not enough for the next working morning; (b) Granola is signed in on this host — good for hour one, “when we talk”; (c) a Granola key Dex can store — the only state `/process-meetings` and a morning brief can use unattended. Detect (b) before asking for a key. Ask for the key only when we promise a brief that must work when she is not in the chat. If she never answered the notes question, ask once more, gently. If she skipped, do not ask again.
 
-**Daily-plan rewiring** is additive: route on the recorded profile `calendar` (`provider` + Apple calendar name or Google account). Existing Apple / none users keep today’s behaviour. Google Workspace setup is **email**, not calendar — do not tell her that skill fixes Tuesday’s meetings. The skill text must say “use the calendar tools this session actually has,” not one hardcoded name. Same preview branch is fine; this wiring must land **before** any lab user sees the hour.
+**Daily-plan rewiring** is additive: route on the recorded profile `calendar` (`provider` + Apple calendar name or Google account). Existing Apple / none users keep today’s behaviour. Google Workspace setup is **email**, not calendar — do not tell her that skill fixes the next working morning’s meetings. The skill text must say “use the calendar tools this session actually has,” not one hardcoded name. Same preview branch is fine; this wiring must land **before** any lab user sees the hour.
 
 ---
 
@@ -55,7 +55,7 @@ Hour one only chases **three** things. Everything else (Slack, Salesforce, Gong)
 
 Detect Granola **before** asking for a key. If it is already there, do not make her paste one.
 
-**Daily plan must use that calendar.** Today `/daily-plan` and `/meeting-prep` read Dex’s own `calendar-mcp` (Calendar.app) and only treat email as connected when `google-workspace.enabled` is true. That is the Doireann bug: first hour can use Google; Tuesday morning cannot. Fixing that wiring is **part of this work**, not a follow-up. Until it is fixed, we do not tell her the morning brief is ready.
+**Daily plan must use that calendar.** Today `/daily-plan` and `/meeting-prep` read Dex’s own `calendar-mcp` (Calendar.app) and only treat email as connected when `google-workspace.enabled` is true. That is the Doireann bug: first hour can use Google; the next working morning cannot. Fixing that wiring is **part of this work**, not a follow-up. Until it is fixed, we do not tell her the next working morning’s brief is ready.
 
 ---
 
@@ -106,13 +106,18 @@ Until something is connected, the wow is built from **what she told us**, includ
 
 ## Background workers (silent)
 
-They never speak in the chat. They write only **staged suggestions**. They stop when the interview ends. Whatever is not ready is not shown.
+They never speak in the chat. They write only **staged suggestions**. They start only after she has submitted the message that unlocks that beat. They stop when the interview ends. Whatever is not ready is not shown.
+
+Write like a sharp executive assistant: short, warm, useful. No clever punchlines.
+
+**Next working day** — never a hardcoded Tuesday. Friday → Monday. Tuesday → Wednesday.
 
 | Worker | When it starts | Reads | Produces |
 |---|---|---|---|
-| Sweeper | Second zero | Which apps are signed in; her own work-email identity | Recognition card |
-| Week reader | After notes are named, and calendar is allowed | This week + the last **three weeks** of calendar; recent meeting notes once a source exists | Week snapshot, regular cadence (1:1s, recurring), working-week guess, possible manager to ask about |
-| People mapper | After week reader has three weeks of meetings | Attendees; exclude her confirmed email; clean names | At most 5 people, no self-page; then the auto-file people/company question |
+| Sweeper | After she answers the welcome | Which apps are signed in; her own work-email identity | Recognition card |
+| Company researcher | After her company is known | Public facts about the company and its main competitors | Short marketplace note for the overview |
+| Week reader | After notes are settled and calendar is allowed — not while she is still voicing context | This week + the last **three weeks** of calendar; recent meeting notes once a source exists | Week snapshot, regular cadence (1:1s, recurring), working-week guess, possible manager to ask about |
+| People mapper | After week reader has three weeks of meetings | Attendees; exclude her confirmed email; clean names | Everyone who qualifies from the last few weeks, no self-page; then file-all people/company question |
 | Wow agent | After pillars exist | Her answers + week/notes only in hour one | The closing card: how to use Dex, 2–3 pillar-tied insights, 3 shortcut choices |
 
 Hard timeout at interview end. Salesforce/Gong content is **not** hour-one fuel unless she later gives a second yes (default: session two).
@@ -131,7 +136,7 @@ The first thing she hears is a hello — warm, a little excited, fifteen minutes
 
 First identity card uses **email only**: “From your work email: you’re Doireann Marron, at Pendo. Right?” Job title waits until after consent.
 
-**B:** “Hey — welcome to Dex. You’re taking the leap, and this is going to be good. I’ll help you keep meetings, people, and follow-ups in one place you own. About fifteen minutes and we’ll have your week in front of you. What’s your name?” Then the short interview. Connect calendar after she names what matters.
+**B:** “Hey — welcome to Dex. You’re taking the leap, and this is going to be good. I’ll help you keep meetings, people, and follow-ups in one place you own. About fifteen minutes and we’ll have your week in front of you. What’s your name?” Then stop. After she answers: “Hi [name], great to meet you. I’m Dex, your new Chief of Staff.” Then the short interview. Connect calendar after she names what matters.
 
 ### 2. Voice and last year’s review (after she answers the hello)
 
@@ -165,7 +170,7 @@ Keep as real spoken questions — **role-agnostic**. Look at **three weeks** of 
 Confirm, don’t quiz:
 
 - Company + email domain (from work email).
-- Company size (infer, show, tap to fix — nothing in the product branches on it today).
+- Company size (infer, show as “enterprise-sized company”, tap to fix — nothing in the product branches on it today). Add a short note on what the company does and who it competes with.
 - Working days (“Monday to Friday — right?”).
 - How Dex should talk (one line with a default). Career level stays visible — it sets coaching voice.
 
@@ -268,7 +273,7 @@ Preview entry (to implement after this spec is approved):
 curl -fsSL https://heydex.ai/lab-onboarding.sh | bash
 ```
 
-That script (when written) should: create or use a practice folder, finish the behind-the-scenes setup **before anyone opens the chat** (the small Python folder plus the file that points Claude at Dex’s helpers), drop in only the lab skill + this spec, and print “type `/setup-lab`”. If that setup is skipped, the first message has nothing to talk to and the agent starts explaining machinery instead of saying hello. It must **not** patch `onboarding.md` for existing users. The agent must not run that install from inside `/setup-lab`.
+That script (when written) should: create or use a practice folder, finish a **fresh Dex copy** **before anyone opens the chat** (helpers, people folders, and the file that points Claude at Dex’s helpers), drop in only the lab skill + this spec, and print “type `/setup-lab`”. If that setup is skipped, people pages cannot be filed and the agent starts explaining machinery instead of saying hello. It must **not** patch `onboarding.md` for existing users. The agent must not run that install from inside `/setup-lab`.
 
 Empty-connector testing is mandatory: run Scenario B on a machine/account with company apps off, and prove the connect-at-the-right-time copy.
 

@@ -20,16 +20,20 @@ BANNED_IN_HER_EARS = (
 def test_lab_starter_finishes_helpers_before_anyone_opens_chat() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert SCRIPT.stat().st_mode & 0o111
-    assert "--install-config-only" in text
+    assert "core/provision.cjs" in text
+    assert "--json" in text
     assert "core/mcp/requirements.txt" in text
     assert ".mcp.json" in text
     assert "onboarding-mcp" in text
+    assert "node_modules/js-yaml" in text
+    assert "05-Areas/People" in text
     assert "install.sh" not in text
     assert "onboarding.md" not in text or "Do not follow" in text
     assert "/setup-lab" in text
     assert "hello" in text.lower()
     assert 'System/.onboarding-lab' in text
     assert '{"lab": true}' in text
+    assert '"user_name"' in text
 
 
 def test_lab_starter_is_valid_bash() -> None:
@@ -63,10 +67,21 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "Do not cap at five" in hour
     assert "we can do Granola in two minutes at the end" in hour
     assert "last three weeks" in hour
+    assert "your new Chief of Staff" in hour
+    assert "your new Chief of Staff" in skill
+    assert "enterprise-sized company" in hour
+    assert "Company researcher" in hour
+    assert "ask once more, gently" in hour
+    assert "Ask one question, then stop" in hour
+    assert "Do not start a helper until she has submitted" in hour
+    assert "Never hardcode Tuesday" in hour
+    assert "next working day" in hour
     assert hour.count("/voice") == 1
     spoken = hour.split("## 1. Welcome", 1)[1]
     assert "only name up to five" not in spoken
     assert "max 5 named" not in hour
+    assert "more useful Tuesday" not in spoken
+    assert "Calling onboarding-mcp" not in spoken
     for banned in BANNED_IN_HER_EARS:
         assert banned not in hour.split("Banned")[0]
         # The hour may name banned words only in the ban list.
