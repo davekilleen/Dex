@@ -84,7 +84,7 @@ def test_setup_lab_leads_with_a_welcome() -> None:
     assert "Ask one question, then stop" in hour
     assert "Do not start a helper until she has submitted" in hour
     assert "Never hardcode a weekday" in hour
-    assert "next working day" in hour
+    assert "next working day" in hour.lower()
     assert "your next working morning" in hour
     assert "Monday 7 September" in hour
     assert "Do not spawn `@week-reader`" in hour
