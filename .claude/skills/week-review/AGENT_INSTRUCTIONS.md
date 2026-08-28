@@ -59,7 +59,23 @@ table.
 
 ### 1.5 Meeting Analysis
 
-Check `00-Inbox/Meetings/` for this week's meeting notes, and:
+Check `00-Inbox/Meetings/` for this week's meeting notes, then read
+`calendar.provider` from `System/user-profile.yaml` before any calendar call.
+
+**If `provider` is `google`:** use Google Workspace MCP, not calendar-mcp event tools.
+
+Read `calendar.work_calendar` from the same profile. Call `list_calendars(detailed=true)` first. Match `work_calendar` against a returned calendar summary, id, or primary flag, then pass that calendar's id. If `work_calendar` is missing or `primary`, use `primary`. Do not pass a display name as calendar_id. Set max_results high enough that a stacked week is not truncated.
+
+```
+Use: list_calendars(detailed=true)
+Use: get_events(time_min="{{WEEK_START_DATE}}", time_max="{{TARGET_DATE_PLUS_1}}", calendar_id="<resolved id or primary>", max_results=2500, detailed=true)
+```
+
+Apply CLAUDE.md's **Calendar response confidence contract** to the outcome: a missing or failing Google Workspace calendar tool is not an empty week. If the tools are unavailable or not connected, point to `/google-workspace-setup` using that skill's existing copy. Do not invent new privacy or consent language.
+
+**If `provider` is `none`:** skip calendar gathering. Do not call calendar-mcp event tools.
+
+**If `provider` is `apple`, missing, or any other value:** use calendar-mcp:
 
 ```
 Use: calendar_get_events_with_attendees(start_date="{{WEEK_START_DATE}}", end_date="{{TARGET_DATE_PLUS_1}}")

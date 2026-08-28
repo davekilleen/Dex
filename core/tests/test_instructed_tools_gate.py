@@ -204,3 +204,37 @@ def test_known_use_directive_reference_passes() -> None:
     )
 
     assert findings == []
+
+
+def test_planning_skills_allowlist_google_workspace_calendar_tools() -> None:
+    """Google calendar routing names the Google Workspace MCP tools.
+
+    list_calendars and get_events are not Dex catalog tools; they live on
+    the separately installed Google Workspace connector, the same way Teams
+    tools are allowlisted. Dex calendar_* names would call Apple Calendar.
+    """
+    checker = _load_checker()
+    allowlisted = checker.parse_allowlist(
+        (REPO_ROOT / "scripts" / "instructed-tools-allowlist.txt").read_text(
+            encoding="utf-8"
+        )
+    )
+    defined = checker.collect_defined_tools()
+    assert "list_calendars" in allowlisted
+    assert "get_events" in allowlisted
+
+    for relative in (
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/week-plan/SKILL.md",
+        ".claude/skills/week-review/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+    ):
+        path = REPO_ROOT / relative
+        findings = checker.find_unknown_references(
+            path.read_text(encoding="utf-8"),
+            path.relative_to(REPO_ROOT),
+            defined,
+            allowlisted,
+        )
+        assert findings == [], relative

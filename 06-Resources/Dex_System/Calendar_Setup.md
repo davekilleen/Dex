@@ -4,6 +4,8 @@ This guide is for **Mac users** who use **Google Calendar** and want Dex to show
 
 **Windows users:** Calendar connection is supported on Mac via Apple Calendar. This repo doesn't include Windows instructions yet.
 
+If `/google-workspace-setup` already set your calendar source to Google, skip this guide — Dex reads Google Calendar through that connection. This page is only for reading Google events through the Mac Calendar app.
+
 ---
 
 ## How it works in one sentence

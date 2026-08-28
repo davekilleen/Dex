@@ -125,8 +125,8 @@ Never read or change the separate analytics consent while handling this choice.
 ### Step 2: Offer the deep scan
 
 Quick mode checks configuration, wiring, and background-job freshness. Deep mode
-additionally contacts live services (Granola API, Calendar via EventKit, enabled
-integrations). Ask:
+additionally contacts live services (Granola API, Calendar via the configured
+source, enabled integrations). Ask:
 
 > "Quick check done. Want the deep scan too? It contacts your connected services
 > (Granola, Calendar) to prove the real query paths work — takes ~30 seconds."
@@ -302,8 +302,9 @@ machine-state and investigation ingredients, so the user does nothing but approv
 
 - **Fresh vault, onboarding incomplete:** run anyway but expect many OFFs; say "you're
   early in setup — this is normal" rather than alarming.
-- **Non-macOS:** launchd/EventKit checks come back UNKNOWN with a note; don't present
-  them as failures.
+- **Non-macOS:** launchd checks, and Apple Calendar checks, come back UNKNOWN with
+  a note; don't present them as failures. Google Calendar is still checked when
+  it is the configured calendar source.
 - **User says "just fix everything":** Tier 1 is already done; walk Tier 2 items one
   confirmation at a time anyway — batch-yes is how wrong heals happen. Tier 3 cannot be
   batched by definition.
@@ -313,7 +314,7 @@ machine-state and investigation ingredients, so the user does nothing but approv
 
 ## Related Commands
 
-- `/granola-setup`, `/calendar-setup`, `/enable-semantic-search` — Tier-3 fix paths
+- `/granola-setup`, `/calendar-setup`, `/google-workspace-setup`, `/enable-semantic-search` — Tier-3 fix paths
 - `/dex-update` — often the fix for package/version drift
 - `/feedback` — when a finding is a genuine Dex bug (not the user's setup), report it to the Dex team; the Doctor evidence becomes the report and the user only approves
 - `/xray` — understand what the doctor checked and why

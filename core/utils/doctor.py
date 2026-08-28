@@ -17,6 +17,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -5246,22 +5248,189 @@ def _calendar_list_result(context: DoctorContext) -> dict[str, Any]:
         return _get_calendar_list_result()
 
 
-def _configured_work_calendar(context: DoctorContext) -> str | None:
+_GOOGLE_CALENDAR_SETUP_ACTION = "Run /google-workspace-setup to connect Google Calendar."
+_GOOGLE_CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "redirect refused", headers, fp)
+
+
+def _configured_calendar_settings(context: DoctorContext) -> tuple[str | None, str | None]:
+    """Return (provider, work_calendar) from the user profile."""
     profile_path = context.core_path("USER_PROFILE_FILE")
     if not profile_path.exists():
-        return None
+        return None, None
     profile = _load_yaml(profile_path) or {}
     if not isinstance(profile, dict):
         raise ValueError("user-profile.yaml must contain an object")
     calendar = profile.get("calendar", {})
     if not isinstance(calendar, dict):
-        return None
+        return None, None
+    raw_provider = calendar.get("provider")
+    provider = str(raw_provider).strip().casefold() if raw_provider else None
+    if not provider:
+        provider = None
     configured = calendar.get("work_calendar")
-    return str(configured).strip() if configured else None
+    work_calendar = str(configured).strip() if configured else None
+    if not work_calendar:
+        work_calendar = None
+    return provider, work_calendar
+
+
+def _configured_work_calendar(context: DoctorContext) -> str | None:
+    _provider, configured = _configured_calendar_settings(context)
+    return configured
+
+
+def _google_calendar_token_payload(context: DoctorContext) -> dict[str, Any] | None:
+    path = context.vault_root / "System" / ".gmail-oauth-token.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _google_calendar_token_value(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    nested = payload.get("token")
+    if isinstance(nested, dict):
+        for key in keys:
+            value = nested.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _google_calendar_access_token(context: DoctorContext) -> str | None:
+    payload = _google_calendar_token_payload(context)
+    if payload is None:
+        return None
+    return _google_calendar_token_value(payload, "access_token", "token")
+
+
+def _google_calendar_has_refresh_token(context: DoctorContext) -> bool:
+    payload = _google_calendar_token_payload(context)
+    if payload is None:
+        return False
+    return _google_calendar_token_value(payload, "refresh_token") is not None
+
+
+def _google_calendar_list_result(context: DoctorContext) -> dict[str, Any]:
+    """List calendars through the Google Calendar API calendarList path."""
+    token = _google_calendar_access_token(context)
+    if not token:
+        return {"success": False, "error": "Google Calendar authorization is missing"}
+    request = urllib.request.Request(_GOOGLE_CALENDAR_LIST_URL)
+    request.add_unredirected_header("Authorization", f"Bearer {token}")
+    opener = urllib.request.build_opener(_NoRedirectHandler)
+    try:
+        with opener.open(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = _one_line(error.reason or f"HTTP {error.code}")
+        return {"success": False, "error": detail, "http_status": error.code}
+    except urllib.error.URLError as error:
+        return {"success": False, "error": _one_line(error.reason or error)}
+    except (OSError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError) as error:
+        return {"success": False, "error": _one_line(error)}
+    if not isinstance(payload, dict):
+        return {"success": False, "error": "Google Calendar list returned an invalid payload"}
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return {"success": False, "error": "Google Calendar list returned an invalid payload"}
+    names: list[str] = []
+    ids: list[str] = []
+    primary_id: str | None = None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        calendar_id = str(item.get("id") or "").strip()
+        summary = str(item.get("summary") or "").strip()
+        if calendar_id:
+            ids.append(calendar_id)
+        if summary:
+            names.append(summary)
+        elif calendar_id:
+            names.append(calendar_id)
+        if item.get("primary") is True and calendar_id:
+            primary_id = calendar_id
+    return {
+        "success": True,
+        "calendars": names,
+        "calendar_ids": ids,
+        "primary_id": primary_id,
+    }
+
+
+def _google_work_calendar_found(configured: str, result: dict[str, Any]) -> bool:
+    names = {str(name) for name in result.get("calendars", [])}
+    ids = {str(calendar_id) for calendar_id in result.get("calendar_ids", [])}
+    if configured in names or configured in ids:
+        return True
+    if configured.casefold() == "primary" and result.get("primary_id"):
+        return True
+    return False
+
+
+def _google_calendar_setup_heal() -> Heal:
+    return Heal(tier=3, action=_GOOGLE_CALENDAR_SETUP_ACTION, applied=False)
+
+
+def _probe_google_calendar_access(context: DoctorContext, configured: str | None) -> ProbeResult:
+    result = _google_calendar_list_result(context)
+    if not result.get("success"):
+        detail = _one_line(result.get("error", "Google Calendar list failed"))
+        if _looks_like_sandbox_failure(detail):
+            return ProbeResult("UNKNOWN", f"The sandbox blocked the Google Calendar list: {detail}")
+        if "authorization is missing" in detail.lower():
+            return ProbeResult(
+                "UNKNOWN",
+                "Google Calendar is configured but a live calendar list could not be completed",
+            )
+        status = result.get("http_status")
+        if status == 401 and _google_calendar_has_refresh_token(context):
+            return ProbeResult(
+                "UNKNOWN",
+                "Google Calendar is configured but a live calendar list could not be completed",
+            )
+        if status in {401, 403} or "denied" in detail.lower() or "permission" in detail.lower():
+            return ProbeResult("BROKEN", detail, _google_calendar_setup_heal())
+        return ProbeResult("UNKNOWN", f"Google Calendar list could not complete: {detail}")
+
+    calendars = [str(name) for name in result.get("calendars", [])]
+    if configured and not _google_work_calendar_found(configured, result):
+        available = ", ".join(calendars) or "none"
+        return ProbeResult(
+            "BROKEN",
+            f"Configured work calendar '{configured}' was not found; available calendars are {available}",
+            Heal(
+                tier=3,
+                action="Set calendar.work_calendar in System/user-profile.yaml to one of the listed names.",
+                applied=False,
+            ),
+        )
+    return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
 
 
 def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
-    configured = _configured_work_calendar(context)
+    provider, configured = _configured_calendar_settings(context)
+    if provider == "none":
+        return ProbeResult(
+            "OFF",
+            "Calendar access has never been requested and no work calendar is configured",
+        )
+    if provider and provider not in {"apple", "google"}:
+        return ProbeResult("UNKNOWN", "The configured calendar source is not a supported calendar source")
+    if provider == "google":
+        return _probe_google_calendar_access(context, configured)
     status = _calendar_permission_status(context)
     if status == "unsupported":
         return ProbeResult("UNKNOWN", "EventKit calendar access can only be checked on macOS")

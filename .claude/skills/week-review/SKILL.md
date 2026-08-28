@@ -546,7 +546,7 @@ After synthesis:
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
 | Work | work-mcp | `list_tasks`, `get_week_progress`, `get_quarterly_goals`, `get_goal_status` |
-| Calendar | calendar-mcp | `calendar_get_events_with_attendees` |
+| Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
 | Improvements | dex-improvements-mcp | `list_ideas` |
 | Analytics | dex-analytics | `track_event` |
 
