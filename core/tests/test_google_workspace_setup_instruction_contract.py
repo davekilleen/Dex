@@ -32,11 +32,11 @@ def _step1(body: str) -> str:
 
 
 def _step3(body: str) -> str:
-    return _section(body, "### Step 3: Add the Google Workspace MCP Server", "### Step 4:")
+    return _section(body, "### Step 4: Add the Google Workspace MCP Server", "### Step 5:")
 
 
 def _step6(body: str) -> str:
-    return _section(body, "### Step 6: Test the Connection", "### Step 7:")
+    return _section(body, "### Step 7: Test the Connection", "### Step 8:")
 
 
 def test_step3_prose_and_config_name_the_same_install_identity() -> None:
@@ -52,7 +52,7 @@ def test_step3_prose_and_config_name_the_same_install_identity() -> None:
     assert list(config) == [INSTALL_IDENTITY], config
     entry = config[INSTALL_IDENTITY]
     assert entry["command"] == "npx", entry
-    assert entry["args"] == ["-y", INSTALL_IDENTITY], entry["args"]
+    assert entry["args"] == ["-y", INSTALL_IDENTITY, "serve"], entry["args"]
 
 
 def test_skill_never_names_the_underscore_package_as_the_install_target() -> None:
