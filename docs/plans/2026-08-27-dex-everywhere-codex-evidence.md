@@ -128,10 +128,11 @@ Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed gr
 - The adapter now names the real local-plugin + local-vault steps: copy the reviewed package to `~/.codex/plugins/dex`, list it from `~/.agents/plugins/marketplace.json` with `source.path` `./.codex/plugins/dex` (relative to the home marketplace root, not the `.agents/plugins` folder), restart ChatGPT desktop, install Dex, start Work locally, and grant the Dex vault folder.
 - Doctor and setup preview name three limits: a person still has to do that desktop journey; ChatGPT on the web needs a separate public HTTPS door; a shared plugin cache on disk is not ChatGPT Work proof.
 - Detection still treats `CHATGPT_WORK` / `OPENAI_WORK` / `CHATGPT_WORK_COMPANION` and an explicit `/.chatgpt-work/` marker as ChatGPT Work. A `/.codex/` path still selects Codex, not ChatGPT Work.
+- A mechanical writer now copies the reviewed package to `~/.codex/plugins/dex` and writes `~/.agents/plugins/marketplace.json` with `source.path` `./.codex/plugins/dex`. That path can read a vault through the bundled MCP tools. It is not a vault-folder grant. Doctor and setup stay `guided` / `partial` for vault and do not grow a `granted=true` signal. A `~/.codex/plugins/dex` path still detects as Codex.
 
 ### What is still missing
 
-- **Only leftover that still needs Dave:** grant the Dex vault folder on a real desktop after installing the local plugin. This Ubuntu Cloud runner cannot do that and will not invent that grant. Do not treat a later green Dex CI or Mac fleet run as that proof.
+- **Only leftover that still needs Dave:** grant the Dex vault folder on a real desktop after installing the local plugin. This Ubuntu Cloud runner cannot do that and will not invent that grant. A personal-copy + home marketplace write is not that grant. Do not treat a later green Dex CI or Mac fleet run as that proof.
 - No recorded live ChatGPT Work session exists. Do not invent one.
 - ChatGPT on the web stays later. The product lab has no Dex Everywhere programme record; do not guess one there.
 
