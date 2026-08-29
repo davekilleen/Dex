@@ -10,6 +10,9 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 import jsonschema
 
@@ -250,6 +253,37 @@ def test_safe_publisher_wrapper_only_validates(tmp_path: Path) -> None:
     assert recorded.startswith("validate ")
     assert "publish" not in recorded
     assert completed.returncode == 0
+
+
+def test_npm_pack_uses_the_resolved_windows_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    builder = _load_builder()
+    seen: list[list[str]] = []
+    packed = tmp_path / "dex-mcp-1.0.0.tgz"
+    packed.write_bytes(b"packed")
+
+    def fake_run(command: list[str], *, cwd: Path):
+        seen.append(command)
+        return SimpleNamespace(returncode=0, stdout=f"{packed.name}\n", stderr="")
+
+    monkeypatch.setattr(builder, "_run", fake_run)
+    monkeypatch.setattr(builder, "_npm_executable", lambda: r"C:\nodejs\npm.CMD")
+
+    result = builder.pack_npm(tmp_path, tmp_path)
+
+    assert seen == [[r"C:\nodejs\npm.CMD", "pack", "--pack-destination", str(tmp_path)]]
+    assert result == packed
+
+
+def test_windows_npm_cmd_live_publish_is_refused() -> None:
+    builder = _load_builder()
+    try:
+        builder._forbid_live_publish([r"C:\Program Files\nodejs\npm.CMD", "publish"])
+    except builder.RegistryArtifactError as error:
+        assert "refusing live npm publish" in str(error)
+    else:
+        raise AssertionError("windows npm.cmd publish must be refused")
 
 
 def test_builder_rejects_a_released_channel(tmp_path: Path) -> None:

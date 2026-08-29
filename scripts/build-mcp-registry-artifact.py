@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import urllib.error
@@ -64,13 +65,18 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError as error:
+        raise RegistryArtifactError(
+            f"{command[0]} is not on PATH: {' '.join(command)}"
+        ) from error
     if completed.returncode != 0:
         raise RegistryArtifactError(
             f"{' '.join(command)} failed:\n{completed.stdout}\n{completed.stderr}"
@@ -78,11 +84,27 @@ def _run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     return completed
 
 
+def _executable_name(command: list[str]) -> str:
+    raw = command[0].replace("\\", "/")
+    return Path(raw).name.lower()
+
+
+def _npm_executable() -> str:
+    names = ("npm.cmd", "npm.exe", "npm") if os.name == "nt" else ("npm",)
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return found
+    raise RegistryArtifactError("npm is not on PATH; the unpublished packer cannot run")
+
+
 def _forbid_live_publish(command: list[str]) -> None:
     joined = " ".join(command)
-    if "npm" in command and "publish" in command and "--dry-run" not in command:
+    name = _executable_name(command)
+    npm_names = {"npm", "npm.cmd", "npm.exe"}
+    if name in npm_names and "publish" in command and "--dry-run" not in command:
         raise RegistryArtifactError(f"refusing live npm publish: {joined}")
-    if "mcp-publisher" in Path(command[0]).name and "publish" in command:
+    if "mcp-publisher" in name and "publish" in command:
         raise RegistryArtifactError(f"refusing mcp-publisher publish: {joined}")
 
 
@@ -109,7 +131,7 @@ def validate_manifests(staged: Path) -> dict[str, Any]:
     package = _load_json(staged / "package.json")
     server = _load_json(staged / "server.json")
     if package.get("private") is not True:
-        raise RegistryArtifactError("dex-mcp must stay private until Dave publishes")
+        raise RegistryArtifactError("dex-mcp must stay private until a public catalogue publish")
     if package.get("name") != "dex-mcp":
         raise RegistryArtifactError("npm package name must stay the unscoped dex-mcp name")
     if package.get("mcpName") != server.get("name"):
@@ -139,8 +161,15 @@ def _official_schema() -> dict[str, Any] | None:
 
 
 def pack_npm(staged: Path, output_dir: Path) -> Path:
-    completed = _run(["npm", "pack", "--pack-destination", str(output_dir)], cwd=staged)
+    completed = _run(
+        [_npm_executable(), "pack", "--pack-destination", str(output_dir)],
+        cwd=staged,
+    )
     names = [line.strip() for line in completed.stdout.splitlines() if line.strip().endswith(".tgz")]
+    if not names:
+        packed = sorted(output_dir.glob("*.tgz"))
+        if packed:
+            names = [packed[-1].name]
     if not names:
         raise RegistryArtifactError("npm pack did not write a .tgz")
     tarball = output_dir / names[-1]
@@ -150,7 +179,7 @@ def pack_npm(staged: Path, output_dir: Path) -> Path:
 
 
 def dry_run_npm_publish(staged: Path) -> str:
-    command = ["npm", "publish", "--dry-run"]
+    command = [_npm_executable(), "publish", "--dry-run"]
     _forbid_live_publish(command)
     completed = _run(command, cwd=staged)
     combined = f"{completed.stdout}\n{completed.stderr}"

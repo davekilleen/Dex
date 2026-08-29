@@ -1,10 +1,11 @@
 # Dex for any MCP app
 
 This folder is the unpublished npm-shaped package for Dex's already-proven
-read-only tools. After Dave publishes, a person can point any MCP app at one
-line. Until then, the package stays local, checksummed, and unreleased.
+read-only tools. After a public catalogue publish, a person can point any MCP
+app at one line. Until then, the package stays local, checksummed, and
+unreleased.
 
-## What a person can do after Dave publishes
+## What a person can do after a public catalogue publish
 
 Add this one line in an MCP app that can install from the official catalogue:
 
