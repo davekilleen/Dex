@@ -48,6 +48,7 @@ Do not wait for a Mac permission popup. It often never appears when Dex runs ins
 | What you see | What to do |
 |--------------|------------|
 | **"Calendar access denied"** | Go to **System Settings** → **Privacy & Security** → **Calendars**, turn **VS Code** or **Cursor** on (the app Dex is running in), then click that app and set access to **Full** (not "Add Only"). Quit the editor and open it again. Do not switch to Terminal as the only fix, and do not reinstall Dex. |
+| **"Calendar access is set to Add Events Only"** | macOS is letting Dex add events but not read them. Go to **System Settings** → **Privacy & Security** → **Calendars**, click the app Dex is running in (**VS Code**, **Cursor**, or **Terminal**) and change it from "Add Events Only" to **Full Access**. Quit that app and open it again. Asking Dex again without changing the setting will not help. |
 | **No meetings or wrong dates for recurring events** | Make sure you did both steps above. If you installed Dex without running the installer (e.g. you installed Python packages yourself), open Terminal and run: `pip3 install --user pyobjc-framework-EventKit`, then restart the editor. |
 | **Calendar is empty or very slow** | Same as above: both setup steps, and if you didn't run the installer, run the `pip3 install` line above. |
 
