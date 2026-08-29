@@ -5,6 +5,20 @@
 **Live successor:** draft PR 620, branch `cursor/dex-everywhere-codex-first-c346`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346`.  
 **Sequence:** Copilot CLI is written and not opened. Codex, Cowork, Pi, and BB stay green. ChatGPT Work vault-folder grant is the only leftover that still needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
 
+## Fleet leftover on unpublished MCP pack SHA `b4b4f570`
+
+Host-path HEAD recorded here: `b4b4f57055de0abb2cba628ad8e917dc65522294` on draft PR 652 / `cursor/everywhere-mcp-pack-ci-c346`. This lot targets the successor (`cursor/dex-everywhere-codex-first-c346`, draft PR 620). Do not merge 620. Leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346` is dead. Keep the pack unpublished. Do not create an npm account. Do not npm publish. Do not mcp-publisher publish.
+
+Dex CI is green on that exact SHA:
+
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33257694720 — **GREEN** / success
+
+The twelve-journey Mac fleet canary did not run on that exact SHA. GitHub only starts `historic-fleet-darwin-pr-canary` when a pull request changes one of the watched release/fleet files (`.github/workflows/historic-fleet-darwin.yml`, root `package.json`, `core/update/journey-protocol-v1.json`, `scripts/build-release.sh`, `scripts/build-vault-bundle.sh`, `scripts/check-release-catalog-tag-identity.py`, `scripts/compose-vault-gitignore.py`, `scripts/dex_update_bridge.py`, `scripts/release_fleet.py`, `scripts/release_fleet_acceptance.py`, `scripts/release_fleet_executor.py`, `scripts/run-historic-fleet-darwin.sh`). PR 652 did not change those files. `packages/dex-mcp/package.json` is not the watched root `package.json`. Formal `historic-fleet-darwin` stays skipped on pull requests. Successor `77242824` already has that canary green at https://github.com/davekilleen/Dex/actions/runs/33247935319. That is not this head.
+
+This lot commit is a later head and is not itself the freeze. Do not bump a watched path to invent fleet proof on `b4b4f570`.
+
+Green Dex CI is not a person-can-open win. No person opened a host. The pack stays unpublished.
+
 ## What “Codex done” means
 
 Dex works in **Codex CLI and Codex desktop**. The Codex editor add-on does not load this plugin; that limit is recorded in the Codex host profile and is intentional.
