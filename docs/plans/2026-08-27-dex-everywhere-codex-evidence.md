@@ -2,7 +2,8 @@
 
 **Date:** 29 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Copilot CLI is the started host story. Codex, Cowork, Pi, and BB stay frozen. ChatGPT Work vault-folder grant stays later for a person on a real desktop. Programme stays unreleased.
+**Live successor:** draft PR 620, branch `cursor/dex-everywhere-codex-first-c346`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346`.  
+**Sequence:** Copilot CLI is written and not opened. Codex, Cowork, Pi, and BB stay green. ChatGPT Work vault-folder grant is the only leftover that still needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
 
 ## What “Codex done” means
 
@@ -16,7 +17,7 @@ Branch `cursor/dex-everywhere-codex-first-c346`. Confirm the exact SHA with `git
 
 - Isolated branch: `cursor/dex-everywhere-codex-first-c346`
 - Draft PR: https://github.com/davekilleen/Dex/pull/620
-- Related parked draft: https://github.com/davekilleen/Dex/pull/619 (same work, older branch name)
+- Dead leftover, do not push: https://github.com/davekilleen/Dex/pull/619 (`cursor/dex-everywhere-phase-1a-c346`)
 - Older Everywhere draft, left open: https://github.com/davekilleen/Dex/pull/594
 - Merged public main through **v1.97.3** (`2599ebe1`) with a normal merge, not a rebase
 
@@ -130,9 +131,9 @@ Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed gr
 
 ### What is still missing
 
-- **Named limit:** a human must open ChatGPT Work on a real desktop, install the local plugin, and grant the Dex vault folder. This Ubuntu Cloud runner cannot do that. Do not treat a later green Dex CI or Mac fleet run as that proof.
+- **Only leftover that still needs Dave:** grant the Dex vault folder on a real desktop after installing the local plugin. This Ubuntu Cloud runner cannot do that and will not invent that grant. Do not treat a later green Dex CI or Mac fleet run as that proof.
 - No recorded live ChatGPT Work session exists. Do not invent one.
-- ChatGPT on the web stays later.
+- ChatGPT on the web stays later. The product lab has no Dex Everywhere programme record; do not guess one there.
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the desktop journey.
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -165,3 +167,87 @@ def test_setup_preview_keeps_copilot_cli_separate_from_chatgpt_work() -> None:
     assert "ubuntu cloud" in joined
     assert "chatgpt" not in joined
     assert "microsoft 365" not in joined
+
+
+def _expand_plugin_vars(value: str, plugin_root: Path, plugin_data: Path) -> str:
+    return value.replace("${PLUGIN_ROOT}", str(plugin_root)).replace(
+        "${PLUGIN_DATA}", str(plugin_data)
+    )
+
+
+def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Path) -> None:
+    mcp = json.loads((PLUGIN_ROOT / "mcp.json").read_text(encoding="utf-8"))
+    server = mcp["mcpServers"]["dex-core"]
+    plugin_data = tmp_path / "plugin-data"
+    plugin_data.mkdir()
+    vault = tmp_path / "Dex"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        'pillars:\n  - id: focus\n    name: "Focus"\n    description: "Do the important work"\n',
+        encoding="utf-8",
+    )
+    args = [
+        _expand_plugin_vars(argument, PLUGIN_ROOT, plugin_data)
+        for argument in server["args"]
+    ]
+    env = {
+        **os.environ,
+        "PYTHONNOUSERSITE": "1",
+    }
+    for key, value in server.get("env", {}).items():
+        env[key] = _expand_plugin_vars(value, PLUGIN_ROOT, plugin_data)
+    payload = "".join(
+        json.dumps(message) + "\n"
+        for message in (
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "boot_today", "arguments": {"vault_path": str(vault)}},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "check_safety_gate",
+                    "arguments": {"vault_path": str(vault), "command": "rm -rf /"},
+                },
+            },
+        )
+    )
+    completed = subprocess.run(
+        [server["command"], *args],
+        input=payload,
+        text=True,
+        capture_output=True,
+        cwd=vault,
+        env=env,
+        check=True,
+    )
+    responses = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+    names = {tool["name"] for tool in responses[1]["result"]["tools"]}
+    skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
+    limitations = " ".join(get_profile("copilot-cli").limitations).lower()
+
+    assert server["command"] == "node"
+    assert "--stdio" in args
+    assert "${PLUGIN_ROOT}" not in " ".join(args)
+    assert skills
+    assert names == {
+        "dex_harness_profiles",
+        "boot_today",
+        "get_person_context",
+        "check_safety_gate",
+    }
+    assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
+    assert responses[3]["result"]["structuredContent"]["refused"] is True
+    assert server["command"] == "node"
+    assert "copilot" not in args
+    assert "no recorded live session" in limitations
+    assert "hooks are not included" in limitations
+    assert get_profile("copilot-cli").capability_rows()
+    rows = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
+    assert rows["hooks"]["mode"] == "unavailable"

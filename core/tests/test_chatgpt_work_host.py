@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -215,3 +218,87 @@ def test_setup_preview_keeps_chatgpt_work_separate_from_codex() -> None:
     assert "vault" in joined
     assert "person" in joined
     assert "codex" not in joined
+
+
+def _chatgpt_work_mcp_roundtrip(plugin_root: Path, vault: Path) -> list[dict]:
+    mcp = json.loads((plugin_root / ".codex-mcp.json").read_text(encoding="utf-8"))
+    server = mcp["dex-core"]
+    args = [
+        argument.replace("${PLUGIN_ROOT}", str(plugin_root))
+        for argument in server["args"]
+    ]
+    payload = "".join(
+        json.dumps(message) + "\n"
+        for message in (
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "boot_today", "arguments": {"vault_path": str(vault)}},
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "check_safety_gate",
+                    "arguments": {"vault_path": str(vault), "command": "rm -rf /"},
+                },
+            },
+        )
+    )
+    completed = subprocess.run(
+        [server["command"], *args],
+        input=payload,
+        text=True,
+        capture_output=True,
+        cwd=plugin_root,
+        env={**os.environ, "PYTHONNOUSERSITE": "1"},
+        check=True,
+    )
+    return [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+
+
+def test_personal_marketplace_copy_can_read_a_vault_without_inventing_the_folder_grant(
+    tmp_path: Path,
+) -> None:
+    adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
+    example = adapter["example"]
+    home = tmp_path / "home"
+    plugin_copy = home / ".codex" / "plugins" / "dex"
+    marketplace = home / ".agents" / "plugins" / "marketplace.json"
+    vault = tmp_path / "Dex Vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        'pillars:\n  - id: focus\n    name: "Focus"\n    description: "Do the important work"\n',
+        encoding="utf-8",
+    )
+    shutil.copytree(
+        PLUGIN_ROOT,
+        plugin_copy,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    marketplace.parent.mkdir(parents=True)
+    marketplace.write_text(
+        json.dumps(example["personal_marketplace_document"], indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    relative = example["personal_marketplace_document"]["plugins"][0]["source"]["path"]
+    resolved = (home / relative.removeprefix("./")).resolve()
+    responses = _chatgpt_work_mcp_roundtrip(plugin_copy, vault)
+    skills = list((plugin_copy / "skills").glob("*/SKILL.md"))
+    limitations = " ".join(get_profile("chatgpt-work").limitations).lower()
+
+    assert resolved == plugin_copy.resolve()
+    assert (plugin_copy / ".codex-plugin" / "plugin.json").is_file()
+    assert skills
+    assert responses[1]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
+    assert responses[2]["result"]["structuredContent"]["refused"] is True
+    assert "grant the dex vault folder" in limitations
+    assert "detection tests and ci" in limitations
+    assert "grant" in example["vault_grant"].lower()
+    assert not (home / ".chatgpt-work").exists()
+    assert not any(vault.rglob("*grant*"))
+    assert "folder grant" not in json.dumps(example["personal_marketplace_document"]).lower()

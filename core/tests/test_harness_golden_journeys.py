@@ -81,6 +81,8 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert "desktop" in chatgpt_limits
     assert "vault" in chatgpt_limits
     assert "person" in chatgpt_limits
+    guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
+    assert "only leftover that still needs Dave is granting the Dex vault folder" in guide
 
     claude = _rows("claude-code")
     assert claude["hooks"]["status"] == "native"
