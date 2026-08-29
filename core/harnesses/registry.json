@@ -374,7 +374,7 @@
         {"id": "agent-plugins", "status": "native", "tier": 2, "mode": "guided", "notes": "A person enables chat.plugins.enabled and registers ./packages/dex-agent-plugin in chat.pluginLocations. This is not a recorded live journey."}
       ],
       "modes": ["tier-0-vault", "tier-1-core", "tier-2-skills"],
-      "detection": {"env": ["VSCODE", "VSCODE_HARNESS"], "paths": ["/Visual Studio Code/", "/Code - OSS/"]},
+      "detection": {"env": ["VSCODE", "VSCODE_HARNESS"], "paths": ["/Visual Studio Code.app", "/Visual Studio Code/", "/Code - OSS/"]},
       "limitations": [
         "VS Code plugin settings stay off by default. A person still has to turn on chat.plugins.enabled, point chat.pluginLocations at ./packages/dex-agent-plugin, and reload. Detection tests and CI do not prove that journey.",
         "If auto-detect is empty or names Cursor or Kiro, confirm VS Code in /setup.",

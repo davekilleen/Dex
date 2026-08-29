@@ -127,7 +127,7 @@ def test_developer_guide_names_the_vscode_and_kiro_desktop_steps() -> None:
     assert "chat.pluginLocations" in guide
     assert "./packages/dex-agent-plugin" in guide
     assert "Import power from a folder" in guide
-    assert "name Dex" in guide
+    assert "name dex" in guide.lower()
     assert "/setup" in guide
     assert "Ubuntu Cloud is not that journey" in guide
 

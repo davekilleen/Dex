@@ -69,6 +69,7 @@
       "VSCODE_HARNESS"
     ],
     "paths": [
+      "/Visual Studio Code.app",
       "/Visual Studio Code/",
       "/Code - OSS/"
     ]
