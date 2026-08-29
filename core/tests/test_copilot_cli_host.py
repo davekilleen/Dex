@@ -67,6 +67,18 @@ def test_direct_install_cache_is_not_a_recorded_live_session() -> None:
     assert "detection tests and ci" in joined
 
 
+def _reviewed_install_target() -> Path:
+    """Resolve the path a person would pass to `copilot plugin install`."""
+    adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
+    example = adapter["example"]
+    local_package = example["local_package"]
+    assert example["install_command"] == f"copilot plugin install {local_package}"
+    assert local_package == "./packages/dex-agent-plugin"
+    target = (REPO_ROOT / Path(local_package)).resolve()
+    assert target == PLUGIN_ROOT.resolve()
+    return target
+
+
 def test_copilot_cli_plugin_uses_the_open_package_layout() -> None:
     adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
     manifest = json.loads((PLUGIN_ROOT / "plugin.json").read_text(encoding="utf-8"))
@@ -87,6 +99,37 @@ def test_copilot_cli_plugin_uses_the_open_package_layout() -> None:
     for relative in adapter["native_paths"]:
         assert (PLUGIN_ROOT / relative).exists()
     assert not (PLUGIN_ROOT / "AGENTS.md").exists()
+
+
+def test_install_argument_is_the_reviewed_open_plugin_layout() -> None:
+    """packages/dex-agent-plugin is the installable Open Plugin folder, not a live session."""
+    adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
+    example = adapter["example"]
+    target = _reviewed_install_target()
+    manifest = json.loads((target / "plugin.json").read_text(encoding="utf-8"))
+    mcp = json.loads((target / "mcp.json").read_text(encoding="utf-8"))
+    skills = list((target / "skills").glob("*/SKILL.md"))
+    limitations = " ".join(get_profile("copilot-cli").limitations)
+
+    assert adapter["kind"] == "open-plugin-spec"
+    assert adapter["native_paths"] == ["plugin.json", "skills/", "mcp.json"]
+    assert example["manifest"] == "packages/dex-agent-plugin/plugin.json"
+    assert example["mcp_file"] == "mcp.json"
+    assert (target / "plugin.json").is_file()
+    assert (target / "mcp.json").is_file()
+    assert (target / "skills").is_dir()
+    assert target.relative_to(REPO_ROOT.resolve()) == Path("packages/dex-agent-plugin")
+    assert manifest["$schema"] == example["open_plugin_schema"]
+    assert manifest["name"] == "dex-agent-plugin"
+    assert "hooks" not in manifest
+    assert mcp["$schema"] == "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
+    assert "mcpServers" in mcp
+    assert mcp["mcpServers"]["dex-core"]["cwd"] == "${PLUGIN_ROOT}"
+    assert skills
+    assert not (target / "hooks" / "hooks.json").exists()
+    assert example["install_command"] in limitations
+    assert "no recorded live session" in limitations.lower()
+    assert "hooks are not included" in limitations.lower()
 
 
 def test_copilot_cli_install_contract_names_local_plugin_and_folder() -> None:
@@ -367,11 +410,16 @@ def test_direct_install_fixture_completes_the_written_path_without_opening_the_c
     ).lower()
     guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
 
+    source = _reviewed_install_target()
     assert example["install_command"] == "copilot plugin install ./packages/dex-agent-plugin"
     assert example["inspect_command"] == "copilot plugin list"
     assert example["direct_install_cache"] == "~/.copilot/installed-plugins/_direct/"
     assert installed == home / ".copilot" / "installed-plugins" / "_direct" / DIRECT_SOURCE_ID
     assert installed != PLUGIN_ROOT
+    assert source == PLUGIN_ROOT.resolve()
+    assert (source / "plugin.json").is_file()
+    assert (source / "mcp.json").is_file()
+    assert (source / "skills").is_dir()
     assert (installed / "plugin.json").is_file()
     assert (installed / "mcp.json").is_file()
     assert (installed / "skills").is_dir()

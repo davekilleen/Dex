@@ -152,7 +152,7 @@ Earlier CI and Mac fleet on `28bb192baf05570f9e38f84e07f92b2e78b4a973` stayed gr
 
 ### What is proven
 
-- The reviewed package is the Open Plugin Spec root: `plugin.json` with the canonical `$schema`, `skills/`, and `mcp.json` using `PLUGIN_ROOT`.
+- The reviewed package is the Open Plugin Spec root a person would pass to `copilot plugin install ./packages/dex-agent-plugin`: root `plugin.json` with the canonical `$schema`, `skills/` with `SKILL.md` files, and `mcp.json` using `PLUGIN_ROOT`. Tests resolve that exact install argument from the checkout. This is not a live Copilot session.
 - The adapter, Doctor, setup preview, and install guide now name those exact local-plugin + Dex-folder steps.
 - Hooks stay unavailable. Claude's `.mcp.json` in the same folder is not this host's contract.
 - Detection still treats `COPILOT_CLI` / `GH_COPILOT` / `GITHUB_COPILOT` and a `/.copilot/` path as Copilot CLI. A cache under `~/.copilot/installed-plugins/` is still Copilot CLI detection, not a recorded live session.
