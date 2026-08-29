@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from core.mcp import work_server
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude" / "hooks" / "dex-safety-guard.sh"
+DESTRUCTIVE = "gh repo " + "delete example/repository"
 
 
 def _vault(root: Path) -> Path:
@@ -103,6 +105,33 @@ def test_malformed_safety_inputs_return_safe_payload(tmp_path: Path, monkeypatch
     assert evaluate_safety_gate(vault=object()).refused is False
     result = _mcp(monkeypatch, vault, [])
     assert result["refused"] is False
+
+
+def test_hook_refuses_when_the_shared_gate_cannot_decide(tmp_path: Path) -> None:
+    """A gate that crashes must refuse, not fall through to allow."""
+    repo = tmp_path / "repo"
+    hooks = repo / ".claude" / "hooks"
+    gates = repo / "core" / "gates"
+    hooks.mkdir(parents=True)
+    gates.mkdir(parents=True)
+    (repo / "System" / ".dex").mkdir(parents=True)
+    shutil.copy2(GUARD, hooks / GUARD.name)
+    (gates / "safety.py").write_text("raise ImportError('broken core')\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["bash", str(hooks / GUARD.name)],
+        input=json.dumps(
+            {"tool_name": "Bash", "tool_input": {"command": DESTRUCTIVE}}
+        ),
+        capture_output=True,
+        text=True,
+        cwd=repo,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(repo), "VAULT_PATH": str(repo)},
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "could not reach a decision" in result.stdout
 
 
 def test_scraper_preference_remains_claude_only(tmp_path: Path, monkeypatch) -> None:

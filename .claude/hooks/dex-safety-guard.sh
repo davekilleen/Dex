@@ -76,4 +76,13 @@ STATUS=$?
 if [[ "$STATUS" -eq 2 ]]; then
     exit 2
 fi
+# A gate that crashed decided nothing. Treating "not exactly 2" as permission
+# would let a broken interpreter, a failed import, or a half-installed Core
+# silently reopen every destructive command this guard exists to refuse, so a
+# gate that did not answer cleanly is refused for the same reason a missing one
+# is.
+if [[ "$STATUS" -ne 0 ]]; then
+    echo "BLOCKED: the shared Dex safety gate could not reach a decision (exit $STATUS). Run /dex-doctor."
+    exit 2
+fi
 exit 0
