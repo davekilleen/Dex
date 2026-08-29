@@ -54,7 +54,9 @@ def setup_action(command: str) -> str:
     """Return the exact index command plus the Full Disk Access prerequisite."""
     operation = "rebuilding" if command == "rebuild" else "building"
     return (
-        f"Run `umask 077; apple-mail-mcp {command} --verbose` from a terminal app "
+        "Quit every Dex, Claude, or Cursor session that is using Mail search "
+        "(a live Mail server holds the search-index lock for its whole life), then "
+        f"run `umask 077; apple-mail-mcp {command} --verbose` from a terminal app "
         "granted Full Disk Access: System Settings > Privacy & Security > "
         "Full Disk Access. Quit and reopen that terminal before "
         f"{operation}. The app that launches the Mail server (Dex, Claude, or Cursor) "

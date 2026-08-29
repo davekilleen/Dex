@@ -122,6 +122,8 @@ def _empty_result() -> dict[str, Any]:
         "touches": [],
         "last_touched": None,
         "quarantined": False,
+        "exclude_from_matching": False,
+        "declared_non_entity": False,
         "source_formats": [],
     }
 
@@ -386,6 +388,8 @@ def _split_frontmatter(
 def _infer_type(path: Path, values: dict[str, Any]) -> str | None:
     if values.get("type") in {"person", "company"}:
         return values["type"]
+    if values.get("declared_non_entity"):
+        return None
     try:
         path.resolve().relative_to(PEOPLE_DIR.resolve())
         return "person"
@@ -414,6 +418,13 @@ def parse_entity_page(path: str | Path) -> dict[str, Any]:
     pipe, inline, legacy_formats = _legacy_fields(body)
     result = _empty_result()
     result["quarantined"] = quarantined
+    if frontmatter is not None and not quarantined:
+        result["exclude_from_matching"] = frontmatter.get("exclude_from_matching") is True
+        if "type" in frontmatter:
+            declared = _normalise_scalar(frontmatter.get("type"))
+            result["declared_non_entity"] = bool(
+                declared and declared not in {"person", "company"}
+            )
     if had_frontmatter:
         result["source_formats"].append("frontmatter")
     result["source_formats"].extend(legacy_formats)
@@ -554,6 +565,11 @@ def merge_frontmatter_text(
         )
         or []
     )
+    if parsed is not None and "type" in parsed:
+        declared = _normalise_scalar(parsed.get("type"))
+        effective_current["declared_non_entity"] = bool(
+            declared and declared not in {"person", "company"}
+        )
     effective_current["type"] = _infer_type(page_path, effective_current)
     if effective_current["type"] and not effective_current["name"]:
         heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)

@@ -1,1 +1,24 @@
-{"type":"company","name":"CRLF Corp","role":null,"company":null,"company_page":null,"emails":[],"aliases":[],"location":null,"last_interaction":null,"domains":["crlf.example"],"website":"https://crlf.example","status":"Active","touches":[],"last_touched":null,"quarantined":false,"source_formats":["frontmatter"]}
+{
+  "type": "company",
+  "name": "CRLF Corp",
+  "role": null,
+  "company": null,
+  "company_page": null,
+  "emails": [],
+  "aliases": [],
+  "location": null,
+  "last_interaction": null,
+  "domains": [
+    "crlf.example"
+  ],
+  "website": "https://crlf.example",
+  "status": "Active",
+  "touches": [],
+  "last_touched": null,
+  "quarantined": false,
+  "exclude_from_matching": false,
+  "declared_non_entity": false,
+  "source_formats": [
+    "frontmatter"
+  ]
+}

@@ -86,7 +86,7 @@ function resolveEntityPath(vaultRoot, identity) {
     } catch (_) {
       continue;
     }
-    if (entity.quarantined || entity.type !== identity.kind) continue;
+    if (entity.quarantined || entity.exclude_from_matching || entity.type !== identity.kind) continue;
     if (identity.kind === 'person' && wantedEmails.size > 0) {
       const pageEmails = normalizedEmails(entity.emails);
       if ([...wantedEmails].some(email => pageEmails.has(email))) {

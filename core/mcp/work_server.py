@@ -2527,13 +2527,17 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
             pillar = priority_match.group(3).strip()
             priority_id = priority_match.group(4) if priority_match.group(4) else None
             
-            # Look for linked goal in following lines
+            # Look for a linked goal in this priority's metadata bullets.
             linked_goal_id = None
-            j = i + 1
-            if j < len(lines) and 'Quarterly goal:' in lines[j]:
-                goal_match = re.search(r'\[(Q\d+-\d{4}-goal-\d+)\]', lines[j])
+            for metadata_line in lines[i + 1:]:
+                if not re.match(r'^\s+-\s+', metadata_line):
+                    break
+                if 'Quarterly goal:' not in metadata_line:
+                    continue
+                goal_match = re.search(r'\[(Q\d+-\d{4}-goal-\d+)\]', metadata_line)
                 if goal_match:
                     linked_goal_id = goal_match.group(1)
+                break
             
             # Check completion (look for checkmark or completion note)
             completed = False  # For now, will enhance later

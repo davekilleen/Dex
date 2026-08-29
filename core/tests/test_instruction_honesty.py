@@ -610,3 +610,40 @@ def test_apple_mail_setup_names_serving_process_full_disk_access() -> None:
     assert "~/Library/Mail" in setup
     assert "Do **not** grant it to Dex, Claude, or the ordinary MCP server process." not in setup
     assert "fresh-looking index can still be frozen" in setup or "write a fresh" in setup
+
+
+def test_apple_mail_setup_closes_live_sessions_before_index_refresh() -> None:
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+
+    assert "Quit every Dex, Claude, or Cursor session that is using Mail search" in setup or (
+        "quit every Dex, Claude, or Cursor session that is using Mail search" in setup
+    )
+    assert "holds the search-index lock" in setup
+
+
+def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
+    paths = (
+        ".claude/skills/calendar-setup/SKILL.md",
+        "docs/Dex_System/Calendar_Setup.md",
+        "06-Resources/Dex_System/Calendar_Setup.md",
+    )
+    for relative in paths:
+        text = _read(relative)
+        lower = text.lower().replace("**", "")
+        assert "System Settings" in text, relative
+        assert "Privacy & Security" in text, relative
+        assert "Calendars" in text, relative
+        assert "VS Code" in text, relative
+        assert "Cursor" in text, relative
+        assert "does not transfer" in lower or "does not carry over" in lower, relative
+        assert "reinstall" in lower, relative
+        assert "Claude Code" not in text, relative
+        assert "The script will show a macOS permission dialog" not in text, relative
+        assert "Click 'OK' when the dialog appears" not in text, relative
+        assert "Run Dex from a standalone terminal window" not in text, relative
+        assert 'Find "Python" or "python3" in the list' not in text, relative
+
+    skill = _read(".claude/skills/calendar-setup/SKILL.md")
+    assert "first-class Calendar surfaces" in skill
+    assert "Do not promise that a Mac permission dialog will appear" in skill
+    assert "Do not send them to a standalone terminal as the only path" in skill

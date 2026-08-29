@@ -478,7 +478,7 @@ Person and company context hooks run automatically when reading files:
 
 ### Analytics (Opt-Out Model)
 
-Analytics is **on by default** for new installs. No prompting needed — users are informed during onboarding and can opt out anytime.
+Analytics is **not active** on new installs until a usage relay is configured. Consent may still be recorded as opted-in so it can turn on later; users can say "turn off Dex analytics" to keep it off. No prompting needed.
 
 **Do nothing unless the user explicitly asks to opt out or opt in.**
 

@@ -213,11 +213,14 @@ def check_consent() -> str:
 
 def is_analytics_enabled() -> bool:
     """
-    Check if analytics is enabled.
-    
-    Only requires user consent (opted-in via usage_log.md).
+    Check if analytics is active and able to send.
+
+    Requires both recorded opt-in consent and a configured transport.
+    A shipped proxy with a blank relay address is not active.
     """
-    return check_consent() == 'opted-in'
+    if check_consent() != 'opted-in':
+        return False
+    return bool(get_analytics_transport().get('configured'))
 
 
 def load_user_profile() -> dict:

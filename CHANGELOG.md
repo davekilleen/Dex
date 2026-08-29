@@ -7,6 +7,80 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.6] — Dex stops saying things are running when they are not (2026-08-29)
+
+Dex told you a few things were switched on when they were not. Usage tracking
+said it was collecting. The daily learning review said it was running. The
+Google Workspace guide walked you through steps that could not finish. And the
+background check for new Claude features was asking two web addresses that no
+longer exist.
+
+**What this fixes for you:**
+
+* **Usage tracking only says it is on when it can actually send.** New installs
+  were told tracking was active while every recorded count stayed on your own
+  machine and never went anywhere. Dex now says that plainly instead.
+* **The daily learning review tells you when it cannot run.** If your Dex folder
+  lives inside Documents, macOS blocks that background job outright. Setup used
+  to list the review as active anyway. It now says it was not installed, and
+  that moving your folder outside Documents switches it on.
+* **Google Workspace setup matches what Dex installs.** The guide now walks the
+  real Google sign-up journey from start to finish, and tells you upfront which
+  nine permissions you are granting, so Gmail, Calendar, and Docs connect first
+  time.
+* **Dex notices new Claude features again.** The background check now reads
+  Anthropic's official Claude Code release notes, instead of two addresses that
+  stopped existing.
+
+## [1.97.5] — Grant Calendar for the editor you actually use (2026-08-28)
+
+If you run Dex inside VS Code or Cursor, granting Calendar to Terminal
+does not help. Reinstalling Dex does not fix it. Setup sent you to the
+wrong place, or asked you to wait for a popup that never appears.
+
+**What this fixes for you:**
+
+* **Grant Calendar for the editor you actually use.** Open System
+  Settings → Privacy & Security → Calendars. Turn on VS Code or
+  Cursor — the app Dex is running in — and set access to Full. Quit
+  that app and open it again. A Terminal grant does not transfer.
+  Reinstall does not fix it.
+
+## [1.97.4] — Daily plans land in the inbox, and calendar uses what you connected (2026-08-28)
+
+People who typed update Dex after sending /feedback were still on yesterday's
+copy. Daily planning wrote to the wrong folder. Google Calendar was ignored
+when that is what you connected. Large notes in the vault were treated as
+secrets. Work tools could sit listed while they never started.
+
+**What this fixes for you:**
+
+* **Daily plans land in the inbox.** Plans write to `00-Inbox/Daily_Plans`. A
+  delegated plan still reads yesterday's notes.
+* **If Google Calendar is what you connected, planning and Doctor use it.**
+  They no longer treat a missing Apple calendar as the only calendar.
+* **Large notes in your vault are not treated as secrets.** A file over 1MB
+  can still be saved.
+* **Work tools say when they never started.** If Task Manager is listed but
+  has no live process, you see that it cannot start, instead of a silent dead
+  session.
+* **Learning review looks at older notes and more than "pending".**
+* **Meeting company is an exact name or a domain you wrote in frontmatter,**
+  not the first matching substring.
+* **Workspace setup names the same project it installs** and skips a Gmail
+  connection you already have.
+* **Week review names the step that clears completed tasks** and asks before
+  it removes whole task blocks.
+* **Weekly priorities keep their quarterly-goal link.**
+* **Mail search tells you to close Mail before a refresh.**
+* **Meeting sync does not attach a meeting from a connected meeting tool to
+  a person who opted out of People notes.**
+* **A changelog checker that used to hang now exits.**
+* **Hooks stay ignored the way they should.** The ignore file no longer
+  un-ignores the whole hooks folder.
+* **The /feedback skill no longer points at a leftover interpreter path,**
+  so that path works on more Mac Python installs.
+
 ## [1.97.3] — ↩️ After an update you can undo it, and Doctor talks while it heals (2026-08-27)
 
 An update could look finished while undo had nothing to go back to. New skills

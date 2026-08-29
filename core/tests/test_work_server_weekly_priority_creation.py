@@ -34,6 +34,11 @@ def _call_create_priority(**overrides) -> dict:
     return json.loads(result[0].text)
 
 
+def _call_get_priorities() -> dict:
+    result = asyncio.run(work_server.handle_call_tool("get_week_priorities", {}))
+    return json.loads(result[0].text)
+
+
 @pytest.fixture
 def priority_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "02-Week_Priorities" / "Week_Priorities.md"
@@ -106,6 +111,27 @@ def test_create_weekly_priority_writes_explicit_goal_link_without_mangling_headi
     )
     assert content.count(TOP_3) == 1
     assert content.count("## 📊 Review") == 1
+
+
+def test_created_weekly_priority_reads_back_its_goal_after_success_criteria(
+    priority_file: Path,
+):
+    priority_file.write_text(
+        "# Week Priorities\n\n"
+        f"{TOP_3}\n\n"
+        "## 📊 Review\n",
+        encoding="utf-8",
+    )
+
+    created = _call_create_priority(
+        success_criteria="Playbook is shared with Sales",
+        quarterly_goal_id="Q3-2026-goal-2",
+    )
+    listed = _call_get_priorities()
+
+    assert created["linked_goal"] == "Q3-2026-goal-2"
+    assert listed["priorities"][0]["linked_goal_id"] == "Q3-2026-goal-2"
+    assert listed["alignment_summary"]["priorities_linked_to_goals"] == 1
 
 
 @pytest.mark.parametrize("existing_count", [1, 2])

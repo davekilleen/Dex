@@ -108,7 +108,7 @@ Tracks anonymous feature usage tracking to help improve Dex.
 - **Last prompted:** (not applicable)
 
 **Values:**
-- `Consent decision: opted-in` → Analytics active (default for new installs)
+- `Consent decision: opted-in` → Consent recorded; analytics is still not active until a usage relay is configured
 - `Consent decision: opted-out` → User opted out (say "turn off Dex analytics" anytime)
 
 ---

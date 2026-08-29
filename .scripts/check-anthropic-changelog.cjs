@@ -53,11 +53,9 @@ const MIN_CHECK_INTERVAL_HOURS = 24;
 const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT_MS = 15000;
 
-// Changelog sources (try in order). Keep these product URLs as shipped;
-// fetch follows redirects instead of replacing them.
+// Anthropic's platform release notes direct Claude Code users to this changelog.
 const CHANGELOG_SOURCES = [
-  'https://docs.anthropic.com/en/release-notes/changelog',
-  'https://www.anthropic.com/changelog'
+  'https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md'
 ];
 
 function resolveChangelogSources(env = process.env) {
@@ -284,7 +282,7 @@ async function detectChanges(state, env = process.env) {
 
   // Simple heuristic: look for version numbers or date patterns
   // This is intentionally simple - full analysis happens in /dex-whats-new
-  const versionMatches = changelogContent.match(/version\s+(\d+\.\d+\.\d+)/gi) || [];
+  const versionMatches = changelogContent.match(/(?:version\s+|^##\s+v?)(\d+\.\d+\.\d+)/gim) || [];
   const dateMatches = changelogContent.match(/202[0-9]-[0-1][0-9]-[0-3][0-9]/g) || [];
 
   let latestVersion = null;

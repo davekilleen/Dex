@@ -298,6 +298,17 @@ def test_onboarding_never_treats_a_default_as_analytics_consent() -> None:
     assert "Consent decision: opted-in" in flow
     assert "enabled: true" in flow
     assert "analytics_consent_given" not in flow
+    assert "Dex collects anonymous feature usage data" not in flow
+    assert "no usage relay is configured" in flow
+
+
+def test_new_installs_do_not_claim_analytics_is_active() -> None:
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    usage = (REPO_ROOT / "System/usage_log.md").read_text(encoding="utf-8")
+
+    assert "Analytics is **on by default**" not in claude
+    assert "Analytics active (default for new installs)" not in usage
+    assert "not active" in claude.lower() or "usage relay" in claude.lower()
 
 
 def test_no_tracked_source_declares_the_retired_consent_event() -> None:

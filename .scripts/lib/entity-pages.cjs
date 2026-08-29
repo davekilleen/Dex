@@ -31,7 +31,8 @@ function emptyResult() {
     type: null, name: null, role: null, company: null, company_page: null,
     emails: [], aliases: [], location: null, last_interaction: null,
     domains: [], website: null, status: null, touches: [], last_touched: null,
-    quarantined: false, source_formats: [],
+    quarantined: false, exclude_from_matching: false, declared_non_entity: false,
+    source_formats: [],
   };
 }
 
@@ -240,6 +241,7 @@ function legacyFields(body) {
 
 function inferType(filePath, values) {
   if (values.type === 'person' || values.type === 'company') return values.type;
+  if (values.declared_non_entity) return null;
   const parts = filePath.split(path.sep).map(part => part.toLowerCase());
   if (parts.includes('people')) return 'person';
   if (parts.includes('companies')) return 'company';
@@ -255,6 +257,15 @@ function parseEntityPage(filePath) {
   const legacy = legacyFields(split.body);
   const result = emptyResult();
   result.quarantined = split.quarantined;
+  if (split.frontmatter && !split.quarantined) {
+    result.exclude_from_matching = split.frontmatter.exclude_from_matching === true;
+    if (Object.hasOwn(split.frontmatter, 'type')) {
+      const declared = normaliseScalar(split.frontmatter.type);
+      result.declared_non_entity = Boolean(
+        declared && declared !== 'person' && declared !== 'company',
+      );
+    }
+  }
   if (split.had) result.source_formats.push('frontmatter');
   result.source_formats.push(...legacy.formats);
   for (const key of CANONICAL_FIELDS) {
@@ -485,6 +496,12 @@ function mergeFrontmatterText(
   effectiveCurrent.relationships = normaliseRelationships(
     split.frontmatter?.relationships,
   ) || [];
+  if (split.frontmatter && Object.hasOwn(split.frontmatter, 'type')) {
+    const declared = normaliseScalar(split.frontmatter.type);
+    effectiveCurrent.declared_non_entity = Boolean(
+      declared && declared !== 'person' && declared !== 'company',
+    );
+  }
   effectiveCurrent.type = inferType(filePath, effectiveCurrent);
   if (effectiveCurrent.type && !effectiveCurrent.name) {
     const heading = /^#\s+(.+?)\s*$/m.exec(split.body);

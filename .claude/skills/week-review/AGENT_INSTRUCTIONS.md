@@ -3,9 +3,11 @@
 You are gathering context for a weekly review synthesis. Collect data from all
 available sources, analyse patterns, and write a complete weekly synthesis
 file. You gather evidence; the interactive review (assessments, goal updates,
-career evidence capture, next week's priorities) happens in the main
-conversation from your findings. Be direct and concise: concrete numbers, not
-vague percentages. Skip any section gracefully if a tool fails.
+career evidence capture, next week's priorities, and clearing completed
+tasks from `03-Tasks/Tasks.md`) happens in the main conversation from your
+findings. Do not delete or edit `03-Tasks/Tasks.md` yourself. Be direct and
+concise: concrete numbers, not vague percentages. Skip any section
+gracefully if a tool fails.
 
 **Week ending:** {{TARGET_DATE}} ({{DAY_NAME}}, {{MONTH}} {{DD}}, {{YYYY}})
 **Week start (first working day):** {{WEEK_START_DATE}}
@@ -37,6 +39,9 @@ Read `03-Tasks/Tasks.md` and scan for completion timestamps in the week
 ({{WEEK_START_DATE}} to {{TARGET_DATE}}):
 - Tasks completed, tasks added mid-week, tasks carried over
 - Completion rate
+
+Read only. Do not delete completed tasks or otherwise edit this file. The
+parent clears completed tasks after the user confirms.
 
 ### 1.3 Quarterly Goals Progress (if enabled)
 
@@ -214,7 +219,14 @@ Summary:
 - Projects that moved this week: [list, or none]
 - Journal themes: [brief, or "not enabled"]
 - Skills declining or below 3.0: [list, or "all stable"]
-- Sections needing interactive input: Career Evidence, Next Week confirmation
+- Sections needing interactive input: Career Evidence, Next Week confirmation, clear completed tasks from 03-Tasks/Tasks.md
+
+Clear completed tasks (parent only, after confirm):
+- Name this as a required follow-up. Do not delete or edit `03-Tasks/Tasks.md` yourself.
+- Parent removes whole task blocks (checkbox line through the next
+  non-indented boundary), never a per-line sweep of `[x]` lines.
+- Parent tells the user how many completed tasks will be cleared and
+  confirms before deleting.
 
 [Any warnings or issues encountered]
 ```

@@ -10,7 +10,7 @@ If `/google-workspace-setup` already set your calendar source to Google, skip th
 
 ## How it works in one sentence
 
-Dex reads your calendar from the **Calendar app** that came with your Mac. So you add your Google account to that app once, let Cursor use it, and Dex sees your meetings.
+Dex reads your calendar from the **Calendar app** that came with your Mac. So you add your Google account to that app once, let the app Dex is running in use it, and Dex sees your meetings.
 
 ---
 
@@ -28,16 +28,16 @@ Dex doesn't talk to Google directly. It uses the built-in **Calendar** app on yo
 
 Your Google events will now appear in the Calendar app. Once they're here, Dex can see them too.
 
-### Step 2: Let Cursor use your calendar
+### Step 2: Let the app Dex is running in use your calendar
 
-macOS only lets apps see your calendar if you allow it.
+macOS only lets an app see your calendar if you allow **that** app. VS Code and Cursor are first-class Calendar surfaces — grant Calendar for the app you are in.
 
 1. Open **System Settings** (or **System Preferences** on older macOS).
 2. Go to **Privacy & Security** → **Calendars**.
-3. Find **Cursor** in the list and turn it **On**.
-4. Click **Cursor** and set access to **Full** (not "Add Only") so Dex can read your events.
+3. Find **VS Code** or **Cursor** — whichever app Dex is running in — and turn it **On**.
+4. Click that app and set access to **Full** (not "Add Only") so Dex can read your events.
 
-The first time Cursor tries to read your calendar, macOS may show a popup: **"Cursor would like to access your calendars"**. Click **Allow**.
+Do not wait for a Mac permission popup. It often never appears when Dex runs inside VS Code or Cursor. A grant given to Terminal does **not** transfer to the editor. Reinstalling Dex does **not** fix a missing grant.
 
 **Done.** Run `/daily-plan` or ask "what's on my calendar today?" — your Google meetings (including recurring ones) should show on the right days.
 
@@ -47,22 +47,27 @@ The first time Cursor tries to read your calendar, macOS may show a popup: **"Cu
 
 | What you see | What to do |
 |--------------|------------|
-| **"Calendar access denied"** | Go to **System Settings** → **Privacy & Security** → **Calendars**, turn **Cursor** on, then click **Cursor** and set access to **Full** (not "Add Only"). Quit Cursor and open it again. |
-| **No meetings or wrong dates for recurring events** | Make sure you did both steps above. If you installed Dex without running the installer (e.g. you installed Python packages yourself), open Terminal and run: `pip3 install --user pyobjc-framework-EventKit`, then restart Cursor. |
+| **"Calendar access denied"** | Go to **System Settings** → **Privacy & Security** → **Calendars**, turn **VS Code** or **Cursor** on (the app Dex is running in), then click that app and set access to **Full** (not "Add Only"). Quit the editor and open it again. Do not switch to Terminal as the only fix, and do not reinstall Dex. |
+| **No meetings or wrong dates for recurring events** | Make sure you did both steps above. If you installed Dex without running the installer (e.g. you installed Python packages yourself), open Terminal and run: `pip3 install --user pyobjc-framework-EventKit`, then restart the editor. |
 | **Calendar is empty or very slow** | Same as above: both setup steps, and if you didn't run the installer, run the `pip3 install` line above. |
 
 ---
 
-## Known limitation: the VS Code extension can't use Apple Reminders
+## If Dex is running inside VS Code or Cursor
 
-macOS grants calendar and reminders access **per app** — it looks at which app is asking. When Dex runs through the **Claude Code extension inside VS Code** (rather than from a normal terminal window), macOS never shows the permission popup to that process at all, and access granted to Terminal does **not** carry over. The result: Apple Reminders features (phone capture via a "Dex Inbox" list, "Dex Today" sync) are simply unavailable in that setup — not misconfigured, unavailable. Reinstalling or redoing the setup steps will not change this.
+macOS grants calendar access **per app** — it looks at which app is asking. When Dex runs inside **VS Code** or **Cursor**, that editor is the app that needs Calendar access.
 
-What to do instead:
+What to do:
 
-- **Run Dex from a standalone terminal window** (Terminal.app, or another terminal app launched on its own). The permission popup appears there, and access works after you click Allow.
-- **Or keep using the VS Code extension without Reminders features.** Dex skips them silently when access is unavailable — daily planning and reviews work normally without them.
+1. Open **System Settings** → **Privacy & Security** → **Calendars**.
+2. Turn on **VS Code** or **Cursor** — the app you are in — and set access to **Full**.
+3. Quit that app and open it again, then ask Dex to check your calendar.
 
-This was verified directly (August 2026): the same check succeeds from Terminal.app, and fails from both VS Code's built-in terminal and the extension's own process — even after access was granted in Terminal.app first.
+A grant given to Terminal does **not** carry over to the editor. Reinstalling Dex or redoing setup will not change that. Do not treat a standalone terminal as the only path, and do not wait for a permission popup — it often never appears from inside the editor.
+
+Apple Reminders is a separate toggle in the same **Privacy & Security** list. Grant it for the same editor app if you use those features. If Reminders tools still fail after that, Dex skips them — that is not a Calendar failure, and reinstalling will not fix it.
+
+This was verified directly (August 2026): the same calendar check can succeed from Terminal.app and fail from both VS Code's built-in terminal and the editor's own process after access was granted in Terminal.app first. That is why the editor grant in System Settings is the path.
 
 ---
 
@@ -75,6 +80,6 @@ If you have several calendars and want Dex to focus on one (e.g. your work calen
 ## Summary
 
 1. **Add Google to the Calendar app** — Calendar → Add Account → Google → sign in.
-2. **Allow Cursor to access Calendars** — System Settings → Privacy & Security → Calendars → Cursor On, then click Cursor and choose **Full** access (not "Add Only").
+2. **Allow the app Dex is running in to access Calendars** — System Settings → Privacy & Security → Calendars → turn on VS Code or Cursor, then choose **Full** access (not "Add Only").
 
 After that, your Google Calendar meetings show up in Dex on the right days, including recurring events.

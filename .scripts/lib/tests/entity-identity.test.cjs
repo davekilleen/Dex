@@ -138,6 +138,46 @@ test('an unmatched company domain never falls back to a namesake', (t) => {
   }), null);
 });
 
+function writeMarkedNote(vault, relativeSegments, frontmatter) {
+  const filePath = path.join(vault, '05-Areas', 'People', ...relativeSegments);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(
+    filePath,
+    `---\n${frontmatter}---\n# Alex Smith\n\nPersonal reminder, not a CRM person.\n`,
+  );
+  return filePath;
+}
+
+test('exclude_from_matching blocks unique-name fallback', (t) => {
+  const vault = makeVault(t);
+  writeMarkedNote(
+    vault,
+    ['Personal', 'Alex_Smith.md'],
+    'exclude_from_matching: true\n',
+  );
+
+  assert.equal(resolveEntityPath(vault, {
+    kind: 'person',
+    name: 'Alex Smith',
+    emails: [],
+  }), null);
+});
+
+test('an explicit non-person type is not inferred from the People path', (t) => {
+  const vault = makeVault(t);
+  writeMarkedNote(
+    vault,
+    ['Personal', 'Alex_Smith.md'],
+    'type: note\n',
+  );
+
+  assert.equal(resolveEntityPath(vault, {
+    kind: 'person',
+    name: 'Alex Smith',
+    emails: [],
+  }), null);
+});
+
 test('two live namesakes cannot be resolved by name alone', (t) => {
   const vault = makeVault(t);
   writePerson(

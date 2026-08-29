@@ -57,9 +57,10 @@ never substitute for it.
 
 **Stays inline:** the whole interactive review, priority-by-priority assessment,
 pattern discussion, goal updates, career evidence capture, next week's priority
-confirmation, the Dex Inbox check (Step 0.5), and the `/identity-snapshot` run
-that follows the synthesis. The subagent gathers evidence; it does not make
-judgements.
+confirmation, the Dex Inbox check (Step 0.5), clearing completed tasks from
+`03-Tasks/Tasks.md` after confirm (the delegated summary names this step), and
+the `/identity-snapshot` run that follows the synthesis. The subagent gathers
+evidence; it does not make judgements.
 
 ## Purpose
 
@@ -524,6 +525,9 @@ Add a section to the review:
 ---
 
 ## Follow-up Actions
+
+The delegated gatherer's structured summary names the Tasks.md clear-down
+as required interactive input. Do not skip it after a delegated run.
 
 After synthesis:
 1. Update Tasks.md with new priorities

@@ -104,6 +104,10 @@ reading nothing."
 
 ### 5. Build the index
 
+If any Dex, Claude, or Cursor session is using Mail search, quit those first. A live
+Mail server holds the search-index lock for its whole life, so the command below fails
+while those sessions are open.
+
 Have the user run, in the terminal they just granted access to:
 
 ```
@@ -162,7 +166,8 @@ Then tell them the two maintenance facts that matter:
 
 **Search returns empty but `status` says an index exists:**
 Run `/dex-doctor`. A file can exist while its schema is broken, it contains zero messages,
-or its recorded sync is stale. Rebuild with `apple-mail-mcp rebuild --verbose` if instructed.
+or its recorded sync is stale. If Doctor asks you to rebuild, quit every Dex, Claude, or Cursor session that is using Mail search first, then run `apple-mail-mcp rebuild --verbose`.
+A live Mail server holds the search-index lock for its whole life.
 
 **The index is in a custom location:**
 Dex follows `APPLE_MAIL_INDEX_PATH` from the registered MCP server first, then `[index] path`
@@ -176,6 +181,7 @@ the permission at launch.
 Run `apple-mail-mcp status`, then `/dex-doctor`. A recent last-sync time is not enough —
 if Doctor says the serving process cannot read `~/Library/Mail`, grant Full Disk Access
 to Dex / Claude / Cursor (not only Terminal), quit and reopen that app, then rebuild.
+If Doctor asks you to refresh or rebuild the index, quit every Dex, Claude, or Cursor session that is using Mail search first — a live Mail server holds the search-index lock for its whole life, so the refresh command fails while those sessions stay open.
 
 **Search returns subject-looking hits labelled as body matches:**
 On 0.4.3, body search with no usable index falls through to a live Mail query of

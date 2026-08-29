@@ -367,6 +367,28 @@ def test_missing_collection_address_leaves_a_safe_not_sent_receipt(
     assert receipt[0]["reason"] == "no_analytics_endpoint"
 
 
+def test_shipped_blank_proxy_is_not_active_even_when_opted_in(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    vault = tmp_path / "vault"
+    system = vault / "System"
+    system.mkdir(parents=True)
+    (system / "usage_log.md").write_text(
+        "**Consent decision:** opted-in\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    monkeypatch.setenv("DEX_ANALYTICS_MODE", "proxy")
+    monkeypatch.setenv("DEX_ANALYTICS_ENDPOINT", "")
+    monkeypatch.delenv("PENDO_TRACK_SECRET", raising=False)
+
+    assert analytics_helper.is_analytics_enabled() is False
+    result = analytics_helper.fire_event("task_created")
+    assert result["fired"] is False
+    assert result["reason"] == "analytics_disabled"
+
+
 def test_http_rejection_receipt_hides_status_and_transport_details(
     tmp_path: Path,
     monkeypatch,

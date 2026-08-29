@@ -328,6 +328,16 @@ def test_apple_mail_setup_action_names_serving_process_full_disk_access():
     assert "does not need this permission" not in action
 
 
+def test_apple_mail_setup_action_closes_live_sessions_before_refresh():
+    index_action = apple_mail_health.setup_action("index")
+    rebuild_action = apple_mail_health.setup_action("rebuild")
+
+    for action in (index_action, rebuild_action):
+        assert "Quit every Dex, Claude, or Cursor session that is using Mail search" in action
+        assert "holds the search-index lock" in action
+        assert "apple-mail-mcp" in action
+
+
 def test_apple_mail_search_uses_custom_path_and_real_sqlite_state(monkeypatch, context):
     _register_apple_mail_user_scope(context)
     custom_index = context.home / "private-mail" / "search.sqlite"

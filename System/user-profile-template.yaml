@@ -184,5 +184,5 @@ integrations:
 # Controls anonymous feature usage tracking to help the Dex maintainers improve Dex
 # Only Dex built-in features are tracked, never content or what you do with features
 analytics:
-  # Master switch - analytics on by default. Say "turn off Dex analytics" to opt out.
+  # Willingness to send usage analytics. Sending is not active until a usage relay is configured. Say "turn off Dex analytics" to keep it off.
   enabled: true
