@@ -5,6 +5,20 @@
 **Live successor:** draft PR 620, branch `cursor/dex-everywhere-codex-first-c346`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346`.  
 **Sequence:** Copilot CLI is written and not opened. Codex, Cowork, Pi, and BB stay green. ChatGPT Work vault-folder grant is the only leftover that still needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
 
+## Fleet leftover on VS Code/Kiro freeze SHA `e8b24265`
+
+Host-path HEAD recorded here: `e8b24265919f78ceaaa7c4d1914b09225a6340e4` on draft PR 650 / `cursor/everywhere-vscode-kiro-freeze-c346`. This lot targets the successor (`cursor/dex-everywhere-codex-first-c346`, draft PR 620). Do not merge 620. Leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346` is dead. Do not add hooks. Do not invent a new host.
+
+Dex CI is green on that exact SHA:
+
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33257169650 — **GREEN** / success
+
+The twelve-journey Mac fleet canary did not run on that exact SHA. GitHub only starts `historic-fleet-darwin-pr-canary` when a pull request changes one of the watched release/fleet files (`.github/workflows/historic-fleet-darwin.yml`, root `package.json`, `core/update/journey-protocol-v1.json`, `scripts/build-release.sh`, `scripts/build-vault-bundle.sh`, `scripts/check-release-catalog-tag-identity.py`, `scripts/compose-vault-gitignore.py`, `scripts/dex_update_bridge.py`, `scripts/release_fleet.py`, `scripts/release_fleet_acceptance.py`, `scripts/release_fleet_executor.py`, `scripts/run-historic-fleet-darwin.sh`). PR 650 did not change those files. Formal `historic-fleet-darwin` stays skipped on pull requests. Successor `77242824` already has that canary green at https://github.com/davekilleen/Dex/actions/runs/33247935319. That is not this head.
+
+This lot commit is a later head and is not itself the freeze. Do not bump a watched path to invent fleet proof on `e8b24265`. Green fleet is not a person opening Visual Studio Code or Kiro.
+
+Green Dex CI is not a person-can-open win. No person opened a host. Opening Visual Studio Code or Kiro on a real machine stays Dave's. Do not add hooks. Do not invent a new host.
+
 ## What “Codex done” means
 
 Dex works in **Codex CLI and Codex desktop**. The Codex editor add-on does not load this plugin; that limit is recorded in the Codex host profile and is intentional.
