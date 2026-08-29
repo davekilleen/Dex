@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PLUGIN_FILES = ("manifest.json", "main.js", "styles.css", "README.md")
+PLUGIN_FILES = ("manifest.json", "main.js", "styles.css", "paths.js", "README.md")
 
 WRITE_MARKERS = (
     "vault.create",

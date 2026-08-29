@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -112,7 +114,7 @@ def test_obsidian_install_contract_names_local_panel_and_no_store() -> None:
     guide = example["install_guide"].lower()
     manifest = json.loads((PLUGIN_ROOT / "manifest.json").read_text(encoding="utf-8"))
 
-    assert adapter["native_paths"] == ["manifest.json", "main.js", "styles.css"]
+    assert adapter["native_paths"] == ["manifest.json", "main.js", "styles.css", "paths.js"]
     assert adapter["status"] == "native-local"
     assert example["local_package"] == "./packages/dex-obsidian-plugin"
     assert example["install_path"] == ".obsidian/plugins/dex-readonly"
@@ -168,6 +170,45 @@ def test_today_brief_shows_saturday_without_writing(tmp_path: Path) -> None:
     assert _snapshot(vault) == before
 
 
+def test_module_entry_installs_the_local_panel(tmp_path: Path) -> None:
+    vault = _write_vault(tmp_path / "dex")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "core.obsidian_panel",
+            "install",
+            "--vault",
+            str(vault),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    dest = vault / ".obsidian" / "plugins" / "dex-readonly"
+    assert "Installed the Dex panel" in completed.stdout
+    assert (dest / "main.js").is_file()
+    assert (dest / "paths.js").is_file()
+    assert (dest / "manifest.json").is_file()
+
+
+def test_panel_paths_come_from_the_contract_file() -> None:
+    main = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
+    paths = (PLUGIN_ROOT / "paths.js").read_text(encoding="utf-8")
+    assert 'require("./paths.js")' in main
+    assert "01-Quarter_Goals" not in main
+    assert "02-Week_Priorities" not in main
+    assert "03-Tasks" not in main
+    assert "00-Inbox" not in main
+    assert "01-Quarter_Goals/Quarter_Goals.md" in paths
+    assert "02-Week_Priorities/Week_Priorities.md" in paths
+    assert "03-Tasks/Tasks.md" in paths
+    assert "00-Inbox/Daily_Plans" in paths
+
+
 def test_local_install_does_not_change_notes(tmp_path: Path) -> None:
     vault = _write_vault(tmp_path / "dex")
     note_before = _snapshot(vault)
@@ -176,6 +217,7 @@ def test_local_install_does_not_change_notes(tmp_path: Path) -> None:
 
     assert dest == vault / ".obsidian" / "plugins" / "dex-readonly"
     assert (dest / "main.js").is_file()
+    assert (dest / "paths.js").is_file()
     enabled = json.loads((vault / ".obsidian" / "community-plugins.json").read_text())
     assert enabled == ["dex-readonly"]
     after = _snapshot(vault)

@@ -3,7 +3,7 @@
   "harness_id": "obsidian",
   "status": "native-local",
   "kind": "obsidian-plugin",
-  "native_paths": ["manifest.json", "main.js", "styles.css"],
+  "native_paths": ["manifest.json", "main.js", "styles.css", "paths.js"],
   "example": {
     "manifest": "packages/dex-obsidian-plugin/manifest.json",
     "local_package": "./packages/dex-obsidian-plugin",

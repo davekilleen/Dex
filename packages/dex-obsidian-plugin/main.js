@@ -1,4 +1,11 @@
 const { ItemView, Plugin } = require("obsidian");
+const {
+  PILLARS_FILE,
+  QUARTER_GOALS_FILE,
+  WEEK_PRIORITIES_FILE,
+  TASKS_FILE,
+  dailyPlanFile,
+} = require("./paths.js");
 
 const VIEW_TYPE = "dex-readonly-brief";
 const PILLAR_LIMIT = 5;
@@ -144,11 +151,11 @@ function loadDailyPlan(text) {
 }
 
 async function buildTodayBrief(app, now) {
-  const pillarsText = await readVaultText(app, "System/pillars.yaml");
-  const goalsText = await readVaultText(app, "01-Quarter_Goals/Quarter_Goals.md");
-  const weekText = await readVaultText(app, "02-Week_Priorities/Week_Priorities.md");
-  const tasksText = await readVaultText(app, "03-Tasks/Tasks.md");
-  const dailyText = await readVaultText(app, `00-Inbox/Daily_Plans/${todayStamp(now)}.md`);
+  const pillarsText = await readVaultText(app, PILLARS_FILE);
+  const goalsText = await readVaultText(app, QUARTER_GOALS_FILE);
+  const weekText = await readVaultText(app, WEEK_PRIORITIES_FILE);
+  const tasksText = await readVaultText(app, TASKS_FILE);
+  const dailyText = await readVaultText(app, dailyPlanFile(todayStamp(now)));
   return {
     today: todayLabel(now),
     pillars: loadPillars(pillarsText),

@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 
 PLUGIN_ID = "dex-readonly"
-PLUGIN_FILES = ("manifest.json", "main.js", "styles.css")
+PLUGIN_FILES = ("manifest.json", "main.js", "styles.css", "paths.js")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPO_ROOT / "packages" / "dex-obsidian-plugin"
 
@@ -54,6 +54,13 @@ def _enable_plugin(vault: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Install the local read-only Dex panel into an Obsidian vault."
+    )
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=("install",),
+        default="install",
+        help="Install the local panel. The only action.",
     )
     parser.add_argument("--vault", required=True, help="Path to the Dex folder")
     args = parser.parse_args(argv)
