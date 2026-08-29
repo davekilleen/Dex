@@ -6,6 +6,8 @@ import json
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 sys.modules.setdefault("EventKit", SimpleNamespace())
 
 from core.mcp.scripts import calendar_eventkit
@@ -141,6 +143,17 @@ class _LegacyStore:
         completion(True, None)
 
 
+class _WriteOnlyStore:
+    """Store whose host app has macOS Add Events Only access."""
+
+    def __init__(self):
+        self.calls = []
+
+    def requestFullAccessToEventsWithCompletion_(self, completion):
+        self.calls.append("requestFullAccessToEventsWithCompletion_")
+        completion(False, None)
+
+
 def test_request_calendar_access_prefers_modern_full_access_api(monkeypatch):
     """On macOS 14+ the legacy request API reports denied without prompting,
     so fresh grants were impossible (#377) — the modern API must win."""
@@ -163,6 +176,28 @@ def test_request_calendar_access_falls_back_to_legacy_api(monkeypatch):
 
     assert store.calls == ["requestAccessToEntityType_completion_"]
     assert granted == [True]
+
+
+def test_list_calendars_explains_write_only_access(monkeypatch, capsys):
+    store = _WriteOnlyStore()
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 4,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(EKEntityTypeEvent=0, EKEventStore=event_store),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        calendar_eventkit.list_calendars()
+
+    assert exc_info.value.code == 1
+    message = json.loads(capsys.readouterr().out)["error"]
+    assert "Add Events Only" in message
+    assert "Full Access" in message
+    assert store.calls == []
 
 
 def test_get_events_prints_json(monkeypatch, capsys):
