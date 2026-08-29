@@ -5,6 +5,8 @@
   "native_paths": [".cursor-plugin/plugin.json", "skills/", "mcp.json", "hooks/cursor.json"],
   "example": {
     "manifest": "packages/dex-agent-plugin/.cursor-plugin/plugin.json",
-    "install_guide": "Copy or link the reviewed package to ~/.cursor/plugins/local/dex, reload Cursor, and approve the native hooks before use."
+    "install_guide": "Copy or link the reviewed package to ~/.cursor/plugins/local/dex, reload Cursor, and approve the native hooks before use. A local-copy fixture is not a live Cursor session.",
+    "local_package": "./packages/dex-agent-plugin",
+    "local_copy": "~/.cursor/plugins/local/dex"
   }
 }
