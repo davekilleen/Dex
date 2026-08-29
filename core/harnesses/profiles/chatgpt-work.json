@@ -9,21 +9,21 @@
     {
       "id": "vault",
       "mode": "guided",
-      "notes": "Desktop can use an explicitly selected local vault; web cannot directly reach it.",
+      "notes": "Desktop can use a local vault only after the person grants that folder in Work locally; web cannot reach it.",
       "status": "partial",
       "tier": 0
     },
     {
       "id": "mcp",
       "mode": "guided",
-      "notes": "Local stdio works on desktop; web requires a separately hosted HTTPS MCP service.",
+      "notes": "Local stdio works on desktop after the plugin is installed; web requires a separately hosted HTTPS MCP service.",
       "status": "partial",
       "tier": 1
     },
     {
       "id": "agent-skills",
       "mode": "on_demand",
-      "notes": "Skills are bundled in the OpenAI plugin.",
+      "notes": "Skills are bundled in the shared desktop plugin package.",
       "status": "native",
       "tier": 2
     },
@@ -58,7 +58,7 @@
     {
       "id": "agent-plugins",
       "mode": "guided",
-      "notes": "The generated OpenAI plugin is installable locally after user review.",
+      "notes": "The plugin uses the shared desktop plugin format. A person installs it from a local marketplace in ChatGPT desktop; this is not a recorded live journey.",
       "status": "native",
       "tier": 2
     }
@@ -75,17 +75,21 @@
   },
   "display_name": "ChatGPT Work companion",
   "evidence": [
-    "https://learn.chatgpt.com/docs/plugins"
+    "https://learn.chatgpt.com/docs/plugins",
+    "https://learn.chatgpt.com/docs/get-started-with-work",
+    "https://developers.openai.com/plugins/build/plugins"
   ],
   "id": "chatgpt-work",
   "limitations": [
-    "ChatGPT web needs a public HTTPS MCP service; the local-vault remote bridge is not implemented in this release."
+    "A person still has to open ChatGPT Work on a real desktop, install the local Dex plugin from a local marketplace, and grant the Dex vault folder. Detection tests and CI do not prove that journey.",
+    "ChatGPT web needs a public HTTPS MCP service; the local-vault remote bridge is not implemented in this release.",
+    "A shared plugin cache on disk is not proof someone opened ChatGPT Work."
   ],
   "modes": [
     "tier-0-vault"
   ],
   "name": "ChatGPT Work companion",
-  "summary": "The Dex plugin can run locally in ChatGPT desktop; ChatGPT web needs a separately hosted HTTPS MCP bridge for a local vault.",
+  "summary": "ChatGPT Work desktop can load the same local plugin package after a person installs it from a local marketplace and grants a Dex vault folder. That desktop journey is not proven yet. ChatGPT web needs a separately hosted HTTPS door.",
   "support_level": "partial",
   "vendor": "OpenAI"
 }

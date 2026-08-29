@@ -939,6 +939,8 @@ def test_harness_capability_probe_reports_chatgpt_work_web_limit(context, monkey
     assert "ChatGPT Work" in result.detail
     assert "web" in result.detail.lower()
     assert "https" in result.detail.lower()
+    assert "desktop" in result.detail.lower()
+    assert "vault" in result.detail.lower()
     assert "fully automatic" not in result.detail.lower()
     assert result.structured_detail["selected"] == ["chatgpt-work"]
     assert result.structured_detail["limitations"] == {

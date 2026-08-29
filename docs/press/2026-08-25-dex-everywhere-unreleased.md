@@ -40,8 +40,10 @@ extension from the same canonical sources. GitHub Copilot CLI and compatible
 clients use the open Agent Plugin skills and MCP contract; Copilot's separate
 lifecycle-hook format is not claimed. Pi uses its native Dex extension. BB users
 receive a local, read-only plugin with a Dex panel, tools, and command-line
-briefing. ChatGPT desktop can use the same OpenAI plugin package; web access to a
-private local vault remains behind a separate secure-connection milestone.
+briefing. ChatGPT Work desktop can use the same local plugin package after a
+person installs it from a local marketplace and grants a Dex vault folder; that
+desktop journey is not yet recorded. Web access to a private local vault
+remains behind a separate secure-connection milestone.
 
 The result is continuity without false sameness. Claude Code remains Dex's
 complete reference experience. Other hosts receive native experiences backed by
@@ -135,7 +137,9 @@ host's real lifecycle and interface. The registry labels every capability as
 ## Which environments have native packages?
 
 - Codex CLI and Codex in the ChatGPT desktop app: native OpenAI plugin.
-- ChatGPT desktop: the same universal OpenAI plugin package.
+- ChatGPT Work desktop: the same local plugin package, after a person installs
+  it from a local marketplace and grants a Dex vault folder. That journey is
+  not yet recorded.
 - Claude Code and Claude Cowork: native Claude plugin.
 - Claude Desktop: validated local MCP bundle with read-only tools and no hook claim.
 - Cursor: native local plugin with shared skills, MCP, and trusted hooks.

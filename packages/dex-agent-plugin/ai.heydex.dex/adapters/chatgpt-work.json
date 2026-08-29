@@ -3,10 +3,35 @@
   "harness_id": "chatgpt-work",
   "status": "native-local",
   "kind": "openai-plugin",
-  "native_paths": [".codex-plugin/plugin.json", "skills/", "hooks/hooks.json", ".codex-mcp.json"],
+  "native_paths": [".codex-plugin/plugin.json", "skills/", "hooks/codex.json", ".codex-mcp.json"],
   "example": {
     "manifest": "packages/dex-agent-plugin/.codex-plugin/plugin.json",
-    "install_guide": "Install the reviewed Dex plugin locally in ChatGPT desktop. ChatGPT web requires a separately secured public HTTPS MCP service; do not expose a local vault directly.",
-    "portable_surface": ["skills/", "hooks/hooks.json"]
+    "install_guide": "Copy the reviewed packages/dex-agent-plugin folder to ~/.agents/plugins/dex. Add or update ~/.agents/plugins/marketplace.json so Dex is listed with source.path ./dex — that path must stay inside the marketplace folder. Restart the ChatGPT desktop app. Open Plugins, choose Dex (unreleased local build), install Dex, and review its hooks. Start a new Work chat, keep Work locally selected, and grant the Dex vault folder. If ChatGPT Work is already opened on this Dex checkout, the repo marketplace at .agents/plugins/marketplace.json can be used instead of the personal copy. ChatGPT on the web cannot use this local plugin for a local vault. Ubuntu Cloud is not this desktop journey.",
+    "portable_surface": ["skills/", "hooks/hooks.json"],
+    "repo_marketplace": ".agents/plugins/marketplace.json",
+    "personal_marketplace": "~/.agents/plugins/marketplace.json",
+    "personal_plugin_copy": "~/.agents/plugins/dex",
+    "install_cache": "~/.codex/plugins/cache/dex-unreleased/dex/local/",
+    "vault_grant": "Start a new Work chat, keep Work locally selected, and grant the Dex vault folder.",
+    "personal_marketplace_document": {
+      "name": "dex-unreleased",
+      "interface": {
+        "displayName": "Dex (unreleased local build)"
+      },
+      "plugins": [
+        {
+          "name": "dex",
+          "source": {
+            "source": "local",
+            "path": "./dex"
+          },
+          "policy": {
+            "installation": "AVAILABLE",
+            "authentication": "ON_INSTALL"
+          },
+          "category": "Productivity"
+        }
+      ]
+    }
   }
 }

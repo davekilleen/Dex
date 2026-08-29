@@ -76,7 +76,11 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     chatgpt = _rows("chatgpt-work")
     assert chatgpt["agent-plugins"]["status"] == "native"
     assert chatgpt["mcp"]["mode"] == "guided"
-    assert "web" in " ".join(get_profile("chatgpt-work").limitations).lower()
+    chatgpt_limits = " ".join(get_profile("chatgpt-work").limitations).lower()
+    assert "web" in chatgpt_limits
+    assert "desktop" in chatgpt_limits
+    assert "vault" in chatgpt_limits
+    assert "person" in chatgpt_limits
 
     claude = _rows("claude-code")
     assert claude["hooks"]["status"] == "native"

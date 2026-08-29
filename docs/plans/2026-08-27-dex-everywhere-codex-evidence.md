@@ -1,8 +1,8 @@
 # Dex Everywhere — Codex evidence (unreleased)
 
-**Date:** 27 August 2026  
+**Date:** 29 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Standing order is ChatGPT Work desktop, then Copilot CLI. ChatGPT Work desktop is frozen. Copilot CLI is frozen at `28bb192baf05570f9e38f84e07f92b2e78b4a973`. Codex, Cowork, Pi, and BB stay frozen. Programme stays unreleased.
+**Sequence:** ChatGPT Work desktop local plugin + local vault is still being proven. Codex, Cowork, Pi, and BB stay frozen. Copilot is not the next host story. Programme stays unreleased.
 
 ## What “Codex done” means
 
@@ -114,18 +114,27 @@ A later commit that records this proof is a new head and must earn its own green
 
 GitHub did not schedule Dex CI on `42f2ea30` or `6b8cc267` at the time those heads landed. This note records the green fleet on `616618e4` and is a new head that must earn its own Dex CI.
 
-## ChatGPT Work desktop — frozen at `498740f2205046243f561bac1ee5a19d86f5ef04`
+## ChatGPT Work desktop — still being proven
 
-Desktop only. This does not claim ChatGPT in the browser.
+A person cannot open Dex in ChatGPT Work yet. Desktop only. This does not claim ChatGPT in the browser.
 
-- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33115886053 — **success**
-- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33115886039 — **success**
-- Formal `historic-fleet-darwin` is skipped on pull requests
-- Detects ChatGPT Work from `CHATGPT_WORK` / `OPENAI_WORK` / `CHATGPT_WORK_COMPANION` and a `/.chatgpt-work/` path
-- Doctor and setup preview name the browser limit: ChatGPT on the web needs a separate public door. The local Dex folder is not exposed that way
-- ChatGPT Work is not Codex
+Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed green. That is not a person-can-do-this win. Detection tests and fleet canary do not prove that a person installed the local plugin or opened a local vault.
 
-Copilot CLI is frozen on a later head. A later commit that records this freeze is a new head and must earn its own green Dex CI.
+### What is proven
+
+- ChatGPT Work desktop uses the same plugin package as Codex. Public plugin docs require `.codex-plugin/plugin.json`, and this package already has that layout plus `skills/`, `.codex-mcp.json`, and `hooks/codex.json`.
+- The repo marketplace at `.agents/plugins/marketplace.json` lists Dex at `./packages/dex-agent-plugin` under **Dex (unreleased local build)**.
+- The adapter now names the real local-plugin + local-vault steps: copy the reviewed package to `~/.agents/plugins/dex`, list it from `~/.agents/plugins/marketplace.json` with `source.path` `./dex`, restart ChatGPT desktop, install Dex, start Work locally, and grant the Dex vault folder.
+- Doctor and setup preview name three limits: a person still has to do that desktop journey; ChatGPT on the web needs a separate public HTTPS door; a shared plugin cache on disk is not ChatGPT Work proof.
+- Detection still treats `CHATGPT_WORK` / `OPENAI_WORK` / `CHATGPT_WORK_COMPANION` and an explicit `/.chatgpt-work/` marker as ChatGPT Work. A `/.codex/` path still selects Codex, not ChatGPT Work.
+
+### What is still missing
+
+- **Named limit:** a human must open ChatGPT Work on a real desktop, install the local plugin, and grant the Dex vault folder. This Ubuntu Cloud runner cannot do that. Do not treat a later green Dex CI or Mac fleet run as that proof.
+- No recorded live ChatGPT Work session exists. Do not invent one.
+- ChatGPT on the web stays later.
+
+A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the desktop journey.
 
 ## Copilot CLI — frozen at `28bb192baf05570f9e38f84e07f92b2e78b4a973`
 
@@ -141,8 +150,10 @@ A later commit that records this freeze is a new head and must earn its own gree
 
 ## Deliberately not started
 
+- A live ChatGPT Work desktop install or recorded vault grant on a real Mac or Windows machine
 - Live BB install, or publishing `dex-bb-plugin`
 - ChatGPT in the browser, or a public door for a local Dex folder
+- Copilot as the next host story
 - Live GitHub Copilot CLI install on this Ubuntu runner
 - Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot
 - Capability-exchange privacy repairs in Dex Lens

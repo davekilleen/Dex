@@ -283,6 +283,9 @@ class TestHarnessSelection:
         joined = " ".join(by_id["chatgpt-work"]["limitations"]).lower()
         assert "web" in joined
         assert "https" in joined
+        assert "desktop" in joined
+        assert "vault" in joined
+        assert "person" in joined
 
     def test_preview_includes_live_copilot_cli_hook_limit(self):
         from core.harnesses.registry import get_profile

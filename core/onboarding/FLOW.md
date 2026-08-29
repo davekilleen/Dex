@@ -25,7 +25,8 @@ not proof that the detection is right.
    **on demand** is available as a skill/tool; **guided** needs a visible fallback step;
    **unavailable** is not provided by that host. Also say each selected host's named
    limits in plain words. Mode counts are not enough if a host has no built-in tool
-   door, is Mac-only, or is still unreleased.
+   door, is Mac-only, is still unreleased, or still needs a person to open
+   ChatGPT Work on a real desktop and grant a local vault.
 5. After the user confirms, call
    `save_harness_selection(harnesses=[...], confirmed=true)`. Never set `confirmed=true`
    without showing the capability preview.
