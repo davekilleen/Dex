@@ -79,6 +79,13 @@ VAULT_ROOT="$(dirname "$SCRIPT_DIR")"
 echo "Vault path: $VAULT_ROOT"
 echo ""
 
+LEARNING_REVIEW_SUPPORTED=true
+case "$VAULT_ROOT" in
+  "$HOME/Documents"|"$HOME/Documents/"*)
+    LEARNING_REVIEW_SUPPORTED=false
+    ;;
+esac
+
 # Never point machine-wide background jobs at a temporary checkout. A git
 # worktree marks .git as a file; a real clone or plain vault does not.
 if [[ -f "$VAULT_ROOT/.git" || "$VAULT_ROOT" == */worktrees/* ]]; then
@@ -100,8 +107,17 @@ if [[ -n "$NODE_PATH" ]]; then
 else
   echo -e "${RED}✗${NC} Node.js not found; skipping changelog checker installation" >&2
 fi
-sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$LEARNING_PLIST" > "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
-echo -e "${GREEN}✓${NC} Installed learning review plist to $LAUNCH_AGENTS_DIR (with your vault path)"
+if [[ "$LEARNING_REVIEW_SUPPORTED" == true ]]; then
+  sed "s|{{VAULT_PATH}}|$VAULT_ROOT|g" "$SCRIPT_DIR/$LEARNING_PLIST" > "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  echo -e "${GREEN}✓${NC} Installed learning review plist to $LAUNCH_AGENTS_DIR (with your vault path)"
+else
+  if launchctl list | grep -q "com.dex.learning-review"; then
+    launchctl unload "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST" 2>/dev/null || true
+  fi
+  rm -f "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  echo -e "${YELLOW}!${NC} Learning Review: Not installed — macOS privacy blocks background shell jobs from reading vaults inside Documents."
+  echo "  Move your Dex vault outside Documents, then run this installer again."
+fi
 
 # Load changelog checker
 if [[ -n "$NODE_PATH" ]]; then
@@ -112,12 +128,14 @@ if [[ -n "$NODE_PATH" ]]; then
   echo -e "${GREEN}✓${NC} Loaded changelog checker (runs every 6 hours)"
 fi
 
-# Load learning review
-if launchctl list | grep -q "com.dex.learning-review"; then
-  launchctl unload "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+# Load learning review when macOS can give it access to the vault
+if [[ "$LEARNING_REVIEW_SUPPORTED" == true ]]; then
+  if launchctl list | grep -q "com.dex.learning-review"; then
+    launchctl unload "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  fi
+  launchctl load "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
+  echo -e "${GREEN}✓${NC} Loaded learning review (runs daily at 5pm)"
 fi
-launchctl load "$LAUNCH_AGENTS_DIR/$LEARNING_PLIST"
-echo -e "${GREEN}✓${NC} Loaded learning review (runs daily at 5pm)"
 
 echo ""
 echo -e "${GREEN}Installation complete!${NC}"
@@ -128,7 +146,11 @@ if [[ -n "$NODE_PATH" ]]; then
 else
   echo "  • Changelog Checker: Not installed (Node.js not found)"
 fi
-echo "  • Learning Review: Prompts for learning review daily at 5pm"
+if [[ "$LEARNING_REVIEW_SUPPORTED" == true ]]; then
+  echo "  • Learning Review: Prompts for learning review daily at 5pm"
+else
+  echo "  • Learning Review: Not installed (vault is inside Documents)"
+fi
 echo ""
 echo "Logs will be written to:"
 echo "  • .scripts/logs/changelog-checker.log"
