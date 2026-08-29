@@ -1,4 +1,4 @@
-"""The 77242824 record names the two GitHub runs and does not claim a person opened a host."""
+"""The 77242824 record names the two green GitHub runs and does not claim a person opened a host."""
 
 from pathlib import Path
 
@@ -18,12 +18,12 @@ def test_evidence_names_77242824_runs_and_does_not_claim_a_person_opened_a_host(
     assert FLEET_CANARY_RUN in text
     assert RECORDED_SHA in text
     assert "green" in lowered
-    assert "pending" in lowered
-    assert "in_progress" in lowered
+    assert "success" in lowered
+    assert "pending" not in lowered
+    assert "in_progress" not in lowered
+    assert "ci/fleet freeze" in lowered
     assert "not a person-can-open win" in lowered
     assert "no person opened a host" in lowered
-    assert "does not claim" in lowered
-    assert "77242824` is the freeze" in lowered or "77242824 is the freeze" in lowered
-    assert "a person opened a host" not in lowered
+    assert "not itself the freeze" in lowered
     assert "someone opened a host" not in lowered
     assert "opened a live install" not in lowered

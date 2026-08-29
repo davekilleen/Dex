@@ -5,18 +5,18 @@
 **Live successor:** draft PR 620, branch `cursor/dex-everywhere-codex-first-c346`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346`.  
 **Sequence:** Copilot CLI is written and not opened. Codex, Cowork, Pi, and BB stay green. ChatGPT Work vault-folder grant is the only leftover that still needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
 
-## Recorded successor SHA `77242824` (not a freeze)
+## CI/fleet freeze on successor SHA `77242824`
 
 Successor HEAD recorded here: `77242824f3aecdc8a2cd189fd0044bb407da5b8d` on draft PR 620 / `cursor/dex-everywhere-codex-first-c346`. Do not merge 620. Leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346` is dead.
 
-Recorded GitHub jobs on that exact SHA only:
+Both required jobs are now green on that exact SHA:
 
 - Dex CI: https://github.com/davekilleen/Dex/actions/runs/33247935335 — **GREEN** / success
-- historic-fleet-darwin-pr-canary: https://github.com/davekilleen/Dex/actions/runs/33247935319 — still **PENDING / in_progress**
+- historic-fleet-darwin-pr-canary: https://github.com/davekilleen/Dex/actions/runs/33247935319 — **GREEN** / success
 
-Green Dex CI is not a person-can-open win for Codex, Cowork, Pi, or BB live installs. No person opened a host. Detection tests and GitHub jobs do not prove a live install.
+Formal `historic-fleet-darwin` stayed skipped on the pull request, as designed. This lot commit is a later head and is not itself the freeze.
 
-This record does not claim `77242824` is the freeze. Do not claim a newer SHA is the freeze unless both Dex CI and the historic-fleet-darwin-pr-canary are green on that exact SHA.
+Green Dex CI and a green fleet canary are not a person-can-open win for Codex, Cowork, Pi, or BB live installs. No person opened a host. Detection tests and GitHub jobs do not prove a live install.
 
 ## What “Codex done” means
 
