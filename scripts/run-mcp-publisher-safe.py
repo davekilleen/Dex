@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Run mcp-publisher only in validate or publish --dry-run mode."""
+"""Run mcp-publisher validate only. Never publish."""
 
 from __future__ import annotations
 
 import argparse
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
-
-ALLOWED_COMMANDS = frozenset({"validate", "publish"})
+ALLOWED_COMMANDS = frozenset({"validate"})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,10 +28,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     server_json = Path(args.server_json).expanduser()
-    command = [publisher, args.command, str(server_json)]
-    if args.command == "publish":
-        command.append("--dry-run")
-
+    command = [publisher, "validate", str(server_json)]
     completed = subprocess.run(command, check=False)
     return completed.returncode
 

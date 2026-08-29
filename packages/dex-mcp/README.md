@@ -35,5 +35,5 @@ python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-a
 ```
 
 The builder writes a `.tgz`, a SHA-256 sidecar, and an `unreleased` index. It
-only runs `npm publish --dry-run` and `mcp-publisher` with `--dry-run` or
-`validate`.
+only runs `npm publish --dry-run` and `mcp-publisher validate`. It never
+publishes.

@@ -83,8 +83,7 @@ def _forbid_live_publish(command: list[str]) -> None:
     if "npm" in command and "publish" in command and "--dry-run" not in command:
         raise RegistryArtifactError(f"refusing live npm publish: {joined}")
     if "mcp-publisher" in Path(command[0]).name and "publish" in command:
-        if "--dry-run" not in command:
-            raise RegistryArtifactError(f"refusing live mcp-publisher publish: {joined}")
+        raise RegistryArtifactError(f"refusing mcp-publisher publish: {joined}")
 
 
 def stage_package(output_dir: Path) -> Path:
@@ -166,10 +165,7 @@ def validate_with_mcp_publisher(staged: Path) -> str:
         return "skipped: mcp-publisher is not installed"
     validate = [publisher, "validate", str(staged / "server.json")]
     _run(validate, cwd=staged)
-    publish = [publisher, "publish", str(staged / "server.json"), "--dry-run"]
-    _forbid_live_publish(publish)
-    _run(publish, cwd=staged)
-    return "validated and publish --dry-run"
+    return "validate"
 
 
 def write_checksum(tarball: Path) -> Path:

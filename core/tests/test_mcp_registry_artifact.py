@@ -72,7 +72,8 @@ def test_source_package_is_npm_shaped_and_unpublished() -> None:
     assert server["packages"][0]["transport"]["type"] == "stdio"
     assert "io.github.davekilleen/dex" in readme
     assert "npx -y dex-mcp" in readme
-    assert "will not publish" in readme
+    assert "will not create an npm account" in readme
+    assert "not publish" in readme
     assert "@heydex" not in json.dumps(package)
     assert "npm adduser" not in readme
 
@@ -186,9 +187,15 @@ def test_live_npm_publish_is_refused(tmp_path: Path) -> None:
     try:
         builder._forbid_live_publish(["mcp-publisher", "publish", "server.json"])
     except builder.RegistryArtifactError as error:
-        assert "refusing live mcp-publisher publish" in str(error)
+        assert "refusing mcp-publisher publish" in str(error)
     else:
-        raise AssertionError("live mcp-publisher publish must be refused")
+        raise AssertionError("mcp-publisher publish must be refused")
+    try:
+        builder._forbid_live_publish(["mcp-publisher", "publish", "server.json", "--dry-run"])
+    except builder.RegistryArtifactError as error:
+        assert "refusing mcp-publisher publish" in str(error)
+    else:
+        raise AssertionError("mcp-publisher publish is refused even with --dry-run")
 
     blocked = subprocess.run(
         ["npm", "publish"],
@@ -201,14 +208,14 @@ def test_live_npm_publish_is_refused(tmp_path: Path) -> None:
     assert "unreleased" in blocked.stderr.lower() or "dry-run" in blocked.stderr.lower()
 
 
-def test_safe_publisher_wrapper_forces_dry_run(tmp_path: Path) -> None:
+def test_safe_publisher_wrapper_only_validates(tmp_path: Path) -> None:
     fake = tmp_path / "mcp-publisher"
     fake.write_text(
         "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$0.args\"\n",
         encoding="utf-8",
     )
     fake.chmod(0o755)
-    completed = subprocess.run(
+    refused = subprocess.run(
         [
             sys.executable,
             str(SAFE_PUBLISHER),
@@ -220,10 +227,28 @@ def test_safe_publisher_wrapper_forces_dry_run(tmp_path: Path) -> None:
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,
+        check=False,
+    )
+    assert refused.returncode != 0
+    assert not Path(str(fake) + ".args").exists()
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SAFE_PUBLISHER),
+            "validate",
+            str(PACKAGE_SOURCE / "server.json"),
+            "--mcp-publisher",
+            str(fake),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
         check=True,
     )
     recorded = Path(str(fake) + ".args").read_text(encoding="utf-8")
-    assert "--dry-run" in recorded
+    assert recorded.startswith("validate ")
+    assert "publish" not in recorded
     assert completed.returncode == 0
 
 
