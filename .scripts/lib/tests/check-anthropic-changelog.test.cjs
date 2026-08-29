@@ -70,8 +70,11 @@ function runCli(vault, { args = [], sources = '', timeoutMs = 4000, extraEnv = {
   });
 }
 
-test('shipped sources stay the two existing product URLs; no extra https hosts', () => {
-  assert.equal(CHANGELOG_SOURCES.length, 2);
+const OFFICIAL_CHANGELOG =
+  'https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md';
+
+test('shipped source is Anthropic official Claude Code changelog; no extra https hosts', () => {
+  assert.deepEqual(CHANGELOG_SOURCES, [OFFICIAL_CHANGELOG]);
   const sourceText = fs.readFileSync(scriptPath, 'utf8');
   const httpsUrls = [...sourceText.matchAll(/https:\/\/[^\s'"]+/g)].map((match) => match[0]);
   assert.deepEqual(httpsUrls, CHANGELOG_SOURCES);
@@ -270,6 +273,24 @@ test('imported main returns 0 after a successful redirected check and writes the
   assert.equal(code, 0);
   const state = JSON.parse(fs.readFileSync(path.join(vault, 'System', 'claude-code-state.json'), 'utf8'));
   assert.equal(state.last_version_seen, '2.0.0');
+  assert.ok(fs.existsSync(path.join(vault, 'System', 'changelog-updates-pending.md')));
+});
+
+test('detects Markdown version headings used by the official Claude Code changelog', async (t) => {
+  const vault = makeVault(t);
+  writeState(vault, { last_check: '2020-01-01', last_version_seen: '1.0.0', features_seen: [] });
+  const { origin } = await listen(t, (_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('# Changelog\n\n## 2.1.251\n\n- Added a capability\n');
+  });
+
+  const code = await main({
+    args: ['--force'],
+    env: envFor(vault, `${origin}/CHANGELOG.md`),
+  });
+  assert.equal(code, 0);
+  const state = JSON.parse(fs.readFileSync(path.join(vault, 'System', 'claude-code-state.json'), 'utf8'));
+  assert.equal(state.last_version_seen, '2.1.251');
   assert.ok(fs.existsSync(path.join(vault, 'System', 'changelog-updates-pending.md')));
 });
 
