@@ -313,7 +313,9 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
         "cowork",
         "cursor",
         "gemini-cli",
+        "kiro",
         "pi",
+        "vscode",
     ]
     assert "Needs hooks" not in " ".join(capability["compatibility"]["limitations"])
     assert capability["portable_brief"]["goal"].startswith("Create a daily planning routine")

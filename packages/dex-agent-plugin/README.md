@@ -22,6 +22,13 @@ Plugins v1 root contract and also includes native manifests for:
 - Claude Desktop through a separately built and officially validated `.mcpb`;
   Desktop exposes the read-only MCP tools but does not run hooks.
 - Other Agent Plugins v1 clients through `plugin.json` and `mcp.json`.
+- Visual Studio Code after a person turns on `chat.plugins.enabled` (off by
+  default) and points `chat.pluginLocations` at this folder. If Dex guessed
+  Cursor, Kiro, or nothing, confirm VS Code in `/setup`. Hooks are not claimed.
+  Ubuntu Cloud is not a person opening VS Code.
+- Kiro after a person imports this folder as a custom power and names Dex so
+  the power wakes. If Dex guessed VS Code, Cursor, or nothing, confirm Kiro in
+  `/setup`. Hooks are not claimed. Ubuntu Cloud is not a person opening Kiro.
 
 The MCP bridge exposes `boot_today`, `get_person_context`,
 `check_safety_gate`, and `dex_harness_profiles`. It is dependency-free,

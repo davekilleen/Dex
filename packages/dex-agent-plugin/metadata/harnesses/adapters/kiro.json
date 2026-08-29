@@ -1,0 +1,19 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "kiro",
+  "status": "native-local",
+  "kind": "open-plugin-spec",
+  "native_paths": ["plugin.json", "skills/", "mcp.json"],
+  "example": {
+    "manifest": "packages/dex-agent-plugin/plugin.json",
+    "install_guide": "Open the Dex folder in Kiro. Open the Powers panel, choose Add Custom Power, then Import power from a folder, and select packages/dex-agent-plugin. Name Dex in chat so Kiro wakes the shipped power — the package already lists dex in its keywords. If Dex guessed VS Code, Cursor, or nothing, confirm Kiro in /setup. Hooks are not part of this path. Ubuntu Cloud is not a person opening Kiro. A detection test or green CI is not a live install.",
+    "portable_surface": ["skills/", "mcp.json"],
+    "local_package": "./packages/dex-agent-plugin",
+    "install_ui": "Powers panel → Add Custom Power → Import power from a folder",
+    "wake_when_named": "dex",
+    "keywords_field": "plugin.json keywords",
+    "setup_picker": "If auto-detect is empty or names VS Code or Cursor, confirm Kiro in /setup.",
+    "open_plugin_schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    "mcp_file": "mcp.json"
+  }
+}

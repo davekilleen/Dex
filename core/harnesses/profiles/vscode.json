@@ -1,0 +1,97 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/vscode.json",
+    "kind": "open-plugin-spec",
+    "manifest": "plugin.json",
+    "status": "native-local"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The open Dex folder is the vault after the person starts VS Code there.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "VS Code reads mcp.json from the local plugin after the plugin is enabled.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "Skills come from the shipped package skills/ folder.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "unavailable",
+      "notes": "This path does not add a VS Code hooks step. Safety stays an explicit MCP check.",
+      "status": "not-verified",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "guided",
+      "notes": "Plugin load depends on the person turning on chat.plugins.enabled and pointing chat.pluginLocations at the shipped package.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "No Dex scheduler contract is assumed.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "VS Code chat is host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "A person enables chat.plugins.enabled and registers ./packages/dex-agent-plugin in chat.pluginLocations. This is not a recorded live journey.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "VSCODE",
+      "VSCODE_HARNESS"
+    ],
+    "paths": [
+      "/Visual Studio Code/",
+      "/Code - OSS/"
+    ]
+  },
+  "display_name": "Visual Studio Code",
+  "evidence": [
+    "https://code.visualstudio.com/docs/agent-customization/agent-plugins",
+    "https://agent-plugins.org/specification"
+  ],
+  "id": "vscode",
+  "limitations": [
+    "VS Code plugin settings stay off by default. A person still has to turn on chat.plugins.enabled, point chat.pluginLocations at ./packages/dex-agent-plugin, and reload. Detection tests and CI do not prove that journey.",
+    "If auto-detect is empty or names Cursor or Kiro, confirm VS Code in /setup.",
+    "Ubuntu Cloud is not a person opening VS Code. No recorded live session exists.",
+    "Hooks are not included in this path; shared safety remains an explicit MCP check."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Visual Studio Code",
+  "summary": "VS Code can load the same local Agent Plugins package after a person turns on plugin settings that stay off by default. Hooks are not claimed.",
+  "support_level": "supported",
+  "vendor": "Microsoft"
+}

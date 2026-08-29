@@ -31,7 +31,9 @@ EXPECTED_IDS = (
     "cowork",
     "cursor",
     "gemini-cli",
+    "kiro",
     "pi",
+    "vscode",
 )
 
 
@@ -120,10 +122,29 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert gemini["agent-skills"]["status"] == "native"
     assert gemini["session-lifecycle"]["mode"] == "automatic"
 
+    kiro = _rows("kiro")
+    assert kiro["agent-plugins"]["status"] == "native"
+    assert kiro["hooks"]["mode"] == "unavailable"
+    kiro_limits = " ".join(get_profile("kiro").limitations).lower()
+    assert "name dex" in kiro_limits
+    assert "/setup" in kiro_limits
+    assert "ubuntu cloud" in kiro_limits
+    assert "no recorded live session" in kiro_limits
+
     pi = _rows("pi")
     assert get_profile("pi").adapter["kind"] == "pi-extension"
     assert pi["session-lifecycle"]["mode"] == "automatic"
     assert pi["mcp"]["mode"] == "unavailable"
+
+    vscode = _rows("vscode")
+    assert vscode["agent-plugins"]["status"] == "native"
+    assert vscode["hooks"]["mode"] == "unavailable"
+    vscode_limits = " ".join(get_profile("vscode").limitations).lower()
+    assert "off by default" in vscode_limits
+    assert "chat.plugins.enabled" in vscode_limits
+    assert "/setup" in vscode_limits
+    assert "ubuntu cloud" in vscode_limits
+    assert "no recorded live session" in vscode_limits
 
 
 def _pi_checkout() -> Path | None:
@@ -222,6 +243,8 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
         "GitHub Copilot CLI",
         "Cursor",
         "Gemini CLI",
+        "Kiro",
+        "Visual Studio Code",
         "Agent Plugins v1",
         "Pi",
         "BB",

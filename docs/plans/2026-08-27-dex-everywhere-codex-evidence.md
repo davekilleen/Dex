@@ -2,8 +2,8 @@
 
 **Date:** 29 August 2026  
 **Programme state:** unreleased; do not merge  
-**Live successor:** draft PR 620, branch `cursor/dex-everywhere-codex-first-c346`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346`.  
-**Sequence:** Copilot CLI is written and not opened. Codex, Cowork, Pi, and BB stay green. ChatGPT Work vault-folder grant is the only leftover that still needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
+**Live successor for this VS Code and Kiro path:** branch `cursor/everywhere-vscode-kiro-618e`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346` or PR 620 / `cursor/dex-everywhere-codex-first-c346`.  
+**Sequence:** VS Code and Kiro now have a written path that uses the package Dex already ships. Copilot CLI stays written and not opened. Codex, Cowork, Pi, and BB stay earlier proof. ChatGPT Work vault-folder grant is still the leftover that needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
 
 ## What “Codex done” means
 
@@ -163,6 +163,38 @@ Earlier CI and Mac fleet on `28bb192baf05570f9e38f84e07f92b2e78b4a973` stayed gr
 - No recorded live Copilot CLI session exists. Do not invent one.
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the terminal journey.
+
+## Visual Studio Code and Kiro — written path, not opened
+
+A person can follow a written path to open Dex in VS Code and in Kiro using `packages/dex-agent-plugin`. Nobody has opened that path on this runner. Ubuntu Cloud is not VS Code or Kiro. Detection tests and CI are not a live install.
+
+### What a person would do in VS Code
+
+1. Open the Dex folder in VS Code.
+2. Turn on `chat.plugins.enabled`. That setting stays off by default.
+3. Add `chat.pluginLocations` so `./packages/dex-agent-plugin` is true.
+4. Reload VS Code and confirm Dex skills plus the bundled MCP tools appear.
+5. If Dex guessed Cursor, Kiro, or nothing, confirm VS Code in `/setup`.
+
+### What a person would do in Kiro
+
+1. Open the Dex folder in Kiro.
+2. Open the Powers panel, choose Add Custom Power, then Import power from a folder, and select `packages/dex-agent-plugin`.
+3. Name Dex in chat so Kiro wakes the power. The shipped package already lists `dex` in its keywords.
+4. If Dex guessed VS Code, Cursor, or nothing, confirm Kiro in `/setup`.
+
+### What is proven
+
+- Both hosts use the same reviewed Agent Plugins package: `plugin.json`, `skills/`, and `mcp.json`.
+- VS Code honesty is named: plugin settings stay off by default; the person must turn them on.
+- Kiro honesty is named: the power wakes when Dex is named.
+- Auto-detect is unreliable across VS Code-based apps, so `/setup` is the fallback.
+- Hooks are not part of this path. This runner did not invent a ChatGPT Work folder grant.
+
+### What still needs a person
+
+- A human must turn on the VS Code settings and import the Kiro power on a real machine. This Ubuntu Cloud runner cannot do that.
+- No recorded live VS Code or Kiro session exists. Do not invent one.
 
 ## Deliberately not started
 

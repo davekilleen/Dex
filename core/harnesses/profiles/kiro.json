@@ -1,0 +1,99 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/kiro.json",
+    "kind": "open-plugin-spec",
+    "manifest": "plugin.json",
+    "status": "native-local"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The open Dex folder is the vault after the person starts Kiro there.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "Kiro loads mcp.json from the imported power and manages those servers with the power.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "Skills come from the shipped package skills/ folder.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "unavailable",
+      "notes": "This path does not add a Kiro hooks step. Safety stays an explicit MCP check.",
+      "status": "not-verified",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "guided",
+      "notes": "The power loads when the person names Dex or another listed keyword.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "No Dex scheduler contract is assumed.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "Kiro chat is host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "A person imports packages/dex-agent-plugin as a custom power. This is not a recorded live journey.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "KIRO",
+      "KIRO_IDE",
+      "KIRO_CLI"
+    ],
+    "paths": [
+      "/.kiro/",
+      "/Kiro/"
+    ]
+  },
+  "display_name": "Kiro",
+  "evidence": [
+    "https://kiro.dev/docs/powers/",
+    "https://kiro.dev/docs/powers/installation/",
+    "https://agent-plugins.org/specification"
+  ],
+  "id": "kiro",
+  "limitations": [
+    "A person still has to import ./packages/dex-agent-plugin from the Kiro Powers panel and name Dex so the power wakes. Detection tests and CI do not prove that journey.",
+    "If auto-detect is empty or names VS Code or Cursor, confirm Kiro in /setup.",
+    "Ubuntu Cloud is not a person opening Kiro. No recorded live session exists.",
+    "Hooks are not included in this path; shared safety remains an explicit MCP check."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Kiro",
+  "summary": "Kiro can load the same local Agent Plugins package as a custom power. It wakes Dex when you name it. A person still has to import the reviewed folder. Hooks are not claimed.",
+  "support_level": "supported",
+  "vendor": "Amazon"
+}

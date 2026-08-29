@@ -32,10 +32,12 @@ EXPECTED_IDS = {
     "copilot-cli",
     "cursor",
     "gemini-cli",
+    "kiro",
     "pi",
     "agent-plugin",
     "chatgpt-work",
     "bb",
+    "vscode",
 }
 
 REGISTRY_GENERATOR = REPO_ROOT / "scripts" / "generate-harness-registry.py"
@@ -205,6 +207,12 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
     assert [profile.id for profile in detect_harnesses(env={"GITHUB_COPILOT": "1"})] == [
         "copilot-cli"
     ]
+    assert [profile.id for profile in detect_harnesses(env={"VSCODE": "1"})] == ["vscode"]
+    assert [profile.id for profile in detect_harnesses(env={"VSCODE_HARNESS": "1"})] == [
+        "vscode"
+    ]
+    assert [profile.id for profile in detect_harnesses(env={"KIRO": "1"})] == ["kiro"]
+    assert [profile.id for profile in detect_harnesses(env={"KIRO_IDE": "1"})] == ["kiro"]
 
 
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:
@@ -217,6 +225,15 @@ def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() 
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.copilot/session")])] == [
         "copilot-cli"
     ]
+    assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.kiro/session")])] == [
+        "kiro"
+    ]
+    assert [
+        profile.id
+        for profile in detect_harnesses(
+            env={}, paths=[Path("/Applications/Visual Studio Code.app")]
+        )
+    ] == ["vscode"]
     assert detect_harnesses(env={}, paths=[]) == ()
 
 

@@ -1,0 +1,20 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "vscode",
+  "status": "native-local",
+  "kind": "open-plugin-spec",
+  "native_paths": ["plugin.json", "skills/", "mcp.json"],
+  "example": {
+    "manifest": "packages/dex-agent-plugin/plugin.json",
+    "install_guide": "Open the Dex folder in VS Code. Agent plugins stay off until you turn them on: set chat.plugins.enabled to true, then add chat.pluginLocations so ./packages/dex-agent-plugin is true. Reload VS Code. Confirm Dex skills and the bundled MCP tools appear. If Dex guessed Cursor, Kiro, or nothing, confirm VS Code in /setup. Hooks are not part of this path. Ubuntu Cloud is not a person opening VS Code. A detection test or green CI is not a live install.",
+    "portable_surface": ["skills/", "mcp.json"],
+    "local_package": "./packages/dex-agent-plugin",
+    "settings_off_by_default": ["chat.plugins.enabled"],
+    "enable_setting": "chat.plugins.enabled",
+    "plugin_locations_setting": "chat.pluginLocations",
+    "plugin_locations_entry": "./packages/dex-agent-plugin",
+    "setup_picker": "If auto-detect is empty or names Cursor or Kiro, confirm VS Code in /setup.",
+    "open_plugin_schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    "mcp_file": "mcp.json"
+  }
+}

@@ -96,7 +96,9 @@ def test_plugin_contains_skills_resources_registry_and_relocatable_launcher() ->
         "cowork",
         "cursor",
         "gemini-cli",
+        "kiro",
         "pi",
+        "vscode",
     }
     launcher = PLUGIN_ROOT / "bin" / "dex-python.mjs"
     launcher_lib = PLUGIN_ROOT / "bin" / "dex-launcher-lib.mjs"

@@ -301,6 +301,28 @@ class TestHarnessSelection:
         assert "copilot plugin install" in joined
         assert "ubuntu cloud" in joined
 
+    def test_preview_includes_live_vscode_and_kiro_limits(self):
+        from core.harnesses.registry import get_profile
+
+        vscode = onboarding_server.inspect_harnesses(["vscode"])
+        kiro = onboarding_server.inspect_harnesses(["kiro"])
+
+        assert vscode["selected"] == ["vscode"]
+        assert kiro["selected"] == ["kiro"]
+        by_vscode = {row["id"]: row for row in vscode["profiles"]}
+        by_kiro = {row["id"]: row for row in kiro["profiles"]}
+        assert by_vscode["vscode"]["limitations"] == list(get_profile("vscode").limitations)
+        assert by_kiro["kiro"]["limitations"] == list(get_profile("kiro").limitations)
+        vscode_limits = " ".join(by_vscode["vscode"]["limitations"]).lower()
+        kiro_limits = " ".join(by_kiro["kiro"]["limitations"]).lower()
+        assert "chat.plugins.enabled" in vscode_limits
+        assert "off by default" in vscode_limits
+        assert "/setup" in vscode_limits
+        assert "ubuntu cloud" in vscode_limits
+        assert "name dex" in kiro_limits
+        assert "/setup" in kiro_limits
+        assert "ubuntu cloud" in kiro_limits
+
     def test_inspection_supplies_existing_home_path_evidence(self, monkeypatch):
         evidence = (Path("/fixture/.codex"), Path("/fixture/.pi"))
         captured = []
