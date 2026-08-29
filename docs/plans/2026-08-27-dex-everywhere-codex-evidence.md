@@ -2,7 +2,7 @@
 
 **Date:** 27 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** Codex, Claude Cowork, and Pi/BB exact-head native CI are green, including the Mac fleet. ChatGPT Work desktop proof is in progress. Copilot waits.
+**Sequence:** Standing order is ChatGPT Work desktop, then Copilot CLI. ChatGPT Work desktop is frozen. Copilot CLI is frozen at `28bb192baf05570f9e38f84e07f92b2e78b4a973`. Codex, Cowork, Pi, and BB stay frozen. Programme stays unreleased.
 
 ## What “Codex done” means
 
@@ -125,15 +125,19 @@ Desktop only. This does not claim ChatGPT in the browser.
 - Doctor and setup preview name the browser limit: ChatGPT on the web needs a separate public door. The local Dex folder is not exposed that way
 - ChatGPT Work is not Codex
 
-A later commit that records this proof or starts Copilot is a new head and must earn its own green Dex CI.
+Copilot CLI is frozen on a later head. A later commit that records this freeze is a new head and must earn its own green Dex CI.
 
-## Copilot CLI (started after ChatGPT Work CI was green)
+## Copilot CLI — frozen at `28bb192baf05570f9e38f84e07f92b2e78b4a973`
 
-GitHub Copilot in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Live `copilot plugin install` was not run on this Ubuntu runner.
+Copilot CLI in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Live `copilot plugin install` was not run on this Ubuntu runner.
 
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33121747982 — **success**
+- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33121747949 — **success** (updated 2026-08-27T23:03:48Z)
+- Formal `historic-fleet-darwin` is skipped on pull requests
 - Detects Copilot CLI from `COPILOT_CLI` / `GH_COPILOT` / `GITHUB_COPILOT` and a `/.copilot/` path
 - Doctor and setup preview name the hook limit: Copilot hooks are not in this release
-- This head must earn its own exact-head Dex CI and Mac fleet canary
+
+A later commit that records this freeze is a new head and must earn its own green Dex CI.
 
 ## Deliberately not started
 
