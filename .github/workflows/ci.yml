@@ -150,6 +150,12 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build and validate installable harness artifacts
         run: python scripts/build-portable-harness-artifacts.py --output-dir build/portable-artifacts
+      - name: Pack the unpublished MCP catalogue artifact
+        run: python scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-artifact
+      - name: Verify the packed MCP server still answers
+        env:
+          DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: python scripts/verify-portable-plugin-runtime.py --plugin-root build/mcp-registry-artifact/dex-mcp --skip-hooks
       - name: Verify portable plugin runtime and release boundary
         env:
           DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}

@@ -522,6 +522,8 @@ def test_ci_runs_the_runtime_verifier_on_macos_and_windows() -> None:
     assert "macos-latest" in job
     assert "windows-latest" in job
     assert "build-portable-harness-artifacts.py" in job
+    assert "build-mcp-registry-artifact.py" in job
+    assert "--plugin-root build/mcp-registry-artifact/dex-mcp --skip-hooks" in job
     assert "verify-portable-plugin-runtime.py --require-release-ready" in job
     assert "--plugin-root build/portable-artifacts/dex-gemini-extension" in job
     assert "--plugin-root build/portable-artifacts/dex-claude-desktop --skip-hooks" in job

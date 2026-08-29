@@ -62,7 +62,13 @@ python3 scripts/build-portable-harness-artifacts.py --output-dir build/portable-
 The builder validates and packs `dex-claude-desktop.mcpb`, builds the complete
 `dex-gemini-extension/` install directory and deterministic archive, and writes
 `artifacts.json` with unreleased status, sizes, and SHA-256 checksums. It does
-not publish, install, or release anything. The stable and beta release jobs run
+not publish, install, or release anything. A separate command packs the same
+read-only MCP server as an npm-shaped `.tgz` for the official catalogue, still
+without publishing:
+
+```sh
+python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-artifact
+``` The stable and beta release jobs run
 the same builder with the matching channel recorded in `artifacts.json`, then
 attach both archives and the index through Dex's draft-first, byte-verified
 publication path. No attachment is public until the release itself is approved
@@ -79,6 +85,7 @@ and the final publication step succeeds.
 | Cursor | Copy or link `packages/dex-agent-plugin` to `~/.cursor/plugins/local/dex`, reload Cursor, and approve the native hooks. | Local sessions get context and safety hooks. Cursor cloud agents do not run `sessionStart`, so that lifecycle guarantee is local-only. |
 | Gemini CLI | Run `gemini extensions install build/portable-artifacts/dex-gemini-extension`, approve its hooks, and restart Gemini CLI in the full Dex folder. | Gemini's fixed hook file uses a different schema, so Dex builds a separate complete artifact from the same canonical sources. |
 | Agent Plugins v1 client | Install the folder using root `plugin.json` and `mcp.json`. | The open specification standardizes skills and MCP, not every host lifecycle. |
+| Official MCP catalogue | After Dave publishes, add one line in any MCP app: `io.github.davekilleen/dex`. Until then, pack locally with `python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-artifact`. | The already-proven read-only server is packed as an npm-shaped `.tgz`, checksummed, and validated with dry-run only. It is not on npm and not in the public catalogue. This runner will not create an npm account or publish. |
 | Pi | Use the native `dex-pi/extensions/dex` package from the pinned [`dex-pi` commit `5bf33ad7b23a06a890b25445cb1b4f4077b2ac19`](https://github.com/davekilleen/dex-pi/tree/5bf33ad7b23a06a890b25445cb1b4f4077b2ac19) and open the full Dex folder. | Pi has no built-in MCP client; its extension supplies native tools and lifecycle events instead. Core verifies the pinned manifest and source-level lifecycle markers when the checkout is available; live installation remains a release-candidate check. |
 | BB | Install the separately built `bb-plugin-dex` package from a reviewed local path and select the vault in settings. | Version one is macOS-only and read-only: status, capabilities, brief, CLI, and panel; no jobs, writes, provider bridge, or marketplace release. BB's Windows route uses WSL2 and stays in the deferred Linux lane. |
 

@@ -195,6 +195,10 @@ def test_both_release_lanes_build_and_attach_portable_harness_assets() -> None:
             for match in re.finditer(r'--extra-asset "([^"]+)"', publish)
         }
         assert expected_assets <= attached
+        assert not any("dex-mcp" in asset for asset in attached)
+        assert "build-mcp-registry-artifact.py" not in build
+        assert "npm publish" not in publish
+        assert "mcp-publisher publish" not in publish
 
 
 def test_the_publishing_step_still_runs_only_after_all_release_gates() -> None:

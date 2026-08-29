@@ -1,0 +1,33 @@
+{
+  "name": "dex-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only Dex context and safety tools for any local MCP app.",
+  "mcpName": "io.github.davekilleen/dex",
+  "type": "module",
+  "bin": {
+    "dex-mcp": "./bin/dex-python.mjs"
+  },
+  "files": [
+    "bin",
+    "metadata",
+    "runtime",
+    "scripts/refuse-live-npm-publish.mjs",
+    "server.py",
+    "server.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davekilleen/Dex.git",
+    "directory": "packages/dex-mcp"
+  },
+  "homepage": "https://heydex.ai",
+  "scripts": {
+    "prepublishOnly": "node ./scripts/refuse-live-npm-publish.mjs"
+  }
+}
