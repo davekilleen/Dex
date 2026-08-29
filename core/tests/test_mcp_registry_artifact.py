@@ -12,9 +12,8 @@ import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import jsonschema
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_SOURCE = REPO_ROOT / "packages" / "dex-mcp"
