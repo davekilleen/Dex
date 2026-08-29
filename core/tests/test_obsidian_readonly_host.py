@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
+import runpy
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -170,26 +170,23 @@ def test_today_brief_shows_saturday_without_writing(tmp_path: Path) -> None:
     assert _snapshot(vault) == before
 
 
-def test_module_entry_installs_the_local_panel(tmp_path: Path) -> None:
+def test_module_entry_installs_the_local_panel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     vault = _write_vault(tmp_path / "dex")
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "core.obsidian_panel",
-            "install",
-            "--vault",
-            str(vault),
-        ],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        check=True,
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["core.obsidian_panel", "install", "--vault", str(vault)],
     )
 
+    with pytest.raises(SystemExit) as exited:
+        runpy.run_module("core.obsidian_panel", run_name="__main__")
+
     dest = vault / ".obsidian" / "plugins" / "dex-readonly"
-    assert "Installed the Dex panel" in completed.stdout
+    captured = capsys.readouterr()
+    assert exited.value.code == 0
+    assert "Installed the Dex panel" in captured.out
     assert (dest / "main.js").is_file()
     assert (dest / "paths.js").is_file()
     assert (dest / "manifest.json").is_file()
