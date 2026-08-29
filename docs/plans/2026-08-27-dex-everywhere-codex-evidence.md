@@ -5,6 +5,18 @@
 **Live successor:** draft PR 620, branch `cursor/dex-everywhere-codex-first-c346`. Do not push to leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346`.  
 **Sequence:** Copilot CLI is written and not opened. Codex, Cowork, Pi, and BB stay green. ChatGPT Work vault-folder grant is the only leftover that still needs Dave on a real desktop. Do not invent that grant. Programme stays unreleased.
 
+## CI freeze on VS Code/Kiro host-path SHA `65a8d056`
+
+Host-path HEAD recorded here: `65a8d056a431ddb03df34c3281082410d4b113cd` on draft PR 648 / `cursor/everywhere-vscode-kiro-618e`. This lot targets the successor (`cursor/dex-everywhere-codex-first-c346`, draft PR 620). Do not merge 620. Leftover PR 619 / `cursor/dex-everywhere-phase-1a-c346` is dead. Do not add hooks. Do not invent a new host.
+
+Dex CI is green on that exact SHA:
+
+- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33249674554 — **GREEN** / success
+
+This lot commit is a later head and is not itself the freeze.
+
+Green Dex CI is not a person-can-open win for Visual Studio Code or Kiro. No person opened a host. Opening Visual Studio Code or Kiro on a real machine stays Dave's. Detection tests and GitHub jobs do not prove a live install.
+
 ## What “Codex done” means
 
 Dex works in **Codex CLI and Codex desktop**. The Codex editor add-on does not load this plugin; that limit is recorded in the Codex host profile and is intentional.
