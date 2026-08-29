@@ -31,6 +31,7 @@ EXPECTED_IDS = (
     "cowork",
     "cursor",
     "gemini-cli",
+    "obsidian",
     "pi",
 )
 
@@ -119,6 +120,15 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     gemini = _rows("gemini-cli")
     assert gemini["agent-skills"]["status"] == "native"
     assert gemini["session-lifecycle"]["mode"] == "automatic"
+
+    obsidian = _rows("obsidian")
+    assert obsidian["vault"]["status"] == "native"
+    assert obsidian["mcp"]["mode"] == "unavailable"
+    assert obsidian["agent-skills"]["mode"] == "unavailable"
+    obsidian_limits = " ".join(get_profile("obsidian").limitations).lower()
+    assert "read-only" in obsidian_limits
+    assert "community store" in obsidian_limits
+    assert "ubuntu cloud" in obsidian_limits
 
     pi = _rows("pi")
     assert get_profile("pi").adapter["kind"] == "pi-extension"
@@ -222,6 +232,7 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
         "GitHub Copilot CLI",
         "Cursor",
         "Gemini CLI",
+        "Obsidian",
         "Agent Plugins v1",
         "Pi",
         "BB",

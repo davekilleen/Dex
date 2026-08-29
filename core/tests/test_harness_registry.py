@@ -32,6 +32,7 @@ EXPECTED_IDS = {
     "copilot-cli",
     "cursor",
     "gemini-cli",
+    "obsidian",
     "pi",
     "agent-plugin",
     "chatgpt-work",
@@ -205,6 +206,12 @@ def test_detection_accepts_explicit_ids_and_environment_markers() -> None:
     assert [profile.id for profile in detect_harnesses(env={"GITHUB_COPILOT": "1"})] == [
         "copilot-cli"
     ]
+    assert [profile.id for profile in detect_harnesses(env={"OBSIDIAN_VAULT": "1"})] == [
+        "obsidian"
+    ]
+    assert [profile.id for profile in detect_harnesses(env={"OBSIDIAN_APP": "1"})] == [
+        "obsidian"
+    ]
 
 
 def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() -> None:
@@ -217,6 +224,12 @@ def test_detection_uses_paths_without_treating_an_empty_environment_as_claude() 
     assert [profile.id for profile in detect_harnesses(env={}, paths=[Path("/tmp/.copilot/session")])] == [
         "copilot-cli"
     ]
+    assert [
+        profile.id
+        for profile in detect_harnesses(
+            env={}, paths=[Path("/tmp/.obsidian/plugins/dex-readonly/main.js")]
+        )
+    ] == ["obsidian"]
     assert detect_harnesses(env={}, paths=[]) == ()
 
 

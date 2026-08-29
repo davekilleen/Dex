@@ -1,0 +1,94 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/obsidian.json",
+    "kind": "obsidian-plugin",
+    "manifest": "packages/dex-obsidian-plugin/manifest.json",
+    "status": "native-local"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The panel reads the Dex folder opened as the Obsidian vault.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "unavailable",
+      "notes": "This panel does not run Dex MCP tools or commands.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "unavailable",
+      "notes": "The panel does not load Dex slash commands or skills.",
+      "status": "none",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "unavailable",
+      "notes": "Obsidian does not run Dex lifecycle hooks.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "guided",
+      "notes": "Today's brief appears when the Dex folder is open and the panel is enabled.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "The panel does not schedule jobs.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "unavailable",
+      "notes": "The panel has no command palette entries and does not ask for edits.",
+      "status": "none",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "unavailable",
+      "notes": "This is a local Obsidian plugin, not an Agent Plugins package.",
+      "status": "none",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "OBSIDIAN_VAULT",
+      "OBSIDIAN_APP"
+    ],
+    "paths": [
+      "/.obsidian/plugins/dex-readonly/"
+    ]
+  },
+  "display_name": "Obsidian",
+  "evidence": [
+    "https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin"
+  ],
+  "id": "obsidian",
+  "limitations": [
+    "A person still has to open the Dex folder in Obsidian and enable the local Dex panel. Ubuntu Cloud is not a person opening Obsidian.",
+    "The panel is read-only: it does not edit notes, run Dex commands, or use the internet.",
+    "This local plugin has not been submitted to the Obsidian community store.",
+    "VS Code and Kiro shared lot files are deferred. This lot does not add them.",
+    "This runner will not invent a ChatGPT Work folder grant."
+  ],
+  "modes": [
+    "tier-0-vault"
+  ],
+  "name": "Obsidian",
+  "summary": "Local read-only Dex panel in Obsidian: open the Dex folder and see today's brief. No edits, no commands, no internet.",
+  "support_level": "supported",
+  "vendor": "Obsidian"
+}

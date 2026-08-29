@@ -1,0 +1,42 @@
+.dex-readonly-panel {
+  padding: 16px 18px 24px;
+  overflow: auto;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.dex-readonly-panel h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.dex-readonly-panel .dex-readonly-date {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+}
+
+.dex-readonly-panel h2 {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dex-readonly-panel ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.dex-readonly-panel li {
+  margin: 0 0 6px;
+}
+
+.dex-readonly-panel .dex-readonly-empty {
+  color: var(--text-muted);
+}
+
+.dex-readonly-panel .dex-readonly-note {
+  margin-top: 24px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
