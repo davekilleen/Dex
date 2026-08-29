@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Mapping, Sequence
 
 import pytest
 
@@ -22,6 +24,9 @@ NOW = datetime(2026, 7, 11, 12, 0, tzinfo=timezone.utc)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
 ADAPTER_PATH = REPO_ROOT / "core" / "harnesses" / "adapters" / "copilot-cli.json"
+# Named by the adapter's direct-install cache plus the existing detection path
+# `~/.copilot/installed-plugins/_direct/source`. Do not invent a new product path.
+DIRECT_SOURCE_ID = "source"
 
 
 @pytest.fixture
@@ -112,6 +117,8 @@ def test_developer_guide_names_the_copilot_cli_terminal_steps() -> None:
     assert "copilot plugin list" in guide
     assert "Ubuntu Cloud is not that journey" in guide
     assert "Detection tests and CI are not a live install" in guide
+    assert "_direct" in guide
+    assert "fixture is not a live install" in guide
 
 
 def test_doctor_names_copilot_person_and_hook_limits_without_calling_it_chatgpt_work(
@@ -175,19 +182,73 @@ def _expand_plugin_vars(value: str, plugin_root: Path, plugin_data: Path) -> str
     )
 
 
-def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Path) -> None:
-    mcp = json.loads((PLUGIN_ROOT / "mcp.json").read_text(encoding="utf-8"))
-    server = mcp["mcpServers"]["dex-core"]
-    plugin_data = tmp_path / "plugin-data"
-    plugin_data.mkdir()
-    vault = tmp_path / "Dex"
+def _named_direct_cache(home: Path) -> Path:
+    adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
+    relative = adapter["example"]["direct_install_cache"]
+    assert relative.startswith("~/")
+    assert relative == "~/.copilot/installed-plugins/_direct/"
+    return home.joinpath(*Path(relative[2:]).parts)
+
+
+def _install_reviewed_package_into_direct_cache(home: Path) -> Path:
+    """Copy the reviewed package the way `copilot plugin install` would, without a binary."""
+    installed = _named_direct_cache(home) / DIRECT_SOURCE_ID
+    shutil.copytree(
+        PLUGIN_ROOT,
+        installed,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    return installed
+
+
+def _list_direct_plugins(home: Path) -> list[dict[str, Any]]:
+    """Read the named `_direct` cache the way `copilot plugin list` would inspect it."""
+    cache = _named_direct_cache(home)
+    listed: list[dict[str, Any]] = []
+    if not cache.is_dir():
+        return listed
+    for child in sorted(cache.iterdir()):
+        if not child.is_dir():
+            continue
+        manifest_path = child / "plugin.json"
+        if not manifest_path.is_file():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        author = manifest.get("author") or {}
+        listed.append(
+            {
+                "name": manifest.get("name", ""),
+                "author": author.get("name", "") if isinstance(author, Mapping) else "",
+                "source_id": child.name,
+                "path": child,
+            }
+        )
+    return listed
+
+
+def _refuse_copilot_binary(command: Sequence[str]) -> None:
+    names = [Path(str(part)).name for part in command]
+    assert "copilot" not in names
+    assert all("copilot plugin" not in str(part) for part in command)
+
+
+def _write_dex_folder_vault(root: Path) -> Path:
+    vault = root / "Dex"
     (vault / "System").mkdir(parents=True)
     (vault / "System" / "pillars.yaml").write_text(
         'pillars:\n  - id: focus\n    name: "Focus"\n    description: "Do the important work"\n',
         encoding="utf-8",
     )
+    return vault
+
+
+def _copilot_mcp_roundtrip(
+    plugin_root: Path, vault: Path, plugin_data: Path
+) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
+    mcp = json.loads((plugin_root / "mcp.json").read_text(encoding="utf-8"))
+    server = mcp["mcpServers"]["dex-core"]
     args = [
-        _expand_plugin_vars(argument, PLUGIN_ROOT, plugin_data)
+        _expand_plugin_vars(argument, plugin_root, plugin_data)
         for argument in server["args"]
     ]
     env = {
@@ -195,7 +256,7 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
         "PYTHONNOUSERSITE": "1",
     }
     for key, value in server.get("env", {}).items():
-        env[key] = _expand_plugin_vars(value, PLUGIN_ROOT, plugin_data)
+        env[key] = _expand_plugin_vars(value, plugin_root, plugin_data)
     payload = "".join(
         json.dumps(message) + "\n"
         for message in (
@@ -218,8 +279,10 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
             },
         )
     )
+    command = [server["command"], *args]
+    _refuse_copilot_binary(command)
     completed = subprocess.run(
-        [server["command"], *args],
+        command,
         input=payload,
         text=True,
         capture_output=True,
@@ -228,6 +291,14 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
         check=True,
     )
     responses = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+    return server, args, responses
+
+
+def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Path) -> None:
+    plugin_data = tmp_path / "plugin-data"
+    plugin_data.mkdir()
+    vault = _write_dex_folder_vault(tmp_path)
+    server, args, responses = _copilot_mcp_roundtrip(PLUGIN_ROOT, vault, plugin_data)
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     skills = list((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
     limitations = " ".join(get_profile("copilot-cli").limitations).lower()
@@ -244,10 +315,97 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
     }
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     assert responses[3]["result"]["structuredContent"]["refused"] is True
-    assert server["command"] == "node"
     assert "copilot" not in args
     assert "no recorded live session" in limitations
     assert "hooks are not included" in limitations
     assert get_profile("copilot-cli").capability_rows()
     rows = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
     assert rows["hooks"]["mode"] == "unavailable"
+    assert rows["hooks"]["status"] == "not-verified"
+
+
+def test_direct_install_fixture_completes_the_written_path_without_opening_the_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
+    example = adapter["example"]
+    home = tmp_path / "home"
+    plugin_data = tmp_path / "plugin-data"
+    plugin_data.mkdir()
+    vault = _write_dex_folder_vault(tmp_path)
+    before_files = {path.resolve() for path in vault.rglob("*") if path.is_file()}
+
+    installed = _install_reviewed_package_into_direct_cache(home)
+    listed = _list_direct_plugins(home)
+    listed_text = " ".join(
+        f"{row['name']} {row['author']}" for row in listed
+    ).lower()
+    server, args, responses = _copilot_mcp_roundtrip(installed, vault, plugin_data)
+    skills = list((installed / "skills").glob("*/SKILL.md"))
+    after_files = {path.resolve() for path in vault.rglob("*") if path.is_file()}
+    limitations = list(get_profile("copilot-cli").limitations)
+    joined_limits = " ".join(limitations).lower()
+    rows = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
+
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    doctor_context = doctor.DoctorContext(
+        vault_root=vault, repo_root=vault, home=home, now=NOW
+    )
+    receipt = build_receipt_for_ids(
+        ["copilot-cli"],
+        detected_ids=("copilot-cli",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = doctor_context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+    doctor_result = doctor._probe_harness_capabilities(doctor_context)
+    inspected = onboarding_server.inspect_harnesses(["copilot-cli"])
+    setup_limits = " ".join(
+        next(row["limitations"] for row in inspected["profiles"] if row["id"] == "copilot-cli")
+    ).lower()
+    guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
+
+    assert example["install_command"] == "copilot plugin install ./packages/dex-agent-plugin"
+    assert example["inspect_command"] == "copilot plugin list"
+    assert example["direct_install_cache"] == "~/.copilot/installed-plugins/_direct/"
+    assert installed == home / ".copilot" / "installed-plugins" / "_direct" / DIRECT_SOURCE_ID
+    assert installed != PLUGIN_ROOT
+    assert (installed / "plugin.json").is_file()
+    assert (installed / "mcp.json").is_file()
+    assert (installed / "skills").is_dir()
+    assert not (installed / "hooks" / "hooks.json").exists()
+    assert "hooks" not in json.loads((installed / "plugin.json").read_text(encoding="utf-8"))
+    assert listed
+    assert "dex" in listed_text
+    assert any(row["name"] == "dex-agent-plugin" for row in listed)
+    assert any((row["author"] or "").lower() == "dex" for row in listed)
+    assert vault.name == "Dex"
+    assert skills
+    assert server["command"] == "node"
+    assert server["cwd"] == "${PLUGIN_ROOT}"
+    assert "--stdio" in args
+    assert str(installed) in " ".join(args)
+    assert str(PLUGIN_ROOT) not in " ".join(args)
+    assert "${PLUGIN_ROOT}" not in " ".join(args)
+    assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
+    assert responses[3]["result"]["structuredContent"]["refused"] is True
+    assert after_files == before_files
+    assert rows["hooks"]["mode"] == "unavailable"
+    assert rows["hooks"]["status"] == "not-verified"
+    assert "no recorded live session" in joined_limits
+    assert "copilot plugin install ./packages/dex-agent-plugin" in joined_limits
+    assert "detection tests and ci" in joined_limits
+    assert "person still has to" in joined_limits
+    assert "ubuntu cloud" in joined_limits
+    assert "hooks are not included" in joined_limits
+    assert doctor_result.verdict == "OK"
+    assert "person" in doctor_result.detail.lower()
+    assert "ubuntu cloud" in doctor_result.detail.lower()
+    assert "fully automatic" not in doctor_result.detail.lower()
+    assert "copilot plugin install" in setup_limits
+    assert "person" in setup_limits
+    assert "ubuntu cloud" in setup_limits
+    assert "fixture is not a live install" in guide
+    assert shutil.which("copilot") is None or "copilot" not in args

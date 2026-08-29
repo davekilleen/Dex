@@ -156,10 +156,11 @@ Earlier CI and Mac fleet on `28bb192baf05570f9e38f84e07f92b2e78b4a973` stayed gr
 - The adapter, Doctor, setup preview, and install guide now name those exact local-plugin + Dex-folder steps.
 - Hooks stay unavailable. Claude's `.mcp.json` in the same folder is not this host's contract.
 - Detection still treats `COPILOT_CLI` / `GH_COPILOT` / `GITHUB_COPILOT` and a `/.copilot/` path as Copilot CLI. A cache under `~/.copilot/installed-plugins/` is still Copilot CLI detection, not a recorded live session.
+- A local fixture now copies the reviewed package into the named `~/.copilot/installed-plugins/_direct/source/` cache, lists Dex from that layout, starts from a Dex-folder cwd, and launches the installed `mcp.json` (`${PLUGIN_ROOT}`, `--stdio`) without a `copilot` binary. `boot_today` reads; `check_safety_gate` refuses `rm -rf /`. This fixture is not a recorded live session. Doctor, setup, and limitations still say a person has to run the real command.
 
 ### What still needs a person
 
-- **Named limit:** a human must run `copilot plugin install` on a real machine and start the CLI from the Dex folder. This Ubuntu Cloud runner cannot do that. Do not treat a later green Dex CI or Mac fleet run as that proof.
+- **Named limit:** a human must run `copilot plugin install` on a real machine and start the CLI from the Dex folder. This Ubuntu Cloud runner cannot do that. A `_direct` fixture is not that journey. Do not treat a later green Dex CI or Mac fleet run as that proof.
 - No recorded live Copilot CLI session exists. Do not invent one.
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the terminal journey.
