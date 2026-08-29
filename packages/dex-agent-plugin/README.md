@@ -41,12 +41,12 @@ The versioned source of truth is `metadata/harnesses/registry.json`. Doctor
 reports the current platform boundary alongside the saved harness receipt.
 
 ChatGPT Work desktop can load this same local plugin after a person copies it
-into `~/.agents/plugins/dex`, lists it from `~/.agents/plugins/marketplace.json`,
-restarts the ChatGPT desktop app, installs Dex from that local source, starts
-Work locally, and grants the Dex vault folder. That desktop journey has not
-been recorded yet. ChatGPT web needs a separately hosted HTTPS MCP service
-before it can reach a local Dex vault; this repository does not claim that
-remote bridge.
+into `~/.codex/plugins/dex`, lists it from `~/.agents/plugins/marketplace.json`
+with `source.path` `./.codex/plugins/dex`, restarts the ChatGPT desktop app,
+installs Dex from that local source, starts Work locally, and grants the Dex
+vault folder. That desktop journey has not been recorded yet. ChatGPT web
+needs a separately hosted HTTPS MCP service before it can reach a local Dex
+vault; this repository does not claim that remote bridge.
 
 Regenerate and verify it from the repository root:
 

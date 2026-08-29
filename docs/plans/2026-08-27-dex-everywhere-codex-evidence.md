@@ -124,7 +124,7 @@ Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed gr
 
 - ChatGPT Work desktop uses the same plugin package as Codex. Public plugin docs require `.codex-plugin/plugin.json`, and this package already has that layout plus `skills/`, `.codex-mcp.json`, and `hooks/codex.json`.
 - The repo marketplace at `.agents/plugins/marketplace.json` lists Dex at `./packages/dex-agent-plugin` under **Dex (unreleased local build)**.
-- The adapter now names the real local-plugin + local-vault steps: copy the reviewed package to `~/.agents/plugins/dex`, list it from `~/.agents/plugins/marketplace.json` with `source.path` `./dex`, restart ChatGPT desktop, install Dex, start Work locally, and grant the Dex vault folder.
+- The adapter now names the real local-plugin + local-vault steps: copy the reviewed package to `~/.codex/plugins/dex`, list it from `~/.agents/plugins/marketplace.json` with `source.path` `./.codex/plugins/dex` (relative to the home marketplace root, not the `.agents/plugins` folder), restart ChatGPT desktop, install Dex, start Work locally, and grant the Dex vault folder.
 - Doctor and setup preview name three limits: a person still has to do that desktop journey; ChatGPT on the web needs a separate public HTTPS door; a shared plugin cache on disk is not ChatGPT Work proof.
 - Detection still treats `CHATGPT_WORK` / `OPENAI_WORK` / `CHATGPT_WORK_COMPANION` and an explicit `/.chatgpt-work/` marker as ChatGPT Work. A `/.codex/` path still selects Codex, not ChatGPT Work.
 

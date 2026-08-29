@@ -86,13 +86,16 @@ def test_chatgpt_work_install_contract_names_marketplace_and_vault_grant() -> No
 
     assert example["repo_marketplace"] == ".agents/plugins/marketplace.json"
     assert example["personal_marketplace"] == "~/.agents/plugins/marketplace.json"
-    assert example["personal_plugin_copy"] == "~/.agents/plugins/dex"
+    assert example["personal_marketplace_root"] == "~"
+    assert example["personal_plugin_copy"] == "~/.codex/plugins/dex"
     assert example["install_cache"] == "~/.codex/plugins/cache/dex-unreleased/dex/local/"
     assert "work locally" in example["vault_grant"].lower()
     assert "dex vault folder" in example["vault_grant"].lower()
-    assert "~/.agents/plugins/dex" in guide
+    assert "~/.codex/plugins/dex" in guide
     assert "marketplace.json" in guide
-    assert "./dex" in guide
+    assert "./.codex/plugins/dex" in guide
+    assert "marketplace root" in guide
+    assert "not the .agents/plugins folder" in guide
     assert "restart" in guide
     assert "work locally" in guide
     assert "dex vault folder" in guide
@@ -103,7 +106,7 @@ def test_chatgpt_work_install_contract_names_marketplace_and_vault_grant() -> No
         "plugins": [
             {
                 "name": "dex",
-                "source": {"source": "local", "path": "./dex"},
+                "source": {"source": "local", "path": "./.codex/plugins/dex"},
                 "policy": {
                     "installation": "AVAILABLE",
                     "authentication": "ON_INSTALL",
@@ -118,10 +121,34 @@ def test_developer_guide_names_the_chatgpt_work_desktop_steps() -> None:
     guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
 
     assert "ChatGPT Work desktop" in guide
-    assert "~/.agents/plugins/dex" in guide
+    assert "~/.codex/plugins/dex" in guide
+    assert "./.codex/plugins/dex" in guide
     assert "Work locally" in guide
     assert "Ubuntu Cloud is not that journey" in guide
     assert "shared plugin cache on disk is not ChatGPT Work proof" in guide
+
+
+def test_personal_marketplace_path_resolves_from_home_not_agents_plugins() -> None:
+    adapter = json.loads(ADAPTER_PATH.read_text(encoding="utf-8"))
+    example = adapter["example"]
+    relative = example["personal_marketplace_document"]["plugins"][0]["source"]["path"]
+    marketplace_layout = Path(".agents") / "plugins" / "marketplace.json"
+
+    assert relative == "./.codex/plugins/dex"
+    assert relative.startswith("./")
+    assert ".." not in Path(relative).parts
+
+    home = Path("/home/person")
+    marketplace = home / marketplace_layout
+    marketplace_root = marketplace
+    for part in reversed(marketplace_layout.parts):
+        assert marketplace_root.name == part
+        marketplace_root = marketplace_root.parent
+
+    resolved = (marketplace_root / relative.removeprefix("./")).resolve()
+    assert marketplace_root == home
+    assert resolved == (home / ".codex" / "plugins" / "dex").resolve()
+    assert resolved != (marketplace.parent / "dex").resolve()
 
 
 def test_repo_marketplace_stays_inside_the_dex_checkout() -> None:
