@@ -126,7 +126,8 @@ def test_install_argument_is_the_reviewed_open_plugin_layout() -> None:
     assert "mcpServers" in mcp
     assert mcp["mcpServers"]["dex-core"]["cwd"] == "${PLUGIN_ROOT}"
     assert skills
-    assert not (target / "hooks" / "hooks.json").exists()
+    assert "hooks/" not in adapter["native_paths"]
+    assert not (target / "hooks" / "copilot.json").exists()
     assert example["install_command"] in limitations
     assert "no recorded live session" in limitations.lower()
     assert "hooks are not included" in limitations.lower()
@@ -423,7 +424,8 @@ def test_direct_install_fixture_completes_the_written_path_without_opening_the_c
     assert (installed / "plugin.json").is_file()
     assert (installed / "mcp.json").is_file()
     assert (installed / "skills").is_dir()
-    assert not (installed / "hooks" / "hooks.json").exists()
+    assert "hooks/" not in adapter["native_paths"]
+    assert not (installed / "hooks" / "copilot.json").exists()
     assert "hooks" not in json.loads((installed / "plugin.json").read_text(encoding="utf-8"))
     assert listed
     assert "dex" in listed_text
