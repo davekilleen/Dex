@@ -965,6 +965,8 @@ def test_harness_capability_probe_reports_copilot_cli_hook_limit(context, monkey
     assert result.verdict == "OK"
     assert "GitHub Copilot CLI" in result.detail
     assert "hook" in result.detail.lower()
+    assert "person" in result.detail.lower()
+    assert "ubuntu cloud" in result.detail.lower()
     assert "fully automatic" not in result.detail.lower()
     assert result.structured_detail["selected"] == ["copilot-cli"]
     assert result.structured_detail["limitations"] == {

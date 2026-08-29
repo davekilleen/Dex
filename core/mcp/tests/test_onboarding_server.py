@@ -297,6 +297,9 @@ class TestHarnessSelection:
         assert by_id["copilot-cli"]["limitations"] == list(get_profile("copilot-cli").limitations)
         joined = " ".join(by_id["copilot-cli"]["limitations"]).lower()
         assert "hook" in joined
+        assert "person" in joined
+        assert "copilot plugin install" in joined
+        assert "ubuntu cloud" in joined
 
     def test_inspection_supplies_existing_home_path_evidence(self, monkeypatch):
         evidence = (Path("/fixture/.codex"), Path("/fixture/.pi"))

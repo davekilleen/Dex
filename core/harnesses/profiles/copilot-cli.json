@@ -3,20 +3,20 @@
     "install_guide": "core/harnesses/adapters/copilot-cli.json",
     "kind": "open-plugin-spec",
     "manifest": "plugin.json",
-    "status": "native"
+    "status": "native-local"
   },
   "capabilities": [
     {
       "id": "vault",
       "mode": "on_demand",
-      "notes": "The current working directory is available to the CLI.",
+      "notes": "The current working directory is the vault after the person starts the CLI from the Dex folder.",
       "status": "native",
       "tier": 0
     },
     {
       "id": "mcp",
       "mode": "on_demand",
-      "notes": "The Open Plugin Spec package includes a relocatable stdio MCP server.",
+      "notes": "The Open Plugin Spec package includes a relocatable stdio MCP server in mcp.json.",
       "status": "native",
       "tier": 1
     },
@@ -58,7 +58,7 @@
     {
       "id": "agent-plugins",
       "mode": "guided",
-      "notes": "Copilot CLI supports the Open Plugin Spec used by this package.",
+      "notes": "A person installs the reviewed local Open Plugin Spec package with copilot plugin install. This is not a recorded live journey.",
       "status": "native",
       "tier": 2
     }
@@ -80,7 +80,9 @@
   ],
   "id": "copilot-cli",
   "limitations": [
-    "Copilot hooks are not included in this release; shared safety remains an explicit MCP check rather than automatic enforcement."
+    "A person still has to install the reviewed local plugin with `copilot plugin install ./packages/dex-agent-plugin` and start the CLI from the Dex folder. Detection tests and CI do not prove that journey.",
+    "Ubuntu Cloud is not a person opening this terminal. No recorded live session exists.",
+    "Hooks are not included in this release; shared safety remains an explicit MCP check rather than automatic enforcement."
   ],
   "modes": [
     "tier-0-vault",
@@ -88,7 +90,7 @@
     "tier-2-skills"
   ],
   "name": "GitHub Copilot CLI",
-  "summary": "Native Open Plugin Spec package for Copilot CLI with skills and MCP; lifecycle hooks are not claimed until Copilot's distinct hook contract is packaged and verified.",
+  "summary": "Open Plugin Spec package for Copilot CLI with skills and MCP. A person still has to install the reviewed local plugin and start the CLI from the Dex folder. Hooks are not claimed.",
   "support_level": "supported",
   "vendor": "GitHub"
 }

@@ -99,6 +99,11 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert copilot["agent-plugins"]["status"] == "native"
     assert copilot["hooks"]["status"] == "not-verified"
     assert copilot["hooks"]["mode"] == "unavailable"
+    copilot_limits = " ".join(get_profile("copilot-cli").limitations).lower()
+    assert "person" in copilot_limits
+    assert "copilot plugin install" in copilot_limits
+    assert "ubuntu cloud" in copilot_limits
+    assert "no recorded live session" in copilot_limits
 
     cowork = _rows("cowork")
     assert cowork["agent-skills"]["status"] == "native"

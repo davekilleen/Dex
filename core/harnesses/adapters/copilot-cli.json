@@ -1,12 +1,19 @@
 {
   "adapter_schema_version": "1.0.0",
   "harness_id": "copilot-cli",
-  "status": "supported",
+  "status": "native-local",
   "kind": "open-plugin-spec",
-  "native_paths": ["plugin.json", "skills/", "hooks/hooks.json", "mcp.json", "AGENTS.md"],
+  "native_paths": ["plugin.json", "skills/", "mcp.json"],
   "example": {
     "manifest": "packages/dex-agent-plugin/plugin.json",
-    "install_guide": "Run `copilot plugin install` against the reviewed local package. Verify hook support in the installed CLI version before relying on automatic safety enforcement.",
-    "portable_surface": ["skills/", "mcp.json", "AGENTS.md"]
+    "install_guide": "From the Dex checkout, run `copilot plugin install ./packages/dex-agent-plugin`. Confirm Dex appears in `copilot plugin list`. Start the CLI from the Dex folder so the vault is the current working directory. Hooks are not bundled; safety stays an explicit MCP check. Ubuntu Cloud is not a person opening this terminal. A detection test or green CI is not a live install.",
+    "portable_surface": ["skills/", "mcp.json"],
+    "local_package": "./packages/dex-agent-plugin",
+    "install_command": "copilot plugin install ./packages/dex-agent-plugin",
+    "inspect_command": "copilot plugin list",
+    "vault_grant": "Start the CLI from the Dex folder so the current working directory is the vault.",
+    "direct_install_cache": "~/.copilot/installed-plugins/_direct/",
+    "open_plugin_schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    "mcp_file": "mcp.json"
   }
 }

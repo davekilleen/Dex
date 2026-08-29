@@ -2,7 +2,7 @@
 
 **Date:** 29 August 2026  
 **Programme state:** unreleased; do not merge  
-**Sequence:** ChatGPT Work desktop local plugin + local vault is still being proven. Codex, Cowork, Pi, and BB stay frozen. Copilot is not the next host story. Programme stays unreleased.
+**Sequence:** Copilot CLI is the started host story. Codex, Cowork, Pi, and BB stay frozen. ChatGPT Work vault-folder grant stays later for a person on a real desktop. Programme stays unreleased.
 
 ## What “Codex done” means
 
@@ -136,24 +136,38 @@ Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed gr
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the desktop journey.
 
-## Copilot CLI — frozen at `28bb192baf05570f9e38f84e07f92b2e78b4a973`
+## Copilot CLI — started as the next host story
 
-Copilot CLI in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Live `copilot plugin install` was not run on this Ubuntu runner.
+Copilot CLI in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Ubuntu Cloud is not a person opening this terminal. No recorded live session exists. Do not invent one.
 
-- Dex CI: https://github.com/davekilleen/Dex/actions/runs/33121747982 — **success**
-- Twelve-journey Mac fleet canary: https://github.com/davekilleen/Dex/actions/runs/33121747949 — **success** (updated 2026-08-27T23:03:48Z)
-- Formal `historic-fleet-darwin` is skipped on pull requests
-- Detects Copilot CLI from `COPILOT_CLI` / `GH_COPILOT` / `GITHUB_COPILOT` and a `/.copilot/` path
-- Doctor and setup preview name the hook limit: Copilot hooks are not in this release
+Earlier CI and Mac fleet on `28bb192baf05570f9e38f84e07f92b2e78b4a973` stayed green. That freeze is not this journey. Detection tests and fleet canary do not prove that a person installed the local plugin or started the CLI from a Dex folder.
 
-A later commit that records this freeze is a new head and must earn its own green Dex CI.
+### What a person would do
+
+1. From the Dex checkout, run `copilot plugin install ./packages/dex-agent-plugin`.
+2. Confirm Dex appears in `copilot plugin list`.
+3. Start the CLI from the Dex folder so the vault is the current working directory.
+4. Use Dex skills and the bundled MCP tools. Do not expect automatic hook enforcement.
+
+### What is proven
+
+- The reviewed package is the Open Plugin Spec root: `plugin.json` with the canonical `$schema`, `skills/`, and `mcp.json` using `PLUGIN_ROOT`.
+- The adapter, Doctor, setup preview, and install guide now name those exact local-plugin + Dex-folder steps.
+- Hooks stay unavailable. Claude's `.mcp.json` in the same folder is not this host's contract.
+- Detection still treats `COPILOT_CLI` / `GH_COPILOT` / `GITHUB_COPILOT` and a `/.copilot/` path as Copilot CLI. A cache under `~/.copilot/installed-plugins/` is still Copilot CLI detection, not a recorded live session.
+
+### What still needs a person
+
+- **Named limit:** a human must run `copilot plugin install` on a real machine and start the CLI from the Dex folder. This Ubuntu Cloud runner cannot do that. Do not treat a later green Dex CI or Mac fleet run as that proof.
+- No recorded live Copilot CLI session exists. Do not invent one.
+
+A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the terminal journey.
 
 ## Deliberately not started
 
 - A live ChatGPT Work desktop install or recorded vault grant on a real Mac or Windows machine
 - Live BB install, or publishing `dex-bb-plugin`
 - ChatGPT in the browser, or a public door for a local Dex folder
-- Copilot as the next host story
 - Live GitHub Copilot CLI install on this Ubuntu runner
 - Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot
 - Capability-exchange privacy repairs in Dex Lens

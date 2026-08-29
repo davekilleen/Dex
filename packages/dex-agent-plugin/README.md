@@ -9,8 +9,12 @@ Plugins v1 root contract and also includes native manifests for:
 - Claude Code and Claude Cowork. Cowork can use the file/skill/hook surfaces;
   its external connectors require a public remote endpoint, so this local
   stdio MCP bridge is not claimed in Cowork.
-- GitHub Copilot CLI through its Open Plugin Spec support. Skills and MCP are
-  native; Copilot's different hook schema is not claimed in this release.
+- GitHub Copilot CLI through its Open Plugin Spec support. A person installs
+  the reviewed local package with `copilot plugin install
+  ./packages/dex-agent-plugin`, confirms it in `copilot plugin list`, and
+  starts the CLI from the Dex folder. Skills and MCP are native; hooks are
+  not claimed. That terminal journey has not been recorded yet. Ubuntu Cloud
+  is not a person opening this CLI.
 - Cursor through its native manifest and local `sessionStart`/`preToolUse`
   hooks. Cursor cloud agents do not run `sessionStart`.
 - Gemini CLI through a separately built extension with Gemini's fixed hook
