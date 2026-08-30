@@ -7,7 +7,7 @@ This lot covers the Obsidian notes panel only. The page is derived from
 The card restates the read-only fence, names How to leave, and ends honestly:
 nobody has walked this on a real desktop. No page includes a publish step.
 
-Unreleased. Do not merge. Do not publish. Leave lab 536 open.
+Unreleased. Do not merge. Do not publish. Leave lab 558 open.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/536"
+LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/558"
 GENERATOR = "scripts/generate-founder-test-cards.py"
 THIS_LOT_IDS = frozenset({"obsidian"})
 WORK_ID = "chatgpt-work"
@@ -154,6 +154,11 @@ def expected_sight(sentence: str, *, stop: bool, harness_id: str = "") -> str:
         )
     tail = OBSIDIAN_TAIL if harness_id == "obsidian" else HONEST_TAIL
     lower = sentence.lower()
+    if harness_id == "obsidian" and "type a person's name" in lower:
+        return (
+            "Who they are appears from your own files. When nothing matches, "
+            "one honest sentence says so. Notes are unchanged. " + tail
+        )
     if harness_id == "obsidian" and "type a topic" in lower:
         return (
             "Recorded decision words from your own files appear, each naming "
@@ -228,7 +233,8 @@ def _obsidian_fence_and_leave(example: dict) -> list[str]:
     lines = [
         "## Read-only fence",
         "",
-        "Today's brief, then Decided lately, then a topic ask. The panel does not edit notes. "
+        "Today's brief, then Decided lately, then a topic ask, then a person name. "
+        "The panel does not edit notes. "
         "It does not use the internet. It is not on any community list.",
         "",
     ]
@@ -354,9 +360,9 @@ def render_index(adapters: list[dict]) -> str:
         "regenerate this page. CI fails on drift.",
         "",
         "The card restates the read-only fence, names How to leave, and walks "
-        "Decided lately under today's brief, then the topic ask. Nobody has "
-        "walked this on a real desktop. Other hosts' cards are not merged "
-        "from draft PR 660.",
+        "Decided lately under today's brief, then the topic ask, then a person "
+        "name. Nobody has walked this on a real desktop. Other hosts' cards "
+        "are not merged from draft PR 660.",
         "",
         "## Cards",
         "",

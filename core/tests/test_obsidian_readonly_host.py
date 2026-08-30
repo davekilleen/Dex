@@ -129,6 +129,7 @@ def test_obsidian_install_contract_names_local_panel_and_no_store() -> None:
     assert "today" in guide
     assert "decided lately" in guide
     assert "type a topic" in guide
+    assert "person's name" in guide
     assert "community store" in guide
     assert "ubuntu cloud" in guide
     assert "chatgpt work folder grant" in guide

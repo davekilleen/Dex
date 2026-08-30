@@ -7,6 +7,7 @@ const GOAL_LIMIT = 10;
 const DAILY_PLAN_LIMIT = 24;
 const EMPTY_SENTENCE = "No recorded decision in your files matched that topic.";
 const LATELY_EMPTY = "No recorded decision in your files lately.";
+const PERSON_EMPTY = "No person in your files matched that name.";
 const LATELY_LIMIT = 3;
 const NO_DATE = "no date in that note";
 const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,12 +18,20 @@ const USER_TREES = [
   "06-Resources",
   "07-Archives",
 ];
+const PEOPLE_TREES = [
+  "05-Areas/People/Internal",
+  "05-Areas/People/External",
+  "05-Areas/People/CPO_Network",
+];
 const DECISION_HEADING = /^##\s+(?:Key\s+)?Decisions\s*$/i;
 const DECISION_LOG_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})\s+[—–-]\s+(.+)$/;
 const DECISION_FIELD = /^\*\*Decision:\*\*\s*(.+?)\s*$/i;
 const BULLET = /^[-*]\s+(?:\[[ xX]\]\s+)?(.+)$/;
 const DATE_IN_NAME = /^(\d{4}-\d{2}-\d{2})/;
 const FRONTMATTER_DATE = /^date:\s*['"]?(\d{4}-\d{2}-\d{2})/im;
+const PERSON_FIELD = /^(?:\|\s*(?:\*\*)?)?(name|role|company)(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$/i;
+const PERSON_HEADING = /^#\s+(.+)$/;
+const BLANK_VALUES = new Set(["", "null", "none", "~"]);
 
 function todayLabel(now) {
   const stamp = now instanceof Date ? now : new Date();
@@ -342,6 +351,102 @@ function isUserMarkdown(path) {
   return USER_TREES.some((tree) => relative === tree || relative.startsWith(`${tree}/`));
 }
 
+function isPersonMarkdown(path) {
+  const relative = String(path || "").replace(/^\/+/, "");
+  if (!relative.toLowerCase().endsWith(".md")) {
+    return false;
+  }
+  const base = relative.split("/").pop() || "";
+  if (base.toLowerCase() === "readme.md") {
+    return false;
+  }
+  return PEOPLE_TREES.some((tree) => relative === tree || relative.startsWith(`${tree}/`));
+}
+
+function cleanPersonValue(raw) {
+  let value = String(raw || "").trim().replace(/\|+$/g, "").trim();
+  if (value.length >= 2 && value[0] === value[value.length - 1] && (value[0] === '"' || value[0] === "'")) {
+    value = value.slice(1, -1).trim();
+  }
+  if (BLANK_VALUES.has(value.toLowerCase())) {
+    return "";
+  }
+  return value;
+}
+
+function collectPersonRecord(text, relativePath) {
+  const note = noteName(relativePath);
+  const fields = { name: "", role: "", company: "" };
+  let heading = "";
+  for (const line of String(text || "").split(/\r?\n/)) {
+    if (!heading) {
+      const marked = line.match(PERSON_HEADING);
+      if (marked) {
+        heading = String(marked[1] || "").trim();
+      }
+    }
+    const match = line.trim().match(PERSON_FIELD);
+    if (!match) {
+      continue;
+    }
+    const key = String(match[1] || "").toLowerCase();
+    if (!(key in fields)) {
+      continue;
+    }
+    fields[key] = cleanPersonValue(match[2]);
+  }
+  const name = fields.name || heading || note.replace(/_/g, " ");
+  if (!name) {
+    return null;
+  }
+  return {
+    name,
+    role: fields.role,
+    company: fields.company,
+    note,
+  };
+}
+
+function matchPeople(records, query) {
+  const needle = String(query || "").trim().replace(/\s+/g, " ").toLowerCase();
+  if (!needle) {
+    return [];
+  }
+  const matches = [];
+  const seen = new Set();
+  const folded = needle.replace(/ /g, "_");
+  for (const record of records) {
+    const name = String(record.name || "").toLowerCase();
+    const note = String(record.note || "");
+    const spaced = note.replace(/_/g, " ").toLowerCase();
+    const stem = note.toLowerCase();
+    if (needle !== name && !name.includes(needle) && !spaced.includes(needle) && folded !== stem) {
+      continue;
+    }
+    const key = note || name;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    matches.push(record);
+  }
+  return matches;
+}
+
+function formatPersonMatch(record) {
+  let who = String(record.name || "").trim();
+  const role = String(record.role || "").trim();
+  const company = String(record.company || "").trim();
+  if (role && company) {
+    who = `${who} — ${role} at ${company}`;
+  } else if (role) {
+    who = `${who} — ${role}`;
+  } else if (company) {
+    who = `${who} — at ${company}`;
+  }
+  return `${who} (note: ${record.note || ""})`;
+}
+
 async function loadDecisionRecords(app) {
   const files = app.vault.getMarkdownFiles ? app.vault.getMarkdownFiles() : [];
   const records = [];
@@ -352,6 +457,23 @@ async function loadDecisionRecords(app) {
     }
     const text = await readVaultText(app, relative);
     records.push(...collectDecisionRecords(text, relative));
+  }
+  return records;
+}
+
+async function loadPersonRecords(app) {
+  const files = app.vault.getMarkdownFiles ? app.vault.getMarkdownFiles() : [];
+  const records = [];
+  for (const file of files) {
+    const relative = file.path || "";
+    if (!isPersonMarkdown(relative)) {
+      continue;
+    }
+    const text = await readVaultText(app, relative);
+    const record = collectPersonRecord(text, relative);
+    if (record) {
+      records.push(record);
+    }
   }
   return records;
 }
@@ -415,6 +537,47 @@ function renderAsk(root, app) {
   });
 }
 
+function renderPerson(root, app) {
+  const heading = root.createEl("h2", { text: "Who they are" });
+  heading.addClass("dex-readonly-heading");
+  const box = root.createEl("div", { cls: "dex-readonly-ask" });
+  const input = box.createEl("input");
+  input.setAttribute("type", "text");
+  input.setAttribute("placeholder", "Type a person's name");
+  input.setAttribute("aria-label", "Type a person's name");
+  const button = box.createEl("button", { text: "Look in your files" });
+  button.setAttribute("type", "button");
+  const results = root.createEl("div", { cls: "dex-readonly-ask-results" });
+
+  async function runPerson() {
+    const query = input.value || "";
+    const records = await loadPersonRecords(app);
+    const matches = matchPeople(records, query);
+    results.empty();
+    if (!matches.length) {
+      results.createEl("p", {
+        text: PERSON_EMPTY,
+        cls: "dex-readonly-empty",
+      });
+      return;
+    }
+    const list = results.createEl("ul");
+    for (const match of matches) {
+      list.createEl("li", { text: formatPersonMatch(match) });
+    }
+  }
+
+  button.addEventListener("click", () => {
+    runPerson();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runPerson();
+    }
+  });
+}
+
 class DexBriefView extends ItemView {
   getViewType() {
     return VIEW_TYPE;
@@ -434,6 +597,7 @@ class DexBriefView extends ItemView {
     renderBrief(root, brief);
     await renderLately(root, this.app);
     renderAsk(root, this.app);
+    renderPerson(root, this.app);
     root.createEl("p", {
       text: "This panel is read-only. It does not edit notes, run commands, or use the internet.",
       cls: "dex-readonly-note",
@@ -469,11 +633,17 @@ module.exports.buildTodayBrief = buildTodayBrief;
 module.exports.renderBrief = renderBrief;
 module.exports.renderAsk = renderAsk;
 module.exports.renderLately = renderLately;
+module.exports.renderPerson = renderPerson;
 module.exports.todayLabel = todayLabel;
 module.exports.collectDecisionRecords = collectDecisionRecords;
 module.exports.matchDecisions = matchDecisions;
 module.exports.recentDecisions = recentDecisions;
 module.exports.formatDecisionMatch = formatDecisionMatch;
+module.exports.collectPersonRecord = collectPersonRecord;
+module.exports.matchPeople = matchPeople;
+module.exports.formatPersonMatch = formatPersonMatch;
+module.exports.isPersonMarkdown = isPersonMarkdown;
 module.exports.EMPTY_SENTENCE = EMPTY_SENTENCE;
 module.exports.LATELY_EMPTY = LATELY_EMPTY;
 module.exports.LATELY_LIMIT = LATELY_LIMIT;
+module.exports.PERSON_EMPTY = PERSON_EMPTY;

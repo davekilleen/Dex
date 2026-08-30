@@ -4,13 +4,13 @@
 
 Unreleased. Not a live install. Do not publish. Do not merge.
 
-**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/536
+**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/558
 
 **Adapter source:** `core/harnesses/adapters/obsidian.json`
 
 ## Adapter text (quoted — source of truth)
 
-> Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian.
+> Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. Type a person's name and see who they are from your own files. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian.
 
 ## Named adapter fields
 
@@ -96,9 +96,19 @@ Unreleased. Not a live install. Do not publish. Do not merge.
 
 **If this fails, send back this exact sentence:** `obsidian step 7 failed: Recorded decision words from your own files appear, each naming the note and the date. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
 
+### Step 8
+
+8. Type a person's name and see who they are from your own files.
+
+**What you should see:** Who they are appears from your own files. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
+
+- [ ] I saw that.
+
+**If this fails, send back this exact sentence:** `obsidian step 8 failed: Who they are appears from your own files. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
+
 ## Read-only fence
 
-Today's brief, then Decided lately, then a topic ask. The panel does not edit notes. It does not use the internet. It is not on any community list.
+Today's brief, then Decided lately, then a topic ask, then a person name. The panel does not edit notes. It does not use the internet. It is not on any community list.
 
 ## How to leave
 

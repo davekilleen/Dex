@@ -12,7 +12,7 @@ GENERATOR_PATH = REPO_ROOT / "scripts" / "generate-founder-test-cards.py"
 ADAPTERS = REPO_ROOT / "core" / "harnesses" / "adapters"
 CARDS = REPO_ROOT / "docs" / "founder-test-cards"
 HOST_ID = "obsidian"
-LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/536"
+LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/558"
 LEAVE_MARKERS = (
     "disable dex",
     ".obsidian/plugins/dex-readonly",
@@ -20,7 +20,7 @@ LEAVE_MARKERS = (
     "community-plugins.json",
 )
 FENCE_MARKERS = (
-    "today's brief, then decided lately, then a topic ask",
+    "today's brief, then decided lately, then a topic ask, then a person name",
     "does not edit notes",
     "does not use the internet",
     "not on any community list",
@@ -95,6 +95,7 @@ def test_obsidian_steps_include_the_brief_and_skip_publish() -> None:
     assert any("today's brief appears" in item.lower() for item in steps)
     assert any("decided lately" in item.lower() for item in steps)
     assert any("type a topic" in item.lower() for item in steps)
+    assert any("type a person's name" in item.lower() for item in steps)
     assert "does not edit notes" in joined_limits
     assert "community store" in joined_limits
     assert "chatgpt work folder grant" in joined_limits
@@ -137,7 +138,7 @@ def test_generator_check_detects_drift_in_a_fixture(tmp_path: Path) -> None:
     assert generator.check_pages(fixture) == 1
 
 
-def test_index_lists_obsidian_and_keeps_lab_536_open() -> None:
+def test_index_lists_obsidian_and_keeps_lab_558_open() -> None:
     index = (CARDS / "README.md").read_text(encoding="utf-8")
     assert f"[`{HOST_ID}`](./{HOST_ID}.md)" in index
     assert LAB_ISSUE in index

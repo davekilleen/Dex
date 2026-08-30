@@ -3,8 +3,9 @@
 Open your Dex folder in Obsidian and see today's brief. Under that brief,
 Decided lately shows recorded decision words from your own files, each naming
 the note and the date, without typing. Type a topic to look for a specific
-decision. When nothing is there, or nothing matches, one honest sentence says
-so. This panel does not edit notes, run Dex commands, or use the internet.
+decision. Type a person's name to see who they are from your own files. When
+nothing is there, or nothing matches, one honest sentence says so. This panel
+does not edit notes, run Dex commands, or use the internet.
 
 This is an unreleased local install. It has not been submitted to the Obsidian
 community store.
@@ -18,8 +19,8 @@ community store.
 5. Enable **Dex** under community plugins.
 6. Look at the Dex panel on the right. Today's brief should be there. Under
    it, Decided lately shows recorded decisions without typing. Type a topic
-   if you want a specific match. If nothing is there, or nothing matches, one
-   honest sentence says so.
+   if you want a specific match. Type a person's name to see who they are.
+   If nothing is there, or nothing matches, one honest sentence says so.
 
 You can copy the folder by hand, or from the Dex checkout run:
 

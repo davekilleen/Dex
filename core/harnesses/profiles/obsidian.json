@@ -37,7 +37,7 @@
     {
       "id": "session-lifecycle",
       "mode": "guided",
-      "notes": "Today's brief appears when the Dex folder is open and the panel is enabled. Under that brief, Decided lately shows recorded decisions from local files without typing. A topic ask can look for a specific decision.",
+      "notes": "Today's brief appears when the Dex folder is open and the panel is enabled. Under that brief, Decided lately shows recorded decisions from local files without typing. A topic ask can look for a specific decision. Type a person's name to see who they are from local person files.",
       "status": "partial",
       "tier": 3
     },
@@ -88,7 +88,7 @@
     "tier-0-vault"
   ],
   "name": "Obsidian",
-  "summary": "Local read-only Dex panel in Obsidian: today's brief, Decided lately, then a topic ask from your own files. No edits, no commands, no internet.",
+  "summary": "Local read-only Dex panel in Obsidian: today's brief, Decided lately, a topic ask, then a person name from your own files. No edits, no commands, no internet.",
   "support_level": "supported",
   "vendor": "Obsidian"
 }

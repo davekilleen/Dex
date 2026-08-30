@@ -176,6 +176,10 @@ Under today's brief, a person can type a topic and see recorded decision words f
 
 Under today's brief, Decided lately shows recorded decision words from the person's own files, each naming the note and the date, without typing. Nothing is edited. Nothing is sent. When nothing is there, one honest sentence says so. Leave [lab 536](https://github.com/davekilleen/dex-product-gtm-lab/issues/536) open. Do not merge draft PR 667. Do not merge draft PR 620. Do not continue leftover PR 619. Do not merge lab PR 532. This runner will not invent a ChatGPT Work folder grant.
 
+## Obsidian notes panel person name (lab 558) — written path only
+
+Type a person's name in the notes panel and see who they are from your own files. Nothing is edited. Nothing is sent. When nothing matches, one honest sentence says so. Leave [lab 558](https://github.com/davekilleen/dex-product-gtm-lab/issues/558) open. Do not merge draft PR 670. Do not merge draft PR 669. Do not merge draft PR 671. Do not merge draft PR 620. Do not continue leftover PR 619. Do not merge lab PR 532. This runner will not invent a ChatGPT Work folder grant.
+
 ## Deliberately not started
 
 - A live ChatGPT Work desktop install or recorded vault grant on a real Mac or Windows machine
