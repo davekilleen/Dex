@@ -3,7 +3,9 @@
 Unreleased. Nobody has walked this card. Do not publish. Do not merge.
 This is a local pack check. It is not a catalogue install.
 
-**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/486
+**Lab issues (leave open):**
+- https://github.com/davekilleen/dex-product-gtm-lab/issues/486
+- https://github.com/davekilleen/dex-product-gtm-lab/issues/515
 
 ## Steps
 
@@ -41,11 +43,21 @@ python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-a
 
 **If this fails, send back this exact sentence:** `connector-box step 3 failed: the future catalogue name was missing.`
 
+### Step 4
+
+1. Before anything is published, ask the packed box what was decided about a topic that is already written in your own decision record.
+
+**What you should see:** The choice in one sentence, and the file that decision record lives in.
+
+- [ ] I saw that.
+
+**If this fails, send back this exact sentence:** `connector-box step 4 failed: the packed box did not answer from a decision record.`
+
 ## After the last checkbox
 
 If every box is checked, send this exact sentence:
 
-`connector-box pack matched. SHA-256 sidecar present. Future catalogue name is io.github.davekilleen/dex. Not a catalogue install.`
+`connector-box pack matched. SHA-256 sidecar present. Future catalogue name is io.github.davekilleen/dex. Decision ask answered from a decision record. Not a catalogue install.`
 
 If any box is unchecked, send only the failure sentence from that step. Do not continue past a failed step. Do not publish. Do not sign. Do not store a secret. Do not invite anyone.
 

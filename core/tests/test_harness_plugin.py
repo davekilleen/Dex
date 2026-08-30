@@ -304,6 +304,7 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
         "dex_harness_profiles",
         "boot_today",
         "get_person_context",
+        "ask_what_was_decided",
         "check_safety_gate",
     }
     desktop = tmp_path / "dex-claude-desktop"
@@ -389,6 +390,7 @@ def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
         "core/path_safety.py",
         "core/context/__init__.py",
         "core/context/person_context.py",
+        "core/context/decision_record.py",
         "core/context/session_boot.py",
         "core/gates/__init__.py",
         "core/gates/safety.py",
@@ -428,6 +430,13 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n- [ ] Send the operating memo\n",
         encoding="utf-8",
     )
+    decisions = vault / "06-Resources" / "Decisions"
+    decisions.mkdir(parents=True)
+    (decisions / "Decision_Log.md").write_text(
+        "## 2026-04-12 — Keep pricing annual-only\n\n"
+        "**Decision:** Sell only annual plans.\n",
+        encoding="utf-8",
+    )
     responses = _mcp_roundtrip(
         [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
@@ -456,15 +465,25 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
                     "arguments": {"vault_path": str(vault), "command": "rm -rf /"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_was_decided",
+                    "arguments": {"vault_path": str(vault), "topic": "pricing"},
+                },
+            },
         ],
         cwd=vault,
     )
-    assert len(responses) == 5
+    assert len(responses) == 6
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     assert names == {
         "dex_harness_profiles",
         "boot_today",
         "get_person_context",
+        "ask_what_was_decided",
         "check_safety_gate",
     }
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
@@ -473,6 +492,10 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     assert person["matches"][0]["company"] == "Analytical Engines"
     safety = responses[4]["result"]["structuredContent"]
     assert safety["refused"] is True
+    ask = responses[5]["result"]["structuredContent"]
+    assert ask["found"] is True
+    assert ask["matches"][0]["decision"] == "Sell only annual plans."
+    assert ask["matches"][0]["file"] == "06-Resources/Decisions/Decision_Log.md"
 
 
 def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path: Path) -> None:

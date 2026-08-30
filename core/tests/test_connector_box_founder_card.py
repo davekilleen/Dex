@@ -8,6 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CARD = REPO_ROOT / "docs" / "founder-cards" / "connector-box.md"
 LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/486"
+ASK_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/515"
 PACK_COMMAND = "python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-artifact"
 LEAVE_SENTENCE = "delete the packed file and build folder"
 MODEL_OR_VENDOR = re.compile(
@@ -23,17 +24,20 @@ CATALOGUE_INSTALL = re.compile(
 def test_founder_card_walks_pack_checksum_and_future_name() -> None:
     card = CARD.read_text(encoding="utf-8")
     assert LAB_ISSUE in card
+    assert ASK_ISSUE in card
     assert PACK_COMMAND in card
     assert "SHA-256 sidecar" in card
     assert "io.github.davekilleen/dex" in card
     assert "one_line_after_publish" in card
+    assert "decision record" in card
+    assert "what was decided" in card
     assert LEAVE_SENTENCE in card
     assert "Nobody has walked this card" in card
     assert "Do not publish" in card
-    assert "It is not a catalogue install" in card
+    assert "Decision ask answered from a decision record" in card
     headings = [line for line in card.splitlines() if line.startswith("### Step ")]
-    assert headings == ["### Step 1", "### Step 2", "### Step 3"]
-    assert card.count("- [ ] I saw that.") == 3
+    assert headings == ["### Step 1", "### Step 2", "### Step 3", "### Step 4"]
+    assert card.count("- [ ] I saw that.") == 4
 
 
 def test_founder_card_has_no_catalogue_install_or_publish_step() -> None:

@@ -22,6 +22,7 @@ READ_ONLY_TOOLS = {
     "dex_harness_profiles",
     "boot_today",
     "get_person_context",
+    "ask_what_was_decided",
     "check_safety_gate",
 }
 
@@ -120,6 +121,7 @@ def test_builder_packs_checksums_validates_and_stays_unreleased(tmp_path: Path) 
     assert "package/server.py" in names
     assert "package/bin/dex-python.mjs" in names
     assert "package/runtime/core/gates/safety.py" in names
+    assert "package/runtime/core/context/decision_record.py" in names
     assert package["private"] is True
     assert package["mcpName"] == "io.github.davekilleen/dex"
     assert server_py == (PLUGIN_ROOT / "server.py").read_bytes()
@@ -147,6 +149,13 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
         "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n- [ ] Send the operating memo\n",
         encoding="utf-8",
     )
+    decisions = vault / "06-Resources" / "Decisions"
+    decisions.mkdir(parents=True)
+    (decisions / "Decision_Log.md").write_text(
+        "## 2026-04-12 — Keep pricing annual-only\n\n"
+        "**Decision:** Sell only annual plans.\n",
+        encoding="utf-8",
+    )
     responses = _mcp_roundtrip(
         plugin_root,
         [
@@ -167,12 +176,25 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
                     "arguments": {"vault_path": str(vault), "command": "rm -rf /"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_was_decided",
+                    "arguments": {"vault_path": str(vault), "topic": "pricing"},
+                },
+            },
         ],
         vault=vault,
     )
     assert {tool["name"] for tool in responses[1]["result"]["tools"]} == READ_ONLY_TOOLS
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     assert responses[3]["result"]["structuredContent"]["refused"] is True
+    ask = responses[4]["result"]["structuredContent"]
+    assert ask["found"] is True
+    assert ask["matches"][0]["decision"] == "Sell only annual plans."
+    assert ask["matches"][0]["file"] == "06-Resources/Decisions/Decision_Log.md"
 
 
 def test_live_npm_publish_is_refused(tmp_path: Path) -> None:
