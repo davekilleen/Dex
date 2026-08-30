@@ -32,7 +32,8 @@ const DECISION_FIELD = /^\*\*Decision:\*\*\s*(.+?)\s*$/i;
 const BULLET = /^[-*]\s+(?:\[[ xX]\]\s+)?(.+)$/;
 const DATE_IN_NAME = /^(\d{4}-\d{2}-\d{2})/;
 const FRONTMATTER_DATE = /^date:\s*['"]?(\d{4}-\d{2}-\d{2})/im;
-const PERSON_FIELD = /^(?:\|\s*(?:\*\*)?)?(name|role|company)(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$/i;
+const PERSON_FIELD = /^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction)(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$/i;
+const OPEN_ITEM = /^- \[ \] (.+)$/;
 const PERSON_HEADING = /^#\s+(.+)$/;
 const WIKI_LINK = /\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]/g;
 const BLANK_VALUES = new Set(["", "null", "none", "~"]);
@@ -378,9 +379,21 @@ function cleanPersonValue(raw) {
   return value;
 }
 
+function uncheckedItems(text) {
+  const items = [];
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const match = line.match(OPEN_ITEM);
+    if (!match) {
+      continue;
+    }
+    items.push(String(match[1] || "").replace(/\*\*/g, "").trim());
+  }
+  return items;
+}
+
 function collectPersonRecord(text, relativePath) {
   const note = noteName(relativePath);
-  const fields = { name: "", role: "", company: "" };
+  const fields = { name: "", role: "", company: "", last_interaction: "" };
   let heading = "";
   for (const line of String(text || "").split(/\r?\n/)) {
     if (!heading) {
@@ -393,7 +406,7 @@ function collectPersonRecord(text, relativePath) {
     if (!match) {
       continue;
     }
-    const key = String(match[1] || "").toLowerCase();
+    const key = String(match[1] || "").toLowerCase().replace(/ /g, "_");
     if (!(key in fields)) {
       continue;
     }
@@ -408,6 +421,8 @@ function collectPersonRecord(text, relativePath) {
     role: fields.role,
     company: fields.company,
     note,
+    last_interaction: fields.last_interaction,
+    open_items: uncheckedItems(text),
   };
 }
 
@@ -628,7 +643,19 @@ async function renderTodayPeople(root, app, now) {
   }
   const list = root.createEl("ul", { cls: "dex-readonly-today-people" });
   for (const match of matches) {
-    list.createEl("li", { text: formatPersonMatch(match) });
+    const item = list.createEl("li", { text: formatPersonMatch(match) });
+    const last = String(match.last_interaction || "").trim();
+    const openItems = Array.isArray(match.open_items) ? match.open_items : [];
+    if (!last && !openItems.length) {
+      continue;
+    }
+    const nest = item.createEl("ul");
+    if (last) {
+      nest.createEl("li", { text: `Last interaction: ${last}` });
+    }
+    openItems.forEach((open) => {
+      nest.createEl("li", { text: `Still open: ${open}` });
+    });
   }
 }
 
@@ -796,6 +823,7 @@ module.exports.matchDecisions = matchDecisions;
 module.exports.recentDecisions = recentDecisions;
 module.exports.formatDecisionMatch = formatDecisionMatch;
 module.exports.collectPersonRecord = collectPersonRecord;
+module.exports.uncheckedItems = uncheckedItems;
 module.exports.matchPeople = matchPeople;
 module.exports.peopleNamedInPlan = peopleNamedInPlan;
 module.exports.formatPersonMatch = formatPersonMatch;

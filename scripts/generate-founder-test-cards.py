@@ -165,8 +165,12 @@ def expected_sight(sentence: str, *, stop: bool, harness_id: str = "") -> str:
         return (
             "Who today's plan names shows people from today's plan, with role "
             "and company from your own person pages, each naming the page, "
-            "without typing. When nobody is named, or there is no plan for "
-            "today, one honest sentence says so. Notes are unchanged. " + tail
+            "without typing. Under each person named in today's plan, the panel "
+            "also shows the last interaction their page records and every "
+            "unchecked to-do still on that page, without typing. A page that "
+            "records neither shows neither. When nobody is named, or there is "
+            "no plan for today, one honest sentence says so. Notes are unchanged. "
+            + tail
         )
     if harness_id == "obsidian" and "type a topic" in lower:
         return (

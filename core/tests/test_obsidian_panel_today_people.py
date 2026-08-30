@@ -86,6 +86,8 @@ def test_today_people_follow_plan_order_from_own_pages(tmp_path: Path) -> None:
         "role": "VP, Product",
         "company": "Acme & Sons",
         "note": "José_García",
+        "last_interaction": "",
+        "open_items": [],
     }
     assert result["matches"][1]["name"] == "Ada Lovelace"
     assert result["matches"][1]["role"] == "Founder"
@@ -95,6 +97,8 @@ def test_today_people_follow_plan_order_from_own_pages(tmp_path: Path) -> None:
         "role": "",
         "company": "",
         "note": "No_Role",
+        "last_interaction": "",
+        "open_items": [],
     }
     assert result["lines"][0] == (
         "José García — VP, Product at Acme & Sons (note: José_García)"
@@ -119,6 +123,8 @@ def test_today_people_omit_missing_fields_and_never_invent(tmp_path: Path) -> No
             "role": "",
             "company": "",
             "note": "No_Role",
+            "last_interaction": "",
+            "open_items": [],
         }
     ]
     assert result["lines"] == ["No Role (note: No_Role)"]

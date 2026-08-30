@@ -14,6 +14,7 @@ from core.mcp import onboarding_server
 from core.obsidian_panel import (
     build_today_brief,
     install_local_plugin,
+    people_named_in_today_plan,
     refuse_network,
     refuse_vault_write,
 )
@@ -128,6 +129,9 @@ def test_obsidian_install_contract_names_local_panel_and_no_store() -> None:
     assert "obsidian" in guide
     assert "today" in guide
     assert "who today's plan names" in guide
+    assert "last interaction their page records" in guide
+    assert "every unchecked to-do still on that page" in guide
+    assert "a page that records neither shows neither" in guide
     assert "decided lately" in guide
     assert "type a topic" in guide
     assert "person's name" in guide
@@ -164,6 +168,41 @@ def test_plugin_source_has_no_write_or_network() -> None:
     assert "requestUrl" not in main
     assert "https://" not in main
     assert "http://" not in main
+
+
+def test_today_people_open_items_render_without_writing(tmp_path: Path) -> None:
+    vault = _write_vault(tmp_path / "dex")
+    people = vault / "05-Areas" / "People" / "Internal"
+    people.mkdir(parents=True)
+    (people / "Ada_Lovelace.md").write_text(
+        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n"
+        "last_interaction: Tuesday standup\n---\n"
+        "# Ada Lovelace\n\n"
+        "- [ ] Send the operating memo\n"
+        "- [x] Already filed the notes\n"
+        "- Prose bullet that is not a to-do\n"
+        "- [ ] Review the engine drawings\n",
+        encoding="utf-8",
+    )
+    (vault / "00-Inbox" / "Daily_Plans" / "2026-08-29.md").write_text(
+        "# Saturday, August 29, 2026\n\n- See today's brief with Ada Lovelace\n",
+        encoding="utf-8",
+    )
+    before = _snapshot(vault)
+    main = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
+
+    result = people_named_in_today_plan(vault, today=TODAY)
+
+    assert result["empty"] is None
+    assert result["matches"][0]["last_interaction"] == "Tuesday standup"
+    assert result["matches"][0]["open_items"] == [
+        "Send the operating memo",
+        "Review the engine drawings",
+    ]
+    assert "Last interaction:" in main
+    assert "Still open:" in main
+    assert "dex-readonly-today-people" in main
+    assert _snapshot(vault) == before
 
 
 def test_today_brief_shows_saturday_without_writing(tmp_path: Path) -> None:

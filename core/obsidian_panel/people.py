@@ -19,10 +19,11 @@ PEOPLE_TREES = (
     "05-Areas/People/CPO_Network",
 )
 PERSON_FIELD = re.compile(
-    r"^(?:\|\s*(?:\*\*)?)?(name|role|company)"
+    r"^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction)"
     r"(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$",
     re.IGNORECASE,
 )
+OPEN_ITEM = re.compile(r"^- \[ \] (.+)$")
 HEADING = re.compile(r"^#\s+(.+)$")
 WIKI_LINK = re.compile(r"\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]")
 BLANK_VALUES = {"", "null", "none", "~"}
@@ -48,10 +49,21 @@ def _clean_value(raw: str) -> str:
     return value
 
 
-def collect_person_record(text: str, relative_path: str) -> dict[str, str] | None:
+def _unchecked_items(text: str) -> list[str]:
+    """Keep exactly the page's `- [ ]` lines, in page order, bold marks stripped."""
+    items: list[str] = []
+    for raw in str(text or "").splitlines():
+        match = OPEN_ITEM.match(raw)
+        if not match:
+            continue
+        items.append(match.group(1).replace("**", "").strip())
+    return items
+
+
+def collect_person_record(text: str, relative_path: str) -> dict[str, Any] | None:
     """Return one identity row from a local person page. Never writes."""
     note = _note_name(relative_path)
-    fields = {"name": "", "role": "", "company": ""}
+    fields = {"name": "", "role": "", "company": "", "last_interaction": ""}
     heading = ""
     for raw in str(text or "").splitlines():
         if not heading:
@@ -61,7 +73,7 @@ def collect_person_record(text: str, relative_path: str) -> dict[str, str] | Non
         match = PERSON_FIELD.match(raw.strip())
         if not match:
             continue
-        key = match.group(1).lower()
+        key = match.group(1).lower().replace(" ", "_")
         value = _clean_value(match.group(2))
         if key in fields:
             fields[key] = value
@@ -73,6 +85,8 @@ def collect_person_record(text: str, relative_path: str) -> dict[str, str] | Non
         "role": fields["role"],
         "company": fields["company"],
         "note": note,
+        "last_interaction": fields["last_interaction"],
+        "open_items": _unchecked_items(text),
     }
 
 
@@ -257,7 +271,7 @@ def ask_who_they_are(
     }
 
 
-def _public_person(record: dict[str, str]) -> dict[str, str]:
+def _public_person(record: dict[str, Any]) -> dict[str, str]:
     return {
         "name": record["name"],
         "role": record["role"],
@@ -266,7 +280,20 @@ def _public_person(record: dict[str, str]) -> dict[str, str]:
     }
 
 
-def _load_person_records(root: Path) -> list[dict[str, str]]:
+def _today_person(record: dict[str, Any]) -> dict[str, Any]:
+    items = record.get("open_items")
+    open_items = [str(item) for item in items] if isinstance(items, list) else []
+    return {
+        "name": record["name"],
+        "role": record["role"],
+        "company": record["company"],
+        "note": record["note"],
+        "last_interaction": str(record.get("last_interaction") or ""),
+        "open_items": open_items,
+    }
+
+
+def _load_person_records(root: Path) -> list[dict[str, Any]]:
     records: list[dict[str, str]] = []
     for relative, text in iter_person_markdown(root):
         record = collect_person_record(text, relative)
@@ -293,7 +320,7 @@ def people_named_in_today_plan(
         }
     records = _load_person_records(root)
     matches = people_named_in_plan(records, _read_text(path))
-    public = [_public_person(row) for row in matches]
+    public = [_today_person(row) for row in matches]
     return {
         "matches": public,
         "empty": None if public else NOBODY_NAMED,

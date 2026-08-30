@@ -10,7 +10,7 @@ Unreleased. Not a live install. Do not publish. Do not merge.
 
 ## Adapter text (quoted — source of truth)
 
-> Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. When nobody is named, one honest sentence says so. When there is no plan for today, one honest sentence says so. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. Type a person's name and see who they are from your own files. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian.
+> Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. Under each person named in today's plan, the panel also shows the last interaction their page records and every unchecked to-do still on that page, without typing. A page that records neither shows neither. When nobody is named, one honest sentence says so. When there is no plan for today, one honest sentence says so. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. Type a person's name and see who they are from your own files. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian.
 
 ## Named adapter fields
 
@@ -80,11 +80,11 @@ Unreleased. Not a live install. Do not publish. Do not merge.
 
 6. Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing.
 
-**What you should see:** Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. When nobody is named, or there is no plan for today, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
+**What you should see:** Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. Under each person named in today's plan, the panel also shows the last interaction their page records and every unchecked to-do still on that page, without typing. A page that records neither shows neither. When nobody is named, or there is no plan for today, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
 
 - [ ] I saw that.
 
-**If this fails, send back this exact sentence:** `obsidian step 6 failed: Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. When nobody is named, or there is no plan for today, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
+**If this fails, send back this exact sentence:** `obsidian step 6 failed: Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. Under each person named in today's plan, the panel also shows the last interaction their page records and every unchecked to-do still on that page, without typing. A page that records neither shows neither. When nobody is named, or there is no plan for today, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
 
 ### Step 7
 
@@ -130,6 +130,8 @@ This is a written path. Nobody has opened this panel on a real desktop from this
 
 ## Limits from the adapter (not steps)
 
+- Under each person named in today's plan, the panel also shows the last interaction their page records and every unchecked to-do still on that page, without typing.
+- A page that records neither shows neither.
 - When nobody is named, one honest sentence says so.
 - When there is no plan for today, one honest sentence says so.
 - When nothing is there, one honest sentence says so.
