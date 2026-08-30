@@ -31,6 +31,7 @@ FILE_REF = re.compile(
     r"People/(?:Internal|External|CPO_Network)/([A-Za-z0-9_-]+)(?:\.md)?"
 )
 OPEN_ITEM = re.compile(r"^- \[ \] (.+)$", re.MULTILINE)
+NONE_OPEN_SENTENCE = "No unchecked to-dos on person pages."
 MEETING_HINTS = ("meeting", "attendee", "call with", "met with")
 PERSON_FIELD = re.compile(
     r"^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction)"
@@ -64,6 +65,13 @@ def _inside(root: Path, path: Path) -> bool:
         return True
     except (OSError, ValueError):
         return False
+
+
+def _relative_file(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return path.name
 
 
 def _index_person_pages(vault: Path) -> dict[str, Path]:
@@ -166,6 +174,41 @@ def _unique_people(paths: list[Path]) -> list[dict[str, Any]]:
         if parsed:
             people.append(parsed)
     return people
+
+
+def ask_what_is_still_open_with_people(vault: str | Path | None) -> dict[str, Any]:
+    """Return every unchecked to-do from person pages, never raising.
+
+    Each match names the person and the page. Meeting notes and the task list
+    are not a substitute. The function never writes and never reaches the
+    network. If nothing is open, the payload carries an honest sentence.
+    """
+    empty = {"found": False, "matches": [], "sentence": NONE_OPEN_SENTENCE}
+    root = _coerce_root(vault)
+    if root is None:
+        return empty
+    people = _unique_people(list(_index_person_pages(root).values()))
+    matches: list[dict[str, str]] = []
+    for person in people:
+        name = str(person.get("name") or "").strip()
+        raw_path = person.get("path")
+        page = ""
+        if isinstance(raw_path, str) and raw_path:
+            page = _relative_file(root, Path(raw_path))
+        items = person.get("open_items")
+        if not name or not isinstance(items, list):
+            continue
+        for item in items:
+            text = str(item).strip()
+            if not text:
+                continue
+            matches.append({"item": text, "person": name, "page": page})
+    matches.sort(
+        key=lambda row: (row.get("person") or "", row.get("page") or "", row.get("item") or "")
+    )
+    if not matches:
+        return empty
+    return {"found": True, "matches": matches, "sentence": ""}
 
 
 def get_person_context(vault: str | Path | None, name: Any) -> dict[str, Any]:
@@ -304,16 +347,35 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vault", required=True, help="Vault root")
     parser.add_argument("--name", help="Person name for MCP-style lookup")
     parser.add_argument("--from-file", dest="from_file", help="File to scan")
+    parser.add_argument(
+        "--still-open",
+        action="store_true",
+        help="List unchecked to-dos from person pages",
+    )
     parser.add_argument("--format", choices=("json", "hook-json", "text"), default="json")
     args = parser.parse_args(argv)
-    if args.from_file:
+    if args.still_open:
+        payload = ask_what_is_still_open_with_people(args.vault)
+    elif args.from_file:
         payload = inject_person_context_for_file(args.vault, args.from_file)
     elif args.name is not None:
         payload = get_person_context(args.vault, args.name)
     else:
-        parser.error("pass --name or --from-file")
+        parser.error("pass --name, --from-file, or --still-open")
         return 2
     if args.format == "text":
+        if args.still_open:
+            matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
+            if not matches:
+                sys.stdout.write(str(payload.get("sentence") or NONE_OPEN_SENTENCE) + "\n")
+                return 0
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                sys.stdout.write(f"{match.get('item') or ''}\n")
+                sys.stdout.write(f"Person: {match.get('person') or ''}\n")
+                sys.stdout.write(f"Page: {match.get('page') or ''}\n")
+            return 0
         text = payload.get("injected_text") or payload.get("additionalContext") or ""
         sys.stdout.write(str(text).lstrip("\n"))
         if text and not str(text).endswith("\n"):

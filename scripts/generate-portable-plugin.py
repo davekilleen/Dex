@@ -173,6 +173,13 @@ def _claude_desktop_manifest() -> dict:
                     "topic, from this Dex folder's own decision record."
                 ),
             },
+            {
+                "name": "ask_what_is_still_open_with_people",
+                "description": (
+                    "List every unchecked to-do from person pages, each naming "
+                    "the person and the page. Honest sentence if none."
+                ),
+            },
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
         ],
         "compatibility": {

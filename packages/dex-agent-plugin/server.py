@@ -18,7 +18,10 @@ if str(RUNTIME) not in sys.path:
     sys.path.insert(0, str(RUNTIME))
 
 from core.context.decision_record import ask_what_was_decided  # noqa: E402
-from core.context.person_context import get_person_context  # noqa: E402
+from core.context.person_context import (  # noqa: E402
+    ask_what_is_still_open_with_people,
+    get_person_context,
+)
 from core.context.session_boot import build_session_boot  # noqa: E402
 from core.gates.safety import evaluate_safety_gate  # noqa: E402
 
@@ -104,6 +107,14 @@ def _tools() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "ask_what_is_still_open_with_people",
+            "description": (
+                "List every unchecked to-do from person pages, each naming "
+                "the person and the page. Honest sentence if none."
+            ),
+            "inputSchema": {"type": "object", "properties": vault},
+        },
+        {
             "name": "check_safety_gate",
             "description": "Check a proposed command or path before a harness executes it.",
             "inputSchema": {
@@ -153,6 +164,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _tool_result(
                 request_id,
                 ask_what_was_decided(_vault(arguments), arguments.get("topic")),
+            )
+        if name == "ask_what_is_still_open_with_people":
+            return _tool_result(
+                request_id,
+                ask_what_is_still_open_with_people(_vault(arguments)),
             )
         if name == "check_safety_gate":
             decision = evaluate_safety_gate(
