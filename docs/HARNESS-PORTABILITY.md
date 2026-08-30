@@ -11,11 +11,13 @@ lets the user select more than one, previews the exact capability modes, and
 stores the confirmed selection at `System/.dex/harness-profile.json`. Doctor
 reports the same receipt. It names every written door on this machine, one
 sentence each: which doors were confirmed, which written doors have never been
-opened, whether the notes panel is installed, and that a confirmed door is not
-the same as a walked one. If the notes panel files are there but the panel is not
-switched on, Doctor says so and names the switch; it does not flip the switch.
-If a written door or the notes panel has been left, Doctor proves the leave and
-names leftovers.
+opened, which written doors this checkup cannot see, whether the notes panel is
+installed, and that a confirmed door is not the same as a walked one. For a door
+this checkup cannot detect, Doctor says it is a written door and this checkup
+cannot see whether it has been opened. If the notes panel files are there but
+the panel is not switched on, Doctor says so and names the switch; it does not
+flip the switch. If a written door or the notes panel has been left, Doctor
+proves the leave and names leftovers.
 
 ## Platform boundary for this release
 
@@ -101,8 +103,10 @@ After installation, verify these outcomes in a fresh task:
    synthetic destructive proposal before execution.
 6. Doctor reports the confirmed harness receipt and does not call a guided or
    unavailable feature automatic. It names every written door on this machine,
-   one sentence each, including never-opened doors and whether the notes panel
-   is installed. If the notes panel files are there but the panel is not
+   one sentence each, including never-opened doors, doors this checkup cannot
+   see, and whether the notes panel is installed. For a door this checkup cannot
+   detect, Doctor says it is a written door and this checkup cannot see whether
+   it has been opened. If the notes panel files are there but the panel is not
    switched on, Doctor names the switch and does not flip it. A confirmed door
    is not the same as a walked one. If a written
    door or the notes panel has been left, Doctor proves the leave and names leftovers.

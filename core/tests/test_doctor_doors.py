@@ -19,7 +19,10 @@ from core.harnesses.doors import (
     NOTES_PANEL_MISSING,
     NOTES_PANEL_SWITCH,
     WALK_RULES,
+    cannot_see_opened_sentence,
+    door_is_detectable,
     door_report,
+    never_opened_sentence,
 )
 from core.harnesses.registry import list_profiles
 from core.onboarding.harness_receipt import (
@@ -70,15 +73,41 @@ def test_every_written_adapter_has_a_walk_rule() -> None:
     assert set(LEFTOVER_DETECTORS) == adapter_ids
 
 
+def test_walk_rules_are_unchanged_and_name_unseen_doors() -> None:
+    assert WALK_RULES == {
+        "agent-plugin": None,
+        "bb": None,
+        "chatgpt-work": ("home-file", ".codex/plugins/dex/.codex-plugin/plugin.json"),
+        "claude-code": None,
+        "claude-desktop": None,
+        "codex": None,
+        "copilot-cli": ("home-dex-manifest", ".copilot/installed-plugins/_direct"),
+        "cowork": None,
+        "cursor": ("home-file", ".cursor/plugins/local/dex/.cursor-plugin/plugin.json"),
+        "gemini-cli": ("home-dex-manifest", ".gemini/extensions"),
+        "pi": None,
+    }
+    assert cannot_see_opened_sentence("Codex") == (
+        "Codex is a written door and this checkup cannot see whether you have opened it."
+    )
+    assert never_opened_sentence("Cursor") == (
+        "Cursor is a written door you have never opened."
+    )
+
+
 def test_doctor_names_every_written_door_before_setup(context: doctor.DoctorContext) -> None:
     result = doctor._probe_harness_capabilities(context)
-    names = [profile.display_name for profile in list_profiles()]
 
     assert result.verdict == "OFF"
     assert "record your harnesses without restarting onboarding" in result.detail.lower()
-    for name in names:
-        assert f"{name} is a written door you have never opened." in result.detail
-        assert f"You confirmed {name}." not in result.detail
+    for profile in list_profiles():
+        assert f"You confirmed {profile.display_name}." not in result.detail
+        if door_is_detectable(profile.id):
+            assert never_opened_sentence(profile.display_name) in result.detail
+            assert cannot_see_opened_sentence(profile.display_name) not in result.detail
+        else:
+            assert cannot_see_opened_sentence(profile.display_name) in result.detail
+            assert never_opened_sentence(profile.display_name) not in result.detail
     assert NOTES_PANEL_MISSING in result.detail
     assert CONFIRMED_IS_NOT_WALKED in result.detail
     assert result.detail.index(NOTES_PANEL_MISSING) < result.detail.index(
@@ -105,11 +134,17 @@ def test_doctor_names_confirmed_doors_without_calling_them_walked(
     assert result.verdict == "OK"
     assert "You confirmed Codex." in result.detail
     assert "You confirmed Codex, and it is walked on this machine." not in result.detail
+    assert cannot_see_opened_sentence("Codex") not in result.detail
     for profile_id, name in names.items():
         if profile_id == "codex":
             continue
-        assert f"{name} is a written door you have never opened." in result.detail
         assert f"You confirmed {name}." not in result.detail
+        if door_is_detectable(profile_id):
+            assert never_opened_sentence(name) in result.detail
+            assert cannot_see_opened_sentence(name) not in result.detail
+        else:
+            assert cannot_see_opened_sentence(name) in result.detail
+            assert never_opened_sentence(name) not in result.detail
     assert NOTES_PANEL_MISSING in result.detail
     assert CONFIRMED_IS_NOT_WALKED in result.detail
     assert result.structured_detail["doors"][5]["id"] == "codex"
@@ -225,6 +260,11 @@ def test_door_report_covers_the_adapter_registry_without_a_grant_flag(
 
     assert [door.id for door in report.doors] == [profile.id for profile in list_profiles()]
     assert all(not door.confirmed and not door.walked and not door.left for door in report.doors)
+    for door in report.doors:
+        if door_is_detectable(door.id):
+            assert door.sentence == never_opened_sentence(door.name)
+        else:
+            assert door.sentence == cannot_see_opened_sentence(door.name)
     assert report.notes_panel_installed is False
     assert report.notes_panel_switched_on is False
     assert report.notes_panel_left is False
@@ -260,6 +300,7 @@ def test_doctor_proves_a_work_leave_and_names_the_grant_leftover(
         result.detail
     )
     assert "ChatGPT Work companion is a written door you have never opened." not in result.detail
+    assert cannot_see_opened_sentence("ChatGPT Work companion") not in result.detail
     assert work["confirmed"] is True
     assert work["walked"] is False
     assert work["left"] is True
@@ -507,3 +548,136 @@ def test_leftover_copy_is_final_and_never_sets_granted() -> None:
     _assert_no_granted_true(NOTES_PANEL_LEFTOVER)
     _assert_no_granted_true(NOTES_PANEL_HALF_ON)
     _assert_no_granted_true(NOTES_PANEL_SWITCH)
+    _assert_no_granted_true(cannot_see_opened_sentence("Codex"))
+    _assert_no_granted_true(never_opened_sentence("Cursor"))
+
+
+def test_doctor_names_undetectable_doors_as_unseen_not_never_opened(
+    context: doctor.DoctorContext,
+) -> None:
+    result = doctor._probe_harness_capabilities(context)
+
+    for profile in list_profiles():
+        if door_is_detectable(profile.id):
+            continue
+        assert cannot_see_opened_sentence(profile.display_name) in result.detail
+        assert never_opened_sentence(profile.display_name) not in result.detail
+        assert f"You left {profile.display_name}." not in result.detail
+    _assert_no_granted_true(result.structured_detail)
+    _assert_no_granted_true(result.detail)
+
+
+def test_detectable_unopened_doors_keep_never_opened_sentence(
+    context: doctor.DoctorContext,
+) -> None:
+    result = doctor._probe_harness_capabilities(context)
+
+    for profile in list_profiles():
+        if not door_is_detectable(profile.id):
+            continue
+        assert never_opened_sentence(profile.display_name) in result.detail
+        assert cannot_see_opened_sentence(profile.display_name) not in result.detail
+        assert f"You confirmed {profile.display_name}." not in result.detail
+    _assert_no_granted_true(result.structured_detail)
+
+
+def test_detectable_walked_leave_and_confirmed_sentences_stay_byte_identical(
+    context: doctor.DoctorContext,
+) -> None:
+    _write_receipt(context, ["cursor", "chatgpt-work"])
+    cursor_plugin = (
+        context.home / ".cursor" / "plugins" / "local" / "dex" / ".cursor-plugin" / "plugin.json"
+    )
+    cursor_plugin.parent.mkdir(parents=True)
+    cursor_plugin.write_text(json.dumps({"name": "dex"}) + "\n")
+    work_cache = (
+        context.home
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / "dex-unreleased"
+        / "dex"
+        / "local"
+    )
+    work_cache.mkdir(parents=True)
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert "You confirmed Cursor, and it is walked on this machine." in result.detail
+    leftover = LEFTOVER_COPY["chatgpt-work"]
+    assert f"You left ChatGPT Work companion. Leftover: {leftover}" in result.detail
+    assert cannot_see_opened_sentence("Cursor") not in result.detail
+    assert cannot_see_opened_sentence("ChatGPT Work companion") not in result.detail
+    assert never_opened_sentence("GitHub Copilot CLI") in result.detail
+    assert cannot_see_opened_sentence("Codex") in result.detail
+    _assert_no_granted_true(result.structured_detail)
+    _assert_no_granted_true(result.detail)
+
+
+def test_doctor_does_not_write_or_invent_a_walk_for_undetectable_doors(
+    context: doctor.DoctorContext,
+) -> None:
+    before_home = {
+        path: path.read_bytes()
+        for path in context.home.rglob("*")
+        if path.is_file()
+    }
+    before_vault = {
+        path: path.read_bytes()
+        for path in context.vault_root.rglob("*")
+        if path.is_file()
+    }
+
+    result = doctor._probe_harness_capabilities(context)
+
+    after_home = {
+        path: path.read_bytes()
+        for path in context.home.rglob("*")
+        if path.is_file()
+    }
+    after_vault = {
+        path: path.read_bytes()
+        for path in context.vault_root.rglob("*")
+        if path.is_file()
+    }
+    assert after_home == before_home
+    assert after_vault == before_vault
+    assert cannot_see_opened_sentence("Codex") in result.detail
+    assert "granted=true" not in result.detail.lower()
+    _assert_no_granted_true(result.structured_detail)
+    _assert_no_granted_true(result.detail)
+
+
+def test_stale_work_copy_sentence_stays_last_after_cannot_see_doors(
+    context: doctor.DoctorContext, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    packaged = repo / "packages" / "dex-agent-plugin" / ".codex-plugin" / "plugin.json"
+    packaged.parent.mkdir(parents=True)
+    packaged.write_text(json.dumps({"name": "dex", "version": "1.0.1"}) + "\n")
+    personal = context.home / ".codex" / "plugins" / "dex" / ".codex-plugin" / "plugin.json"
+    personal.parent.mkdir(parents=True)
+    personal.write_text(json.dumps({"name": "dex", "version": "1.0.0"}) + "\n")
+    stale_context = doctor.DoctorContext(
+        vault_root=context.vault_root,
+        repo_root=repo,
+        home=context.home,
+        now=NOW,
+    )
+    _write_receipt(stale_context, ["chatgpt-work"])
+
+    result = doctor._probe_harness_capabilities(stale_context)
+    rendered = doctor._result_json(
+        next(check for check in doctor.QUICK_CHECKS if check.id == "harness.capabilities"),
+        result,
+    )
+
+    assert cannot_see_opened_sentence("Codex") in result.detail
+    assert result.detail.endswith(STALE_WORK_COPY_SENTENCE)
+    assert rendered["detail"].endswith(STALE_WORK_COPY_SENTENCE)
+    assert result.detail.index(cannot_see_opened_sentence("Codex")) < result.detail.index(
+        STALE_WORK_COPY_SENTENCE
+    )
+    assert result.detail.count(STALE_WORK_COPY_SENTENCE) == 1
+    _assert_no_granted_true(result.structured_detail)
+    _assert_no_granted_true(rendered)

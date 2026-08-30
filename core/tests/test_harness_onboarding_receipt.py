@@ -166,3 +166,5 @@ def test_doctor_instructions_preserve_delivery_mode_truth() -> None:
     assert "A confirmed door is not a leave" in section
     assert "files are there but the panel is" in section
     assert "Do not flip" in section
+    assert "cannot see whether" in section
+    assert "Do not invent a walk" in section

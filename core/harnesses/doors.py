@@ -2,7 +2,8 @@
 
 A confirmed door is a host chosen in the saved harness receipt.
 A walked door is a Dex install artifact on this machine.
-A written door with no install artifact has never been opened.
+A detectable written door with no install artifact has never been opened.
+A written door this checkup cannot detect is named as unseen, not as never opened.
 A left door is a walk artifact that is gone while leftover residue remains.
 Confirming a door is not the same as walking it.
 A confirmed door is not a leave. Leftovers are named only when a leave is proved.
@@ -35,8 +36,22 @@ NOTES_PANEL_LEFTOVER = (
 NOTES_PANEL_MANIFEST = Path(".obsidian") / "plugins" / "dex-readonly" / "manifest.json"
 NOTES_PANEL_COMMUNITY_PLUGINS = Path(".obsidian") / "community-plugins.json"
 
-# Every written adapter must have a walk rule. `None` means Doctor cannot prove
-# a walk, so the door stays unopened until a later lot names a real marker.
+
+def cannot_see_opened_sentence(name: str) -> str:
+    """Return the unseen-door sentence. Copy is final."""
+    return (
+        f"{name} is a written door and this checkup cannot see whether you have "
+        "opened it."
+    )
+
+
+def never_opened_sentence(name: str) -> str:
+    """Return the detectable never-opened sentence. Copy is final."""
+    return f"{name} is a written door you have never opened."
+
+
+# Every written adapter must have a walk rule. `None` means this checkup cannot
+# see whether the door has been opened. Do not add a marker here to invent a walk.
 WALK_RULES: dict[str, tuple[str, str] | None] = {
     "agent-plugin": None,
     "bb": None,
@@ -157,12 +172,20 @@ class DoorReport:
         }
 
 
+def door_is_detectable(profile_id: str) -> bool:
+    """Return True when this checkup has a walk marker for the door."""
+    if profile_id not in WALK_RULES:
+        raise KeyError(profile_id)
+    return WALK_RULES[profile_id] is not None
+
+
 def door_sentence(
     *,
     name: str,
     confirmed: bool,
     walked: bool,
     leftover: str | None = None,
+    detectable: bool = True,
 ) -> str:
     """Return one plain sentence for a written door."""
     if confirmed and walked:
@@ -173,7 +196,9 @@ def door_sentence(
         return f"You left {name}. Leftover: {leftover}"
     if confirmed:
         return f"You confirmed {name}."
-    return f"{name} is a written door you have never opened."
+    if not detectable:
+        return cannot_see_opened_sentence(name)
+    return never_opened_sentence(name)
 
 
 def notes_panel_sentence(*, installed: bool, leftover: bool, switched_on: bool) -> str:
@@ -243,6 +268,7 @@ def door_report(
         walked = door_is_walked(profile.id, home=home)
         leftover = door_leftover(profile.id, home=home)
         is_confirmed = profile.id in confirmed
+        detectable = door_is_detectable(profile.id)
         doors.append(
             DoorState(
                 id=profile.id,
@@ -256,6 +282,7 @@ def door_report(
                     confirmed=is_confirmed,
                     walked=walked,
                     leftover=leftover,
+                    detectable=detectable,
                 ),
             )
         )
