@@ -5,6 +5,21 @@ const PILLAR_LIMIT = 5;
 const URGENT_LIMIT = 3;
 const GOAL_LIMIT = 10;
 const DAILY_PLAN_LIMIT = 24;
+const EMPTY_SENTENCE = "No recorded decision in your files matched that topic.";
+const NO_DATE = "no date in that note";
+const USER_TREES = [
+  "00-Inbox",
+  "04-Projects",
+  "05-Areas",
+  "06-Resources",
+  "07-Archives",
+];
+const DECISION_HEADING = /^##\s+(?:Key\s+)?Decisions\s*$/i;
+const DECISION_LOG_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})\s+[—–-]\s+(.+)$/;
+const DECISION_FIELD = /^\*\*Decision:\*\*\s*(.+?)\s*$/i;
+const BULLET = /^[-*]\s+(?:\[[ xX]\]\s+)?(.+)$/;
+const DATE_IN_NAME = /^(\d{4}-\d{2}-\d{2})/;
+const FRONTMATTER_DATE = /^date:\s*['"]?(\d{4}-\d{2}-\d{2})/im;
 
 function todayLabel(now) {
   const stamp = now instanceof Date ? now : new Date();
@@ -189,9 +204,172 @@ function renderBrief(root, brief) {
   appendSection(root, "Pillars", brief.pillars || [], (item) => {
     return item.description ? `${item.name} — ${item.description}` : item.name;
   });
-  root.createEl("p", {
-    text: "This panel is read-only. It does not edit notes, run commands, or use the internet.",
-    cls: "dex-readonly-note",
+}
+
+function noteName(relativePath) {
+  const base = String(relativePath || "").split("/").pop() || "";
+  return base.replace(/\.md$/i, "");
+}
+
+function fileDate(relativePath, text) {
+  const named = noteName(relativePath).match(DATE_IN_NAME);
+  if (named) {
+    return named[1];
+  }
+  const frontmatter = String(text || "").match(FRONTMATTER_DATE);
+  if (frontmatter) {
+    return frontmatter[1];
+  }
+  return "";
+}
+
+function cleanWords(raw) {
+  return String(raw || "")
+    .replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1")
+    .replace(/\[\[([^\]]*)\]\]/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .trim();
+}
+
+function collectDecisionRecords(text, relativePath) {
+  const note = noteName(relativePath);
+  const fromFile = fileDate(relativePath, text);
+  const records = [];
+  let inDecisions = false;
+  let headingDate = "";
+  let headingTitle = "";
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const log = line.match(DECISION_LOG_HEADING);
+    if (log) {
+      inDecisions = false;
+      headingDate = log[1];
+      headingTitle = String(log[2] || "").trim();
+      continue;
+    }
+    if (DECISION_HEADING.test(line)) {
+      inDecisions = true;
+      headingDate = "";
+      headingTitle = "";
+      continue;
+    }
+    if (/^##\s+/.test(line)) {
+      inDecisions = false;
+      headingDate = "";
+      headingTitle = "";
+      continue;
+    }
+    const field = line.match(DECISION_FIELD);
+    if (field) {
+      const words = cleanWords(field[1]);
+      if (words) {
+        records.push({
+          words,
+          note,
+          date: headingDate || fromFile || NO_DATE,
+          title: headingTitle,
+        });
+      }
+      continue;
+    }
+    if (!inDecisions) {
+      continue;
+    }
+    const bullet = line.match(BULLET);
+    if (!bullet) {
+      continue;
+    }
+    const words = cleanWords(bullet[1]);
+    if (words) {
+      records.push({
+        words,
+        note,
+        date: fromFile || headingDate || NO_DATE,
+        title: headingTitle,
+      });
+    }
+  }
+  return records;
+}
+
+function matchDecisions(records, topic) {
+  const needle = String(topic || "").trim().replace(/\s+/g, " ").toLowerCase();
+  if (!needle) {
+    return [];
+  }
+  const matches = [];
+  for (const record of records) {
+    const hay = `${record.words || ""} ${record.note || ""} ${record.title || ""}`.toLowerCase();
+    if (hay.includes(needle)) {
+      matches.push(record);
+    }
+  }
+  return matches;
+}
+
+function formatDecisionMatch(record) {
+  return `${record.words} (note: ${record.note}, date: ${record.date})`;
+}
+
+function isUserMarkdown(path) {
+  const relative = String(path || "").replace(/^\/+/, "");
+  if (!relative.toLowerCase().endsWith(".md")) {
+    return false;
+  }
+  return USER_TREES.some((tree) => relative === tree || relative.startsWith(`${tree}/`));
+}
+
+async function loadDecisionRecords(app) {
+  const files = app.vault.getMarkdownFiles ? app.vault.getMarkdownFiles() : [];
+  const records = [];
+  for (const file of files) {
+    const relative = file.path || "";
+    if (!isUserMarkdown(relative)) {
+      continue;
+    }
+    const text = await readVaultText(app, relative);
+    records.push(...collectDecisionRecords(text, relative));
+  }
+  return records;
+}
+
+function renderAsk(root, app) {
+  const heading = root.createEl("h2", { text: "What we decided" });
+  heading.addClass("dex-readonly-heading");
+  const box = root.createEl("div", { cls: "dex-readonly-ask" });
+  const input = box.createEl("input");
+  input.setAttribute("type", "text");
+  input.setAttribute("placeholder", "Type a topic");
+  input.setAttribute("aria-label", "Type a topic");
+  const button = box.createEl("button", { text: "Look in your files" });
+  button.setAttribute("type", "button");
+  const results = root.createEl("div", { cls: "dex-readonly-ask-results" });
+
+  async function runAsk() {
+    const topic = input.value || "";
+    const records = await loadDecisionRecords(app);
+    const matches = matchDecisions(records, topic);
+    results.empty();
+    if (!matches.length) {
+      results.createEl("p", {
+        text: EMPTY_SENTENCE,
+        cls: "dex-readonly-empty",
+      });
+      return;
+    }
+    const list = results.createEl("ul");
+    for (const match of matches) {
+      list.createEl("li", { text: formatDecisionMatch(match) });
+    }
+  }
+
+  button.addEventListener("click", () => {
+    runAsk();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runAsk();
+    }
   });
 }
 
@@ -212,6 +390,11 @@ class DexBriefView extends ItemView {
     const root = this.containerEl.children[1];
     const brief = await buildTodayBrief(this.app);
     renderBrief(root, brief);
+    renderAsk(root, this.app);
+    root.createEl("p", {
+      text: "This panel is read-only. It does not edit notes, run commands, or use the internet.",
+      cls: "dex-readonly-note",
+    });
   }
 }
 
@@ -241,4 +424,9 @@ module.exports = DexReadonlyPlugin;
 module.exports.VIEW_TYPE = VIEW_TYPE;
 module.exports.buildTodayBrief = buildTodayBrief;
 module.exports.renderBrief = renderBrief;
+module.exports.renderAsk = renderAsk;
 module.exports.todayLabel = todayLabel;
+module.exports.collectDecisionRecords = collectDecisionRecords;
+module.exports.matchDecisions = matchDecisions;
+module.exports.formatDecisionMatch = formatDecisionMatch;
+module.exports.EMPTY_SENTENCE = EMPTY_SENTENCE;

@@ -37,7 +37,7 @@
     {
       "id": "session-lifecycle",
       "mode": "guided",
-      "notes": "Today's brief appears when the Dex folder is open and the panel is enabled.",
+      "notes": "Today's brief appears when the Dex folder is open and the panel is enabled. Under that brief, a topic ask reads recorded decisions from local files.",
       "status": "partial",
       "tier": 3
     },
@@ -88,7 +88,7 @@
     "tier-0-vault"
   ],
   "name": "Obsidian",
-  "summary": "Local read-only Dex panel in Obsidian: open the Dex folder and see today's brief. No edits, no commands, no internet.",
+  "summary": "Local read-only Dex panel in Obsidian: today's brief, then a topic ask from your own files. No edits, no commands, no internet.",
   "support_level": "supported",
   "vendor": "Obsidian"
 }

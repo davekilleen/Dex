@@ -35,6 +35,21 @@
   color: var(--text-muted);
 }
 
+.dex-readonly-panel .dex-readonly-ask {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.dex-readonly-panel .dex-readonly-ask input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dex-readonly-panel .dex-readonly-ask-results {
+  margin: 0 0 8px;
+}
+
 .dex-readonly-panel .dex-readonly-note {
   margin-top: 24px;
   color: var(--text-muted);
