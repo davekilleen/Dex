@@ -1,7 +1,7 @@
 # Dex for Claude Desktop
 
 This source directory becomes the unreleased `dex-claude-desktop.mcpb` local
-extension. It exposes four read-only Dex MCP tools and asks the user to select
+extension. It exposes the read-only Dex MCP tools and asks the user to select
 their Dex folder during installation. Claude Desktop chat does not run lifecycle
 hooks, so this artifact makes no hook or automatic-safety claim.
 

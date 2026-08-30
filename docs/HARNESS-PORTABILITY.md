@@ -35,8 +35,8 @@ has already passed that evidence gate.
 `packages/dex-agent-plugin/` contains one generated package with:
 
 - the portable Dex skill catalogue;
-- read-only `boot_today`, `get_person_context`, `check_safety_gate`, and
-  `dex_harness_profiles` MCP tools;
+- read-only `boot_today`, `get_person_context`, `ask_what_was_decided`,
+  `check_safety_gate`, and `dex_harness_profiles` MCP tools;
 - byte-identical vendored copies of the canonical context and safety modules;
 - SessionStart context and PreToolUse safety hooks for hosts that can genuinely
   run them;

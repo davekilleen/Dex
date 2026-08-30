@@ -240,6 +240,7 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
         "dex_harness_profiles",
         "boot_today",
         "get_person_context",
+        "ask_what_was_decided",
         "check_safety_gate",
     }
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"

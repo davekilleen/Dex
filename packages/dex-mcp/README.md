@@ -5,6 +5,12 @@ read-only tools. After a public catalogue publish, a person can point any MCP
 app at one line. Until then, the package stays local, checksummed, and
 unreleased.
 
+## What a person can do now
+
+Pack the box locally. Then, before anything is published, ask it what was
+decided about a topic. It answers from that Dex folder's own decision record
+and names the file it came from.
+
 ## What a person can do after a public catalogue publish
 
 Add this one line in an MCP app that can install from the official catalogue:
@@ -20,8 +26,9 @@ DEX_VAULT_PATH="/path/to/your/Dex" npx -y dex-mcp
 ```
 
 Point `DEX_VAULT_PATH` at the Dex folder on that computer. The server can read
-today's context, look up a person, list host support, and refuse a destructive
-command. It cannot write the vault.
+today's context, look up a person, list host support, refuse a destructive
+command, and answer what was decided about a topic from that folder's own
+decision record. It cannot write the vault.
 
 ## What is true now
 

@@ -28,6 +28,7 @@ RUNTIME_SOURCES = (
     Path("core/path_safety.py"),
     Path("core/context/__init__.py"),
     Path("core/context/person_context.py"),
+    Path("core/context/decision_record.py"),
     Path("core/context/session_boot.py"),
     Path("core/gates/__init__.py"),
     Path("core/gates/safety.py"),
@@ -165,6 +166,10 @@ def _claude_desktop_manifest() -> dict:
             {"name": "dex_harness_profiles", "description": "List Dex harness support."},
             {"name": "boot_today", "description": "Read today's Dex context."},
             {"name": "get_person_context", "description": "Read context about a person."},
+            {
+                "name": "ask_what_was_decided",
+                "description": "Answer what was decided from this Dex folder's own decision record.",
+            },
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
         ],
         "compatibility": {

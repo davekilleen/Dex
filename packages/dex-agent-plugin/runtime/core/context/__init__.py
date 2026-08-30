@@ -1,5 +1,6 @@
 """Harness-neutral context payloads used by MCP and Claude wrappers."""
 
+from .decision_record import ask_what_was_decided
 from .person_context import (
     find_people_in_file,
     format_person_context_block,
@@ -9,6 +10,7 @@ from .person_context import (
 from .session_boot import build_session_boot, format_session_boot_text
 
 __all__ = [
+    "ask_what_was_decided",
     "build_session_boot",
     "find_people_in_file",
     "format_person_context_block",
