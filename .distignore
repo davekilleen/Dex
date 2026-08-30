@@ -38,6 +38,9 @@ DISTRIBUTION_READY.md
 scripts/
 .claude/skills/dex-orient/
 
+# Unreleased founder pack card — not a user distribution surface
+docs/founder-cards/
+
 # Issue tracking (worktree artifacts)
 .ao-issue.md
 
