@@ -1,0 +1,45 @@
+# Trigger evals for /commitments.
+# Shape every shipped skill carries:
+#   3 positive paraphrases  — MUST fire this skill
+#   2 negative / collision  — MUST NOT fire; must route to the named neighbor
+#   1 ambiguous             — should ASK rather than silently fire
+#   1 missing-prerequisite  — should degrade honestly, not fake a result
+#   1 failure-recovery      — must not claim success when the underlying action failed
+#
+# `expect: fire` / `no-fire` / `ask` / `degrade` / `honest-failure`.
+# `route_to` names where a no-fire case should go instead.
+
+skill: commitments
+
+positive:
+  - utterance: "What did I promise people this week?"
+    expect: fire
+  - utterance: "Anything I'm on the hook for / owe anyone?"
+    expect: fire
+  - utterance: "Help me catch the loose ends from my last few meetings."
+    expect: fire
+
+negative:
+  - utterance: "What did I delegate, and who owes me an update on it?"
+    expect: no-fire
+    route_to: delegate-check
+    why: delegations flow the other way — work you handed off — which delegate-check tracks; commitments are what you personally owe or are owed.
+  - utterance: "Record the decision we made to go with the annual pricing plan."
+    expect: no-fire
+    route_to: decision-log
+    why: capturing a decision + rationale is decision-log, not a promise/ask to reconcile.
+
+ambiguous:
+  - utterance: "Follow up on the Acme thing."
+    expect: ask
+    why: unclear whether they mean an open commitment, a delegated item, or prepping a meeting — ask what "the Acme thing" is before firing.
+
+missing_prerequisite:
+  - utterance: "What am I on the hook for?"  # Work MCP / get_commitments_due unavailable
+    expect: degrade
+    why: the commitments scanner can't run — say so plainly and stop; never fabricate a commitments list.
+
+failure_recovery:
+  - utterance: "Turn all of those into tasks."  # a create_task call fails / is deduped
+    expect: honest-failure
+    why: report the item that failed or was already a task as NOT created; never count it toward "done" or claim tasks that weren't written.

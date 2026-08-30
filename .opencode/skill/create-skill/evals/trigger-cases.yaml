@@ -1,0 +1,45 @@
+# Trigger evals for /create-skill.
+# Shape every shipped skill carries:
+#   3 positive paraphrases  — MUST fire this skill
+#   2 negative / collision  — MUST NOT fire; must route to the named neighbor
+#   1 ambiguous             — should ASK rather than silently fire
+#   1 missing-prerequisite  — should degrade honestly, not fake a result
+#   1 failure-recovery      — must not claim success when the underlying action failed
+#
+# `expect: fire` / `no-fire` / `ask` / `degrade` / `honest-failure`.
+# `route_to` names where a no-fire case should go instead.
+
+skill: create-skill
+
+positive:
+  - utterance: "Make me a skill for preparing board updates."
+    expect: fire
+  - utterance: "I want a /command that drafts my weekly standup."
+    expect: fire
+  - utterance: "Turn this workflow into a reusable skill."
+    expect: fire
+
+negative:
+  - utterance: "Is this skill any good — will it actually fire?"
+    expect: no-fire
+    route_to: skill-score
+    why: grading an existing skill, not authoring a new one.
+  - utterance: "Add the Notion MCP so Dex can read my Notion."
+    expect: no-fire
+    route_to: create-mcp
+    why: connecting an external tool is an MCP integration, not a skill.
+
+ambiguous:
+  - utterance: "I keep doing this by hand — can Dex help?"
+    expect: ask
+    why: unclear whether they want a new skill, an existing one, or an integration — ask what the recurring task is.
+
+missing_prerequisite:
+  - utterance: "Create a skill for meeting notes"  # in an env with no python3
+    expect: degrade
+    why: the collision check + skill-score script can't run — read descriptions by hand and SAY SO; never skip the collision check silently.
+
+failure_recovery:
+  - utterance: "Create the board-update skill"  # skill-score returns REVISE/NO for a Core skill
+    expect: honest-failure
+    why: for a Core skill a sub-85 score is a hard gate — do not report "created/ready"; fix and re-score first.
