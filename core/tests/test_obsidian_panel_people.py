@@ -871,10 +871,11 @@ function walk(el) {
   return { tag: el.tag, text: el.text, cls: el.cls, children: el.children.map(walk) };
 }
 async function run(path) {
+  reads.length = 0;
   input.value = path;
   button.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return walk(results);
+  return { tree: walk(results), reads: reads.slice() };
 }
 (async () => {
   const named = await run("00-Inbox/Meetings/2026-08-30 - Engine review.md");
@@ -888,13 +889,16 @@ async function run(path) {
     placeholder: input.attrs.placeholder,
     aria: input.attrs["aria-label"],
     button: button.text,
-    named,
-    nobody,
-    missing,
-    outside,
-    personTree,
-    binary,
-    reads,
+    named: named.tree,
+    nobody: nobody.tree,
+    missing: missing.tree,
+    outside: outside.tree,
+    personTree: personTree.tree,
+    binary: binary.tree,
+    namedReads: named.reads,
+    outsideReads: outside.reads,
+    personTreeReads: personTree.reads,
+    binaryReads: binary.reads,
     refused: panel.NOTE_REFUSED,
     missingSentence: panel.NOTE_MISSING,
     nobodySentence: panel.NOTE_NOBODY,
@@ -939,8 +943,9 @@ async function run(path) {
     assert payload["classifyOutside"] == "refused"
     assert payload["classifyPerson"] == "refused"
     assert payload["classifyBinary"] == "refused"
-    assert "../outside.md" not in payload["reads"]
-    assert "05-Areas/People/Internal/Ada_Lovelace.md" not in payload["reads"]
-    assert "00-Inbox/Meetings/photo.png" not in payload["reads"]
+    assert payload["outsideReads"] == []
+    assert payload["personTreeReads"] == []
+    assert payload["binaryReads"] == []
+    assert "00-Inbox/Meetings/2026-08-30 - Engine review.md" in payload["namedReads"]
     assert payload["nobody"]["children"][0]["tag"] == "p"
     assert "ul" not in [child["tag"] for child in payload["outside"]["children"]]
