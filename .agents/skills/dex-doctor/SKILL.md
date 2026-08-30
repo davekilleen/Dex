@@ -157,9 +157,9 @@ Then the notes panel sentence. Then the sentence that a confirmed door is not th
 Keep those sentences verbatim, including any leftover sentence that proves a leave.
 A confirmed door is not a leave. If a written door is one this checkup cannot detect,
 keep that sentence verbatim: it is a written door and this checkup cannot see whether
-it has been opened. Do not invent a walk or a grant. If the notes panel files are
-there but the panel is not switched on, keep that sentence verbatim, including the
-named switch. Do not flip the switch. If the collector's detail
+it has been opened. Do not invent a walk or a grant. If the notes panel files are there but the panel is
+not switched on, keep that sentence verbatim, including the named switch. Do not flip
+the switch. If the collector's detail
 ends with a sentence that the personal Work copy is behind this folder, show that
 sentence last and unchanged. If that sentence is absent, stay silent — a missing copy is
 not a grant, and a current copy is not news. Never invent a folder grant or a
