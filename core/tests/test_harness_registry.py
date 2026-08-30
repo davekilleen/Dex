@@ -138,8 +138,8 @@ def test_profiles_are_json_serializable_and_have_honest_modes() -> None:
     bb = {row["id"]: row for row in get_profile("bb").capability_rows()}
     assert bb["agent-plugins"]["status"] == "native"
     copilot = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
-    assert copilot["hooks"]["status"] == "not-verified"
-    assert copilot["hooks"]["mode"] == "unavailable"
+    assert copilot["hooks"]["status"] == "native"
+    assert copilot["hooks"]["mode"] == "guided"
 
     cursor = {row["id"]: row for row in get_profile("cursor").capability_rows()}
     assert cursor["agent-plugins"]["status"] == "native"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared Dex lifecycle adapter for Codex and Claude plugin hosts."""
+"""Shared Dex lifecycle adapter for plugin hosts."""
 
 from __future__ import annotations
 
@@ -72,7 +72,40 @@ def _session_start(payload: dict[str, Any], protocol: str) -> int:
     return 0
 
 
+def _family_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Map the code-assistant family's documented PreToolUse shapes onto the shared gate."""
+    normalized = dict(payload)
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        mapped = dict(tool_input)
+    else:
+        tool_args = payload.get("toolArgs") or payload.get("tool_args")
+        if isinstance(tool_args, dict):
+            mapped = dict(tool_args)
+        elif isinstance(tool_args, str) and tool_args.strip():
+            mapped = {"command": tool_args}
+        else:
+            mapped = {}
+    if "file_path" not in mapped and isinstance(mapped.get("filePath"), str):
+        mapped["file_path"] = mapped["filePath"]
+    if not mapped.get("command"):
+        for key in ("command", "cmd"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                mapped["command"] = value
+                break
+    normalized["tool_input"] = mapped
+    tool_name = payload.get("tool_name")
+    if not (isinstance(tool_name, str) and tool_name.strip()):
+        family_name = payload.get("toolName")
+        if isinstance(family_name, str) and family_name.strip():
+            normalized["tool_name"] = family_name
+    return normalized
+
+
 def _pre_tool_use(payload: dict[str, Any], protocol: str) -> int:
+    if protocol == "copilot":
+        payload = _family_payload(payload)
     decision = evaluate_hook_payload(payload, vault=_vault(payload))
     if decision.refused:
         if protocol == "cursor":
@@ -87,6 +120,18 @@ def _pre_tool_use(payload: dict[str, Any], protocol: str) -> int:
             output = {"decision": "deny", "reason": decision.reason}
             sys.stdout.write(json.dumps(output, ensure_ascii=False) + "\n")
             return 0
+        if protocol == "copilot":
+            output = {
+                "permissionDecision": "deny",
+                "permissionDecisionReason": decision.reason,
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": decision.reason,
+                },
+            }
+            sys.stdout.write(json.dumps(output, ensure_ascii=False) + "\n")
+            return decision.hook_exit
         # This compact contract is understood by Claude plugins and remains a
         # documented compatibility shape in Codex's hook runner.
         sys.stdout.write(decision.as_hook_json() + "\n")
@@ -112,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--protocol",
-        choices=("claude", "codex", "cursor", "gemini"),
+        choices=("claude", "codex", "cursor", "gemini", "copilot"),
         default="claude",
     )
     args, _ = parser.parse_known_args(argv)

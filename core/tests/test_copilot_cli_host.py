@@ -68,7 +68,12 @@ def test_copilot_cli_plugin_uses_the_open_package_layout() -> None:
     mcp = json.loads((PLUGIN_ROOT / "mcp.json").read_text(encoding="utf-8"))
     claude_mcp = json.loads((PLUGIN_ROOT / ".mcp.json").read_text(encoding="utf-8"))
 
-    assert adapter["native_paths"] == ["plugin.json", "skills/", "mcp.json"]
+    assert adapter["native_paths"] == [
+        "plugin.json",
+        "skills/",
+        "mcp.json",
+        "com.github.copilot/hooks/hooks.json",
+    ]
     assert adapter["status"] == "native-local"
     assert manifest["$schema"] == adapter["example"]["open_plugin_schema"]
     assert manifest["name"] == "dex-agent-plugin"
@@ -102,7 +107,8 @@ def test_copilot_cli_install_contract_names_local_plugin_and_folder() -> None:
     assert "dex folder" in guide
     assert "ubuntu cloud" in guide
     assert "not a live install" in guide
-    assert "hooks are not bundled" in guide
+    assert "family" in guide
+    assert "pretooluse" in guide
 
 
 def test_developer_guide_names_the_copilot_cli_terminal_steps() -> None:
@@ -146,8 +152,8 @@ def test_doctor_names_copilot_person_and_hook_limits_without_calling_it_chatgpt_
     assert result.structured_detail["selected"] == ["copilot-cli"]
     assert result.structured_detail["limitations"] == {"copilot-cli": limitations}
     rows = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
-    assert rows["hooks"]["status"] == "not-verified"
-    assert rows["hooks"]["mode"] == "unavailable"
+    assert rows["hooks"]["status"] == "native"
+    assert rows["hooks"]["mode"] == "guided"
     assert get_profile("copilot-cli").adapter["status"] == "native-local"
 
 
@@ -247,7 +253,7 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
     assert server["command"] == "node"
     assert "copilot" not in args
     assert "no recorded live session" in limitations
-    assert "hooks are not included" in limitations
+    assert "fixture-proved" in limitations
     assert get_profile("copilot-cli").capability_rows()
     rows = {row["id"]: row for row in get_profile("copilot-cli").capability_rows()}
-    assert rows["hooks"]["mode"] == "unavailable"
+    assert rows["hooks"]["mode"] == "guided"

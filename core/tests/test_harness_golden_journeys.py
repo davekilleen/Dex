@@ -101,8 +101,8 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
 
     copilot = _rows("copilot-cli")
     assert copilot["agent-plugins"]["status"] == "native"
-    assert copilot["hooks"]["status"] == "not-verified"
-    assert copilot["hooks"]["mode"] == "unavailable"
+    assert copilot["hooks"]["status"] == "native"
+    assert copilot["hooks"]["mode"] == "guided"
     copilot_limits = " ".join(get_profile("copilot-cli").limitations).lower()
     assert "person" in copilot_limits
     assert "copilot plugin install" in copilot_limits
@@ -138,7 +138,8 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
 
     vscode = _rows("vscode")
     assert vscode["agent-plugins"]["status"] == "native"
-    assert vscode["hooks"]["mode"] == "unavailable"
+    assert vscode["hooks"]["status"] == "native"
+    assert vscode["hooks"]["mode"] == "guided"
     vscode_limits = " ".join(get_profile("vscode").limitations).lower()
     assert "off by default" in vscode_limits
     assert "chat.plugins.enabled" in vscode_limits

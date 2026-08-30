@@ -230,6 +230,19 @@ def _codex_hooks_json() -> dict:
     }
 
 
+def _family_hooks_json() -> dict:
+    command = 'node "${PLUGIN_ROOT}/bin/dex-python.mjs" hook --protocol copilot'
+    entry = {
+        "type": "command",
+        "command": command,
+        "bash": command,
+        "powershell": command,
+        "cwd": "${PLUGIN_ROOT}",
+        "timeoutSec": 15,
+    }
+    return {"version": 1, "hooks": {"PreToolUse": [entry]}}
+
+
 def _cursor_hooks_json() -> dict:
     command = "node ./bin/dex-python.mjs hook --protocol cursor"
     return {
@@ -326,6 +339,9 @@ def expected_plugin_files(repo_root: Path = REPO_ROOT) -> dict[Path, bytes]:
         Path("packages/dex-agent-plugin/hooks/hooks.json"): _json_bytes(_hooks_json()),
         Path("packages/dex-agent-plugin/hooks/codex.json"): _json_bytes(_codex_hooks_json()),
         Path("packages/dex-agent-plugin/hooks/cursor.json"): _json_bytes(_cursor_hooks_json()),
+        Path("packages/dex-agent-plugin/com.github.copilot/hooks/hooks.json"): _json_bytes(
+            _family_hooks_json()
+        ),
         Path("packages/dex-gemini-extension/gemini-extension.json"): _json_bytes(_gemini_extension_json()),
         Path("packages/dex-gemini-extension/hooks/hooks.json"): _json_bytes(_gemini_hooks_json()),
         Path("packages/dex-claude-desktop/manifest.json"): _json_bytes(_claude_desktop_manifest()),

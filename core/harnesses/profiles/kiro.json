@@ -30,7 +30,7 @@
     {
       "id": "hooks",
       "mode": "unavailable",
-      "notes": "This path does not add a Kiro hooks step. Safety stays an explicit MCP check.",
+      "notes": "Kiro's first-party hooks are workspace files under .kiro/hooks with a different schema. Powers do not load the family plugin hook file. Safety stays an explicit MCP check.",
       "status": "not-verified",
       "tier": 3
     },
@@ -78,6 +78,7 @@
   "evidence": [
     "https://kiro.dev/docs/powers/",
     "https://kiro.dev/docs/powers/installation/",
+    "https://kiro.dev/docs/hooks/",
     "https://agent-plugins.org/specification"
   ],
   "id": "kiro",
@@ -93,7 +94,7 @@
     "tier-2-skills"
   ],
   "name": "Kiro",
-  "summary": "Kiro can load the same local Agent Plugins package as a custom power. It wakes Dex when you name it. A person still has to import the reviewed folder. Hooks are not claimed.",
+  "summary": "Kiro can load the same local Agent Plugins package as a custom power. It wakes Dex when you name it. A person still has to import the reviewed folder. Family plugin hooks are not claimed.",
   "support_level": "supported",
   "vendor": "Amazon"
 }
