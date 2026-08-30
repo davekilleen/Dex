@@ -474,10 +474,19 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
                     "arguments": {"vault_path": str(vault), "topic": "pricing"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_was_decided",
+                    "arguments": {"vault_path": str(vault)},
+                },
+            },
         ],
         cwd=vault,
     )
-    assert len(responses) == 6
+    assert len(responses) == 7
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     assert names == {
         "dex_harness_profiles",
@@ -486,6 +495,13 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "ask_what_was_decided",
         "check_safety_gate",
     }
+    ask_tool = next(
+        tool
+        for tool in responses[1]["result"]["tools"]
+        if tool["name"] == "ask_what_was_decided"
+    )
+    required = (ask_tool.get("inputSchema") or {}).get("required") or []
+    assert "topic" not in required
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     person = responses[3]["result"]["structuredContent"]
     assert person["found"] is True
@@ -496,6 +512,10 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     assert ask["found"] is True
     assert ask["matches"][0]["decision"] == "Sell only annual plans."
     assert ask["matches"][0]["file"] == "06-Resources/Decisions/Decision_Log.md"
+    lately = responses[6]["result"]["structuredContent"]
+    assert lately["found"] is True
+    assert lately["topic"] == ""
+    assert lately["matches"][0]["decision"] == "Sell only annual plans."
 
 
 def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path: Path) -> None:

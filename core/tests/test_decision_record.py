@@ -77,5 +77,47 @@ def test_ask_skips_symlinks_and_paths_outside_the_folder(tmp_path: Path) -> None
     payload = ask_what_was_decided(vault, "Secret")
     assert payload["found"] is False
     assert ask_what_was_decided(None, "Secret")["found"] is False
-    assert ask_what_was_decided(vault, "")["found"] is False
     assert ask_what_was_decided(vault, object())["found"] is False
+
+
+def test_ask_without_a_topic_returns_what_was_decided_lately(tmp_path: Path) -> None:
+    vault = tmp_path / "Dex"
+    vault.mkdir()
+    _write_decision_log(
+        vault,
+        title="Keep pricing annual-only",
+        decision="Sell only annual plans.",
+        date="2026-04-12",
+    )
+    folder = vault / "06-Resources" / "Decisions"
+    (folder / "Hiring.md").write_text(
+        "## 2026-05-20 — Pause hiring\n\n**Decision:** No new roles until June.\n",
+        encoding="utf-8",
+    )
+    payload = ask_what_was_decided(vault, None)
+    assert payload["found"] is True
+    assert payload["topic"] == ""
+    assert [row["decision"] for row in payload["matches"]] == [
+        "No new roles until June.",
+        "Sell only annual plans.",
+    ]
+    assert payload["matches"][0]["file"] == "06-Resources/Decisions/Hiring.md"
+    lately = ask_what_was_decided(vault, "what was decided lately")
+    assert lately["found"] is True
+    assert lately["matches"][0]["decision"] == "No new roles until June."
+    empty = ask_what_was_decided(vault, "")
+    assert empty["found"] is True
+    assert empty["matches"][0]["file"] == "06-Resources/Decisions/Hiring.md"
+
+
+def test_lately_does_not_invent_or_use_meeting_notes(tmp_path: Path) -> None:
+    vault = tmp_path / "Dex"
+    meetings = vault / "00-Inbox" / "Meetings"
+    meetings.mkdir(parents=True)
+    (meetings / "2026-04-12 - Pricing.md").write_text(
+        "## Notes\n\nWe decided to give pricing away for free.\n",
+        encoding="utf-8",
+    )
+    payload = ask_what_was_decided(vault, None)
+    assert payload["found"] is False
+    assert payload["matches"] == []
