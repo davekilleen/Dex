@@ -29,9 +29,9 @@
     },
     {
       "id": "hooks",
-      "mode": "unavailable",
-      "notes": "This path does not add a VS Code hooks step. Safety stays an explicit MCP check.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "The shipped package includes the family PreToolUse refusal hook file. Plugin settings stay off until a person turns them on. Fixture-proved; not a recorded live walk.",
+      "status": "native",
       "tier": 3
     },
     {
@@ -77,6 +77,7 @@
   "display_name": "Visual Studio Code",
   "evidence": [
     "https://code.visualstudio.com/docs/agent-customization/agent-plugins",
+    "https://code.visualstudio.com/docs/agent-customization/hooks",
     "https://agent-plugins.org/specification"
   ],
   "id": "vscode",
@@ -84,7 +85,7 @@
     "VS Code plugin settings stay off by default. A person still has to turn on chat.plugins.enabled, point chat.pluginLocations at ./packages/dex-agent-plugin, and reload. Detection tests and CI do not prove that journey.",
     "If auto-detect is empty or names Cursor or Kiro, confirm VS Code in /setup.",
     "Ubuntu Cloud is not a person opening VS Code. No recorded live session exists.",
-    "Hooks are not included in this path; shared safety remains an explicit MCP check."
+    "The family PreToolUse refusal hook is fixture-proved in this package. That is not a live walk."
   ],
   "modes": [
     "tier-0-vault",
@@ -92,7 +93,7 @@
     "tier-2-skills"
   ],
   "name": "Visual Studio Code",
-  "summary": "VS Code can load the same local Agent Plugins package after a person turns on plugin settings that stay off by default. Hooks are not claimed.",
+  "summary": "VS Code can load the same local Agent Plugins package after a person turns on plugin settings that stay off by default. The family PreToolUse refusal file is included.",
   "support_level": "supported",
   "vendor": "Microsoft"
 }

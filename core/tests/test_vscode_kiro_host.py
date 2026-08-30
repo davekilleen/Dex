@@ -95,8 +95,15 @@ def test_vscode_install_contract_names_off_by_default_settings_and_setup_picker(
     assert "./packages/dex-agent-plugin" in guide
     assert "/setup" in example["setup_picker"]
     assert "ubuntu cloud" in guide
-    assert "hooks are not part of this path" in guide
+    assert "family" in guide
+    assert "pretooluse" in guide
     assert "chatgpt" not in guide
+    assert adapter["native_paths"] == [
+        "plugin.json",
+        "skills/",
+        "mcp.json",
+        "com.github.copilot/hooks/hooks.json",
+    ]
     for relative in adapter["native_paths"]:
         assert (PLUGIN_ROOT / relative).exists()
 
@@ -158,13 +165,13 @@ def test_doctor_names_vscode_settings_and_setup_picker_without_calling_it_chatgp
     assert "/setup" in joined
     assert "person" in joined
     assert "ubuntu cloud" in joined
-    assert "hooks are not included" in joined
+    assert "fixture-proved" in joined
     assert "chatgpt" not in joined
     assert result.structured_detail["selected"] == ["vscode"]
     assert result.structured_detail["limitations"] == {"vscode": limitations}
     rows = {row["id"]: row for row in get_profile("vscode").capability_rows()}
-    assert rows["hooks"]["status"] == "not-verified"
-    assert rows["hooks"]["mode"] == "unavailable"
+    assert rows["hooks"]["status"] == "native"
+    assert rows["hooks"]["mode"] == "guided"
     assert get_profile("vscode").adapter["status"] == "native-local"
 
 

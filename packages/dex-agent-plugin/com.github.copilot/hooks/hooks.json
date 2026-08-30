@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook --protocol copilot",
+        "bash": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook --protocol copilot",
+        "powershell": "node \"${PLUGIN_ROOT}/bin/dex-python.mjs\" hook --protocol copilot",
+        "cwd": "${PLUGIN_ROOT}",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}

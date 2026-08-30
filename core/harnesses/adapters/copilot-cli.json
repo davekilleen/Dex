@@ -3,10 +3,10 @@
   "harness_id": "copilot-cli",
   "status": "native-local",
   "kind": "open-plugin-spec",
-  "native_paths": ["plugin.json", "skills/", "mcp.json"],
+  "native_paths": ["plugin.json", "skills/", "mcp.json", "com.github.copilot/hooks/hooks.json"],
   "example": {
     "manifest": "packages/dex-agent-plugin/plugin.json",
-    "install_guide": "From the Dex checkout, run `copilot plugin install ./packages/dex-agent-plugin`. Confirm Dex appears in `copilot plugin list`. Start the CLI from the Dex folder so the vault is the current working directory. Hooks are not bundled; safety stays an explicit MCP check. Ubuntu Cloud is not a person opening this terminal. A detection test or green CI is not a live install.",
+    "install_guide": "From the Dex checkout, run `copilot plugin install ./packages/dex-agent-plugin`. Confirm Dex appears in `copilot plugin list`. Start the CLI from the Dex folder so the vault is the current working directory. The family PreToolUse refusal file is in the shipped package. Ubuntu Cloud is not a person opening this terminal. A detection test or green CI is not a live install.",
     "portable_surface": ["skills/", "mcp.json"],
     "local_package": "./packages/dex-agent-plugin",
     "install_command": "copilot plugin install ./packages/dex-agent-plugin",

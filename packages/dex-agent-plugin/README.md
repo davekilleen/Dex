@@ -12,9 +12,9 @@ Plugins v1 root contract and also includes native manifests for:
 - GitHub Copilot CLI through its Open Plugin Spec support. A person installs
   the reviewed local package with `copilot plugin install
   ./packages/dex-agent-plugin`, confirms it in `copilot plugin list`, and
-  starts the CLI from the Dex folder. Skills and MCP are native; hooks are
-  not claimed. That terminal journey has not been recorded yet. Ubuntu Cloud
-  is not a person opening this CLI.
+  starts the CLI from the Dex folder. Skills, MCP, and the family PreToolUse
+  refusal file are in the package. That terminal journey has not been recorded
+  yet. Ubuntu Cloud is not a person opening this CLI.
 - Cursor through its native manifest and local `sessionStart`/`preToolUse`
   hooks. Cursor cloud agents do not run `sessionStart`.
 - Gemini CLI through a separately built extension with Gemini's fixed hook
@@ -24,8 +24,8 @@ Plugins v1 root contract and also includes native manifests for:
 - Other Agent Plugins v1 clients through `plugin.json` and `mcp.json`.
 - Visual Studio Code after a person turns on `chat.plugins.enabled` (off by
   default) and points `chat.pluginLocations` at this folder. If Dex guessed
-  Cursor, Kiro, or nothing, confirm VS Code in `/setup`. Hooks are not claimed.
-  Ubuntu Cloud is not a person opening VS Code.
+  Cursor, Kiro, or nothing, confirm VS Code in `/setup`. The family PreToolUse
+  refusal file is included. Ubuntu Cloud is not a person opening VS Code.
 - Kiro after a person imports this folder as a custom power and names Dex so
   the power wakes. If Dex guessed VS Code, Cursor, or nothing, confirm Kiro in
   `/setup`. Hooks are not claimed. Ubuntu Cloud is not a person opening Kiro.
@@ -34,7 +34,8 @@ The MCP bridge exposes `boot_today`, `get_person_context`,
 `check_safety_gate`, and `dex_harness_profiles`. It is dependency-free,
 relocatable, read-only, and uses the same vendored source modules as dex-core.
 The safety MCP tool is advisory unless the host calls it before acting; the
-native Codex/Claude `PreToolUse` hook can actively refuse known-dangerous work.
+native Codex/Claude `PreToolUse` hook and the family PreToolUse refusal file
+can actively refuse known-dangerous work where those hosts load them.
 
 ## Release platforms
 

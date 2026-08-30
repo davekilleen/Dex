@@ -75,9 +75,9 @@ and the final publication step succeeds.
 | Claude Code | Run `claude plugin validate packages/dex-agent-plugin`, then test with `claude --plugin-dir ./packages/dex-agent-plugin` before creating a private marketplace entry. | The shared package maps two lifecycle guarantees; Claude's complete mature Dex hook suite remains the reference. |
 | Claude Desktop | Select `build/portable-artifacts/dex-claude-desktop.mcpb` in **Settings > Extensions > Advanced settings > Install Extension**, then select the Dex vault during configuration. | The officially validated desktop bundle exposes local read-only MCP tools. Chat does not run hooks, and Python 3.11+ remains required. |
 | Claude Cowork | Upload/install the reviewed Claude plugin package and grant the full Dex folder. | Cowork external connectors require a public internet endpoint, so the local stdio MCP server is not claimed. |
-| GitHub Copilot CLI | From the Dex checkout, run `copilot plugin install ./packages/dex-agent-plugin`. Confirm Dex in `copilot plugin list`. Start the CLI from the Dex folder so the vault is the working directory. | Skills and MCP use the open package. Hooks are not bundled. A person must do this in a real terminal; Ubuntu Cloud is not that journey. Detection tests and CI are not a live install. |
+| GitHub Copilot CLI | From the Dex checkout, run `copilot plugin install ./packages/dex-agent-plugin`. Confirm Dex in `copilot plugin list`. Start the CLI from the Dex folder so the vault is the working directory. | Skills, MCP, and the family PreToolUse refusal file use the open package. A person must do this in a real terminal; Ubuntu Cloud is not that journey. Detection tests and CI are not a live install. |
 | Cursor | Copy or link `packages/dex-agent-plugin` to `~/.cursor/plugins/local/dex`, reload Cursor, and approve the native hooks. | Local sessions get context and safety hooks. Cursor cloud agents do not run `sessionStart`, so that lifecycle guarantee is local-only. |
-| Visual Studio Code | Open the Dex folder. Turn on `chat.plugins.enabled` (it stays off by default), add `chat.pluginLocations` so `./packages/dex-agent-plugin` is true, and reload. If Dex guessed Cursor, Kiro, or nothing, confirm VS Code in `/setup`. | Skills and MCP use the shipped package. Hooks are not part of this path. A person must do this in real VS Code; Ubuntu Cloud is not that journey. Detection tests and CI are not a live install. |
+| Visual Studio Code | Open the Dex folder. Turn on `chat.plugins.enabled` (it stays off by default), add `chat.pluginLocations` so `./packages/dex-agent-plugin` is true, and reload. If Dex guessed Cursor, Kiro, or nothing, confirm VS Code in `/setup`. | Skills, MCP, and the family PreToolUse refusal file use the shipped package. A person must do this in real VS Code; Ubuntu Cloud is not that journey. Detection tests and CI are not a live install. |
 | Kiro | Open the Dex folder. In the Powers panel choose Add Custom Power, then Import power from a folder, and select `packages/dex-agent-plugin`. Name Dex in chat so Kiro wakes the power. If Dex guessed VS Code, Cursor, or nothing, confirm Kiro in `/setup`. | Skills and MCP use the shipped package. Kiro wakes Dex when named because the package already lists `dex` in its keywords. Hooks are not part of this path. Ubuntu Cloud is not that journey. Detection tests and CI are not a live install. |
 | Gemini CLI | Run `gemini extensions install build/portable-artifacts/dex-gemini-extension`, approve its hooks, and restart Gemini CLI in the full Dex folder. | Gemini's fixed hook file uses a different schema, so Dex builds a separate complete artifact from the same canonical sources. |
 | Agent Plugins v1 client | Install the folder using root `plugin.json` and `mcp.json`. | The open specification standardizes skills and MCP, not every host lifecycle. |
@@ -92,9 +92,10 @@ After installation, verify these outcomes in a fresh task:
 2. `boot_today` reads the selected vault without writing anything.
 3. `get_person_context` returns a known person or a clean `found: false` result.
 4. `check_safety_gate` refuses a synthetic `rm -rf /` proposal.
-5. In a verified Codex, Claude, Cursor, or Gemini hook package, session start
-   injects current Dex context and the host's pre-tool event blocks that
-   synthetic destructive proposal before execution.
+5. In a verified Codex, Claude, Cursor, Gemini, or family-hook package, session
+   start injects current Dex context where that host supports it, and the
+   host's pre-tool event blocks that synthetic destructive proposal before
+   execution.
 6. Doctor reports the confirmed harness receipt and does not call a guided or
    unavailable feature automatic.
 
@@ -125,5 +126,7 @@ First-party references used for this build:
   and [Gemini hooks](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md)
 - [Agent Plugins v1 specification](https://agent-plugins.org/specification)
 - [VS Code agent plugins](https://code.visualstudio.com/docs/agent-customization/agent-plugins)
-- [Kiro powers](https://kiro.dev/docs/powers/) and [installing a local power](https://kiro.dev/docs/powers/installation/)
+  and [VS Code agent hooks](https://code.visualstudio.com/docs/agent-customization/hooks)
+- [Kiro powers](https://kiro.dev/docs/powers/), [installing a local power](https://kiro.dev/docs/powers/installation/),
+  and [Kiro hooks](https://kiro.dev/docs/hooks/)
 - [Pi documentation](https://pi.dev/docs/latest) and [BB](https://getbb.app/)

@@ -29,9 +29,9 @@
     },
     {
       "id": "hooks",
-      "mode": "unavailable",
-      "notes": "Copilot's native hook schema differs from the Claude and Codex files in this package, so no Copilot hook is claimed.",
-      "status": "not-verified",
+      "mode": "guided",
+      "notes": "The shipped package includes the family PreToolUse refusal hook file. A person still has to install the local plugin. Fixture-proved; not a recorded live walk.",
+      "status": "native",
       "tier": 3
     },
     {
@@ -76,13 +76,15 @@
   },
   "display_name": "GitHub Copilot CLI",
   "evidence": [
-    "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference"
+    "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference",
+    "https://docs.github.com/en/copilot/reference/hooks-reference",
+    "https://code.visualstudio.com/docs/agent-customization/agent-plugins"
   ],
   "id": "copilot-cli",
   "limitations": [
     "A person still has to install the reviewed local plugin with `copilot plugin install ./packages/dex-agent-plugin` and start the CLI from the Dex folder. Detection tests and CI do not prove that journey.",
     "Ubuntu Cloud is not a person opening this terminal. No recorded live session exists.",
-    "Hooks are not included in this release; shared safety remains an explicit MCP check rather than automatic enforcement."
+    "The family PreToolUse refusal hook is fixture-proved in this package. That is not a live walk."
   ],
   "modes": [
     "tier-0-vault",
@@ -90,7 +92,7 @@
     "tier-2-skills"
   ],
   "name": "GitHub Copilot CLI",
-  "summary": "Open Plugin Spec package for Copilot CLI with skills and MCP. A person still has to install the reviewed local plugin and start the CLI from the Dex folder. Hooks are not claimed.",
+  "summary": "Open Plugin Spec package for Copilot CLI with skills, MCP, and the family PreToolUse refusal file. A person still has to install the reviewed local plugin and start the CLI from the Dex folder.",
   "support_level": "supported",
   "vendor": "GitHub"
 }

@@ -512,6 +512,61 @@ def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path
     assert json.loads(blocked.stdout)["decision"] == "block"
 
 
+def test_family_pretooluse_file_refuses_a_destructive_command(tmp_path: Path) -> None:
+    family_hooks = json.loads(
+        (PLUGIN_ROOT / "com.github.copilot" / "hooks" / "hooks.json").read_text()
+    )
+    command = family_hooks["hooks"]["PreToolUse"][0]["command"]
+
+    assert family_hooks["version"] == 1
+    assert family_hooks["hooks"]["PreToolUse"][0]["cwd"] == "${PLUGIN_ROOT}"
+    assert "--protocol copilot" in command
+    assert "${PLUGIN_ROOT}/bin/dex-python.mjs" in command
+
+    vault = tmp_path / "vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "pillars.yaml").write_text(
+        "pillars:\n  - id: customer\n    name: Customer\n    description: Listen\n",
+        encoding="utf-8",
+    )
+    snake = subprocess.run(
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook", "--protocol", "copilot"],
+        input=json.dumps(
+            {
+                "hook_event_name": "PreToolUse",
+                "cwd": str(vault),
+                "tool_name": "Bash",
+                "tool_input": {"command": "rm -rf /"},
+            }
+        ),
+        text=True,
+        capture_output=True,
+    )
+    snake_denial = json.loads(snake.stdout)
+    camel = subprocess.run(
+        ["node", str(PLUGIN_ROOT / "bin" / "dex-python.mjs"), "hook", "--protocol", "copilot"],
+        input=json.dumps(
+            {
+                "hookEventName": "preToolUse",
+                "cwd": str(vault),
+                "toolName": "runTerminalCommand",
+                "toolArgs": {"command": "rm -rf /"},
+            }
+        ),
+        text=True,
+        capture_output=True,
+    )
+    camel_denial = json.loads(camel.stdout)
+
+    assert snake.returncode == 2
+    assert snake_denial["permissionDecision"] == "deny"
+    assert snake_denial["permissionDecisionReason"]
+    assert snake_denial["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert camel.returncode == 2
+    assert camel_denial["permissionDecision"] == "deny"
+    assert camel_denial["permissionDecisionReason"]
+
+
 def test_plugin_generator_check_is_clean() -> None:
     generator = _load_generator()
     assert generator.check_plugin(REPO_ROOT) == 0
