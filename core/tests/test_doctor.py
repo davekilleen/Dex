@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from core.harnesses.chatgpt_work_personal_copy import STALE_WORK_COPY_SENTENCE
 from core.harnesses.registry import get_profile
 from core.health import promises as health_promises
 from core.lifecycle import service as lifecycle_service
@@ -946,6 +947,8 @@ def test_harness_capability_probe_reports_chatgpt_work_web_limit(context, monkey
     assert result.structured_detail["limitations"] == {
         "chatgpt-work": list(get_profile("chatgpt-work").limitations),
     }
+    assert STALE_WORK_COPY_SENTENCE not in result.detail
+    assert "granted=true" not in result.detail.lower()
 
 
 def test_harness_capability_probe_reports_copilot_cli_hook_limit(context, monkeypatch):

@@ -156,3 +156,6 @@ def test_doctor_instructions_preserve_delivery_mode_truth() -> None:
     for mode in ("automatic", "on_demand", "guided", "unavailable"):
         assert mode in section
     assert "Never describe a guided MCP safety check as an automatic block" in section
+    assert "personal Work copy is behind this folder" in section
+    assert "sentence is absent, stay silent" in section
+    assert "Never invent a folder grant" in section

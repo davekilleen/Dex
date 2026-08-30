@@ -17,6 +17,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ADAPTER_PATH = Path(__file__).with_name("adapters") / "chatgpt-work.json"
 DEFAULT_PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
 PERSONAL_COPY_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
+WORK_PLUGIN_MANIFEST = Path(".codex-plugin") / "plugin.json"
+REPO_PACKAGE_RELATIVE = Path("packages") / "dex-agent-plugin"
+STALE_WORK_COPY_SENTENCE = (
+    "Your personal Work copy of Dex is behind this folder; "
+    "copy packages/dex-agent-plugin to ~/.codex/plugins/dex again."
+)
 
 
 @dataclass(frozen=True)
@@ -109,3 +115,49 @@ def write_personal_copy(
         source_path=source_path,
         leftover=leftover,
     )
+
+
+def personal_copy_root(home: Path) -> Path:
+    """Return the named personal Work copy path for this home folder."""
+    adapter = load_chatgpt_work_adapter()
+    return _home_relative(
+        Path(home),
+        adapter["example"]["personal_plugin_copy"],
+        label="personal_plugin_copy",
+    )
+
+
+def repo_package_root(repo_root: Path) -> Path:
+    """Return the reviewed plugin package inside this Dex folder."""
+    return Path(repo_root) / REPO_PACKAGE_RELATIVE
+
+
+def read_work_plugin_version(plugin_root: Path) -> str | None:
+    """Return the native Work plugin version, or None when it cannot be read."""
+    manifest = Path(plugin_root) / WORK_PLUGIN_MANIFEST
+    try:
+        if not manifest.is_file() or manifest.is_symlink():
+            return None
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    version = payload.get("version")
+    if not isinstance(version, str):
+        return None
+    version = version.strip()
+    return version or None
+
+
+def stale_work_copy_sentence(*, home: Path, repo_root: Path) -> str | None:
+    """Return the one Doctor sentence when the personal Work copy is behind.
+
+    Missing copy, missing package, or matching versions stay silent. This
+    comparison never writes a grant, a grant receipt, or a grant flag.
+    """
+    personal = read_work_plugin_version(personal_copy_root(home))
+    packaged = read_work_plugin_version(repo_package_root(repo_root))
+    if personal is None or packaged is None or personal == packaged:
+        return None
+    return STALE_WORK_COPY_SENTENCE

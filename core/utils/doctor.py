@@ -1385,6 +1385,15 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
     )
     if limitation_notes:
         detail = f"{detail}. {' '.join(limitation_notes)}"
+    selected = summary["selected"]
+    if isinstance(selected, list) and "chatgpt-work" in selected:
+        from core.harnesses.chatgpt_work_personal_copy import stale_work_copy_sentence
+
+        extra = stale_work_copy_sentence(home=context.home, repo_root=context.repo_root)
+        if extra:
+            if detail and detail[-1] not in ".?!":
+                detail = f"{detail}."
+            detail = f"{detail} {extra}".strip()
     return ProbeResult("OK", detail, structured_detail=summary)
 
 
