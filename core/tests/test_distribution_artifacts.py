@@ -81,10 +81,12 @@ RELEASE_BUILD_INPUTS = (
     "core/lifecycle/service.py",
     "core/lifecycle/schemas/release-catalog-v1.schema.json",
     "core/lifecycle/schemas/release-catalog-v2.schema.json",
+    "core/harnesses/templates/product-AGENTS.md",
     "core/portable_contract.py",
     "core/provision.cjs",
     "core/transaction/engine.py",
     "core/transaction/journal.py",
+    "core/update/apply_update.py",
     "core/update/journey_protocol.py",
     "core/utils/tracked_ignored.py",
     "core/utils/manifest.py",
@@ -141,6 +143,7 @@ def test_release_builders_gate_frozen_lifecycle_contract_artifacts() -> None:
     from core.utils.manifest import REQUIRED_LIFECYCLE_RELEASE_PATHS
 
     assert REQUIRED_LIFECYCLE_RELEASE_PATHS == (
+        "AGENTS.md",
         "core/update/journey-protocol-v1.json",
         "core/lifecycle/bridge.py",
         "core/lifecycle/catalog/bridge-release.json",
@@ -506,7 +509,23 @@ def test_release_branch_strips_dev_files_and_untracks_v1_local_only_files(tmp_pa
     assert "core/lifecycle/contracts/api.schema.json" in manifest
     assert "core/update/journey-protocol-v1.json" in manifest
     assert "core/update/journey_protocol.py" in manifest
+    assert "AGENTS.md" in manifest
     assert "System/.dex/lifecycle/activation.json" not in manifest
+    release_agents = subprocess.run(
+        ["git", "show", "release:AGENTS.md"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+    ).stdout
+    source_agents = subprocess.run(
+        ["git", "show", "main:AGENTS.md"],
+        cwd=clone,
+        check=True,
+        capture_output=True,
+    ).stdout
+    product_agents = (REPO_ROOT / "core/harnesses/templates/product-AGENTS.md").read_bytes()
+    assert release_agents == product_agents
+    assert source_agents != product_agents
     catalog = _git_json(clone, "release:System/.release-catalog.json")
     package = _git_json(clone, "release:package.json")
     bridge_release = _git_json(
@@ -823,6 +842,11 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
         assert script_name not in package.get("scripts", {})
     assert manifest == sorted(set(manifest))
     assert set(manifest) == shipped
+    product_agents = (REPO_ROOT / "core/harnesses/templates/product-AGENTS.md").read_bytes()
+    assert "AGENTS.md" in shipped
+    assert "AGENTS.md" in manifest
+    with tarfile.open(archive_path, "r:gz") as archive:
+        assert archive.extractfile("./AGENTS.md").read() == product_agents
 
 
 def test_raw_vault_bundle_publishes_standalone_verified_bridge(tmp_path: Path) -> None:
@@ -1780,6 +1804,10 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
         }
         assert "core/lifecycle/catalog/bridge-release.json" in manifest
         assert "core/lifecycle/contracts/api.schema.json" in manifest
+        assert "AGENTS.md" in manifest
+        assert "AGENTS.md" in {
+            member.removeprefix("./") for member in members
+        }
         assert "System/.dex/lifecycle/activation.json" not in manifest
         bridge_member = archive.extractfile(
             "./core/lifecycle/catalog/bridge-release.json"
@@ -1798,6 +1826,7 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
     )
     assert not any(path.startswith("core/tests/") for path in archive_paths)
     assert not any(path.startswith("scripts/") for path in archive_paths)
+    assert (Path("AGENTS.md") in {Path(path) for path in manifest})
     tau_check = _run_tau_check(clone, "--archive", str(archive_path))
     assert tau_check.returncode == 0, tau_check.stdout + tau_check.stderr
 

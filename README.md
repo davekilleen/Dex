@@ -2,7 +2,7 @@
 
 [![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE) [![Built for non-engineers](https://img.shields.io/badge/coding%20required-none-ff69b4)](https://heydex.ai/help/)
 
-**A personal operating system powered by Claude.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. No coding required.
+**A personal operating system for your work.** Strategic work management, meeting intelligence, relationship tracking, daily planning — all configured for your specific role. Claude Code remains the full-experience reference; the unreleased portability build adds native, capability-aware packages for more agent harnesses without pretending every host is identical. No coding required.
 
 <p align="center">
   <img src="docs/assets/dex-hero.gif" alt='Dex in action: "plan my day" scans your calendar, Slack, Salesforce, Granola and goals, then protects your morning — "what do I owe people?" finds every open promise and drafts the replies.' width="960">
@@ -27,15 +27,38 @@
 
 **Pick one of these to get started:**
 
-| Option | Cost | What It Is |
-|--------|------|------------|
-| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant (Claude). No separate Claude account needed. |
-| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. Better experience — guaranteed self-learning hooks, automatic context loading. |
-| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). |
+| Option | Cost | What It Is | Dex tier |
+|--------|------|------------|----------|
+| **[Cursor](https://cursor.com)** | Free tier works, or $20/month for Pro | An app with a built-in AI assistant. No separate Claude account needed. | **Tier 2 Skills** — vault, tools, and named journeys |
+| **[Claude Code Desktop](https://claude.ai/download)** | Claude Pro $20/month | Anthropic's own app. The full Dex experience — hooks, automatic context, self-learning. | **Tier 3 Full** — the reference implementation |
+| **Claude Code Terminal** | Claude Pro $20/month | Same as Desktop but runs in Terminal (Mac) or PowerShell (Windows). | **Tier 3 Full** |
 
 > **You do NOT go to claude.ai and type commands.** You need one of the apps above. Cursor is the easiest starting point. Claude Code (Desktop or Terminal) gives you a better experience with self-learning hooks — setup instructions for those are [further down this page](#want-guaranteed-hooks-use-claude-code-cli-or-desktop-app).
 
-**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add or switch to Claude Code later.
+**Not sure which?** Start with Cursor — it's free and gets you running in minutes. You can add Claude Code later if you want the automatic behaviors.
+
+### What you get with each assistant
+
+Dex is the vault and the tools. The app you talk to is a **harness**. What you get depends on which harness you use — that is a documented contract, not a silent subset.
+
+| Tier | Name | What you get | Who it's for |
+|------|------|--------------|--------------|
+| **Tier 0 Vault** | Your notes | Markdown folders (inbox, projects, people, tasks). Dex is just files. | Any editor. No AI required. |
+| **Tier 1 Core** | Tools + background jobs | Tasks, people index, meeting sync, search, and portable context/gate payloads. | Any assistant that can run Dex's MCP tools |
+| **Tier 2 Skills** | Named journeys | `/daily-plan`, `/process-meetings`, and the rest of the skill surface, generated into `.agents/`. | Any assistant that reads Agent Skills |
+| **Tier 3 Full** | Automatic in-chat behavior | Person context when you open a file, safety gates, session learning, and the mid-session health pulse. | **Claude Code today** — the reference implementation |
+
+Cursor, Codex, Gemini CLI, and other Agent Skills harnesses are Tier 2. The vault is always Tier 0. Cursor, ChatGPT, and Codex should call `boot_today` at session start and `get_person_context` when a person is mentioned. `check_safety_gate` is an advisory MCP check; only a verified pre-tool interceptor can enforce a refusal. The longer split is in [`docs/architecture/HARNESS-CAPABILITY.md`](docs/architecture/HARNESS-CAPABILITY.md) and [`docs/architecture/HOOK-INVENTORY.md`](docs/architecture/HOOK-INVENTORY.md).
+
+> **Unreleased portability preview:** this branch contains one portable plugin package for
+> Codex CLI/desktop, ChatGPT desktop, Claude Code/Cowork, Copilot CLI, and compatible
+> Agent Plugin clients; a native BB plugin is built separately; and Pi keeps its native
+> extension. The package shares Dex's read-only session context, person context, and
+> safety decision code. It has not been merged, published, submitted to a marketplace,
+> or released. Codex IDE extensions do not currently load plugins, and ChatGPT web/Cowork
+> connectors need a separately secured public endpoint before they can reach a local vault.
+> The developer-preview journeys and exact boundaries are in
+> [`docs/HARNESS-PORTABILITY.md`](docs/HARNESS-PORTABILITY.md).
 
 ---
 

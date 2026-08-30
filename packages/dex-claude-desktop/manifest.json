@@ -1,0 +1,74 @@
+{
+  "manifest_version": "0.4",
+  "name": "dex",
+  "display_name": "Dex",
+  "version": "1.0.0",
+  "description": "Read-only Dex context and safety tools for Claude Desktop.",
+  "long_description": "Bring Dex's daily context, person context, harness catalogue, and safety checks into Claude Desktop without giving the extension write access.",
+  "author": {
+    "name": "Dex",
+    "url": "https://heydex.ai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davekilleen/Dex"
+  },
+  "homepage": "https://heydex.ai",
+  "license": "MIT",
+  "keywords": [
+    "dex",
+    "productivity",
+    "mcp",
+    "context"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "bin/dex-python.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/bin/dex-python.mjs",
+        "mcp"
+      ],
+      "env": {
+        "DEX_VAULT_PATH": "${user_config.vault_path}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "dex_harness_profiles",
+      "description": "List Dex harness support."
+    },
+    {
+      "name": "boot_today",
+      "description": "Read today's Dex context."
+    },
+    {
+      "name": "get_person_context",
+      "description": "Read context about a person."
+    },
+    {
+      "name": "check_safety_gate",
+      "description": "Check a proposed command or path."
+    }
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32"
+    ],
+    "runtimes": {
+      "node": ">=18",
+      "python": ">=3.11"
+    }
+  },
+  "user_config": {
+    "vault_path": {
+      "type": "directory",
+      "title": "Dex folder",
+      "description": "Choose the root folder containing your Dex system.",
+      "required": true
+    }
+  }
+}

@@ -162,8 +162,8 @@ else
     exit 1
 fi
 
-# Skip .env creation - it's created during /setup if needed
-# (Most users don't need API keys - everything works through Cursor)
+# Skip .env creation - it is created during /setup if needed.
+# Most Dex workflows use the local vault and MCP services without API keys.
 
 # Bootstrap-only configuration is owned by the sanctioned provision contract.
 # This is the one legitimate pre-lifecycle write window: a fresh bundle does
@@ -314,13 +314,23 @@ if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
 fi
 DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
 
-# Tell the user which chat app to use for the final setup step.
-if command -v claude &> /dev/null; then
-    DEX_CHAT_APP="Claude Code"
-elif command -v cursor &> /dev/null || { [[ "$OSTYPE" == "darwin"* ]] && [ -d "/Applications/Cursor.app" ]; }; then
-    DEX_CHAT_APP="Cursor"
-else
-    DEX_CHAT_APP="your AI app"
+# Detect likely agent harnesses through the same capability registry onboarding and
+# Doctor use. This is a suggestion only: /setup shows the capability preview and lets
+# the user confirm one or several harnesses before anything is recorded.
+DEX_HARNESSES_JSON="$($PYTHON_CMD -m core.harnesses.registry detect --format json 2>/dev/null || echo '[]')"
+DEX_CHAT_APPS="$(node -e '
+  try {
+    const profiles = JSON.parse(process.argv[1]);
+    const names = profiles.map(profile => (
+      typeof profile === "string" ? profile : (profile.display_name || profile.name || profile.id)
+    )).filter(Boolean);
+    process.stdout.write(names.join(", "));
+  } catch (_) {
+    process.stdout.write("");
+  }
+' "$DEX_HARNESSES_JSON")"
+if [ -z "$DEX_CHAT_APPS" ]; then
+    DEX_CHAT_APPS="a supported AI app"
 fi
 
 # Success
@@ -338,10 +348,13 @@ if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
     echo "   See troubleshooting above to fix."
 fi
 echo ""
+echo "Dex detected: $DEX_CHAT_APPS"
+echo "Setup will let you confirm one or several harnesses and show exactly what each supports."
+echo ""
 echo "Next steps:"
-echo "  1. Open $DEX_CHAT_APP in this folder"
+echo "  1. Open one of these apps in this folder: $DEX_CHAT_APPS"
 echo "     (the folder you just installed into — not somewhere else)"
-echo "  2. In $DEX_CHAT_APP chat, type: /setup"
+echo "  2. In that app's chat, type: /setup"
 echo "  3. Answer the setup questions (~5 minutes)"
 echo "  4. Start using Dex!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

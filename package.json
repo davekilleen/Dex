@@ -18,7 +18,15 @@
     "@google/generative-ai": "^0.21.0",
     "@nangohq/providers": "0.70.5",
     "dotenv": "^16.4.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "4.3.1",
     "openai": "^4.77.3"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2"
+  },
+  "overrides": {
+    "form-data": "4.0.6",
+    "js-yaml": "$js-yaml",
+    "tmp": "0.2.7"
   }
 }

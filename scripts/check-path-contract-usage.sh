@@ -31,11 +31,14 @@ PATTERN="00-Inbox|01-Quarter_Goals|02-Week_Priorities|03-Tasks|04-Projects|05-Ar
 # Bash hooks (*.sh) cannot import core.paths (Python) or paths.cjs (CJS), so the
 # path-contract is enforced only on Python/CJS/TS/JS code. Shell scripts are
 # allowlisted alongside the contract-source files and migrations.
+# core/runtime/paths.cjs is the neutral CJS contract; the Claude path is a thin
+# wrapper. The packaged core/paths.py is byte-gated against its canonical source
+# by generate-portable-plugin.py and the portable-plugin tests.
 # .claude/skills/*/scripts/ are STANDALONE-BY-DESIGN: they ship inside a skill
 # and run in end users' vaults where dex-core (and core.paths) is not
 # installed, so they cannot import the contract. Their literals are checked
 # instead by the skills' own tests against the contract JSON.
-ALLOWLIST='^(core/paths\.py|core/portable_contract\.py|core/lifecycle/inventory\.py|core/tests/test_portable_contract\.py|\.claude/hooks/paths\.cjs|\.claude/hooks/(company-context-injector|person-context-injector)\.cjs|scripts/check-path-consistency\.sh|scripts/verify-distribution\.sh|scripts/check-path-contract-usage\.sh|core/migrations/|.*\.sh$|\.claude/skills/[a-z-]+/scripts/)'
+ALLOWLIST='^(core/paths\.py|core/runtime/paths\.cjs|packages/dex-agent-plugin/runtime/core/paths\.py|core/portable_contract\.py|core/lifecycle/inventory\.py|core/tests/test_portable_contract\.py|\.claude/hooks/paths\.cjs|\.claude/hooks/(company-context-injector|person-context-injector)\.cjs|scripts/check-path-consistency\.sh|scripts/verify-distribution\.sh|scripts/check-path-contract-usage\.sh|core/migrations/|.*\.sh$|\.claude/skills/[a-z-]+/scripts/)'
 
 VIOLATIONS=0
 for file in $CODE_FILES; do

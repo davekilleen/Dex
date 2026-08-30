@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dex-agent-plugin",
+  "version": "1.0.0",
+  "description": "Dex's portable Agent Skills and MCP surface for compatible harnesses.",
+  "author": {
+    "name": "Dex"
+  },
+  "homepage": "https://heydex.ai",
+  "repository": "https://github.com/davekilleen/Dex",
+  "license": "MIT",
+  "keywords": [
+    "dex",
+    "productivity",
+    "agent-skills",
+    "mcp"
+  ],
+  "extensions": {
+    "ai.heydex.dex": {
+      "registry": "./metadata/harnesses/registry.json",
+      "portability": "./metadata/harnesses/portability.json",
+      "adapters": "./ai.heydex.dex/adapters"
+    }
+  }
+}

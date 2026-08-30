@@ -1,0 +1,10 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "gemini-cli",
+  "kind": "gemini-extension",
+  "native_paths": ["gemini-extension.json", "skills/", "hooks/hooks.json", "bin/", "runtime/"],
+  "example": {
+    "manifest": "packages/dex-gemini-extension/gemini-extension.json",
+    "install_guide": "Build the reviewed Gemini extension artifact, run gemini extensions install <local-path>, approve its hooks, then restart Gemini CLI."
+  }
+}
