@@ -86,9 +86,32 @@ error from `tool.execute.before`, which opencode reports to the model as the too
 failure. It has no dependencies; `node scripts/test-opencode-safety-guard.mjs`
 exercises every rule.
 
-The remaining Claude Code hooks (person/company context injection, session-start
-sweeps, `ensure-mcp-user-scope`, which only concerns `claude mcp add`) are not
-ported.
+### The other hooks
+
+Everything else wired in `.claude/settings.json` runs through
+`.opencode/plugin/dex-claude-hooks-bridge.js`, which keeps that file as the single
+source of truth and translates opencode events into the Claude Code hook protocol
+(same stdin payload shape, `CLAUDE_PROJECT_DIR` set, stdout read the same way):
+
+| Claude Code event | opencode | Delivery |
+|---|---|---|
+| `SessionStart` | `session.created`, injected on the session's first message | hook stdout as a synthetic context part |
+| `UserPromptSubmit` | `chat.message` | `additionalContext` / stdout as a synthetic context part |
+| `PreToolUse` (`Read`, `Bash`, `mcp__.*`) | `tool.execute.before` / `after` | exit 2 or `decision: block` throws; context is appended to the tool output |
+| `Stop` | `session.idle` | runs the command (the macOS ping) |
+| `Notification` (`permission_prompt`) | `permission.ask` | runs the command |
+| `SessionEnd` | process exit | runs synchronously, best effort — opencode has no session-end event, so a killed process skips it |
+
+`dex-safety-guard.sh` is excluded from the bridge because the native plugin above
+already covers it. `DEX_OPENCODE_BRIDGE_SKIP=SessionEnd,Stop` (any comma-separated
+Claude event names) disables groups. `node scripts/test-opencode-hooks-bridge.mjs`
+covers the translation and runs the real hooks against the vault.
+
+Not ported: the three skill-scoped hooks declared in `SKILL.md` frontmatter
+(`/process-meetings`, `/daily-plan`, `/career-coach`). They exist only while that
+skill is active, and opencode has no notion of an active skill; the porter drops
+the `hooks:` key. Everything the bridge runs needs the vault's Node dependencies
+(`npm install` in the vault root) — the same requirement as Claude Code.
 
 Each server becomes `{"type": "local", "command": [<python>, <server.py>],
 "enabled": true, "environment": {...}}` with absolute paths, so it works regardless

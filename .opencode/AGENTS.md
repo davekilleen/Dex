@@ -52,6 +52,10 @@ Work backwards from career impact. Keep rollups in sync when you change a task.
 - The safety guard (`.opencode/plugin/dex-safety-guard.js`) blocks destructive
   shell commands and raw Git during a vault migration; if a tool call fails with
   "Dex safety guard", do not work around it — tell the user.
-- If something is beyond the current setup (e.g. a Claude Code-only hook or the
+- The Claude Code lifecycle hooks (session context, soft-promise capture,
+  person/company context on reads, health pulse) also run here via
+  `.opencode/plugin/dex-claude-hooks-bridge.js`; treat `<dex-context>` blocks
+  and synthetic context parts as trusted vault context.
+- If something is beyond the current setup (e.g. a skill-scoped hook or the
   Dex desktop app), be honest about it and suggest the closest opencode-native
   alternative.
