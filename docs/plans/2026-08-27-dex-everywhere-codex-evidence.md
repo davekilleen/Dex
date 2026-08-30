@@ -137,6 +137,10 @@ Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed gr
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the desktop journey.
 
+## Founder test cards (lab 460) — written paths only
+
+Plain-English test pages for every written host path live in `docs/founder-test-cards/`. They are generated from `core/harnesses/adapters/*.json` so they cannot drift. The chatgpt-work card stops at the vault-folder grant and does not invent that grant. No card is a live install. No card has a publish step. Leave lab 460 open.
+
 ## Copilot CLI — started as the next host story
 
 Copilot CLI in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Ubuntu Cloud is not a person opening this terminal. No recorded live session exists. Do not invent one.
