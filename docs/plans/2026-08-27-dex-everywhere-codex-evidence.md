@@ -137,6 +137,10 @@ Earlier CI and Mac fleet on `498740f2205046243f561bac1ee5a19d86f5ef04` stayed gr
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the desktop journey.
 
+## Founder test cards and How to leave (lab 484) — editors coverage
+
+Plain-English test pages for every written host path live in `docs/founder-test-cards/`. They are generated from `core/harnesses/adapters/*.json` so they cannot drift. The family (`copilot-cli`) card records the fixture-proved PreToolUse refusal. The VS Code card stays advisory. Nobody has walked these paths. No card is a live install. No card has a publish, sign, store, or invite step. How to leave lines live in `docs/HARNESS-PORTABILITY.md`. Leave lab 484 open. Do not invent the ChatGPT Work folder grant.
+
 ## Copilot CLI — started as the next host story
 
 Copilot CLI in the terminal only. This does not claim Microsoft 365 Copilot, Word, Teams, Outlook, or Windows Copilot. Ubuntu Cloud is not a person opening this terminal. No recorded live session exists. Do not invent one.
