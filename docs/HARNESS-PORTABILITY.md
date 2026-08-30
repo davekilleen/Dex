@@ -83,6 +83,12 @@ and the final publication step succeeds.
 | Pi | Use the native `dex-pi/extensions/dex` package from the pinned [`dex-pi` commit `5bf33ad7b23a06a890b25445cb1b4f4077b2ac19`](https://github.com/davekilleen/dex-pi/tree/5bf33ad7b23a06a890b25445cb1b4f4077b2ac19) and open the full Dex folder. | Pi has no built-in MCP client; its extension supplies native tools and lifecycle events instead. Core verifies the pinned manifest and source-level lifecycle markers when the checkout is available; live installation remains a release-candidate check. |
 | BB | Install the separately built `bb-plugin-dex` package from a reviewed local path and select the vault in settings. | Version one is macOS-only and read-only: status, capabilities, brief, CLI, and panel; no jobs, writes, provider bridge, or marketplace release. BB's Windows route uses WSL2 and stays in the deferred Linux lane. |
 
+This lot names one uninstall line for the Obsidian notes panel. Residue is named. Dex does not ship an uninstaller. Leave lines for other written hosts are not merged from draft PR 661.
+
+| Harness | How to leave |
+| --- | --- |
+| Obsidian | Disable Dex in Obsidian's community plugin list, then delete `.obsidian/plugins/dex-readonly` from the vault. Leftover: `.obsidian/community-plugins.json` may still list `dex-readonly` until you remove that name; the workspace layout may still show an empty Dex panel slot. |
+
 ## Acceptance journey
 
 After installation, verify these outcomes in a fresh task:

@@ -119,6 +119,10 @@ def test_obsidian_install_contract_names_local_panel_and_no_store() -> None:
     assert example["community_store"] == "not-submitted"
     assert example["network"] == "none"
     assert example["writes"] == "none"
+    assert "disable dex" in example["uninstall_guide"].lower()
+    assert ".obsidian/plugins/dex-readonly" in example["uninstall_guide"]
+    assert "leftover" in example["uninstall_guide"].lower()
+    assert "community-plugins.json" in example["uninstall_guide"]
     assert example["deferred"] == "vscode-kiro-lot-files"
     assert "dex folder" in example["vault_grant"].lower()
     assert "obsidian" in guide
@@ -139,6 +143,10 @@ def test_developer_guide_names_the_obsidian_local_steps() -> None:
     assert "community store" in guide.lower()
     assert "Ubuntu Cloud is not a person opening Obsidian" in guide
     assert "VS Code and Kiro shared lot files are deferred" in guide
+    assert "| Harness | How to leave |" in guide
+    assert "Disable Dex in Obsidian's community plugin list" in guide
+    assert "Leftover:" in guide
+    assert "community-plugins.json" in guide
 
 
 def test_plugin_source_has_no_write_or_network() -> None:

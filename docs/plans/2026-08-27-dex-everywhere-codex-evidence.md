@@ -164,6 +164,10 @@ Earlier CI and Mac fleet on `28bb192baf05570f9e38f84e07f92b2e78b4a973` stayed gr
 
 A later commit that records this honesty is a new head and must earn its own green Dex CI if CI is run. CI green is still not the terminal journey.
 
+## Obsidian notes panel coverage (lab 485) — written path only
+
+A founder test page for the local read-only Obsidian panel lives in `docs/founder-test-cards/obsidian.md`. It is generated from `core/harnesses/adapters/obsidian.json` so it cannot drift. The card restates the read-only fence (today's brief only, no note edits, no internet, not on any community list) and names How to leave. Nobody has walked this on a real desktop. Leave [lab 485](https://github.com/davekilleen/dex-product-gtm-lab/issues/485) open. Do not merge draft PR 647. Do not merge draft PR 620. Do not continue leftover PR 619. This runner will not invent a ChatGPT Work folder grant.
+
 ## Deliberately not started
 
 - A live ChatGPT Work desktop install or recorded vault grant on a real Mac or Windows machine

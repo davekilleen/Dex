@@ -97,6 +97,10 @@ jobs:
         # Every shipped background job must declare a success receipt in
         # core/health/promises.py, or health checks can only measure activity.
         run: python scripts/generate-health-promises.py --check
+      - name: Founder test-card drift gate
+        # The Obsidian notes-panel page is generated from adapter JSON so it
+        # cannot silently drift from the written install and leave contract.
+        run: python scripts/generate-founder-test-cards.py --check
       - name: Instructed-tool existence gate
         run: python scripts/check-instructed-tools.py
       - name: Shipped-seed tracking gate
