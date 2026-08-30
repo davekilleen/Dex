@@ -168,7 +168,10 @@ def _claude_desktop_manifest() -> dict:
             {"name": "get_person_context", "description": "Read context about a person."},
             {
                 "name": "ask_what_was_decided",
-                "description": "Answer what was decided from this Dex folder's own decision record.",
+                "description": (
+                    "Answer what was decided about a topic, or lately with no "
+                    "topic, from this Dex folder's own decision record."
+                ),
             },
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
         ],

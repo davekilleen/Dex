@@ -185,16 +185,36 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
                     "arguments": {"vault_path": str(vault), "topic": "pricing"},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_was_decided",
+                    "arguments": {"vault_path": str(vault)},
+                },
+            },
         ],
         vault=vault,
     )
-    assert {tool["name"] for tool in responses[1]["result"]["tools"]} == READ_ONLY_TOOLS
+    tools = responses[1]["result"]["tools"]
+    assert {tool["name"] for tool in tools} == READ_ONLY_TOOLS
+    ask_tool = next(tool for tool in tools if tool["name"] == "ask_what_was_decided")
+    required = (ask_tool.get("inputSchema") or {}).get("required") or []
+    assert "topic" not in required
+    assert "lately" in ask_tool["description"]
+    assert "no topic" in ask_tool["description"]
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     assert responses[3]["result"]["structuredContent"]["refused"] is True
     ask = responses[4]["result"]["structuredContent"]
     assert ask["found"] is True
     assert ask["matches"][0]["decision"] == "Sell only annual plans."
     assert ask["matches"][0]["file"] == "06-Resources/Decisions/Decision_Log.md"
+    lately = responses[5]["result"]["structuredContent"]
+    assert lately["found"] is True
+    assert lately["topic"] == ""
+    assert lately["matches"][0]["decision"] == "Sell only annual plans."
+    assert lately["matches"][0]["file"] == "06-Resources/Decisions/Decision_Log.md"
 
 
 def test_live_npm_publish_is_refused(tmp_path: Path) -> None:

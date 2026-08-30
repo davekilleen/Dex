@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Read-only lookup of a vault's own decision records.
 
-The packed connector box asks this module what was decided about a topic and
-returns the choice plus the file it came from. It never writes, never invents a
-decision, and never reads meetings or other notes as a substitute.
+The packed connector box asks this module what was decided about a topic, or
+what was decided lately with no topic, and returns the choice plus the file it
+came from. It never writes, never invents a decision, and never reads meetings
+or other notes as a substitute.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ STOPWORDS = {
     "with",
 }
 SKIP_NAMES = {"readme.md"}
+LATELY_WORDS = frozenset({"lately", "recent", "recently"})
 MAX_MATCHES = 8
 
 
@@ -198,11 +200,17 @@ def _first_sentence(body: str) -> str:
     return ""
 
 
-def _normalize_topic(topic: Any) -> str:
-    if not isinstance(topic, str):
+def _normalize_topic(topic: Any) -> str | None:
+    if topic is None:
         return ""
+    if not isinstance(topic, str):
+        return None
     cleaned = TOPIC_WRAPPER.sub("", topic.strip())
     return cleaned.strip(" ?.")
+
+
+def _is_lately(query: str) -> bool:
+    return not query or query.lower() in LATELY_WORDS
 
 
 def _tokens(text: str) -> list[str]:
@@ -225,12 +233,15 @@ def _empty(topic: str) -> dict[str, Any]:
     return {"found": False, "topic": topic, "matches": []}
 
 
-def ask_what_was_decided(vault: str | Path | None, topic: Any) -> dict[str, Any]:
-    """Return matching decision-record entries for a topic, never raising."""
+def ask_what_was_decided(vault: str | Path | None, topic: Any = None) -> dict[str, Any]:
+    """Return matching or recent decision-record entries, never raising."""
     query = _normalize_topic(topic)
+    if query is None:
+        return _empty("")
+    lately = _is_lately(query)
     empty = _empty(query)
     root = _coerce_root(vault)
-    if root is None or not query:
+    if root is None:
         return empty
     matches: list[dict[str, str]] = []
     for path in _decision_files(root):
@@ -239,7 +250,7 @@ def ask_what_was_decided(vault: str | Path | None, topic: Any) -> dict[str, Any]
             continue
         relative = _relative_file(root, path)
         for entry in _entries(content, fallback_title=path.stem.replace("_", " ")):
-            if not _matches_topic(entry, query):
+            if not lately and not _matches_topic(entry, query):
                 continue
             matches.append(
                 {
@@ -258,7 +269,11 @@ def ask_what_was_decided(vault: str | Path | None, topic: Any) -> dict[str, Any]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ask a Dex folder what was decided")
     parser.add_argument("--vault", required=True, help="Dex folder root")
-    parser.add_argument("--topic", required=True, help="Topic to look up")
+    parser.add_argument(
+        "--topic",
+        default="",
+        help="Topic to look up; omit to ask what was decided lately",
+    )
     parser.add_argument("--format", choices=("json", "text"), default="text")
     args = parser.parse_args(argv)
     payload = ask_what_was_decided(args.vault, args.topic)

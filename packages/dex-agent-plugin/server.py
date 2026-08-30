@@ -94,13 +94,13 @@ def _tools() -> list[dict[str, Any]]:
         {
             "name": "ask_what_was_decided",
             "description": (
-                "Answer what was decided about a topic from this Dex folder's "
-                "own decision record, including the file it came from."
+                "Answer what was decided about a topic, or what was decided "
+                "lately with no topic, from this Dex folder's own decision "
+                "record, including the file it came from."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {**vault, "topic": {"type": "string"}},
-                "required": ["topic"],
             },
         },
         {
