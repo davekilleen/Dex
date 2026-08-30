@@ -8,6 +8,12 @@ const path = require('node:path');
 const { loadPaths } = require('../paths.cjs');
 
 const CONCIERGE_PATH = path.resolve(__dirname, '../integration-concierge.cjs');
+const PORTABLE_CONCIERGE_PATH = path.resolve(
+  __dirname,
+  '../../../core/integrations/integration-concierge.cjs',
+);
+const CLAUDE_PATHS_PATH = path.resolve(__dirname, '../paths.cjs');
+const PORTABLE_PATHS_PATH = path.resolve(__dirname, '../../../core/runtime/paths.cjs');
 const SOURCE_PATHS = loadPaths();
 
 function remapVaultPath(vault, sourcePath) {
@@ -83,6 +89,25 @@ function assertOutputShape(output) {
     'connect_detected',
   ]);
 }
+
+test('Claude entry point is a thin wrapper around the portable concierge', () => {
+  const wrapper = fs.readFileSync(CONCIERGE_PATH, 'utf8');
+  const portable = fs.readFileSync(PORTABLE_CONCIERGE_PATH, 'utf8');
+
+  assert.match(wrapper, /core\/integrations\/integration-concierge\.cjs/);
+  assert.equal(wrapper.includes('const INTEGRATIONS ='), false);
+  assert.equal(portable.includes('.claude/hooks/'), false);
+  assert.match(portable, /const INTEGRATIONS =/);
+});
+
+test('Claude path loading delegates to the portable path contract', () => {
+  const wrapper = fs.readFileSync(CLAUDE_PATHS_PATH, 'utf8');
+  const portable = fs.readFileSync(PORTABLE_PATHS_PATH, 'utf8');
+
+  assert.match(wrapper, /core\/runtime\/paths\.cjs/);
+  assert.equal(wrapper.includes('00-Inbox'), false);
+  assert.match(portable, /INBOX_DIR/);
+});
 
 const CURATED_SETUP_ROUTES = {
   'google-workspace': '/google-workspace-setup',

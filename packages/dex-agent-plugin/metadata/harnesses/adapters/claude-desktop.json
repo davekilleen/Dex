@@ -1,0 +1,10 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "claude-desktop",
+  "kind": "mcpb",
+  "native_paths": ["manifest.json", "server.py", "runtime/", "bin/"],
+  "example": {
+    "artifact": "dex-claude-desktop.mcpb",
+    "install_guide": "In Claude Desktop, open Settings > Extensions > Advanced settings > Install Extension, then select the reviewed .mcpb artifact."
+  }
+}

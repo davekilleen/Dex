@@ -1,0 +1,45 @@
+# Trigger evals for /initiative-kickoff.
+# Shape every shipped skill carries:
+#   3 positive paraphrases  — MUST fire this skill
+#   2 negative / collision  — MUST NOT fire; must route to the named neighbor
+#   1 ambiguous             — should ASK rather than silently fire
+#   1 missing-prerequisite  — should degrade honestly, not fake a result
+#   1 failure-recovery      — must not claim success when the underlying action failed
+#
+# `expect: fire` / `no-fire` / `ask` / `degrade` / `honest-failure`.
+# `route_to` names where a no-fire case should go instead.
+
+skill: initiative-kickoff
+
+positive:
+  - utterance: "We've decided to hire a Head of Sales — let's kick this off properly."
+    expect: fire
+  - utterance: "I'm starting a partnership push with the design tools. Set up a project for it."
+    expect: fire
+  - utterance: "New internal bet: revamp onboarding. Get it off the ground with owners and next steps."
+    expect: fire
+
+negative:
+  - utterance: "Write a PRD for the new dashboard feature."
+    expect: no-fire
+    route_to: product-brief
+    why: spec'ing a product feature into a PRD is product-brief; initiative-kickoff is for non-product initiatives.
+  - utterance: "How's the partnerships project doing — anything stuck?"
+    expect: no-fire
+    route_to: project-health
+    why: checking the status of a project already underway is project-health, not kicking off a new one.
+
+ambiguous:
+  - utterance: "Let's do something about churn."
+    expect: ask
+    why: unclear whether it's a product effort (product-brief), a strategic initiative to kick off, or just a task — ask what they want to start before firing.
+
+missing_prerequisite:
+  - utterance: "Kick this off and tie it to my quarterly goal."  # no quarterly goals set
+    expect: degrade
+    why: no quarterly goals exist to link — record it as a standalone bet and say so; never fabricate a goal link.
+
+failure_recovery:
+  - utterance: "Turn those first steps into tasks."  # a create_task call fails
+    expect: honest-failure
+    why: report any item whose create_task failed as NOT created; never claim tasks that weren't written or call the kickoff done.

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from core.path_contract import build_relative_paths_contract, write_contract_package
+from core.paths import PEOPLE_DIR, resolve_for_vault
 
 
 def test_relative_contract_shape():
@@ -24,6 +25,10 @@ def test_relative_contract_values_are_not_absolute_paths():
         if isinstance(value, str) and value.startswith("/")
     ]
     assert not absolute, f"Expected vault-relative paths, got absolutes: {absolute}"
+
+
+def test_contract_path_can_be_rebased_onto_an_explicit_vault(tmp_path: Path):
+    assert resolve_for_vault(tmp_path, PEOPLE_DIR) == tmp_path / "05-Areas" / "People"
 
 
 def test_lifecycle_and_session_memory_paths_are_exported():

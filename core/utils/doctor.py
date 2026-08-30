@@ -619,6 +619,11 @@ QUICK_CHECKS = (
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
+    CheckDefinition(
+        "harness.capabilities",
+        "Agent harness capabilities",
+        "_probe_harness_capabilities",
+    ),
     CheckDefinition("python.env", "Python environment", "_probe_python_env"),
     CheckDefinition("hooks.wired", "Claude hooks", "_probe_hooks_wired"),
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
@@ -1309,6 +1314,78 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
             Heal(tier=1, action=f"Create the missing directories: {', '.join(missing)}.", applied=False),
         )
     return ProbeResult("OK", "All standard PARA directories exist")
+
+
+def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
+    """Report the saved host contract without promoting guided work to automatic."""
+    from core.harnesses.registry import get_platform_release, get_profile
+    from core.onboarding.harness_receipt import (
+        HarnessReceiptError,
+        read_receipt,
+        summarize_receipt,
+    )
+
+    try:
+        receipt = read_receipt(context.vault_root)
+    except HarnessReceiptError as error:
+        return ProbeResult(
+            "BROKEN",
+            f"The saved agent harness profile is invalid: {_one_line(error)}",
+            Heal(
+                tier=3,
+                action=(
+                    "Run /setup and confirm the agent harness selection again; "
+                    "Dex will replace only this receipt."
+                ),
+                applied=False,
+            ),
+        )
+    if receipt is None:
+        return ProbeResult(
+            "OFF",
+            (
+                "Agent harness capabilities have not been recorded yet; run /setup to "
+                "record your harnesses without restarting onboarding"
+            ),
+        )
+
+    summary = summarize_receipt(receipt)
+    platform_release = get_platform_release()
+    summary["platform"] = platform_release
+    display_names = [
+        str(profile["display_name"])
+        for profile in receipt["profiles"]
+        if isinstance(profile, dict)
+    ]
+    limitations: dict[str, list[str]] = {}
+    limitation_notes: list[str] = []
+    for selected_id in summary["selected"]:
+        if not isinstance(selected_id, str):
+            continue
+        try:
+            live_profile = get_profile(selected_id)
+        except KeyError:
+            limitations[selected_id] = []
+            continue
+        notes = [str(note) for note in live_profile.limitations]
+        limitations[selected_id] = notes
+        limitation_notes.extend(
+            f"{live_profile.display_name}: {note}" for note in notes if note
+        )
+    summary["limitations"] = limitations
+    modes = summary["modes"]
+    assert isinstance(modes, dict)
+    detail = (
+        f"Selected {', '.join(display_names)}: "
+        f"{modes['automatic']} automatic, "
+        f"{modes['on_demand']} on demand, "
+        f"{modes['guided']} guided, and "
+        f"{modes['unavailable']} unavailable capability assignments; "
+        f"{platform_release['label']} is {platform_release['readiness'].replace('_', ' ')}"
+    )
+    if limitation_notes:
+        detail = f"{detail}. {' '.join(limitation_notes)}"
+    return ProbeResult("OK", detail, structured_detail=summary)
 
 
 @dataclass(frozen=True)

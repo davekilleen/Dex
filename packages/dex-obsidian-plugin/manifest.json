@@ -1,0 +1,9 @@
+{
+  "id": "dex-readonly",
+  "name": "Dex",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Read-only Dex panel. Today's brief, Decided lately, a topic ask, then a person name from your own files. No edits, no commands, no internet.",
+  "author": "Dex",
+  "isDesktopOnly": false
+}

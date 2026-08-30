@@ -1,0 +1,8 @@
+{
+  "name": "dex",
+  "version": "1.0.0",
+  "description": "Portable Dex context, safety, and work skills.",
+  "skills": "./skills/",
+  "mcpServers": "./.codex-mcp.json",
+  "hooks": "./hooks/codex.json"
+}

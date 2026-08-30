@@ -1,0 +1,45 @@
+# Trigger evals for /meeting-closeout.
+# Shape every shipped skill carries:
+#   3 positive paraphrases  — MUST fire this skill
+#   2 negative / collision  — MUST NOT fire; must route to the named neighbor
+#   1 ambiguous             — should ASK rather than silently fire
+#   1 missing-prerequisite  — should degrade honestly, not fake a result
+#   1 failure-recovery      — must not claim success when the underlying action failed
+#
+# `expect: fire` / `no-fire` / `ask` / `degrade` / `honest-failure`.
+# `route_to` names where a no-fire case should go instead.
+
+skill: meeting-closeout
+
+positive:
+  - utterance: "Just wrapped my call with Acme — here are my notes, close it out."
+    expect: fire
+  - utterance: "Help me close out my 3pm: decisions, who owns what, next step."
+    expect: fire
+  - utterance: "That meeting just ended — capture the actions and what I committed to."
+    expect: fire
+
+negative:
+  - utterance: "Catch up my notes — process all the meetings that synced from Granola."
+    expect: no-fire
+    route_to: process-meetings
+    why: bulk-processing many already-synced meetings is process-meetings; closeout is one meeting, right now.
+  - utterance: "Prep me for my 2pm with Jordan tomorrow."
+    expect: no-fire
+    route_to: meeting-prep
+    why: a meeting that hasn't happened yet is meeting-prep, not a closeout.
+
+ambiguous:
+  - utterance: "Sort out the Acme meeting."
+    expect: ask
+    why: unclear whether they mean prep for an upcoming one or close out one that just happened — ask which before firing.
+
+missing_prerequisite:
+  - utterance: "Close out my last meeting."  # no pasted notes and no matching synced meeting
+    expect: degrade
+    why: no notes and no synced meeting to read — ask for the notes or a recap; never fabricate a summary.
+
+failure_recovery:
+  - utterance: "Make tasks for all those action items."  # a create_task call fails
+    expect: honest-failure
+    why: report any item whose create_task failed as NOT created; never claim tasks that weren't written.

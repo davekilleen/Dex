@@ -43,6 +43,7 @@
 ^\.claude/reference/beta-templates/analytics/README\.md:.*:pendo$
 ^06-Resources/Dex_System/.*:.*:pendo$
 ^\.claude/flows/onboarding\.md:.*:pendo$
+^core/onboarding/FLOW\.md:.*:pendo$
 ^core/tests/.*:.*:pendo$
 ^README\.md:.*:pendo$
 
@@ -51,6 +52,9 @@
 ^\.claude/hooks/.*:.*:cursor$
 ^\.claude/skills/.*:.*:cursor$
 ^\.agents/skills/.*:.*:cursor$
+# The Agent Plugin now carries Cursor's native manifest, hooks, adapter, and
+# generated portable skills as one first-class supported package.
+^packages/dex-agent-plugin/.*:.*:cursor$
 ^\.claude/reference/.*:.*:cursor$
 ^\.claude/flows/onboarding\.md:.*:cursor$
 ^\.claude/plugins/.*:.*:cursor$
@@ -63,6 +67,7 @@
 ^DISTRIBUTION_READY\.md:.*:cursor$
 ^env\.example:.*:cursor$
 ^install\.sh:.*:cursor$
+^scripts/generate-portable-plugin\.py:.*:cursor$
 # .cursor/rules/... path listed in the installed-files manifest
 ^System/\.installed-files\.manifest:.*:cursor$
 # the ownership contract classifies the .cursor config dir by its literal path

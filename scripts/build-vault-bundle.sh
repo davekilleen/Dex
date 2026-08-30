@@ -7,9 +7,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${1:-$REPO_ROOT/dist}"
 DISTIGNORE="$REPO_ROOT/.distignore"
+PRODUCT_AGENTS_TEMPLATE="$REPO_ROOT/core/harnesses/templates/product-AGENTS.md"
 
 if [ ! -f "$DISTIGNORE" ]; then
   echo "Error: .distignore not found at $DISTIGNORE" >&2
+  exit 1
+fi
+
+if [ ! -f "$PRODUCT_AGENTS_TEMPLATE" ] || [ -L "$PRODUCT_AGENTS_TEMPLATE" ]; then
+  echo "Error: product AGENTS template is missing or not a regular file: $PRODUCT_AGENTS_TEMPLATE" >&2
+  exit 1
+fi
+PRODUCT_AGENTS_TEMPLATE_SIZE=$(wc -c < "$PRODUCT_AGENTS_TEMPLATE" | tr -d '[:space:]')
+if [ "$PRODUCT_AGENTS_TEMPLATE_SIZE" -eq 0 ] || [ "$PRODUCT_AGENTS_TEMPLATE_SIZE" -gt 4096 ]; then
+  echo "Error: product AGENTS template must be a non-empty file no larger than 4 KiB." >&2
   exit 1
 fi
 
@@ -70,6 +81,16 @@ sh "$REPO_ROOT/scripts/resolve-distignore-files.sh" \
   "$DISTIGNORE" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES"
 
 rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
+
+# The contributor AGENTS.md is intentionally excluded by .distignore. Install
+# the product bootstrap from the canonical template before building the
+# installed-files manifest so the archive and release branch agree byte-for-byte.
+cp -- "$PRODUCT_AGENTS_TEMPLATE" "$STAGING_DIR/AGENTS.md"
+chmod 0644 "$STAGING_DIR/AGENTS.md"
+if ! cmp -s "$PRODUCT_AGENTS_TEMPLATE" "$STAGING_DIR/AGENTS.md"; then
+  echo "Error: staged product AGENTS bootstrap does not match its canonical template." >&2
+  exit 1
+fi
 
 # Match the release branch exactly: historic updaters can write these bytes
 # before the replacement updater module has been installed.

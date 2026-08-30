@@ -925,7 +925,7 @@ def test_setup_defers_rooms_to_the_onboarding_flow_and_creates_nothing_itself() 
 
     # Routes into the one deterministic flow.
     assert "start_onboarding_session()" in setup
-    assert ".claude/flows/onboarding.md" in setup
+    assert "core/onboarding/FLOW.md" in setup
 
     # Hand-rolls nothing: no room reconciliation, no folder creation.
     assert "--reconcile" not in setup

@@ -138,6 +138,8 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
+from core.context.person_context import get_person_context as get_person_context_payload
+from core.context.session_boot import build_session_boot
 from core.entity_engine import (
     create_page_if_absent,
     fingerprint_page,
@@ -145,6 +147,7 @@ from core.entity_engine import (
     render_company_page,
 )
 from core.entity_engine import index as entity_index
+from core.gates.safety import evaluate_safety_gate
 from core.meeting_capture_match import match_capture_to_calendar
 from core.paths import (
     COMPANIES_DIR,
@@ -4309,6 +4312,60 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="boot_today",
+            description=(
+                "Session boot context: today's date, strategic pillars, quarter "
+                "goals, week priorities, and urgent tasks. Cursor, ChatGPT, and "
+                "Codex should call this at session start. Claude Code auto-fires "
+                "the same read-only payload via the SessionStart hook."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="get_person_context",
+            description=(
+                "Person context payload: role, company, last interaction, and "
+                "open items. Call when a person is mentioned. Claude Code "
+                "auto-fires the same payload when a file with that person is read."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Person name (full name preferred)",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        types.Tool(
+            name="check_safety_gate",
+            description=(
+                "Advisory safety check for destructive shell commands and unsafe "
+                "paths. Call before a risky action. Claude Code's verified "
+                "PreToolUse wrapper enforces the same decision; an MCP result is "
+                "not an interceptor by itself and must be honoured by the harness."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Tool being proposed (for example Bash)",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to evaluate",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Filesystem path to evaluate",
+                    },
+                },
+            },
+        ),
+        types.Tool(
             name="create_person",
             description="Create a canonical person page with duplicate protection and refresh the People index.",
             inputSchema={
@@ -4418,15 +4475,18 @@ async def handle_call_tool(
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """Handle tool calls"""
     try:
+        if not isinstance(name, str):
+            name = ""
+        safe_arguments = arguments if isinstance(arguments, dict) else {}
         room_off = _capability_tool_off(name)
         if room_off is not None:
             return [types.TextContent(type="text", text=json.dumps(room_off, indent=2))]
-        result = await _handle_call_tool_inner(name, arguments)
+        result = await _handle_call_tool_inner(name, safe_arguments)
 
         # Refresh QMD search index after any write operation (non-blocking)
         is_dry_run_sync = (
             name == "sync_external_tasks"
-            and bool((arguments or {}).get("dry_run", False))
+            and bool(safe_arguments.get("dry_run", False))
         )
         if name in WRITE_TOOLS and not is_dry_run_sync:
             refresh_search_index()
@@ -4469,6 +4529,9 @@ async def handle_call_tool(
                 "classify_task_effort": "Task effort classification failed",
                 "analyze_calendar_capacity": "Calendar capacity analysis failed",
                 "suggest_task_scheduling": "Task scheduling suggestion failed",
+                "boot_today": "Session boot context failed",
+                "get_person_context": "Person context lookup failed",
+                "check_safety_gate": "Safety gate check failed",
             }
             _log_health_error(
                 source="work-mcp",
@@ -6223,6 +6286,25 @@ async def _handle_call_tool_inner(
         person_name = arguments['name']
         company_filter = arguments.get('company')
         result = lookup_person_data(person_name, company_filter)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "boot_today":
+        result = build_session_boot(BASE_DIR)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "get_person_context":
+        person_name = arguments.get("name", "") if isinstance(arguments, dict) else ""
+        result = get_person_context_payload(BASE_DIR, person_name)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "check_safety_gate":
+        args = arguments if isinstance(arguments, dict) else {}
+        result = evaluate_safety_gate(
+            tool_name=args.get("tool_name", ""),
+            command=args.get("command", ""),
+            path=args.get("path", ""),
+            vault=BASE_DIR,
+        ).as_payload()
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "create_person":

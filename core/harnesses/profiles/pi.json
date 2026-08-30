@@ -1,0 +1,117 @@
+{
+  "adapter": {
+    "evidence": {
+      "claims": {
+        "agent-skills": {
+          "marker": "\"pi\"",
+          "path": "extensions/dex/package.json"
+        },
+        "interactive-prompts": {
+          "marker": "pi.registerCommand(\"status\"",
+          "path": "extensions/dex/index.ts"
+        },
+        "session-lifecycle": {
+          "marker": "pi.on(\"session_start\"",
+          "path": "extensions/dex/index.ts"
+        },
+        "vault": {
+          "marker": "export function detectVault",
+          "path": "extensions/dex/lib/vault-detection.ts"
+        }
+      },
+      "commit": "5bf33ad7b23a06a890b25445cb1b4f4077b2ac19",
+      "manifest_path": "extensions/dex/package.json",
+      "manifest_sha256": "6ff6cefcc9f7c89a74a9e33c385ff60df80b44142ae79a868fb4b690266b388b",
+      "repository_url": "https://github.com/davekilleen/dex-pi.git"
+    },
+    "install_guide": "core/harnesses/adapters/pi.json",
+    "kind": "pi-extension",
+    "manifest": "extensions/dex/package.json",
+    "status": "native"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The workspace is available to Pi extensions and skills.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "unavailable",
+      "notes": "Pi has no built-in MCP client; its native Dex extension supplies direct tools instead.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "AGENTS.md and Agent Skills are the portable instruction surface.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "guided",
+      "notes": "The native Dex extension maps Pi events rather than pretending they are Claude hooks.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "automatic",
+      "notes": "The Dex Pi extension observes native session lifecycle events.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "No Dex scheduler is assumed.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "Pi exposes interactive conversation input.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "unavailable",
+      "notes": "Pi uses its native Dex extension rather than an Agent Plugins loader.",
+      "status": "none",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "PI_CLI",
+      "PI_CODING_AGENT",
+      "PI_SESSION"
+    ],
+    "paths": [
+      "/.pi/",
+      "/pi/"
+    ]
+  },
+  "display_name": "Pi",
+  "evidence": [
+    "https://pi.dev/docs/latest"
+  ],
+  "id": "pi",
+  "limitations": [
+    "MCP is intentionally not claimed; use the native Dex Pi extension for tools and lifecycle integration."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-2-skills"
+  ],
+  "name": "Pi",
+  "summary": "Local coding agent with workspace files, Agent Skills, and lifecycle events, but no built-in Dex MCP or scheduler promise.",
+  "support_level": "supported",
+  "vendor": "Pi coding agent"
+}

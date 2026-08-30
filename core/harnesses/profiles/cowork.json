@@ -1,0 +1,95 @@
+{
+  "adapter": {
+    "directory": ".claude-plugin",
+    "kind": "claude-plugin",
+    "manifest": ".claude-plugin/plugin.json",
+    "status": "native"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "guided",
+      "notes": "Folder access depends on explicit desktop permission granted by the user.",
+      "status": "partial",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "guided",
+      "notes": "Cowork external connectors require a public internet endpoint; the bundled local stdio server is not claimed.",
+      "status": "partial",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "The native Claude plugin carries Dex's portable skills.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "guided",
+      "notes": "Cowork plugins can run the bundled hooks after installation and trust review.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "guided",
+      "notes": "Hook availability depends on the Cowork task surface and granted folder access.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "guided",
+      "notes": "Cowork can schedule host tasks, but Dex does not yet install schedule templates.",
+      "status": "partial",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "Desktop conversation prompts are host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "The same package includes a native Claude plugin manifest.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "COWORK",
+      "CLAUDE_COWORK",
+      "CLAUDE_DESKTOP_COWORK"
+    ],
+    "paths": [
+      "/.cowork/",
+      "/cowork/"
+    ]
+  },
+  "display_name": "Claude Cowork",
+  "evidence": [
+    "https://claude.com/docs/cowork/guide/plugins",
+    "https://support.claude.com/en/articles/13837440-use-plugins-in-claude"
+  ],
+  "id": "cowork",
+  "limitations": [
+    "The local stdio MCP bridge is not exposed as a Cowork external connector; that needs a separately secured public endpoint."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Claude Cowork",
+  "summary": "Native Claude plugin for Cowork skills, hooks, and folder work, with a public-endpoint requirement for external connectors.",
+  "support_level": "supported",
+  "vendor": "Anthropic"
+}

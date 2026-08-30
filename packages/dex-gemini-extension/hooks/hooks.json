@@ -1,0 +1,52 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "name": "dex-context-and-safety",
+            "type": "command",
+            "command": "node \"${extensionPath}/bin/dex-python.mjs\" hook --protocol gemini",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "name": "dex-context-and-safety",
+            "type": "command",
+            "command": "node \"${extensionPath}/bin/dex-python.mjs\" hook --protocol gemini",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "name": "dex-context-and-safety",
+            "type": "command",
+            "command": "node \"${extensionPath}/bin/dex-python.mjs\" hook --protocol gemini",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command|write_file|replace",
+        "hooks": [
+          {
+            "name": "dex-context-and-safety",
+            "type": "command",
+            "command": "node \"${extensionPath}/bin/dex-python.mjs\" hook --protocol gemini",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}
