@@ -10,6 +10,9 @@ unreleased.
 Pack the box locally. Then, before anything is published, ask it what was
 decided about a topic, or what was decided lately with no topic. It answers
 from that Dex folder's own decision record and names the file it came from.
+Ask it what is still open with people: it lists every unchecked to-do from
+person pages, each naming the person and the page, or an honest sentence if
+none.
 
 ## What a person can do after a public catalogue publish
 
@@ -27,8 +30,9 @@ DEX_VAULT_PATH="/path/to/your/Dex" npx -y dex-mcp
 
 Point `DEX_VAULT_PATH` at the Dex folder on that computer. The server can read
 today's context, look up a person, list host support, refuse a destructive
-command, and answer what was decided about a topic or what was decided lately
-with no topic from that folder's own decision record. It cannot write the vault.
+command, answer what was decided about a topic or what was decided lately
+with no topic from that folder's own decision record, and list what is still
+open with people from person pages. It cannot write the vault.
 
 ## What is true now
 

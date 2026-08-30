@@ -23,6 +23,7 @@ READ_ONLY_TOOLS = {
     "boot_today",
     "get_person_context",
     "ask_what_was_decided",
+    "ask_what_is_still_open_with_people",
     "check_safety_gate",
 }
 
@@ -156,6 +157,8 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
         "**Decision:** Sell only annual plans.\n",
         encoding="utf-8",
     )
+    empty_vault = tmp_path / "empty Dex folder"
+    empty_vault.mkdir()
     responses = _mcp_roundtrip(
         plugin_root,
         [
@@ -194,6 +197,24 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
                     "arguments": {"vault_path": str(vault)},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_is_still_open_with_people",
+                    "arguments": {"vault_path": str(vault)},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_is_still_open_with_people",
+                    "arguments": {"vault_path": str(empty_vault)},
+                },
+            },
         ],
         vault=vault,
     )
@@ -204,6 +225,11 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     assert "topic" not in required
     assert "lately" in ask_tool["description"]
     assert "no topic" in ask_tool["description"]
+    open_tool = next(
+        tool for tool in tools if tool["name"] == "ask_what_is_still_open_with_people"
+    )
+    assert "person" in open_tool["description"].lower()
+    assert "page" in open_tool["description"].lower()
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     assert responses[3]["result"]["structuredContent"]["refused"] is True
     ask = responses[4]["result"]["structuredContent"]
@@ -215,6 +241,18 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     assert lately["topic"] == ""
     assert lately["matches"][0]["decision"] == "Sell only annual plans."
     assert lately["matches"][0]["file"] == "06-Resources/Decisions/Decision_Log.md"
+    open_with_people = responses[6]["result"]["structuredContent"]
+    assert open_with_people["found"] is True
+    assert open_with_people["matches"][0]["item"] == "Send the operating memo"
+    assert open_with_people["matches"][0]["person"] == "Ada Lovelace"
+    assert open_with_people["matches"][0]["page"] == (
+        "05-Areas/People/Internal/Ada_Lovelace.md"
+    )
+    assert (person_dir / "Ada_Lovelace.md").read_text(encoding="utf-8").startswith("---")
+    none_open = responses[7]["result"]["structuredContent"]
+    assert none_open["found"] is False
+    assert none_open["matches"] == []
+    assert none_open["sentence"] == "No unchecked to-dos on person pages."
 
 
 def test_live_npm_publish_is_refused(tmp_path: Path) -> None:

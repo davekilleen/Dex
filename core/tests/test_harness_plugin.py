@@ -305,6 +305,7 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
         "boot_today",
         "get_person_context",
         "ask_what_was_decided",
+        "ask_what_is_still_open_with_people",
         "check_safety_gate",
     }
     desktop = tmp_path / "dex-claude-desktop"
@@ -483,16 +484,26 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
                     "arguments": {"vault_path": str(vault)},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_is_still_open_with_people",
+                    "arguments": {"vault_path": str(vault)},
+                },
+            },
         ],
         cwd=vault,
     )
-    assert len(responses) == 7
+    assert len(responses) == 8
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     assert names == {
         "dex_harness_profiles",
         "boot_today",
         "get_person_context",
         "ask_what_was_decided",
+        "ask_what_is_still_open_with_people",
         "check_safety_gate",
     }
     ask_tool = next(
@@ -516,6 +527,13 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     assert lately["found"] is True
     assert lately["topic"] == ""
     assert lately["matches"][0]["decision"] == "Sell only annual plans."
+    open_with_people = responses[7]["result"]["structuredContent"]
+    assert open_with_people["found"] is True
+    assert open_with_people["matches"][0]["item"] == "Send the operating memo"
+    assert open_with_people["matches"][0]["person"] == "Ada Lovelace"
+    assert open_with_people["matches"][0]["page"] == (
+        "05-Areas/People/Internal/Ada_Lovelace.md"
+    )
 
 
 def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path: Path) -> None:
