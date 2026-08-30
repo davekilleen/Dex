@@ -49,6 +49,9 @@ Work backwards from career impact. Keep rollups in sync when you change a task.
   script over hand-editing them.
 - The vault is a project-owned workspace. Work inside the vault; don't scatter
   files into the user's home directory.
+- The safety guard (`.opencode/plugin/dex-safety-guard.js`) blocks destructive
+  shell commands and raw Git during a vault migration; if a tool call fails with
+  "Dex safety guard", do not work around it — tell the user.
 - If something is beyond the current setup (e.g. a Claude Code-only hook or the
   Dex desktop app), be honest about it and suggest the closest opencode-native
   alternative.

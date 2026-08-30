@@ -72,8 +72,23 @@ on a fresh clone the command above creates `opencode.json` from it.
 Skills are ported by `.scripts/port-skills-to-opencode.py` into
 `.opencode/skill/<name>/SKILL.md` (frontmatter trimmed to what opencode reads);
 the Dex persona and operating rules live in `opencode.json`'s `dex` agent and
-`.opencode/AGENTS.md`. Claude Code hooks (`.claude/hooks/*`) have no opencode
-equivalent yet and are not ported.
+`.opencode/AGENTS.md`.
+
+### Safety guard
+
+`.claude/hooks/dex-safety-guard.sh` (a Claude Code `PreToolUse` hook) is ported as
+the auto-discovered plugin `.opencode/plugin/dex-safety-guard.js`, with the same
+rules and reasons: hard blocks for raw Git repair during a live vault migration,
+recursive deletes of root/home, disk wipes, force-push to `main`/`master`, SQL
+`DROP`, `gh repo delete`, and the non-preferred scraper MCPs; warnings (allowed,
+prefixed onto the tool output) for `chmod 777` and `kill -9`. A block is a thrown
+error from `tool.execute.before`, which opencode reports to the model as the tool's
+failure. It has no dependencies; `node scripts/test-opencode-safety-guard.mjs`
+exercises every rule.
+
+The remaining Claude Code hooks (person/company context injection, session-start
+sweeps, `ensure-mcp-user-scope`, which only concerns `claude mcp add`) are not
+ported.
 
 Each server becomes `{"type": "local", "command": [<python>, <server.py>],
 "enabled": true, "environment": {...}}` with absolute paths, so it works regardless
