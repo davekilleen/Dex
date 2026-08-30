@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tarfile
+from datetime import date
 from pathlib import Path
 
 import jsonschema
@@ -24,6 +25,7 @@ READ_ONLY_TOOLS = {
     "get_person_context",
     "ask_what_was_decided",
     "ask_what_is_still_open_with_people",
+    "ask_who_is_in_todays_plan",
     "check_safety_gate",
 }
 
@@ -147,7 +149,14 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     person_dir = vault / "05-Areas" / "People" / "Internal"
     person_dir.mkdir(parents=True)
     (person_dir / "Ada_Lovelace.md").write_text(
-        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n- [ ] Send the operating memo\n",
+        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n"
+        "last_interaction: 2026-04-12\n---\n- [ ] Send the operating memo\n",
+        encoding="utf-8",
+    )
+    plans = vault / "00-Inbox" / "Daily_Plans"
+    plans.mkdir(parents=True)
+    (plans / f"{date.today().strftime('%Y-%m-%d')}.md").write_text(
+        "# Daily Plan\n\n**Attendees:** Ada Lovelace\n",
         encoding="utf-8",
     )
     decisions = vault / "06-Resources" / "Decisions"
@@ -215,6 +224,24 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
                     "arguments": {"vault_path": str(empty_vault)},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_who_is_in_todays_plan",
+                    "arguments": {"vault_path": str(vault)},
+                },
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_who_is_in_todays_plan",
+                    "arguments": {"vault_path": str(empty_vault)},
+                },
+            },
         ],
         vault=vault,
     )
@@ -230,6 +257,11 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     )
     assert "person" in open_tool["description"].lower()
     assert "page" in open_tool["description"].lower()
+    today_tool = next(tool for tool in tools if tool["name"] == "ask_who_is_in_todays_plan")
+    assert "today" in today_tool["description"].lower()
+    assert "plan order" in today_tool["description"]
+    required_today = (today_tool.get("inputSchema") or {}).get("required") or []
+    assert "name" not in required_today
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     assert responses[3]["result"]["structuredContent"]["refused"] is True
     ask = responses[4]["result"]["structuredContent"]
@@ -253,6 +285,20 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     assert none_open["found"] is False
     assert none_open["matches"] == []
     assert none_open["sentence"] == "No unchecked to-dos on person pages."
+    today_people = responses[8]["result"]["structuredContent"]
+    assert today_people["found"] is True
+    assert today_people["matches"][0]["person"] == "Ada Lovelace"
+    assert today_people["matches"][0]["role"] == "Founder"
+    assert today_people["matches"][0]["company"] == "Analytical Engines"
+    assert today_people["matches"][0]["last_interaction"] == "2026-04-12"
+    assert today_people["matches"][0]["open_items"] == ["Send the operating memo"]
+    assert today_people["matches"][0]["page"] == (
+        "05-Areas/People/Internal/Ada_Lovelace.md"
+    )
+    none_today = responses[9]["result"]["structuredContent"]
+    assert none_today["found"] is False
+    assert none_today["matches"] == []
+    assert none_today["sentence"] == "Nobody is named in today's plan."
 
 
 def test_live_npm_publish_is_refused(tmp_path: Path) -> None:

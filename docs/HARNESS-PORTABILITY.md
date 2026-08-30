@@ -38,6 +38,7 @@ has already passed that evidence gate.
 - read-only `boot_today`, `get_person_context`, `ask_what_was_decided`
   (a topic, or lately with no topic),
   `ask_what_is_still_open_with_people`,
+  `ask_who_is_in_todays_plan`,
   `check_safety_gate`, and `dex_harness_profiles` MCP tools;
 - byte-identical vendored copies of the canonical context and safety modules;
 - SessionStart context and PreToolUse safety hooks for hosts that can genuinely
