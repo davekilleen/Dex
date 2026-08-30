@@ -264,6 +264,18 @@ async def main():
     results["start"] = await call("start_onboarding_session", {"force_new": True})
     results["resume"] = await call("start_onboarding_session")
 
+    # This is the user-confirmed branch of onboarding, so make the choice
+    # deterministic instead of depending on the CI runner's installed harness.
+    selected_harnesses = ["claude-code", "codex"]
+    results["harness_preview"] = await call(
+        "inspect_harnesses",
+        {"harnesses": selected_harnesses},
+    )
+    results["harness_selection"] = await call(
+        "save_harness_selection",
+        {"harnesses": selected_harnesses, "confirmed": True},
+    )
+
     onboarding.check_python_packages = lambda: {
         "mcp": {"installed": True},
         "yaml": {"installed": True},
@@ -514,6 +526,8 @@ def test_golden_onboarding_drives_state_machine_to_real_vault(fixture_vault: Pat
     assert journey["start"]["data"]["started_at"] == journey["resume"]["data"]["started_at"]
     assert journey["resume"]["data"]["completed_steps"] == []
     assert "Resuming onboarding session" in journey["resume"]["message"]
+    assert journey["harness_preview"]["success"] is True
+    assert journey["harness_selection"]["success"] is True
     assert journey["dependencies"]["data"]["all_required_installed"] is True
     assert journey["calendar"]["success"] is True
     assert all(step["success"] for step in journey["steps"])

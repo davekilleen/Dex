@@ -1,0 +1,20 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "obsidian",
+  "status": "native-local",
+  "kind": "obsidian-plugin",
+  "native_paths": ["manifest.json", "main.js", "styles.css"],
+  "example": {
+    "manifest": "packages/dex-obsidian-plugin/manifest.json",
+    "local_package": "./packages/dex-obsidian-plugin",
+    "install_path": ".obsidian/plugins/dex-readonly",
+    "install_command": "python3 -m core.obsidian_panel install --vault /path/to/your/Dex",
+    "uninstall_guide": "Disable Dex in Obsidian's community plugin list, then delete .obsidian/plugins/dex-readonly from the vault. Leftover: .obsidian/community-plugins.json may still list dex-readonly until you remove that name; the workspace layout may still show an empty Dex panel slot.",
+    "community_store": "not-submitted",
+    "network": "none",
+    "writes": "none",
+    "deferred": "vscode-kiro-lot-files",
+    "vault_grant": "Open the Dex folder as the Obsidian vault.",
+    "install_guide": "Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. Under each person named in today's plan, the panel also shows the last interaction their page records and every unchecked to-do still on that page, without typing. A page that records neither shows neither. When nobody is named, one honest sentence says so. When there is no plan for today, one honest sentence says so. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. Type a person's name and see who they are from your own files. Type a note path inside your Dex folder and see who that note names — role, company, last interaction, and every unchecked to-do still on their page, each naming the page — without leaving the notes app. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian."
+  }
+}

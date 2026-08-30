@@ -2007,6 +2007,12 @@ def test_composed_gitignore_appends_contract_derived_vault_section() -> None:
     assert "\n!/core/mcp-premium/\n" in section
     assert "\n/.claude/*\n" in section
     assert "\n!/.claude/skills-custom/\n" in section
+    assert "\n!/.claude/skills/\n" in section
+    assert "\n/.claude/skills/*\n" in section
+    assert "\n!/.claude/skills/*-custom/\n" in section
+    assert "\n!/.agents/skills/\n" in section
+    assert "\n/.agents/skills/*\n" in section
+    assert "\n!/.agents/skills/*-custom/\n" in section
     # a plain dir ignore for core/.claude would make the negations dead rules
     assert "\n/core/\n" not in section
     assert "\n/.claude/\n" not in section
@@ -2054,20 +2060,25 @@ def test_applied_shipped_gitignore_saves_user_files_and_excludes_product_files(
     product_files = set(portable_contract.brain_paths_inside_vault_regions())
     assert product_files
     product_files.add("README.md")
-    customization = ".claude/skills-custom/mine/SKILL.md"
+    customizations = {
+        ".claude/skills-custom/mine/SKILL.md",
+        ".claude/skills/mine-custom/SKILL.md",
+        ".agents/skills/mine-custom/SKILL.md",
+    }
     secret = ".env"
     for relative in product_files:
         _write(vault, relative, b"release-owned\n")
-    _write(vault, customization, b"user customization\n")
+    for customization in customizations:
+        _write(vault, customization, b"user customization\n")
     _write(vault, secret, b"API_KEY=never-stage\n")
 
     _git(vault, "add", "-A", "--", *portable_contract.VAULT_REGIONS)
-    _git(vault, "add", "-A", "--", customization)
+    _git(vault, "add", "-A", "--", *sorted(customizations))
     _git(vault, "commit", "--quiet", "-m", "save user work")
     committed = set(_git(vault, "show", "--format=", "--name-only", "HEAD").splitlines())
 
     assert user_files <= committed
-    assert customization in committed
+    assert customizations <= committed
     assert product_files.isdisjoint(committed)
     assert secret not in committed
 
@@ -2215,23 +2226,16 @@ def test_compose_gitignore_import_does_not_require_pyyaml() -> None:
     assert result.stdout.strip() == "ok"
 
 
-def test_vault_section_assumes_direct_child_exceptions_only() -> None:
-    """Guard the contract shape the generator relies on.
+def test_vault_section_supports_nested_custom_skill_namespaces() -> None:
+    """Each nested exception re-includes its parent before its own pattern."""
 
-    Every vault-owned path nested under a top-level brain directory must be a
-    direct child: gitignore cannot re-include a file whose parent directory is
-    excluded, so a deeper nesting would need recursive /*-negation chains the
-    generator deliberately does not emit. If this fails, extend
-    _vault_mode_gitignore_section before changing the contract.
-    """
-    tops = {
-        rule.path
-        for rule in portable_contract.RULES
-        if rule.ownership == "brain" and "/" not in rule.path
-    }
-    for rule in portable_contract.RULES:
-        if rule.ownership != "vault" or "/" not in rule.path:
-            continue
-        root = rule.path.split("/", 1)[0]
-        if root in tops:
-            assert rule.path.count("/") == 1, rule.path
+    section = apply_update._vault_mode_gitignore_section()
+
+    for harness in (".claude", ".agents"):
+        parent = f"!/{harness}/skills/"
+        child_ignore = f"/{harness}/skills/*"
+        custom = f"!/{harness}/skills/*-custom/"
+        assert parent in section
+        assert child_ignore in section
+        assert custom in section
+        assert section.index(parent) < section.index(child_ignore) < section.index(custom)

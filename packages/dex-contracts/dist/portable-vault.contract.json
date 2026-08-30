@@ -55,6 +55,13 @@
       "ownership": "brain"
     },
     {
+      "id": "vault-agents-skills-custom",
+      "path": ".agents/skills/*-custom",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "user-authored portable skill convention; never replace a generated skill"
+    },
+    {
       "id": "brain-ci",
       "path": ".ci",
       "kind": "dir",
@@ -73,6 +80,13 @@
       "path": ".claude/skills-custom",
       "kind": "dir",
       "ownership": "vault"
+    },
+    {
+      "id": "vault-claude-skills-custom",
+      "path": ".claude/skills/*-custom",
+      "kind": "dir",
+      "ownership": "vault",
+      "note": "user-authored skill convention; never replace a generated or shipped skill"
     },
     {
       "id": "brain-cursor",
@@ -423,7 +437,8 @@
       "id": "brain-agents-md",
       "path": "AGENTS.md",
       "kind": "file",
-      "ownership": "brain"
+      "ownership": "brain",
+      "note": "source checkout contains contributor guidance; distribution builders substitute the product bootstrap"
     },
     {
       "id": "brain-changelog",
@@ -731,6 +746,13 @@
       "kind": "file",
       "ownership": "brain",
       "note": "shared release-owned sync-provider table consumed by Python and CommonJS"
+    },
+    {
+      "id": "brain-product-agents-template",
+      "path": "core/harnesses/templates/product-AGENTS.md",
+      "kind": "file",
+      "ownership": "brain",
+      "note": "versionless root bootstrap copied into every release and vault bundle"
     },
     {
       "id": "vault-mcp-custom",
