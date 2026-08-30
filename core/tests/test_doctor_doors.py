@@ -23,6 +23,7 @@ from core.harnesses.doors import (
     door_is_detectable,
     door_report,
     never_opened_sentence,
+    notes_panel_sentence,
 )
 from core.harnesses.registry import list_profiles
 from core.onboarding.harness_receipt import (
@@ -65,6 +66,60 @@ def _assert_no_granted_true(payload: object) -> None:
     assert "granted=true" not in encoded
 
 
+def _vault_folder_name(vault_root: Path) -> str:
+    name = Path(vault_root).name
+    assert name not in ("", ".")
+    return name
+
+
+def _installed_sentence(vault_root: Path) -> str:
+    name = _vault_folder_name(vault_root)
+    return f"The notes panel is installed in the {name} vault."
+
+
+def _missing_sentence(vault_root: Path) -> str:
+    name = _vault_folder_name(vault_root)
+    return (
+        f"The notes panel is not installed in the {name} vault. "
+        f"This checkup looked only in the {name} vault, not across the machine."
+    )
+
+
+def _half_on_sentence(vault_root: Path) -> str:
+    name = _vault_folder_name(vault_root)
+    return (
+        f"The notes panel files are there in the {name} vault, but the panel is not switched on. "
+        f"The switch is {NOTES_PANEL_SWITCH}; this checkup will not flip it."
+    )
+
+
+def _assert_notes_panel_sentence_names_folder_only(
+    sentence: str,
+    vault_root: Path,
+    *,
+    allow_switch_slash: bool = False,
+) -> None:
+    name = _vault_folder_name(vault_root)
+    assert name in sentence
+    assert "this vault" not in sentence
+    assert "on this machine" not in sentence
+    assert "~" not in sentence
+    assert "$HOME" not in sentence
+    rooted = Path(vault_root)
+    if rooted.parent.as_posix() not in (".", ""):
+        assert str(rooted) not in sentence
+        assert str(rooted.parent) not in sentence
+        parent_name = rooted.parent.name
+        if parent_name not in ("", ".", name):
+            assert parent_name not in sentence
+    checked = (
+        sentence.replace("`.obsidian/community-plugins.json`", "")
+        if allow_switch_slash
+        else sentence
+    )
+    assert "/" not in checked
+
+
 def test_every_written_adapter_has_a_walk_rule() -> None:
     adapter_ids = {path.stem for path in ADAPTER_ROOT.glob("*.json")}
     profile_ids = {profile.id for profile in list_profiles()}
@@ -96,6 +151,29 @@ def test_walk_rules_are_unchanged_and_name_unseen_doors() -> None:
 
 
 def test_notes_panel_sentence_constants_pin_vault_scope() -> None:
+    named = Path("alpha-notes")
+    assert _installed_sentence(named) == "The notes panel is installed in the alpha-notes vault."
+    assert _missing_sentence(named) == (
+        "The notes panel is not installed in the alpha-notes vault. "
+        "This checkup looked only in the alpha-notes vault, not across the machine."
+    )
+    assert _half_on_sentence(named) == (
+        "The notes panel files are there in the alpha-notes vault, but the panel is not switched on. "
+        "The switch is `.obsidian/community-plugins.json` listing `dex-readonly`; "
+        "this checkup will not flip it."
+    )
+    assert notes_panel_sentence(
+        installed=True, leftover=False, switched_on=True, vault_root=named
+    ) == _installed_sentence(named)
+    assert notes_panel_sentence(
+        installed=False, leftover=False, switched_on=False, vault_root=named
+    ) == _missing_sentence(named)
+    assert notes_panel_sentence(
+        installed=True, leftover=False, switched_on=False, vault_root=named
+    ) == _half_on_sentence(named)
+    assert notes_panel_sentence(
+        installed=False, leftover=True, switched_on=True, vault_root=named
+    ) == f"{_missing_sentence(named)} Leftover: {NOTES_PANEL_LEFTOVER}"
     assert NOTES_PANEL_INSTALLED == "The notes panel is installed in this vault."
     assert NOTES_PANEL_MISSING == (
         "The notes panel is not installed in this vault. "
@@ -106,35 +184,54 @@ def test_notes_panel_sentence_constants_pin_vault_scope() -> None:
         "The switch is `.obsidian/community-plugins.json` listing `dex-readonly`; "
         "this checkup will not flip it."
     )
+    assert notes_panel_sentence(
+        installed=True, leftover=False, switched_on=True, vault_root=Path(".")
+    ) == NOTES_PANEL_INSTALLED
+    assert notes_panel_sentence(
+        installed=False, leftover=False, switched_on=False, vault_root=""
+    ) == NOTES_PANEL_MISSING
+    assert notes_panel_sentence(
+        installed=True, leftover=False, switched_on=False, vault_root=Path(".")
+    ) == NOTES_PANEL_HALF_ON
+    assert "on this machine" not in _installed_sentence(named)
+    assert "on this machine" not in _missing_sentence(named)
+    assert "on this machine" not in _half_on_sentence(named)
     assert "on this machine" not in NOTES_PANEL_INSTALLED
     assert "on this machine" not in NOTES_PANEL_MISSING
     assert "on this machine" not in NOTES_PANEL_HALF_ON
-    assert (
-        f"{NOTES_PANEL_MISSING} Leftover: {NOTES_PANEL_LEFTOVER}"
-        == (
-            "The notes panel is not installed in this vault. "
-            "This checkup looked only in this vault, not across the machine. "
-            "Leftover: `.obsidian/community-plugins.json` may still list "
-            "`dex-readonly` until you remove that name; the workspace layout "
-            "may still show an empty Dex panel slot."
-        )
+    _assert_notes_panel_sentence_names_folder_only(_installed_sentence(named), named)
+    _assert_notes_panel_sentence_names_folder_only(_missing_sentence(named), named)
+    _assert_notes_panel_sentence_names_folder_only(
+        _half_on_sentence(named), named, allow_switch_slash=True
     )
+    leftover = f"{_missing_sentence(named)} Leftover: {NOTES_PANEL_LEFTOVER}"
+    assert leftover == (
+        "The notes panel is not installed in the alpha-notes vault. "
+        "This checkup looked only in the alpha-notes vault, not across the machine. "
+        "Leftover: `.obsidian/community-plugins.json` may still list "
+        "`dex-readonly` until you remove that name; the workspace layout "
+        "may still show an empty Dex panel slot."
+    )
+    assert leftover.startswith(_missing_sentence(named) + " Leftover: ")
+    assert leftover.endswith(NOTES_PANEL_LEFTOVER)
 
 
 def test_notes_panel_absent_in_checked_vault_is_vault_scoped_not_machine(
     context: doctor.DoctorContext,
 ) -> None:
     result = doctor._probe_harness_capabilities(context)
-    missing = (
-        "The notes panel is not installed in this vault. "
-        "This checkup looked only in this vault, not across the machine."
-    )
+    missing = _missing_sentence(context.vault_root)
 
-    assert NOTES_PANEL_MISSING == missing
+    assert missing == (
+        f"The notes panel is not installed in the {context.vault_root.name} vault. "
+        f"This checkup looked only in the {context.vault_root.name} vault, not across the machine."
+    )
     assert result.detail.count(missing) == 1
     assert result.structured_detail["notes_panel"]["sentence"] == missing
+    _assert_notes_panel_sentence_names_folder_only(missing, context.vault_root)
     assert "on this machine" not in result.structured_detail["notes_panel"]["sentence"]
     assert "The notes panel is not installed on this machine." not in result.detail
+    assert "this vault" not in result.structured_detail["notes_panel"]["sentence"]
     _assert_no_granted_true(result.structured_detail)
     _assert_no_granted_true(result.detail)
 
@@ -152,14 +249,15 @@ def test_doctor_names_every_written_door_before_setup(context: doctor.DoctorCont
         else:
             assert cannot_see_opened_sentence(profile.display_name) in result.detail
             assert never_opened_sentence(profile.display_name) not in result.detail
-    assert NOTES_PANEL_MISSING == (
-        "The notes panel is not installed in this vault. "
-        "This checkup looked only in this vault, not across the machine."
+    missing = _missing_sentence(context.vault_root)
+    assert missing == (
+        f"The notes panel is not installed in the {context.vault_root.name} vault. "
+        f"This checkup looked only in the {context.vault_root.name} vault, not across the machine."
     )
-    assert NOTES_PANEL_MISSING in result.detail
-    assert result.detail.count(NOTES_PANEL_MISSING) == 1
+    assert missing in result.detail
+    assert result.detail.count(missing) == 1
     assert CONFIRMED_IS_NOT_WALKED in result.detail
-    assert result.detail.index(NOTES_PANEL_MISSING) < result.detail.index(
+    assert result.detail.index(missing) < result.detail.index(
         CONFIRMED_IS_NOT_WALKED
     )
     assert [door["id"] for door in result.structured_detail["doors"]] == [
@@ -194,12 +292,13 @@ def test_doctor_names_confirmed_doors_without_calling_them_walked(
         else:
             assert cannot_see_opened_sentence(name) in result.detail
             assert never_opened_sentence(name) not in result.detail
-    assert NOTES_PANEL_MISSING == (
-        "The notes panel is not installed in this vault. "
-        "This checkup looked only in this vault, not across the machine."
+    missing = _missing_sentence(context.vault_root)
+    assert missing == (
+        f"The notes panel is not installed in the {context.vault_root.name} vault. "
+        f"This checkup looked only in the {context.vault_root.name} vault, not across the machine."
     )
-    assert NOTES_PANEL_MISSING in result.detail
-    assert result.detail.count(NOTES_PANEL_MISSING) == 1
+    assert missing in result.detail
+    assert result.detail.count(missing) == 1
     assert CONFIRMED_IS_NOT_WALKED in result.detail
     assert result.structured_detail["doors"][5]["id"] == "codex"
     assert result.structured_detail["doors"][5]["confirmed"] is True
@@ -254,22 +353,26 @@ def test_doctor_names_half_on_notes_panel_files_and_the_switch(
     result = doctor._probe_harness_capabilities(context)
 
     assert "You confirmed Cursor, and it is walked on this machine." in result.detail
-    assert NOTES_PANEL_HALF_ON == (
-        "The notes panel files are there, but the panel is not switched on. "
+    half_on = _half_on_sentence(context.vault_root)
+    assert half_on == (
+        f"The notes panel files are there in the {context.vault_root.name} vault, but the panel is not switched on. "
         "The switch is `.obsidian/community-plugins.json` listing `dex-readonly`; "
         "this checkup will not flip it."
     )
-    assert NOTES_PANEL_HALF_ON in result.detail
-    assert result.detail.count(NOTES_PANEL_HALF_ON) == 1
-    assert NOTES_PANEL_INSTALLED not in result.detail
-    assert NOTES_PANEL_MISSING not in result.detail
+    assert half_on in result.detail
+    assert result.detail.count(half_on) == 1
+    assert _installed_sentence(context.vault_root) not in result.detail
+    assert _missing_sentence(context.vault_root) not in result.detail
     assert NOTES_PANEL_SWITCH in result.detail
     assert "this checkup will not flip it." in result.detail
+    _assert_notes_panel_sentence_names_folder_only(
+        half_on, context.vault_root, allow_switch_slash=True
+    )
     assert result.structured_detail["notes_panel"]["installed"] is True
     assert result.structured_detail["notes_panel"]["switched_on"] is False
     assert result.structured_detail["notes_panel"]["left"] is False
     assert result.structured_detail["notes_panel"]["switch"] == NOTES_PANEL_SWITCH
-    assert result.detail.index(NOTES_PANEL_HALF_ON) < result.detail.index(
+    assert result.detail.index(half_on) < result.detail.index(
         CONFIRMED_IS_NOT_WALKED
     )
     _assert_no_granted_true(result.structured_detail)
@@ -330,6 +433,10 @@ def test_door_report_covers_the_adapter_registry_without_a_grant_flag(
     assert report.notes_panel_switched_on is False
     assert report.notes_panel_left is False
     assert report.notes_panel_switch is None
+    assert report.notes_panel_sentence == _missing_sentence(tmp_path / "vault")
+    _assert_notes_panel_sentence_names_folder_only(
+        report.notes_panel_sentence, tmp_path / "vault"
+    )
     assert "granted" not in encoded
     assert encoded.count(CONFIRMED_IS_NOT_WALKED) == 1
     assert "You left " not in encoded
@@ -456,22 +563,23 @@ def test_doctor_proves_a_notes_panel_leave_and_names_the_listing_leftover(
     listing.write_text('["dex-readonly"]\n', encoding="utf-8")
 
     result = doctor._probe_harness_capabilities(context)
-    expected = f"{NOTES_PANEL_MISSING} Leftover: {NOTES_PANEL_LEFTOVER}"
+    missing = _missing_sentence(context.vault_root)
+    expected = f"{missing} Leftover: {NOTES_PANEL_LEFTOVER}"
 
-    assert NOTES_PANEL_MISSING == (
-        "The notes panel is not installed in this vault. "
-        "This checkup looked only in this vault, not across the machine."
+    assert missing == (
+        f"The notes panel is not installed in the {context.vault_root.name} vault. "
+        f"This checkup looked only in the {context.vault_root.name} vault, not across the machine."
     )
     assert NOTES_PANEL_LEFTOVER == (
         "`.obsidian/community-plugins.json` may still list `dex-readonly` until you "
         "remove that name; the workspace layout may still show an empty Dex panel slot."
     )
-    assert expected == (
-        f"{NOTES_PANEL_MISSING} Leftover: {NOTES_PANEL_LEFTOVER}"
-    )
+    assert expected == f"{missing} Leftover: {NOTES_PANEL_LEFTOVER}"
     assert expected in result.detail
     assert result.detail.count(expected) == 1
     assert result.detail.index(expected) < result.detail.index(CONFIRMED_IS_NOT_WALKED)
+    assert expected.startswith(missing + " Leftover: ")
+    assert expected.endswith(NOTES_PANEL_LEFTOVER)
     assert result.structured_detail["notes_panel"]["installed"] is False
     assert result.structured_detail["notes_panel"]["switched_on"] is True
     assert result.structured_detail["notes_panel"]["left"] is True
@@ -491,11 +599,13 @@ def test_notes_panel_listing_is_not_a_leave_while_the_plugin_is_installed(
 
     result = doctor._probe_harness_capabilities(context)
 
-    assert NOTES_PANEL_INSTALLED == "The notes panel is installed in this vault."
-    assert NOTES_PANEL_INSTALLED in result.detail
-    assert result.detail.count(NOTES_PANEL_INSTALLED) == 1
-    assert NOTES_PANEL_HALF_ON not in result.detail
-    assert NOTES_PANEL_MISSING not in result.detail
+    installed = _installed_sentence(context.vault_root)
+    assert installed == f"The notes panel is installed in the {context.vault_root.name} vault."
+    assert installed in result.detail
+    assert result.detail.count(installed) == 1
+    assert _half_on_sentence(context.vault_root) not in result.detail
+    assert _missing_sentence(context.vault_root) not in result.detail
+    _assert_notes_panel_sentence_names_folder_only(installed, context.vault_root)
     assert "Leftover:" not in result.detail
     assert result.structured_detail["notes_panel"]["installed"] is True
     assert result.structured_detail["notes_panel"]["switched_on"] is True
@@ -536,15 +646,21 @@ def test_half_on_notes_panel_is_not_a_leave(context: doctor.DoctorContext) -> No
 
     result = doctor._probe_harness_capabilities(context)
 
-    assert NOTES_PANEL_HALF_ON == (
-        "The notes panel files are there, but the panel is not switched on. "
+    half_on = _half_on_sentence(context.vault_root)
+    assert half_on == (
+        f"The notes panel files are there in the {context.vault_root.name} vault, but the panel is not switched on. "
         "The switch is `.obsidian/community-plugins.json` listing `dex-readonly`; "
         "this checkup will not flip it."
     )
-    assert NOTES_PANEL_HALF_ON in result.detail
-    assert result.detail.count(NOTES_PANEL_HALF_ON) == 1
-    assert NOTES_PANEL_INSTALLED not in result.detail
-    assert NOTES_PANEL_MISSING not in result.detail
+    assert half_on in result.detail
+    assert result.detail.count(half_on) == 1
+    assert _installed_sentence(context.vault_root) not in result.detail
+    assert _missing_sentence(context.vault_root) not in result.detail
+    assert NOTES_PANEL_SWITCH in result.detail
+    assert "this checkup will not flip it." in result.detail
+    _assert_notes_panel_sentence_names_folder_only(
+        half_on, context.vault_root, allow_switch_slash=True
+    )
     assert "Leftover:" not in result.detail
     assert result.structured_detail["notes_panel"]["left"] is False
     assert "leftover" not in result.structured_detail["notes_panel"]
@@ -570,7 +686,13 @@ def test_doctor_does_not_flip_the_notes_panel_switch(context: doctor.DoctorConte
         for path in (context.vault_root / ".obsidian").rglob("*")
         if path.is_file()
     }
-    assert NOTES_PANEL_HALF_ON in result.detail
+    half_on = _half_on_sentence(context.vault_root)
+    assert half_on in result.detail
+    assert NOTES_PANEL_SWITCH in result.detail
+    assert "this checkup will not flip it." in result.detail
+    _assert_notes_panel_sentence_names_folder_only(
+        half_on, context.vault_root, allow_switch_slash=True
+    )
     assert listing.read_text(encoding="utf-8") == '["unrelated-plugin"]\n'
     assert "dex-readonly" not in listing.read_text(encoding="utf-8")
     assert after == before
@@ -606,10 +728,11 @@ def test_stale_work_copy_sentence_stays_last_after_half_on_notes_panel(
         result,
     )
 
-    assert NOTES_PANEL_HALF_ON in result.detail
+    half_on = _half_on_sentence(context.vault_root)
+    assert half_on in result.detail
     assert result.detail.endswith(STALE_WORK_COPY_SENTENCE)
     assert rendered["detail"].endswith(STALE_WORK_COPY_SENTENCE)
-    assert result.detail.index(NOTES_PANEL_HALF_ON) < result.detail.index(
+    assert result.detail.index(half_on) < result.detail.index(
         STALE_WORK_COPY_SENTENCE
     )
     assert result.detail.count(STALE_WORK_COPY_SENTENCE) == 1
@@ -806,5 +929,53 @@ def test_eleven_door_sentences_and_payload_keys_stay_byte_identical(
         "sentence",
     }
     assert result.structured_detail["confirmed_is_not_walked"] == CONFIRMED_IS_NOT_WALKED
+    notes_sentence = result.structured_detail["notes_panel"]["sentence"]
+    assert notes_sentence == _missing_sentence(context.vault_root)
+    _assert_notes_panel_sentence_names_folder_only(notes_sentence, context.vault_root)
+    assert "on this machine" not in notes_sentence
     _assert_no_granted_true(result.structured_detail)
     _assert_no_granted_true(result.detail)
+
+
+def test_two_vault_folders_name_themselves_in_the_missing_sentence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    first = tmp_path / "maya-first"
+    second = tmp_path / "maya-second"
+    shared_home = tmp_path / "shared-home"
+    shared_home.mkdir()
+    for vault in (first, second):
+        (vault / "System").mkdir(parents=True)
+    first_result = doctor._probe_harness_capabilities(
+        doctor.DoctorContext(vault_root=first, repo_root=first, home=shared_home, now=NOW)
+    )
+    second_result = doctor._probe_harness_capabilities(
+        doctor.DoctorContext(vault_root=second, repo_root=second, home=shared_home, now=NOW)
+    )
+    first_missing = _missing_sentence(first)
+    second_missing = _missing_sentence(second)
+
+    assert first_missing == (
+        "The notes panel is not installed in the maya-first vault. "
+        "This checkup looked only in the maya-first vault, not across the machine."
+    )
+    assert second_missing == (
+        "The notes panel is not installed in the maya-second vault. "
+        "This checkup looked only in the maya-second vault, not across the machine."
+    )
+    assert first_result.detail.count(first_missing) == 1
+    assert second_result.detail.count(second_missing) == 1
+    assert first_result.structured_detail["notes_panel"]["sentence"] == first_missing
+    assert second_result.structured_detail["notes_panel"]["sentence"] == second_missing
+    assert first_missing != second_missing
+    assert "this vault" not in first_missing
+    assert "this vault" not in second_missing
+    _assert_notes_panel_sentence_names_folder_only(first_missing, first)
+    _assert_notes_panel_sentence_names_folder_only(second_missing, second)
+    assert first_missing.count("maya-first") == 2
+    assert second_missing.count("maya-second") == 2
+    _assert_no_granted_true(first_result.structured_detail)
+    _assert_no_granted_true(second_result.structured_detail)
+    _assert_no_granted_true(first_result.detail)
+    _assert_no_granted_true(second_result.detail)

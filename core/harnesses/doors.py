@@ -7,7 +7,7 @@ A written door this checkup cannot detect is named as unseen, not as never opene
 A left door is a walk artifact that is gone while leftover residue remains.
 Confirming a door is not the same as walking it.
 A confirmed door is not a leave. Leftovers are named only when a leave is proved.
-Notes-panel checks read one vault's own files; the sentences claim that vault, never the machine.
+Notes-panel sentences name the vault folder they were pointed at, never a disk path, never the machine.
 
 This module never writes a grant, a grant receipt, or a grant flag.
 """
@@ -204,15 +204,60 @@ def door_sentence(
     return never_opened_sentence(name)
 
 
-def notes_panel_sentence(*, installed: bool, leftover: bool, switched_on: bool) -> str:
+def notes_panel_folder_name(vault_root: Path | str) -> str:
+    """Return the vault folder's own name, or empty when that name is missing or '.'."""
+    name = Path(vault_root).name
+    if not name or name == ".":
+        return ""
+    return name
+
+
+def notes_panel_installed_sentence(vault_root: Path | str) -> str:
+    """Return the installed sentence, naming the folder or falling back to this vault."""
+    name = notes_panel_folder_name(vault_root)
+    if not name:
+        return NOTES_PANEL_INSTALLED
+    return f"The notes panel is installed in the {name} vault."
+
+
+def notes_panel_missing_sentence(vault_root: Path | str) -> str:
+    """Return the missing sentence, naming the folder or falling back to this vault."""
+    name = notes_panel_folder_name(vault_root)
+    if not name:
+        return NOTES_PANEL_MISSING
+    return (
+        f"The notes panel is not installed in the {name} vault. "
+        f"This checkup looked only in the {name} vault, not across the machine."
+    )
+
+
+def notes_panel_half_on_sentence(vault_root: Path | str) -> str:
+    """Return the half-on sentence with switch wording, plus the folder name when present."""
+    name = notes_panel_folder_name(vault_root)
+    if not name:
+        return NOTES_PANEL_HALF_ON
+    return (
+        f"The notes panel files are there in the {name} vault, but the panel is not switched on. "
+        f"The switch is {NOTES_PANEL_SWITCH}; this checkup will not flip it."
+    )
+
+
+def notes_panel_sentence(
+    *,
+    installed: bool,
+    leftover: bool,
+    switched_on: bool,
+    vault_root: Path | str,
+) -> str:
     """Return the notes-panel sentence, naming a half-on switch or leftover residue."""
     if installed and switched_on:
-        return NOTES_PANEL_INSTALLED
+        return notes_panel_installed_sentence(vault_root)
     if installed:
-        return NOTES_PANEL_HALF_ON
+        return notes_panel_half_on_sentence(vault_root)
+    missing = notes_panel_missing_sentence(vault_root)
     if leftover:
-        return f"{NOTES_PANEL_MISSING} Leftover: {NOTES_PANEL_LEFTOVER}"
-    return NOTES_PANEL_MISSING
+        return f"{missing} Leftover: {NOTES_PANEL_LEFTOVER}"
+    return missing
 
 
 def notes_panel_installed(vault_root: Path) -> bool:
@@ -304,6 +349,7 @@ def door_report(
             installed=installed,
             leftover=leftover_notes,
             switched_on=switched_on,
+            vault_root=vault_root,
         ),
     )
 
