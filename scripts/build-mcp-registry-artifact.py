@@ -109,7 +109,7 @@ def validate_manifests(staged: Path) -> dict[str, Any]:
     package = _load_json(staged / "package.json")
     server = _load_json(staged / "server.json")
     if package.get("private") is not True:
-        raise RegistryArtifactError("dex-mcp must stay private until Dave publishes")
+        raise RegistryArtifactError("dex-mcp must stay private until a public catalogue publish")
     if package.get("name") != "dex-mcp":
         raise RegistryArtifactError("npm package name must stay the unscoped dex-mcp name")
     if package.get("mcpName") != server.get("name"):
