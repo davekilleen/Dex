@@ -3,7 +3,7 @@
   "name": "Dex",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Read-only Dex panel. Open your Dex folder and see today's brief. No edits, no commands, no internet.",
+  "description": "Read-only Dex panel. Today's brief, then a topic ask from your own files. No edits, no commands, no internet.",
   "author": "Dex",
   "isDesktopOnly": false
 }

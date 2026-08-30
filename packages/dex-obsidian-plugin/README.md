@@ -1,7 +1,9 @@
 # Dex panel for Obsidian (read-only, local)
 
-Open your Dex folder in Obsidian and see today's brief. This panel does not
-edit notes, run Dex commands, or use the internet.
+Open your Dex folder in Obsidian and see today's brief. Under that brief, type
+a topic to see recorded decision words from your own files, each naming the
+note and the date. When nothing matches, one honest sentence says so. This
+panel does not edit notes, run Dex commands, or use the internet.
 
 This is an unreleased local install. It has not been submitted to the Obsidian
 community store.
@@ -13,7 +15,9 @@ community store.
 3. Copy this folder into your Dex folder at `.obsidian/plugins/dex-readonly`.
 4. Turn off **Restricted Mode**.
 5. Enable **Dex** under community plugins.
-6. Look at the Dex panel on the right. Today's brief should be there.
+6. Look at the Dex panel on the right. Today's brief should be there. Under
+   it, type a topic. Matching recorded decisions name the note and the date.
+   If nothing matches, one honest sentence says so.
 
 You can copy the folder by hand, or from the Dex checkout run:
 
