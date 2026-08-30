@@ -97,6 +97,7 @@ def test_obsidian_steps_include_the_brief_and_skip_publish() -> None:
     assert any("decided lately" in item.lower() for item in steps)
     assert any("type a topic" in item.lower() for item in steps)
     assert any("type a person's name" in item.lower() for item in steps)
+    assert any("type a note path" in item.lower() for item in steps)
     assert "does not edit notes" in joined_limits
     assert "community store" in joined_limits
     assert "chatgpt work folder grant" in joined_limits

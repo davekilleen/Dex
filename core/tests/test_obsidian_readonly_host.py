@@ -135,6 +135,8 @@ def test_obsidian_install_contract_names_local_panel_and_no_store() -> None:
     assert "decided lately" in guide
     assert "type a topic" in guide
     assert "person's name" in guide
+    assert "type a note path" in guide
+    assert "who that note names" in guide
     assert "community store" in guide
     assert "ubuntu cloud" in guide
     assert "chatgpt work folder grant" in guide
@@ -202,6 +204,9 @@ def test_today_people_open_items_render_without_writing(tmp_path: Path) -> None:
     assert "Last interaction:" in main
     assert "Still open:" in main
     assert "dex-readonly-today-people" in main
+    assert "Who this note names" in main
+    assert "Type a note path" in main
+    assert "renderNote" in main
     assert _snapshot(vault) == before
 
 

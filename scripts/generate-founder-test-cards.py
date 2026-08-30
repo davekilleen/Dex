@@ -161,6 +161,14 @@ def expected_sight(sentence: str, *, stop: bool, harness_id: str = "") -> str:
             "Who they are appears from your own files. When nothing matches, "
             "one honest sentence says so. Notes are unchanged. " + tail
         )
+    if harness_id == "obsidian" and "type a note path" in lower:
+        return (
+            "Who this note names shows people that note names, with role, "
+            "company, last interaction, and every unchecked to-do still on "
+            "their page, each naming the page. When the note names nobody, "
+            "or the path is not a note this panel will read, one honest "
+            "sentence says so. Notes are unchanged. " + tail
+        )
     if harness_id == "obsidian" and "who today's plan names" in lower:
         return (
             "Who today's plan names shows people from today's plan, with role "

@@ -9,12 +9,16 @@ import pytest
 
 from core.obsidian_panel import (
     ask_who_they_are,
+    people_named_in_note,
     people_named_in_today_plan,
     refuse_network,
     refuse_vault_write,
 )
 from core.obsidian_panel.people import (
     EMPTY_SENTENCE,
+    NOTE_MISSING,
+    NOTE_NOBODY,
+    NOTE_REFUSED,
     NO_PLAN,
     NOBODY_NAMED,
     format_person_match,
@@ -276,6 +280,11 @@ STEP6_PROMISE = (
     "interaction their page records and every unchecked to-do still on that page, "
     "without typing. A page that records neither shows neither."
 )
+STEP10_PROMISE = (
+    "Type a note path inside your Dex folder and see who that note names — "
+    "role, company, last interaction, and every unchecked to-do still on "
+    "their page, each naming the page — without leaving the notes app."
+)
 
 
 def _write_today_open_items_vault(root: Path) -> Path:
@@ -468,7 +477,8 @@ def test_founder_card_grows_step_six_and_keeps_the_leave_line() -> None:
     assert STEP6_PROMISE in adapter
     assert LEAVE_LINE in card
     assert "### Step 6" in card
-    assert "### Step 10" not in card
+    assert "### Step 10" in card
+    assert STEP10_PROMISE in card
     assert (
         "Today's brief, then who today's plan names, then Decided lately, "
         "then a topic ask, then a person name."
@@ -601,3 +611,336 @@ panel.renderTodayPeople(root, app, new Date(2026, 7, 29)).then(() => {
     assert payload["nobody"] == NOBODY_NAMED
     assert payload["noPlan"] == NO_PLAN
     assert payload["personEmpty"] == EMPTY_SENTENCE
+
+
+def _write_note_people_vault(root: Path) -> Path:
+    internal = root / "05-Areas" / "People" / "Internal"
+    external = root / "05-Areas" / "People" / "External"
+    meetings = root / "00-Inbox" / "Meetings"
+    internal.mkdir(parents=True)
+    external.mkdir(parents=True)
+    meetings.mkdir(parents=True)
+    (internal / "Ada_Lovelace.md").write_text(
+        "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n"
+        "last_interaction: Tuesday standup\n---\n"
+        "# Ada Lovelace\n\n"
+        "- [ ] Send the operating memo\n"
+        "- [x] Already filed the notes\n"
+        "- [ ] Review the **engine** drawings\n",
+        encoding="utf-8",
+    )
+    (external / "Charles_Babbage.md").write_text(
+        "---\nname: Charles Babbage\nrole: Engineer\ncompany: Difference Co\n"
+        "last_interaction: 2026-04-01\n---\n"
+        "# Charles Babbage\n\n"
+        "- [ ] Review the engine notes\n"
+        "- [ ] File the drawings\n",
+        encoding="utf-8",
+    )
+    (external / "Grace_Hopper.md").write_text(
+        "---\nname: Grace Hopper\nrole: Rear Admiral\ncompany: Navy\n"
+        "last_interaction: 2026-03-20\n---\n"
+        "# Grace Hopper\n\n- [ ] Compile the compiler notes\n",
+        encoding="utf-8",
+    )
+    (internal / "Michael_Faraday.md").write_text(
+        "---\nname: Michael Faraday\nrole: Scientist\ncompany: Royal Institution\n"
+        "last_interaction: 2026-02-01\n---\n"
+        "# Michael Faraday\n\n- [ ] Unused person must not appear\n",
+        encoding="utf-8",
+    )
+    (internal / "José_García.md").write_text(
+        "---\nname: \"José García\"\nrole: \"VP, Product\"\ncompany: \"Acme & Sons\"\n---\n"
+        "# José García\n\nMet at ProductConf.\n",
+        encoding="utf-8",
+    )
+    (meetings / "2026-08-30 - Engine review.md").write_text(
+        "# Engine review\n\n"
+        "Walked [[Ada Lovelace]] through the memo.\n"
+        "See also People/External/Charles_Babbage.md for the drawings.\n"
+        "Grace Hopper will review the compiler notes.\n"
+        "Maya asked a question in prose only.\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_note_names_people_in_note_order_with_recorded_fields(tmp_path: Path) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+    before = _snapshot(vault)
+
+    result = people_named_in_note(
+        vault, "00-Inbox/Meetings/2026-08-30 - Engine review.md"
+    )
+
+    assert result["note"] is True
+    assert result["empty"] is None
+    assert [row["name"] for row in result["matches"]] == [
+        "Ada Lovelace",
+        "Charles Babbage",
+        "Grace Hopper",
+    ]
+    assert result["matches"][0] == {
+        "name": "Ada Lovelace",
+        "role": "Founder",
+        "company": "Analytical Engines",
+        "note": "Ada_Lovelace",
+        "last_interaction": "Tuesday standup",
+        "open_items": [
+            "Send the operating memo",
+            "Review the engine drawings",
+        ],
+    }
+    assert result["matches"][1]["note"] == "Charles_Babbage"
+    assert result["matches"][1]["last_interaction"] == "2026-04-01"
+    assert result["matches"][1]["open_items"] == [
+        "Review the engine notes",
+        "File the drawings",
+    ]
+    assert result["matches"][2]["note"] == "Grace_Hopper"
+    assert "Michael Faraday" not in [row["name"] for row in result["matches"]]
+    assert "Maya" not in [row["name"] for row in result["matches"]]
+    assert result["lines"][0] == ADA_LINE
+    assert _snapshot(vault) == before
+
+
+def test_note_path_outside_vault_is_refused_and_never_read(tmp_path: Path) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+    secret = "OUTSIDE-NOTE-SECRET-SHOULD-NEVER-BE-READ"
+    outside = tmp_path / "outside.md"
+    outside.write_text(f"# Secret\n\n[[Ada Lovelace]] {secret}\n", encoding="utf-8")
+
+    result = people_named_in_note(vault, outside)
+
+    assert result["note"] is False
+    assert result["matches"] == []
+    assert result["lines"] == []
+    assert result["empty"] == NOTE_REFUSED
+    assert secret not in str(result)
+    assert outside.read_text(encoding="utf-8").startswith("# Secret")
+
+
+def test_note_person_tree_path_is_refused(tmp_path: Path) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+    page = vault / "05-Areas" / "People" / "Internal" / "Ada_Lovelace.md"
+
+    result = people_named_in_note(vault, "05-Areas/People/Internal/Ada_Lovelace.md")
+
+    assert result["empty"] == NOTE_REFUSED
+    assert result["matches"] == []
+    assert result["note"] is False
+    assert page.read_text(encoding="utf-8").startswith("---")
+
+
+def test_note_missing_file_gets_no_note_sentence(tmp_path: Path) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+
+    result = people_named_in_note(
+        vault, "00-Inbox/Meetings/2026-08-30 - Missing.md"
+    )
+
+    assert result["empty"] == NOTE_MISSING
+    assert result["empty"] == "There is no note at that path in your Dex folder."
+    assert result["matches"] == []
+    assert result["note"] is False
+
+
+def test_note_binary_extension_is_refused(tmp_path: Path) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+    binary = vault / "00-Inbox" / "Meetings" / "photo.png"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\nnot-a-note")
+
+    result = people_named_in_note(vault, "00-Inbox/Meetings/photo.png")
+
+    assert result["empty"] == NOTE_REFUSED
+    assert result["matches"] == []
+    assert result["note"] is False
+
+
+def test_note_stripped_names_get_nobody_named_sentence_exactly_once(
+    tmp_path: Path,
+) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+    note = vault / "00-Inbox" / "Meetings" / "2026-08-30 - Engine review.md"
+    named = people_named_in_note(vault, note)
+    assert named["note"] is True
+    assert named["empty"] is None
+
+    note.write_text("# Engine\n\nFocus on the operating memo.\n", encoding="utf-8")
+    result = people_named_in_note(vault, note)
+
+    assert result["empty"] == NOTE_NOBODY
+    assert result["empty"] == "That note does not name anyone from your person pages."
+    assert result["matches"] == []
+    assert result["lines"] == []
+    assert str(result).count(NOTE_NOBODY) == 1
+
+
+def test_note_identity_row_alone_when_page_records_neither(
+    tmp_path: Path,
+) -> None:
+    vault = _write_note_people_vault(tmp_path / "dex")
+    note = vault / "00-Inbox" / "Meetings" / "2026-08-30 - Engine review.md"
+    note.write_text(
+        "# Catch-up\n\nPrep with José García before noon.\n",
+        encoding="utf-8",
+    )
+
+    result = people_named_in_note(vault, note)
+
+    assert result["matches"] == [
+        {
+            "name": "José García",
+            "role": "VP, Product",
+            "company": "Acme & Sons",
+            "note": "José_García",
+            "last_interaction": "",
+            "open_items": [],
+        }
+    ]
+    assert result["lines"] == [JOSE_LINE]
+
+
+def test_panel_javascript_note_ask_nests_open_items_and_refuses_paths() -> None:
+    script = r"""
+const Module = require("module");
+const original = Module.prototype.require;
+Module.prototype.require = function (id) {
+  if (id === "obsidian") {
+    return { ItemView: class {}, Plugin: class {} };
+  }
+  return original.apply(this, arguments);
+};
+const panel = require("./packages/dex-obsidian-plugin/main.js");
+function node(tag) {
+  const children = [];
+  const attrs = {};
+  const listeners = {};
+  const el = {
+    tag,
+    children,
+    text: "",
+    cls: "",
+    value: "",
+    attrs,
+    addClass(name) { el.cls = [el.cls, name].filter(Boolean).join(" "); },
+    setAttribute(name, value) { attrs[name] = value; },
+    addEventListener(name, fn) { listeners[name] = fn; },
+    click() { if (listeners.click) listeners.click(); },
+    createEl(childTag, opts = {}) {
+      const child = node(childTag);
+      if (opts.text) child.text = opts.text;
+      if (opts.cls) child.cls = opts.cls;
+      children.push(child);
+      return child;
+    },
+    empty() { children.length = 0; el.text = ""; },
+  };
+  return el;
+}
+const adaText = "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\nlast_interaction: Tuesday standup\n---\n# Ada Lovelace\n\n- [ ] Send the operating memo\n- [x] Already filed the notes\n- [ ] Review the **engine** drawings\n";
+const joseText = "---\nname: \"José García\"\nrole: \"VP, Product\"\ncompany: \"Acme & Sons\"\n---\n# José García\n\nMet at ProductConf.\n";
+const files = {
+  "00-Inbox/Meetings/2026-08-30 - Engine review.md": "# Engine review\n\nWalked [[Ada Lovelace]] through the memo.\nPrep with José García.\n",
+  "00-Inbox/Meetings/empty.md": "# Empty\n\nFocus on the operating memo.\n",
+  "05-Areas/People/Internal/Ada_Lovelace.md": adaText,
+  "05-Areas/People/External/José_García.md": joseText,
+};
+const reads = [];
+const app = {
+  vault: {
+    getMarkdownFiles() {
+      return Object.keys(files).map((path) => ({ path, extension: "md" }));
+    },
+    getAbstractFileByPath(path) {
+      if (path && path.includes("..")) return { path, extension: "md" };
+      return files[path] ? { path, extension: path.split(".").pop() } : null;
+    },
+    async cachedRead(file) {
+      reads.push(file.path);
+      return files[file.path] || "";
+    },
+  },
+};
+const root = node("div");
+panel.renderNote(root, app);
+const input = root.children[1].children[0];
+const button = root.children[1].children[1];
+const results = root.children[2];
+function walk(el) {
+  return { tag: el.tag, text: el.text, cls: el.cls, children: el.children.map(walk) };
+}
+async function run(path) {
+  input.value = path;
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return walk(results);
+}
+(async () => {
+  const named = await run("00-Inbox/Meetings/2026-08-30 - Engine review.md");
+  const nobody = await run("00-Inbox/Meetings/empty.md");
+  const missing = await run("00-Inbox/Meetings/missing.md");
+  const outside = await run("../outside.md");
+  const personTree = await run("05-Areas/People/Internal/Ada_Lovelace.md");
+  const binary = await run("00-Inbox/Meetings/photo.png");
+  process.stdout.write(JSON.stringify({
+    heading: root.children[0].text,
+    placeholder: input.attrs.placeholder,
+    aria: input.attrs["aria-label"],
+    button: button.text,
+    named,
+    nobody,
+    missing,
+    outside,
+    personTree,
+    binary,
+    reads,
+    refused: panel.NOTE_REFUSED,
+    missingSentence: panel.NOTE_MISSING,
+    nobodySentence: panel.NOTE_NOBODY,
+    classifyOutside: panel.classifyNotePath("../outside.md"),
+    classifyPerson: panel.classifyNotePath("05-Areas/People/Internal/Ada_Lovelace.md"),
+    classifyBinary: panel.classifyNotePath("00-Inbox/Meetings/photo.png"),
+  }));
+})();
+"""
+    import json
+    import subprocess
+
+    completed = subprocess.run(
+        ["node", "-e", script],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(completed.stdout)
+    named_list = payload["named"]["children"][0]
+    ada_row, jose_row = named_list["children"]
+    nest = ada_row["children"][0]
+
+    assert payload["heading"] == "Who this note names"
+    assert payload["placeholder"] == "Type a note path"
+    assert payload["aria"] == "Type a note path"
+    assert payload["button"] == "Look in your files"
+    assert ada_row["text"] == ADA_LINE
+    assert [child["text"] for child in nest["children"]] == [
+        "Last interaction: Tuesday standup",
+        "Still open: Send the operating memo",
+        "Still open: Review the engine drawings",
+    ]
+    assert jose_row["text"] == JOSE_LINE
+    assert jose_row["children"] == []
+    assert payload["nobody"]["children"][0]["text"] == NOTE_NOBODY
+    assert payload["missing"]["children"][0]["text"] == NOTE_MISSING
+    assert payload["outside"]["children"][0]["text"] == NOTE_REFUSED
+    assert payload["personTree"]["children"][0]["text"] == NOTE_REFUSED
+    assert payload["binary"]["children"][0]["text"] == NOTE_REFUSED
+    assert payload["classifyOutside"] == "refused"
+    assert payload["classifyPerson"] == "refused"
+    assert payload["classifyBinary"] == "refused"
+    assert "../outside.md" not in payload["reads"]
+    assert "05-Areas/People/Internal/Ada_Lovelace.md" not in payload["reads"]
+    assert "00-Inbox/Meetings/photo.png" not in payload["reads"]
+    assert payload["nobody"]["children"][0]["tag"] == "p"
+    assert "ul" not in [child["tag"] for child in payload["outside"]["children"]]

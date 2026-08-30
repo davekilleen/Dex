@@ -11,6 +11,15 @@ const PERSON_EMPTY = "No person in your files matched that name.";
 const TODAY_PEOPLE_HEADING = "Who today's plan names";
 const NOBODY_NAMED = "Today's plan does not name anyone in your files.";
 const NO_PLAN = "There is no plan for today in your files.";
+const NOTE_HEADING = "Who this note names";
+const NOTE_NOBODY = "That note does not name anyone from your person pages.";
+const NOTE_MISSING = "There is no note at that path in your Dex folder.";
+const NOTE_REFUSED = "That path is not a note this panel will read. It reads only notes inside your own Dex folder.";
+const BINARY_EXTENSIONS = new Set([
+  "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "svg",
+  "pdf", "zip", "tar", "gz", "mp3", "mp4", "mov", "wav",
+  "pptx", "xlsx", "docx",
+]);
 const LATELY_LIMIT = 3;
 const NO_DATE = "no date in that note";
 const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
@@ -366,6 +375,49 @@ function isPersonMarkdown(path) {
     return false;
   }
   return PEOPLE_TREES.some((tree) => relative === tree || relative.startsWith(`${tree}/`));
+}
+
+function classifyNotePath(relativePath) {
+  const raw = String(relativePath || "").trim();
+  const normalised = raw.replace(/\\/g, "/");
+  if (!raw) {
+    return "refused";
+  }
+  if (
+    normalised === "People"
+    || normalised.startsWith("People/")
+    || normalised.includes("/People/")
+  ) {
+    return "refused";
+  }
+  const parts = normalised.split("/");
+  if (parts.some((part) => part === ".." || part === "")) {
+    return "refused";
+  }
+  const base = parts[parts.length - 1] || "";
+  const dot = base.lastIndexOf(".");
+  const ext = dot >= 0 ? base.slice(dot + 1).toLowerCase() : "";
+  if (ext && BINARY_EXTENSIONS.has(ext)) {
+    return "refused";
+  }
+  return "ok";
+}
+
+function appendPersonIdentityRow(list, match) {
+  const item = list.createEl("li", { text: formatPersonMatch(match) });
+  const last = String(match.last_interaction || "").trim();
+  const openItems = Array.isArray(match.open_items) ? match.open_items : [];
+  if (!last && !openItems.length) {
+    return item;
+  }
+  const nest = item.createEl("ul");
+  if (last) {
+    nest.createEl("li", { text: `Last interaction: ${last}` });
+  }
+  openItems.forEach((open) => {
+    nest.createEl("li", { text: `Still open: ${open}` });
+  });
+  return item;
 }
 
 function cleanPersonValue(raw) {
@@ -759,6 +811,63 @@ function renderPerson(root, app) {
   });
 }
 
+function renderNote(root, app) {
+  const heading = root.createEl("h2", { text: NOTE_HEADING });
+  heading.addClass("dex-readonly-heading");
+  const box = root.createEl("div", { cls: "dex-readonly-ask" });
+  const input = box.createEl("input");
+  input.setAttribute("type", "text");
+  input.setAttribute("placeholder", "Type a note path");
+  input.setAttribute("aria-label", "Type a note path");
+  const button = box.createEl("button", { text: "Look in your files" });
+  button.setAttribute("type", "button");
+  const results = root.createEl("div", { cls: "dex-readonly-ask-results" });
+
+  async function runNote() {
+    const relative = String(input.value || "").trim().replace(/\\/g, "/");
+    results.empty();
+    if (classifyNotePath(relative) === "refused") {
+      results.createEl("p", {
+        text: NOTE_REFUSED,
+        cls: "dex-readonly-empty",
+      });
+      return;
+    }
+    const file = app.vault.getAbstractFileByPath(relative);
+    if (!file || !file.extension) {
+      results.createEl("p", {
+        text: NOTE_MISSING,
+        cls: "dex-readonly-empty",
+      });
+      return;
+    }
+    const text = await readVaultText(app, relative);
+    const records = await loadPersonRecords(app);
+    const matches = peopleNamedInPlan(records, text);
+    if (!matches.length) {
+      results.createEl("p", {
+        text: NOTE_NOBODY,
+        cls: "dex-readonly-empty",
+      });
+      return;
+    }
+    const list = results.createEl("ul");
+    for (const match of matches) {
+      appendPersonIdentityRow(list, match);
+    }
+  }
+
+  button.addEventListener("click", () => {
+    runNote();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runNote();
+    }
+  });
+}
+
 class DexBriefView extends ItemView {
   getViewType() {
     return VIEW_TYPE;
@@ -780,6 +889,7 @@ class DexBriefView extends ItemView {
     await renderLately(root, this.app);
     renderAsk(root, this.app);
     renderPerson(root, this.app);
+    renderNote(root, this.app);
     root.createEl("p", {
       text: "This panel is read-only. It does not edit notes, run commands, or use the internet.",
       cls: "dex-readonly-note",
@@ -817,6 +927,9 @@ module.exports.renderAsk = renderAsk;
 module.exports.renderLately = renderLately;
 module.exports.renderTodayPeople = renderTodayPeople;
 module.exports.renderPerson = renderPerson;
+module.exports.renderNote = renderNote;
+module.exports.classifyNotePath = classifyNotePath;
+module.exports.appendPersonIdentityRow = appendPersonIdentityRow;
 module.exports.todayLabel = todayLabel;
 module.exports.collectDecisionRecords = collectDecisionRecords;
 module.exports.matchDecisions = matchDecisions;
@@ -835,3 +948,7 @@ module.exports.PERSON_EMPTY = PERSON_EMPTY;
 module.exports.TODAY_PEOPLE_HEADING = TODAY_PEOPLE_HEADING;
 module.exports.NOBODY_NAMED = NOBODY_NAMED;
 module.exports.NO_PLAN = NO_PLAN;
+module.exports.NOTE_HEADING = NOTE_HEADING;
+module.exports.NOTE_NOBODY = NOTE_NOBODY;
+module.exports.NOTE_MISSING = NOTE_MISSING;
+module.exports.NOTE_REFUSED = NOTE_REFUSED;

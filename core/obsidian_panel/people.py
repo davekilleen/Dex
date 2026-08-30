@@ -13,11 +13,39 @@ EMPTY_SENTENCE = "No person in your files matched that name."
 TODAY_HEADING = "Who today's plan names"
 NOBODY_NAMED = "Today's plan does not name anyone in your files."
 NO_PLAN = "There is no plan for today in your files."
+NOTE_HEADING = "Who this note names"
+NOTE_NOBODY = "That note does not name anyone from your person pages."
+NOTE_MISSING = "There is no note at that path in your Dex folder."
+NOTE_REFUSED = (
+    "That path is not a note this panel will read. "
+    "It reads only notes inside your own Dex folder."
+)
 PEOPLE_TREES = (
     "05-Areas/People/Internal",
     "05-Areas/People/External",
     "05-Areas/People/CPO_Network",
 )
+BINARY_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".ico",
+    ".svg",
+    ".pdf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".wav",
+    ".pptx",
+    ".xlsx",
+    ".docx",
+}
 PERSON_FIELD = re.compile(
     r"^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction)"
     r"(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$",
@@ -326,4 +354,86 @@ def people_named_in_today_plan(
         "empty": None if public else NOBODY_NAMED,
         "lines": [format_person_match(row) for row in public],
         "plan": True,
+    }
+
+
+def _inside_vault(root: Path, path: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _person_tree_path(raw: str) -> bool:
+    normalised = str(raw or "").replace("\\", "/")
+    if (
+        not normalised
+        or normalised == "People"
+        or normalised.startswith("People/")
+        or "/People/" in normalised
+    ):
+        return True
+    return False
+
+
+def _resolve_note_path(root: Path, note_path: str | Path) -> tuple[str | None, Path | None]:
+    """Resolve a typed path the way today's plan file is resolved.
+
+    Inside the vault, regular file, not a symlink, not a binary extension.
+    Never follows a symlink. Never reads outside the vault.
+    """
+    try:
+        raw_path = str(note_path)
+        target = Path(note_path)
+    except (TypeError, ValueError, OSError):
+        return NOTE_REFUSED, None
+    if not raw_path.strip() or _person_tree_path(raw_path):
+        return NOTE_REFUSED, None
+    if target.suffix.lower() in BINARY_EXTENSIONS:
+        return NOTE_REFUSED, None
+    candidate = target if target.is_absolute() else root / target
+    try:
+        if candidate.is_symlink():
+            return NOTE_REFUSED, None
+    except OSError:
+        return NOTE_REFUSED, None
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return NOTE_MISSING, None
+    if not _inside_vault(root, resolved):
+        return NOTE_REFUSED, None
+    try:
+        if resolved.is_symlink() or not resolved.is_file():
+            if not resolved.is_file():
+                return NOTE_MISSING, None
+            return NOTE_REFUSED, None
+    except OSError:
+        return NOTE_MISSING, None
+    return None, resolved
+
+
+def people_named_in_note(
+    vault: str | Path,
+    note_path: str | Path,
+) -> dict[str, Any]:
+    """Return who a chosen note names from local person pages. Never writes."""
+    root = Path(vault).expanduser()
+    reason, path = _resolve_note_path(root, note_path)
+    if reason is not None or path is None:
+        return {
+            "matches": [],
+            "empty": reason or NOTE_REFUSED,
+            "lines": [],
+            "note": False,
+        }
+    records = _load_person_records(root)
+    matches = people_named_in_plan(records, _read_text(path))
+    public = [_today_person(row) for row in matches]
+    return {
+        "matches": public,
+        "empty": None if public else NOTE_NOBODY,
+        "lines": [format_person_match(row) for row in public],
+        "note": True,
     }
