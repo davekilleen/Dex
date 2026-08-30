@@ -134,7 +134,8 @@ def test_doctor_names_copilot_person_and_hook_limits_without_calling_it_chatgpt_
 
     assert result.verdict == "OK"
     assert "GitHub Copilot CLI" in result.detail
-    assert "ChatGPT Work" not in result.detail
+    assert "You confirmed ChatGPT Work" not in result.detail
+    assert "ChatGPT Work companion is a written door you have never opened." in result.detail
     assert "hook" in result.detail.lower()
     assert "person" in result.detail.lower()
     assert "ubuntu cloud" in result.detail.lower()

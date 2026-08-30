@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -1316,6 +1316,34 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", "All standard PARA directories exist")
 
 
+def _door_overlay(
+    context: DoctorContext,
+    detail: str,
+    confirmed_ids: Iterable[str] | None,
+    summary: dict[str, object] | None = None,
+) -> tuple[str, dict[str, object]]:
+    """Name every written door, then keep the stale Work-copy sentence last."""
+    from core.harnesses.chatgpt_work_personal_copy import stale_work_copy_sentence
+    from core.harnesses.doors import attach_door_sentences, door_report
+
+    report = door_report(
+        home=context.home,
+        vault_root=context.vault_root,
+        confirmed_ids=confirmed_ids,
+    )
+    detail = attach_door_sentences(detail, report)
+    structured = dict(summary or {})
+    structured.update(report.as_structured())
+    selected = structured.get("selected")
+    if isinstance(selected, list) and "chatgpt-work" in selected:
+        extra = stale_work_copy_sentence(home=context.home, repo_root=context.repo_root)
+        if extra:
+            if detail and detail[-1] not in ".?!":
+                detail = f"{detail}."
+            detail = f"{detail} {extra}".strip()
+    return detail, structured
+
+
 def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
     """Report the saved host contract without promoting guided work to automatic."""
     from core.harnesses.registry import get_platform_release, get_profile
@@ -1328,9 +1356,14 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
     try:
         receipt = read_receipt(context.vault_root)
     except HarnessReceiptError as error:
+        detail, structured = _door_overlay(
+            context,
+            f"The saved agent harness profile is invalid: {_one_line(error)}",
+            (),
+        )
         return ProbeResult(
             "BROKEN",
-            f"The saved agent harness profile is invalid: {_one_line(error)}",
+            detail,
             Heal(
                 tier=3,
                 action=(
@@ -1339,14 +1372,21 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
                 ),
                 applied=False,
             ),
+            structured_detail=structured,
         )
     if receipt is None:
-        return ProbeResult(
-            "OFF",
+        detail, structured = _door_overlay(
+            context,
             (
                 "Agent harness capabilities have not been recorded yet; run /setup to "
                 "record your harnesses without restarting onboarding"
             ),
+            (),
+        )
+        return ProbeResult(
+            "OFF",
+            detail,
+            structured_detail=structured,
         )
 
     summary = summarize_receipt(receipt)
@@ -1386,15 +1426,9 @@ def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
     if limitation_notes:
         detail = f"{detail}. {' '.join(limitation_notes)}"
     selected = summary["selected"]
-    if isinstance(selected, list) and "chatgpt-work" in selected:
-        from core.harnesses.chatgpt_work_personal_copy import stale_work_copy_sentence
-
-        extra = stale_work_copy_sentence(home=context.home, repo_root=context.repo_root)
-        if extra:
-            if detail and detail[-1] not in ".?!":
-                detail = f"{detail}."
-            detail = f"{detail} {extra}".strip()
-    return ProbeResult("OK", detail, structured_detail=summary)
+    confirmed_ids = selected if isinstance(selected, list) else ()
+    detail, structured = _door_overlay(context, detail, confirmed_ids, summary)
+    return ProbeResult("OK", detail, structured_detail=structured)
 
 
 @dataclass(frozen=True)

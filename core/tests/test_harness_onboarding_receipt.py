@@ -159,3 +159,6 @@ def test_doctor_instructions_preserve_delivery_mode_truth() -> None:
     assert "personal Work copy is behind this folder" in section
     assert "sentence is absent, stay silent" in section
     assert "Never invent a folder grant" in section
+    assert "Name every written door" in section
+    assert "confirmed door is not the same as a walked one" in section
+    assert "notes panel" in section

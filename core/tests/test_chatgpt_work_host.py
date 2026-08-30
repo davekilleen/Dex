@@ -197,7 +197,8 @@ def test_doctor_names_chatgpt_work_desktop_and_web_limits_without_calling_it_cod
 
     assert result.verdict == "OK"
     assert "ChatGPT Work" in result.detail
-    assert "Codex" not in result.detail
+    assert "You confirmed Codex." not in result.detail
+    assert "Codex is a written door you have never opened." in result.detail
     assert "web" in result.detail.lower()
     assert "https" in result.detail.lower()
     assert "desktop" in result.detail.lower()

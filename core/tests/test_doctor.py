@@ -849,26 +849,28 @@ def test_harness_capability_probe_reports_modes_without_overclaiming(context, mo
     assert "fully automatic" not in result.detail.lower()
     assert "Linux" in result.detail
     assert "deferred" in result.detail
-    assert result.structured_detail == {
-        "selected": ["codex"],
-        "modes": {
-            "automatic": 1,
-            "guided": 1,
-            "on_demand": 1,
-            "unavailable": 0,
-        },
-        "fully_automatic": False,
-        "limitations": {"codex": list(get_profile("codex").limitations)},
-        "platform": {
-            "id": "linux",
-            "included_in_release": False,
-            "label": "Linux",
-            "notes": "Linux packaging and live-host verification are deferred; the portable runtime remains testable but is outside this release.",
-            "readiness": "deferred",
-            "runtime": {"node": ">=20", "python": ">=3.11"},
-        },
+    assert result.structured_detail["selected"] == ["codex"]
+    assert result.structured_detail["modes"] == {
+        "automatic": 1,
+        "guided": 1,
+        "on_demand": 1,
+        "unavailable": 0,
+    }
+    assert result.structured_detail["fully_automatic"] is False
+    assert result.structured_detail["limitations"] == {
+        "codex": list(get_profile("codex").limitations)
+    }
+    assert result.structured_detail["platform"] == {
+        "id": "linux",
+        "included_in_release": False,
+        "label": "Linux",
+        "notes": "Linux packaging and live-host verification are deferred; the portable runtime remains testable but is outside this release.",
+        "readiness": "deferred",
+        "runtime": {"node": ">=20", "python": ">=3.11"},
     }
     assert "ide" in result.detail.lower()
+    assert "You confirmed Codex." in result.detail
+    assert "A confirmed door is not the same as a walked one." in result.detail
 
 
 def test_harness_capability_probe_reports_cowork_public_endpoint_limit(context, monkeypatch):

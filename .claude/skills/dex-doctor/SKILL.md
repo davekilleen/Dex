@@ -148,12 +148,17 @@ For **Agent harness capabilities**, use the saved receipt as the authority. Name
 selected harness and keep the collector's four delivery labels exact: `automatic`,
 `on_demand`, `guided`, and `unavailable`. Explain `on_demand` as "available when asked".
 Never describe a guided MCP safety check as an automatic block; only a verified pre-tool
-interceptor earns that claim. If the collector's detail ends with a sentence that the
-personal Work copy is behind this folder, show that sentence last and unchanged. If that
-sentence is absent, stay silent — a missing copy is not a grant, and a current copy is
-not news. Never invent a folder grant or a `granted=true` signal. If the check is OFF,
-calmly offer `/setup` to detect or choose harnesses. If it is BROKEN, do not guess from
-installed commands—use the returned repair.
+interceptor earns that claim. Name every written door from the collector detail, one
+sentence each, in the order given — confirmed doors, written doors never opened, and
+walked doors. Then the notes panel sentence. Then the sentence that a confirmed door is not the same as a walked one.
+Keep those sentences verbatim. If the collector's detail
+ends with a sentence that the personal Work copy is behind this folder, show that
+sentence last and unchanged. If that sentence is absent, stay silent — a missing copy is
+not a grant, and a current copy is not news. Never invent a folder grant or a
+`granted=true` signal. If the check is OFF, calmly offer `/setup` to detect or choose
+harnesses, then still name every written door from the collector detail. If it is
+BROKEN, do not guess from installed commands—use the returned repair, and still name
+every written door.
 
 For the **Entity engine** check, keep the rendering short and plain: say whether entity
 creation is working, off, or needs attention, include the contact/observation counts,
