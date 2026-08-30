@@ -8,6 +8,7 @@ This is a local pack check. It is not a catalogue install.
 - https://github.com/davekilleen/dex-product-gtm-lab/issues/515
 - https://github.com/davekilleen/dex-product-gtm-lab/issues/537
 - https://github.com/davekilleen/dex-product-gtm-lab/issues/559
+- https://github.com/davekilleen/dex-product-gtm-lab/issues/571
 
 ## Steps
 
@@ -75,11 +76,21 @@ python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-a
 
 **If this fails, send back this exact sentence:** `connector-box step 6 failed: the packed box did not list what is still open with people.`
 
+### Step 7
+
+1. Before anything is published, ask the packed box who is in today's plan.
+
+**What you should see:** Each named person's recorded role, company, last interaction, and every open item, each naming the person page, in plan order. Missing fields empty, never guessed.
+
+- [ ] I saw that.
+
+**If this fails, send back this exact sentence:** `connector-box step 7 failed: the packed box did not list who is in today's plan.`
+
 ## After the last checkbox
 
 If every box is checked, send this exact sentence:
 
-`connector-box pack matched. SHA-256 sidecar present. Future catalogue name is io.github.davekilleen/dex. Decision ask answered from a decision record. Lately ask answered with no topic. Open items with people listed from person pages. Not a catalogue install.`
+`connector-box pack matched. SHA-256 sidecar present. Future catalogue name is io.github.davekilleen/dex. Decision ask answered from a decision record. Lately ask answered with no topic. Open items with people listed from person pages. People in today's plan listed from the plan and person pages. Not a catalogue install.`
 
 If any box is unchecked, send only the failure sentence from that step. Do not continue past a failed step. Do not publish. Do not sign. Do not store a secret. Do not invite anyone.
 

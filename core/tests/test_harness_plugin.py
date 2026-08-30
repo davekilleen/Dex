@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import jsonschema
@@ -306,6 +307,7 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
         "get_person_context",
         "ask_what_was_decided",
         "ask_what_is_still_open_with_people",
+        "ask_who_is_in_todays_plan",
         "check_safety_gate",
     }
     desktop = tmp_path / "dex-claude-desktop"
@@ -431,6 +433,12 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "---\nname: Ada Lovelace\nrole: Founder\ncompany: Analytical Engines\n---\n- [ ] Send the operating memo\n",
         encoding="utf-8",
     )
+    plans = vault / "00-Inbox" / "Daily_Plans"
+    plans.mkdir(parents=True)
+    (plans / f"{date.today().strftime('%Y-%m-%d')}.md").write_text(
+        "# Daily Plan\n\n**Attendees:** Ada Lovelace\n",
+        encoding="utf-8",
+    )
     decisions = vault / "06-Resources" / "Decisions"
     decisions.mkdir(parents=True)
     (decisions / "Decision_Log.md").write_text(
@@ -493,10 +501,19 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
                     "arguments": {"vault_path": str(vault)},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_who_is_in_todays_plan",
+                    "arguments": {"vault_path": str(vault)},
+                },
+            },
         ],
         cwd=vault,
     )
-    assert len(responses) == 8
+    assert len(responses) == 9
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     assert names == {
         "dex_harness_profiles",
@@ -504,6 +521,7 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "get_person_context",
         "ask_what_was_decided",
         "ask_what_is_still_open_with_people",
+        "ask_who_is_in_todays_plan",
         "check_safety_gate",
     }
     ask_tool = next(
@@ -532,6 +550,12 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     assert open_with_people["matches"][0]["item"] == "Send the operating memo"
     assert open_with_people["matches"][0]["person"] == "Ada Lovelace"
     assert open_with_people["matches"][0]["page"] == (
+        "05-Areas/People/Internal/Ada_Lovelace.md"
+    )
+    today_people = responses[8]["result"]["structuredContent"]
+    assert today_people["found"] is True
+    assert today_people["matches"][0]["person"] == "Ada Lovelace"
+    assert today_people["matches"][0]["page"] == (
         "05-Areas/People/Internal/Ada_Lovelace.md"
     )
 

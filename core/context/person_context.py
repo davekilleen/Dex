@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ try:
 except (ImportError, ModuleNotFoundError):  # standalone plugin has no full entity engine
     _canonical_parse_entity_page = None
 
-from core.paths import PEOPLE_DIR, resolve_for_vault
+from core.paths import DAILY_PLANS_DIR, PEOPLE_DIR, resolve_for_vault
 
 PEOPLE_SUBDIRS = ("Internal", "External", "CPO_Network")
 SKIP_EXTS = {
@@ -32,7 +33,9 @@ FILE_REF = re.compile(
 )
 OPEN_ITEM = re.compile(r"^- \[ \] (.+)$", re.MULTILINE)
 NONE_OPEN_SENTENCE = "No unchecked to-dos on person pages."
+NONE_TODAY_PEOPLE_SENTENCE = "Nobody is named in today's plan."
 MEETING_HINTS = ("meeting", "attendee", "call with", "met with")
+WIKI_LINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 PERSON_FIELD = re.compile(
     r"^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction)"
     r"(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$",
@@ -211,6 +214,153 @@ def ask_what_is_still_open_with_people(vault: str | Path | None) -> dict[str, An
     return {"found": True, "matches": matches, "sentence": ""}
 
 
+def _recorded(value: Any) -> str:
+    """Return a stored field as text, or empty. Never invent a placeholder."""
+    if value is None:
+        return ""
+    text = value.strip() if isinstance(value, str) else str(value).strip()
+    if not text or text.lower() in {"null", "none", "~"}:
+        return ""
+    return text
+
+
+def _today_plan_file(root: Path, today: date | None = None) -> Path | None:
+    try:
+        stamp = (today or date.today()).strftime("%Y-%m-%d")
+    except (AttributeError, OverflowError, ValueError):
+        stamp = date.today().strftime("%Y-%m-%d")
+    path = resolve_for_vault(root, DAILY_PLANS_DIR) / f"{stamp}.md"
+    try:
+        if path.is_symlink() or not path.is_file() or not _inside(root, path):
+            return None
+    except OSError:
+        return None
+    return path
+
+
+def _wiki_lookup_keys(raw: str) -> list[str]:
+    target = raw.strip()
+    stem = Path(target.replace("\\", "/")).name
+    if stem.lower().endswith(".md"):
+        stem = stem[:-3]
+    folded = stem.lower()
+    spaced = stem.replace("_", " ").lower()
+    keys = [folded]
+    if spaced != folded:
+        keys.append(spaced)
+    return keys
+
+
+def _unique_index_paths(index: dict[str, Path]) -> list[Path]:
+    seen: set[str] = set()
+    paths: list[Path] = []
+    for path in index.values():
+        try:
+            ident = str(path.resolve())
+        except OSError:
+            ident = str(path)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        paths.append(path)
+    return paths
+
+
+def _people_named_in_plan(content: str, index: dict[str, Path]) -> list[Path]:
+    """Person pages named in the plan, first mention first. Never guessed."""
+    content_lower = content.lower()
+    hits: list[tuple[int, Path]] = []
+    for match in WIKI_LINK.finditer(content):
+        for key in _wiki_lookup_keys(match.group(1)):
+            if key in index:
+                hits.append((match.start(), index[key]))
+                break
+    for match in FILE_REF.finditer(content):
+        key = match.group(1).lower()
+        if key in index:
+            hits.append((match.start(), index[key]))
+    for path in _unique_index_paths(index):
+        needle = path.stem.replace("_", " ").lower()
+        if " " not in needle:
+            continue
+        pos = content_lower.find(needle)
+        if pos >= 0:
+            hits.append((pos, path))
+    hits.sort(key=lambda item: item[0])
+    ordered: list[Path] = []
+    seen: set[str] = set()
+    for _offset, path in hits:
+        try:
+            ident = str(path.resolve())
+        except OSError:
+            ident = str(path)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        ordered.append(path)
+    return ordered
+
+
+def _today_people_row(root: Path, path: Path) -> dict[str, Any]:
+    parsed = _parse_person_page(path)
+    page = _relative_file(root, path)
+    if not parsed:
+        return {
+            "person": path.stem.replace("_", " "),
+            "role": "",
+            "company": "",
+            "last_interaction": "",
+            "open_items": [],
+            "page": page,
+        }
+    raw_items = parsed.get("open_items")
+    open_items: list[str] = []
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            text = str(item).strip()
+            if text:
+                open_items.append(text)
+    return {
+        "person": _recorded(parsed.get("name")) or path.stem.replace("_", " "),
+        "role": _recorded(parsed.get("role")),
+        "company": _recorded(parsed.get("company")),
+        "last_interaction": _recorded(parsed.get("last_interaction")),
+        "open_items": open_items,
+        "page": page,
+    }
+
+
+def ask_who_is_in_todays_plan(
+    vault: str | Path | None,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Return each named person in today's plan, never raising.
+
+    Each row carries recorded role, company, last interaction, every open
+    item, and the person page, in plan order. Missing fields stay empty.
+    Meeting notes and the task list are not a substitute. The function
+    never writes and never reaches the network.
+    """
+    empty = {"found": False, "matches": [], "sentence": NONE_TODAY_PEOPLE_SENTENCE}
+    root = _coerce_root(vault)
+    if root is None:
+        return empty
+    plan = _today_plan_file(root, today)
+    if plan is None:
+        return empty
+    try:
+        content = plan.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return empty
+    index = _index_person_pages(root)
+    if not index:
+        return empty
+    matches = [_today_people_row(root, path) for path in _people_named_in_plan(content, index)]
+    if not matches:
+        return empty
+    return {"found": True, "matches": matches, "sentence": ""}
+
+
 def get_person_context(vault: str | Path | None, name: Any) -> dict[str, Any]:
     """Return the context payload for one person, never raising on bad input."""
     root = _coerce_root(vault)
@@ -352,18 +502,45 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="List unchecked to-dos from person pages",
     )
+    parser.add_argument(
+        "--todays-plan",
+        action="store_true",
+        help="List people named in today's plan",
+    )
     parser.add_argument("--format", choices=("json", "hook-json", "text"), default="json")
     args = parser.parse_args(argv)
-    if args.still_open:
+    if args.todays_plan:
+        payload = ask_who_is_in_todays_plan(args.vault)
+    elif args.still_open:
         payload = ask_what_is_still_open_with_people(args.vault)
     elif args.from_file:
         payload = inject_person_context_for_file(args.vault, args.from_file)
     elif args.name is not None:
         payload = get_person_context(args.vault, args.name)
     else:
-        parser.error("pass --name, --from-file, or --still-open")
+        parser.error("pass --name, --from-file, --still-open, or --todays-plan")
         return 2
     if args.format == "text":
+        if args.todays_plan:
+            matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
+            if not matches:
+                sys.stdout.write(str(payload.get("sentence") or NONE_TODAY_PEOPLE_SENTENCE) + "\n")
+                return 0
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                sys.stdout.write(f"{match.get('person') or ''}\n")
+                sys.stdout.write(f"Role: {match.get('role') or ''}\n")
+                sys.stdout.write(f"Company: {match.get('company') or ''}\n")
+                sys.stdout.write(f"Last interaction: {match.get('last_interaction') or ''}\n")
+                items = match.get("open_items")
+                if isinstance(items, list) and items:
+                    for item in items:
+                        sys.stdout.write(f"Open item: {item}\n")
+                else:
+                    sys.stdout.write("Open item: \n")
+                sys.stdout.write(f"Page: {match.get('page') or ''}\n")
+            return 0
         if args.still_open:
             matches = payload.get("matches") if isinstance(payload.get("matches"), list) else []
             if not matches:

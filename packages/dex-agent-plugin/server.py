@@ -20,6 +20,7 @@ if str(RUNTIME) not in sys.path:
 from core.context.decision_record import ask_what_was_decided  # noqa: E402
 from core.context.person_context import (  # noqa: E402
     ask_what_is_still_open_with_people,
+    ask_who_is_in_todays_plan,
     get_person_context,
 )
 from core.context.session_boot import build_session_boot  # noqa: E402
@@ -115,6 +116,16 @@ def _tools() -> list[dict[str, Any]]:
             "inputSchema": {"type": "object", "properties": vault},
         },
         {
+            "name": "ask_who_is_in_todays_plan",
+            "description": (
+                "Answer who is in today's plan: each named person's recorded "
+                "role, company, last interaction, and every open item, each "
+                "row naming the person page, in plan order. Missing field "
+                "empty, never guessed."
+            ),
+            "inputSchema": {"type": "object", "properties": vault},
+        },
+        {
             "name": "check_safety_gate",
             "description": "Check a proposed command or path before a harness executes it.",
             "inputSchema": {
@@ -169,6 +180,11 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _tool_result(
                 request_id,
                 ask_what_is_still_open_with_people(_vault(arguments)),
+            )
+        if name == "ask_who_is_in_todays_plan":
+            return _tool_result(
+                request_id,
+                ask_who_is_in_todays_plan(_vault(arguments)),
             )
         if name == "check_safety_gate":
             decision = evaluate_safety_gate(

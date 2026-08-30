@@ -180,6 +180,15 @@ def _claude_desktop_manifest() -> dict:
                     "the person and the page. Honest sentence if none."
                 ),
             },
+            {
+                "name": "ask_who_is_in_todays_plan",
+                "description": (
+                    "Answer who is in today's plan: each named person's "
+                    "recorded role, company, last interaction, and every "
+                    "open item, each row naming the person page, in plan "
+                    "order. Missing field empty, never guessed."
+                ),
+            },
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
         ],
         "compatibility": {
