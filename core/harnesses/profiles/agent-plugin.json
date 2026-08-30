@@ -1,0 +1,93 @@
+{
+  "adapter": {
+    "kind": "agent-plugin-v1",
+    "manifest": "plugin.json",
+    "mcp_config": "mcp.json",
+    "status": "native"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "guided",
+      "notes": "A client may expose a vault directory; the plugin format does not own it.",
+      "status": "portable",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "The v1 package format defines stdio and Streamable HTTP configuration.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "Skills are discovered from the fixed skills/ directory.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "unavailable",
+      "notes": "Hooks are outside the Agent Plugins v1 core contract.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "unavailable",
+      "notes": "Session events are client-specific.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "Scheduling is client-owned, not portable plugin behavior.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "guided",
+      "notes": "Prompt UX is defined by the host client.",
+      "status": "partial",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "on_demand",
+      "notes": "This descriptor describes the v1 package contract itself.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "AGENT_PLUGIN_ROOT",
+      "AGENT_PLUGIN"
+    ],
+    "paths": [
+      "/plugin.json",
+      ".agents/plugins/"
+    ]
+  },
+  "display_name": "Generic Agent Plugin",
+  "evidence": [
+    "https://agent-plugins.org/specification"
+  ],
+  "id": "agent-plugin",
+  "limitations": [
+    "The package format does not define hooks, commands, agents, UI, permissions, or updates."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Generic Agent Plugin",
+  "summary": "Portable Agent Plugins v1 floor: Agent Skills plus MCP, without host lifecycle guarantees.",
+  "support_level": "portable",
+  "vendor": "Agent Plugins"
+}

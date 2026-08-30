@@ -144,6 +144,8 @@ def _tracked_paths() -> list[str]:
         ("01-Quarter_Goals/my-goals-2027.md", "vault", False),
         ("06-Resources/my-research/notes.md", "vault", False),
         (".claude/skills-custom/mine/SKILL.md", "vault", False),
+        (".claude/skills/daily-plan-custom/SKILL.md", "vault", False),
+        (".agents/skills/weekly-reflection-custom/SKILL.md", "vault", False),
         ("CLAUDE-custom.md", "vault", False),
         (".mcp.json", "vault", False),
         ("System/folder-paths.yaml", "vault", False),
@@ -183,6 +185,17 @@ def test_user_file_next_to_shipped_docs_is_vault_not_brain() -> None:
     assert resolution.rule_id == "vault-resources"
     verdict = portable_contract.update_write_verdict("06-Resources/Dex_System/my-notes.md", exists=True)
     assert verdict.allowed is False
+
+
+def test_custom_agent_skill_namespace_is_vault_owned_without_widening_brain_rule() -> None:
+    """Generated ``.agents`` skills preserve user ``-custom`` directories."""
+    custom = portable_contract.resolve(".agents/skills/my-skill-custom/SKILL.md")
+    shipped = portable_contract.resolve(".agents/skills/my-skill/SKILL.md")
+
+    assert custom.ownership == "vault"
+    assert custom.rule_id == "vault-agents-skills-custom"
+    assert shipped.ownership == "brain"
+    assert shipped.rule_id == "brain-agents"
 
 
 def test_deny_check_is_case_folded_for_macos() -> None:
@@ -337,6 +350,113 @@ def test_default_update_denies_customization_migration_seam() -> None:
     assert verdict.action == "never"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/skills/alpha-custom/SKILL.md",
+        ".agents/skills/alpha-custom/SKILL.md",
+    ],
+)
+def test_conflict_resolution_may_create_absent_custom_skill_sidecar(path: str) -> None:
+    update = portable_contract.update_write_verdict(path, exists=False)
+    created = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="conflict-resolution",
+    )
+    existing = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="conflict-resolution",
+    )
+
+    assert update.allowed is False
+    assert update.action == "never"
+    assert created.allowed is True
+    assert created.action == "write-if-absent"
+    assert existing.allowed is False
+    assert existing.action == "write-if-absent"
+
+
+def test_custom_skill_wildcard_matches_one_segment_only() -> None:
+    assert portable_contract._matches_dir_rule(
+        ".claude/skills/alpha-custom/SKILL.md",
+        ".claude/skills/*-custom",
+    )
+    assert not portable_contract._matches_dir_rule(
+        ".claude/skills/nested/alpha-custom/SKILL.md",
+        ".claude/skills/*-custom",
+    )
+
+
+def test_dir_rule_matcher_stays_runnable_on_macos_system_python() -> None:
+    """The quality job runs this module with /usr/bin/python3 on macOS (3.9)."""
+    source = inspect.getsource(portable_contract._matches_dir_rule)
+    assert "zip(" in source
+    assert "strict=" not in source
+
+
+def test_conflict_resolution_still_replaces_the_canonical_skill() -> None:
+    verdict = portable_contract.update_write_verdict(
+        ".claude/skills/alpha/SKILL.md",
+        exists=True,
+        operation="conflict-resolution",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "replace"
+
+
+def test_conflict_resolution_does_not_open_unrelated_vault_paths() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "04-Projects/My_Project/notes.md",
+        exists=False,
+        operation="conflict-resolution",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/skills/alpha-custom/SKILL.md",
+        ".agents/skills/alpha-custom/SKILL.md",
+    ],
+)
+def test_adoption_rewind_may_restore_or_delete_custom_skill_sidecar(path: str) -> None:
+    existing = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="adoption-rewind",
+    )
+    absent = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="adoption-rewind",
+    )
+    update = portable_contract.update_write_verdict(path, exists=True)
+
+    assert existing.allowed is True
+    assert existing.action == "restore-custom-sidecar"
+    assert absent.allowed is True
+    assert absent.action == "restore-custom-sidecar"
+    assert update.allowed is False
+    assert update.action == "never"
+
+
+def test_adoption_rewind_does_not_open_unrelated_vault_paths() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "04-Projects/My_Project/notes.md",
+        exists=True,
+        operation="adoption-rewind",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
 def test_update_write_verdict_operation_is_keyword_only_with_update_default() -> None:
     # Existing mutation-test monkeypatches use lambda path, *, exists — any future
     # caller passing operation= must update them.
@@ -409,6 +529,7 @@ def test_automation_ownership_operation_only_authorizes_its_sidecar() -> None:
         "System/pillars.yaml",
         "System/.onboarding-complete",
         "System/.onboarding-session.json",
+        "System/.dex/harness-profile.json",
         "CLAUDE.md",
         ".mcp.json",
         "core/paths.json",

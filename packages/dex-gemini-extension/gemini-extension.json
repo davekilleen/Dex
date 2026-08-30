@@ -1,0 +1,15 @@
+{
+  "name": "dex",
+  "version": "1.0.0",
+  "description": "Portable Dex context, safety, and work skills.",
+  "mcpServers": {
+    "dex-core": {
+      "command": "node",
+      "args": [
+        "${extensionPath}/bin/dex-python.mjs",
+        "mcp"
+      ],
+      "cwd": "${extensionPath}"
+    }
+  }
+}
