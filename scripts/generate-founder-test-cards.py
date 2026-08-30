@@ -7,7 +7,7 @@ This lot covers the Obsidian notes panel only. The page is derived from
 The card restates the read-only fence, names How to leave, and ends honestly:
 nobody has walked this on a real desktop. No page includes a publish step.
 
-Unreleased. Do not merge. Do not publish. Leave lab 514 open.
+Unreleased. Do not merge. Do not publish. Leave lab 536 open.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/514"
+LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/536"
 GENERATOR = "scripts/generate-founder-test-cards.py"
 THIS_LOT_IDS = frozenset({"obsidian"})
 WORK_ID = "chatgpt-work"
@@ -92,6 +92,8 @@ def _is_step(sentence: str) -> bool:
         return False
     if "today" in stripped and "brief" in stripped and "appear" in stripped:
         return True
+    if "decided lately" in stripped:
+        return True
     return any(stripped.startswith(prefix) for prefix in ACTION_PREFIXES)
 
 
@@ -158,6 +160,12 @@ def expected_sight(sentence: str, *, stop: bool, harness_id: str = "") -> str:
             "the note and the date. When nothing matches, one honest sentence "
             "says so. Notes are unchanged. " + tail
         )
+    if harness_id == "obsidian" and "decided lately" in lower:
+        return (
+            "Decided lately shows recorded decision words from your own files, "
+            "each naming the note and the date, without typing. When nothing is "
+            "there, one honest sentence says so. Notes are unchanged. " + tail
+        )
     if harness_id == "obsidian" and "brief" in lower and "appear" in lower:
         return "Today's brief is in the side panel. Notes are unchanged. " + tail
     if "restricted mode" in lower:
@@ -220,7 +228,7 @@ def _obsidian_fence_and_leave(example: dict) -> list[str]:
     lines = [
         "## Read-only fence",
         "",
-        "Today's brief, then a topic ask. The panel does not edit notes. "
+        "Today's brief, then Decided lately, then a topic ask. The panel does not edit notes. "
         "It does not use the internet. It is not on any community list.",
         "",
     ]
@@ -346,8 +354,9 @@ def render_index(adapters: list[dict]) -> str:
         "regenerate this page. CI fails on drift.",
         "",
         "The card restates the read-only fence, names How to leave, and walks "
-        "the topic ask under today's brief. Nobody has walked this on a real "
-        "desktop. Other hosts' cards are not merged from draft PR 660.",
+        "Decided lately under today's brief, then the topic ask. Nobody has "
+        "walked this on a real desktop. Other hosts' cards are not merged "
+        "from draft PR 660.",
         "",
         "## Cards",
         "",

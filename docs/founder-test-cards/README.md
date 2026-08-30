@@ -4,11 +4,11 @@
 
 Unreleased. Not a live install. Do not publish. Do not merge.
 
-**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/514
+**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/536
 
 This lot covers the Obsidian notes panel. The page is generated from `core/harnesses/adapters/obsidian.json`. If that adapter changes, regenerate this page. CI fails on drift.
 
-The card restates the read-only fence, names How to leave, and walks the topic ask under today's brief. Nobody has walked this on a real desktop. Other hosts' cards are not merged from draft PR 660.
+The card restates the read-only fence, names How to leave, and walks Decided lately under today's brief, then the topic ask. Nobody has walked this on a real desktop. Other hosts' cards are not merged from draft PR 660.
 
 ## Cards
 

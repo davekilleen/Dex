@@ -172,6 +172,10 @@ A founder test page for the local read-only Obsidian panel lives in `docs/founde
 
 Under today's brief, a person can type a topic and see recorded decision words from their own files, each naming the note and the date. Nothing is edited. Nothing is sent. When nothing matches, one honest sentence says so. Leave [lab 514](https://github.com/davekilleen/dex-product-gtm-lab/issues/514) open. Do not merge draft PR 664. Do not merge draft PR 620. Do not continue leftover PR 619. Do not merge lab PR 512. This runner will not invent a ChatGPT Work folder grant.
 
+## Obsidian notes panel Decided lately (lab 536) — written path only
+
+Under today's brief, Decided lately shows recorded decision words from the person's own files, each naming the note and the date, without typing. Nothing is edited. Nothing is sent. When nothing is there, one honest sentence says so. Leave [lab 536](https://github.com/davekilleen/dex-product-gtm-lab/issues/536) open. Do not merge draft PR 667. Do not merge draft PR 620. Do not continue leftover PR 619. Do not merge lab PR 532. This runner will not invent a ChatGPT Work folder grant.
+
 ## Deliberately not started
 
 - A live ChatGPT Work desktop install or recorded vault grant on a real Mac or Windows machine

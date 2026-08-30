@@ -46,6 +46,10 @@
   min-width: 0;
 }
 
+.dex-readonly-panel .dex-readonly-lately {
+  margin: 0 0 8px;
+}
+
 .dex-readonly-panel .dex-readonly-ask-results {
   margin: 0 0 8px;
 }
