@@ -189,6 +189,17 @@ def _claude_desktop_manifest() -> dict:
                     "order. Missing field empty, never guessed."
                 ),
             },
+            {
+                "name": "ask_who_is_named_in_note",
+                "description": (
+                    "Answer who is named in one note inside this Dex folder: "
+                    "each named person's recorded role, company, last "
+                    "interaction, and every open item, each row naming the "
+                    "person page, in the note's own order. Missing fields "
+                    "stay empty, never guessed. Refuses paths outside the "
+                    "folder."
+                ),
+            },
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
         ],
         "compatibility": {

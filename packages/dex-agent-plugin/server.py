@@ -21,6 +21,7 @@ from core.context.decision_record import ask_what_was_decided  # noqa: E402
 from core.context.person_context import (  # noqa: E402
     ask_what_is_still_open_with_people,
     ask_who_is_in_todays_plan,
+    ask_who_is_named_in_note,
     get_person_context,
 )
 from core.context.session_boot import build_session_boot  # noqa: E402
@@ -126,6 +127,27 @@ def _tools() -> list[dict[str, Any]]:
             "inputSchema": {"type": "object", "properties": vault},
         },
         {
+            "name": "ask_who_is_named_in_note",
+            "description": (
+                "Answer who is named in one note inside this Dex folder: "
+                "each named person's recorded role, company, last "
+                "interaction, and every open item, each row naming the "
+                "person page, in the note's own order. Missing fields stay "
+                "empty, never guessed. Refuses paths outside the folder."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **vault,
+                    "note_path": {
+                        "type": "string",
+                        "description": "A path inside the Dex folder",
+                    },
+                },
+                "required": ["note_path"],
+            },
+        },
+        {
             "name": "check_safety_gate",
             "description": "Check a proposed command or path before a harness executes it.",
             "inputSchema": {
@@ -185,6 +207,13 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _tool_result(
                 request_id,
                 ask_who_is_in_todays_plan(_vault(arguments)),
+            )
+        if name == "ask_who_is_named_in_note":
+            return _tool_result(
+                request_id,
+                ask_who_is_named_in_note(
+                    _vault(arguments), arguments.get("note_path")
+                ),
             )
         if name == "check_safety_gate":
             decision = evaluate_safety_gate(

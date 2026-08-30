@@ -4,6 +4,7 @@ from .decision_record import ask_what_was_decided
 from .person_context import (
     ask_what_is_still_open_with_people,
     ask_who_is_in_todays_plan,
+    ask_who_is_named_in_note,
     find_people_in_file,
     format_person_context_block,
     get_person_context,
@@ -15,6 +16,7 @@ __all__ = [
     "ask_what_is_still_open_with_people",
     "ask_what_was_decided",
     "ask_who_is_in_todays_plan",
+    "ask_who_is_named_in_note",
     "build_session_boot",
     "find_people_in_file",
     "format_person_context_block",

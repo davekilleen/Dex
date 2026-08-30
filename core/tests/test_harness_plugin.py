@@ -308,6 +308,7 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
         "ask_what_was_decided",
         "ask_what_is_still_open_with_people",
         "ask_who_is_in_todays_plan",
+        "ask_who_is_named_in_note",
         "check_safety_gate",
     }
     desktop = tmp_path / "dex-claude-desktop"
@@ -439,6 +440,13 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "# Daily Plan\n\n**Attendees:** Ada Lovelace\n",
         encoding="utf-8",
     )
+    meetings = vault / "00-Inbox" / "Meetings"
+    meetings.mkdir(parents=True)
+    note = meetings / "2026-08-30 - Engine review.md"
+    note.write_text(
+        "# Engine review\n\nWalked [[Ada Lovelace]] through the memo.\n",
+        encoding="utf-8",
+    )
     decisions = vault / "06-Resources" / "Decisions"
     decisions.mkdir(parents=True)
     (decisions / "Decision_Log.md").write_text(
@@ -510,10 +518,22 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
                     "arguments": {"vault_path": str(vault)},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_who_is_named_in_note",
+                    "arguments": {
+                        "vault_path": str(vault),
+                        "note_path": "00-Inbox/Meetings/2026-08-30 - Engine review.md",
+                    },
+                },
+            },
         ],
         cwd=vault,
     )
-    assert len(responses) == 9
+    assert len(responses) == 10
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     assert names == {
         "dex_harness_profiles",
@@ -522,6 +542,7 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "ask_what_was_decided",
         "ask_what_is_still_open_with_people",
         "ask_who_is_in_todays_plan",
+        "ask_who_is_named_in_note",
         "check_safety_gate",
     }
     ask_tool = next(
@@ -558,6 +579,22 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     assert today_people["matches"][0]["page"] == (
         "05-Areas/People/Internal/Ada_Lovelace.md"
     )
+    who_in_note = responses[9]["result"]["structuredContent"]
+    assert who_in_note["found"] is True
+    assert who_in_note["matches"][0]["person"] == "Ada Lovelace"
+    assert who_in_note["matches"][0]["role"] == "Founder"
+    assert who_in_note["matches"][0]["company"] == "Analytical Engines"
+    assert who_in_note["matches"][0]["open_items"] == ["Send the operating memo"]
+    assert who_in_note["matches"][0]["page"] == (
+        "05-Areas/People/Internal/Ada_Lovelace.md"
+    )
+    note_tool = next(
+        tool
+        for tool in responses[1]["result"]["tools"]
+        if tool["name"] == "ask_who_is_named_in_note"
+    )
+    required_note = (note_tool.get("inputSchema") or {}).get("required") or []
+    assert "note_path" in required_note
 
 
 def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path: Path) -> None:
