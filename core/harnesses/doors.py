@@ -7,7 +7,7 @@ A written door this checkup cannot detect is named as unseen, not as never opene
 A left door is a walk artifact that is gone while leftover residue remains.
 Confirming a door is not the same as walking it.
 A confirmed door is not a leave. Leftovers are named only when a leave is proved.
-Notes-panel files without the switch are named; this module never flips that switch.
+Notes-panel checks read one vault's own files; the sentences claim that vault, never the machine.
 
 This module never writes a grant, a grant receipt, or a grant flag.
 """
@@ -22,8 +22,11 @@ from typing import Iterable, Mapping, Sequence
 from core.harnesses.registry import list_profiles
 
 CONFIRMED_IS_NOT_WALKED = "A confirmed door is not the same as a walked one."
-NOTES_PANEL_INSTALLED = "The notes panel is installed on this machine."
-NOTES_PANEL_MISSING = "The notes panel is not installed on this machine."
+NOTES_PANEL_INSTALLED = "The notes panel is installed in this vault."
+NOTES_PANEL_MISSING = (
+    "The notes panel is not installed in this vault. "
+    "This checkup looked only in this vault, not across the machine."
+)
 NOTES_PANEL_SWITCH = "`.obsidian/community-plugins.json` listing `dex-readonly`"
 NOTES_PANEL_HALF_ON = (
     "The notes panel files are there, but the panel is not switched on. "
