@@ -1,0 +1,97 @@
+{
+  "adapter": {
+    "directory": ".claude-plugin",
+    "kind": "claude-plugin",
+    "manifest": ".claude-plugin/plugin.json",
+    "status": "native"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "Local filesystem access is available in the active project.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "The package includes Claude's native .mcp.json configuration.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "The portable skill catalogue is bundled in the plugin.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "guided",
+      "notes": "PreToolUse safety and SessionStart context hooks are bundled and reviewed at install.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "automatic",
+      "notes": "SessionStart context runs automatically after the plugin is trusted.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "automatic",
+      "notes": "Dex's OS-scheduled jobs remain independent of the chat harness.",
+      "status": "scheduled",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "AskUserQuestion is available when the client provides it.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "The same package includes a native Claude plugin manifest.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "CLAUDE_CODE",
+      "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_PROJECT_DIR",
+      "CLAUDE_CODE_VERSION"
+    ],
+    "paths": [
+      "/.claude/",
+      "/claude-code/"
+    ]
+  },
+  "display_name": "Claude Code",
+  "evidence": [
+    "https://code.claude.com/docs/en/plugins",
+    "https://code.claude.com/docs/en/hooks-guide"
+  ],
+  "id": "claude-code",
+  "limitations": [
+    "Host-specific features beyond the shared SessionStart and PreToolUse hooks remain Claude-only."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills",
+    "tier-3-full"
+  ],
+  "name": "Claude Code",
+  "summary": "Dex's Tier 3 reference harness with native skills, MCP, hooks, and session lifecycle support.",
+  "support_level": "reference",
+  "vendor": "Anthropic"
+}

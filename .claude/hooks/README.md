@@ -1,6 +1,6 @@
 # Claude Code hooks
 
-These hooks provide deterministic lifecycle behavior for Claude Code. Cursor does not run Claude Code hooks.
+These hooks provide deterministic lifecycle behavior for Claude Code (**Tier 3 Full**). Cursor, Codex, and other Agent Skills harnesses do not run Claude Code hooks; they stop at **Tier 2 Skills**. Session boot and person context are also **Tier 1 Core** tools (`boot_today`, `get_person_context`) — Cursor/ChatGPT call them; these hooks auto-fire the same functions. The three-bucket inventory (scheduled / in-turn inject / gates) is in [`docs/architecture/HOOK-INVENTORY.md`](../../docs/architecture/HOOK-INVENTORY.md). Do not mass-migrate hooks.
 
 The wiring sources of truth are:
 

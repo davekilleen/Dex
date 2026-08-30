@@ -4,7 +4,7 @@
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
-> **Ground truth as of** `upstream/main` at `0f23787a`, latest release tag **v1.81.0** (2026-07-31). The updater bridge, journey protocol, and executor are published. The separate v1.81.1 follow-up and full macOS fleet acceptance are still in progress.
+> **Ground truth as of** `upstream/main` at `fd335640`, latest release tag **v1.97.0** (2026-08-13). Dex Everywhere portability remains unreleased on this branch; exact-head native macOS/Windows acceptance is green, while the mandatory Fable reviews and live release-candidate installs are still pending.
 >
 > **Don't duplicate generated files.** Tool lists, skill lists, ownership-class path tables, and MCP↔skill wiring live in the auto-generated `docs/architecture/INVENTORY.md`. This map cross-references it; it does not restate it.
 >
@@ -21,7 +21,7 @@
 | Portable ownership contract | **SHIPPED** (v1.64+) | `core/portable_contract.py` | Source of truth: every path is brain/seed/generated/vault/runtime; decides what an update may write |
 | Release catalog + bridge | **SHIPPED** (v1.65–v1.68) | `core/lifecycle/catalog/*`, `bridge.py` | Publisher-declared packing list per release; one-release handoff from the legacy updater |
 | Historic updater journey protocol + executor | **SHIPPED** (v1.81.0), acceptance pending | `core/update/journey-protocol-v1.json`, `core/update/journey_protocol.py`, `scripts/release_fleet_executor.py` | Closed release-owned machine contract and evidence-owning implementation for the pinned bridge and lifecycle delivery route |
-| 11 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py`, `core/integrations/*/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (47 tools) |
+| 11 MCP servers | **SHIPPED** (mixed ages) | `core/mcp/*_server.py`, `core/integrations/*/*_server.py` | The tool surface Dex acts through; Work MCP is the giant (see INVENTORY) |
 | Connection Manager (OAuth/token) | **SHIPPED ENGINE, `/connect` HELD** | `core/integrations/connection-manager/` | Local-first OAuth via Nango catalog-as-data; encrypted on-device tokens; hardened through security Phases 0–5g, but the `/connect` doorway stays held (draft PR #231) |
 | Customization migration | **SHIPPED** assess/capsule/guided-journey (v1.75.x) / **LOCAL** rebuild engine and doorway | `core/customization_migration/*`, `core/mcp/customization_migration_server.py` | Inventories customizations, preserves a Capsule, and offers a human-confirmed, receipt-backed rebuild and rewind; the doorway is authorized but remains unshipped until its release |
 | DexDiff (methodology sharing) | **SHIPPED** cmd surface / **PARKED** redesign | `.claude/skills/diff-*`, `core/dexdiff_profile_adopt.py` | Generate→publish→adopt-regenerates-locally; redesign parked for the desktop "Vorflux" rebuild |
@@ -115,19 +115,19 @@ therefore remains false.
 
 | Server | Source | Tools | `feature_status` honesty contract |
 | --- | --- | ---: | :---: |
-| `dex-work-mcp` | `work_server.py` (247 KB) | **47** | yes |
+| `dex-work-mcp` | `work_server.py` (247 KB) | **50** | yes |
 | `dex-calendar-mcp` | `calendar_server.py` | 15 | yes |
 | `dex-pipedrive-mcp` | `core/integrations/pipedrive/pipedrive_server.py` | 15 | yes |
 | `dex-resume-mcp` | `resume_server.py` | 12 | yes |
 | `dex-improvements-mcp` | `dex_improvements_server.py` | 9 | **no** |
 | `dex-career-mcp` | `career_server.py` | 8 | yes |
-| `dex-onboarding-mcp` | `onboarding_server.py` | 15 | **no** |
+| `dex-onboarding-mcp` | `onboarding_server.py` | 17 | **no** |
 | `dex-session-memory` | `session_memory_server.py` | 8 | **no** |
 | `dex-granola-mcp` | `granola_server.py` | 6 | yes |
 | `dex-customization-migration-mcp` | `customization_migration_server.py` | 7 | yes |
 | `dex-analytics` | `analytics_server.py` | 4 | yes |
 
-**The big one.** `dex-work-mcp` is 47 tools (tasks, people/company indexes, goals, priorities, meeting cache, external task sync, focus/scheduling, relationship confirm/dismiss, soft-commitment detection). It is the spine of `/daily-plan`, `/week-plan`, `/process-meetings`. Per INVENTORY's connectedness section, three servers are **under-surfaced** (0 skills reference them): `dex-career-mcp`, `dex-resume-mcp`, and `dex-session-memory`. The customization-migration MCP is now surfaced through `/dex-update`; the optional Pipedrive server lives under `core/integrations/` but is part of the same canonical inventory. `dex-analytics` is **over-surfaced** (28 skills call `track_event`).
+**The big one.** `dex-work-mcp` is 50 tools (tasks, people/company indexes, goals, priorities, meeting cache, external task sync, focus/scheduling, relationship confirm/dismiss, soft-commitment detection, plus `boot_today` / `get_person_context` / `check_safety_gate` for harness-portable context and advisory gates). It is the spine of `/daily-plan`, `/week-plan`, `/process-meetings`. Per INVENTORY's connectedness section, three servers are **under-surfaced** (0 skills reference them): `dex-career-mcp`, `dex-resume-mcp`, and `dex-session-memory`. The customization-migration MCP is now surfaced through `/dex-update` for Capsule evidence and readable blob access; the optional Pipedrive server lives under `core/integrations/` but is part of the same canonical inventory. `dex-analytics` is **over-surfaced** (28 skills call `track_event`).
 
 **Honesty-contract gap.** Three servers lack `feature_status` (`dex-improvements-mcp`, `dex-onboarding-mcp`, `dex-session-memory`) — meaning they don't return the ok/off/not_installed/broken/unknown status envelope the rest do. That's the honest weak spot in the "every MCP tells you its health" story.
 
@@ -179,7 +179,7 @@ therefore remains false.
 - **Observation layer** (`observation-extract.cjs`, `observation-profile.cjs`, `observation-serendipity.cjs`, `observation-weekly-synthesis.cjs`, `observation-utils.cjs`) and the **health-checkers** (`connection-health-checker.cjs`, `gmail-health-checker.cjs`, `teams-health-checker.cjs`) exist **only as UNTRACKED local files** on the maintainer's machine — `git ls-files` shows none of them, and neither does `docs/observation-layer-beta-rollout.md`. **They are not in the repo and never ship to users.** So there is no observation layer in the distributed product to "remove"; it's local experimentation. Don't cite these as Core behavior.
 - **`career-evidence-capture.cjs` was silently dead — now fixed (PR #180).** It read hook input from `process.env.CLAUDE_HOOK_CONTEXT`, but Claude Code delivers hook input on **stdin** (as the wired hooks do), so it exited at the first guard every time and captured nothing. PR #180 switches it to read stdin and adds an input-contract test so no hook can regress to the env-var pattern. (This is the one tracked observation-adjacent cleanup; the untracked `staging/vault-fixes/` prototype is deleted in the same PR.)
 
-**How it connects.** Wired hooks feed context injection, safety guards, and the bounded release-awareness notice. The observation/health-checker scripts are **untracked local cruft, not product** — treat them as absent when reasoning about what a user's install does.
+**How it connects.** Wired hooks feed context injection, safety guards, and the bounded release-awareness notice. Automatic firing is **Tier 3 Full** and Claude Code only today — a stated position. Session boot and person-inject payloads are **Tier 1 Core**: `boot_today` and `get_person_context` on Work MCP, implemented in `core/context/`, with the Claude Code hooks as thin wrappers. `check_safety_gate` is an advisory MCP surface; only a verified pre-tool interceptor can enforce it. Scheduled jobs (`com.dex.meeting-intel` and the other launchd promises) are already **Tier 1 Core** and do not need a hook. Three-bucket inventory: `docs/architecture/HOOK-INVENTORY.md`. The observation/health-checker scripts are **untracked local cruft, not product** — treat them as absent when reasoning about what a user's install does.
 
 ## 10. Skills — SHIPPED (74 counted by generator)
 

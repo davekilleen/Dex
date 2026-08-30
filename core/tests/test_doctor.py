@@ -17,12 +17,19 @@ from pathlib import Path
 
 import pytest
 
+from core.harnesses.chatgpt_work_personal_copy import STALE_WORK_COPY_SENTENCE
+from core.harnesses.registry import get_profile
 from core.health import promises as health_promises
 from core.lifecycle import service as lifecycle_service
 from core.lifecycle.bridge import activate_vault
 from core.lifecycle.catalog import with_catalog_identity
 from core.lifecycle.engine import AdoptionReceipt
 from core.lifecycle.ledger import record_adoption
+from core.onboarding.harness_receipt import (
+    build_receipt,
+    build_receipt_for_ids,
+    canonical_receipt_bytes,
+)
 from core.tests.lifecycle_test_helpers import (
     SOURCE_COMMIT,
     write_bridge_release,
@@ -49,6 +56,7 @@ QUICK_IDS = [
     "smoke.history",
     "mcp.registered",
     "mcp.orphans",
+    "harness.capabilities",
     "python.env",
     "hooks.wired",
     "jobs.loaded",
@@ -800,6 +808,216 @@ def test_registry_ids_match_the_approved_spec():
     assert [definition.id for definition in doctor.QUICK_CHECKS] == QUICK_IDS
     assert [definition.id for definition in doctor.DEEP_CHECKS] == DEEP_IDS
     assert doctor.VERDICTS == frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
+
+
+def test_harness_capability_probe_is_calmly_off_before_selection(context):
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OFF"
+    assert "record your harnesses without restarting onboarding" in result.detail.lower()
+
+
+def test_harness_capability_probe_reports_modes_without_overclaiming(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt(
+        [
+            {
+                "id": "codex",
+                "display_name": "Codex",
+                "capabilities": [
+                    {"id": "vault", "mode": "automatic"},
+                    {"id": "mcp", "mode": "on_demand"},
+                    {"id": "pre-tool", "mode": "guided"},
+                ],
+            }
+        ],
+        detected_ids=("codex",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "Codex" in result.detail
+    assert "1 automatic" in result.detail
+    assert "1 on demand" in result.detail
+    assert "1 guided" in result.detail
+    assert "fully automatic" not in result.detail.lower()
+    assert "Linux" in result.detail
+    assert "deferred" in result.detail
+    assert result.structured_detail["selected"] == ["codex"]
+    assert result.structured_detail["modes"] == {
+        "automatic": 1,
+        "guided": 1,
+        "on_demand": 1,
+        "unavailable": 0,
+    }
+    assert result.structured_detail["fully_automatic"] is False
+    assert result.structured_detail["limitations"] == {
+        "codex": list(get_profile("codex").limitations)
+    }
+    assert result.structured_detail["platform"] == {
+        "id": "linux",
+        "included_in_release": False,
+        "label": "Linux",
+        "notes": "Linux packaging and live-host verification are deferred; the portable runtime remains testable but is outside this release.",
+        "readiness": "deferred",
+        "runtime": {"node": ">=20", "python": ">=3.11"},
+    }
+    assert "ide" in result.detail.lower()
+    assert "You confirmed Codex." in result.detail
+    assert "A confirmed door is not the same as a walked one." in result.detail
+
+
+def test_harness_capability_probe_reports_cowork_public_endpoint_limit(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["cowork"],
+        detected_ids=("cowork",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "Claude Cowork" in result.detail
+    assert "public" in result.detail.lower()
+    assert "stdio" in result.detail.lower()
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail["selected"] == ["cowork"]
+    assert result.structured_detail["limitations"] == {
+        "cowork": list(get_profile("cowork").limitations),
+    }
+
+
+def test_harness_capability_probe_reports_pi_and_bb_limits(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["pi", "bb"],
+        detected_ids=("pi", "bb"),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "Pi" in result.detail
+    assert "BB" in result.detail
+    assert "mcp" in result.detail.lower()
+    assert "macos" in result.detail.lower()
+    assert result.structured_detail["selected"] == ["bb", "pi"]
+    assert result.structured_detail["limitations"] == {
+        "bb": list(get_profile("bb").limitations),
+        "pi": list(get_profile("pi").limitations),
+    }
+
+
+def test_harness_capability_probe_reports_chatgpt_work_web_limit(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["chatgpt-work"],
+        detected_ids=("chatgpt-work",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "ChatGPT Work" in result.detail
+    assert "web" in result.detail.lower()
+    assert "https" in result.detail.lower()
+    assert "desktop" in result.detail.lower()
+    assert "vault" in result.detail.lower()
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail["selected"] == ["chatgpt-work"]
+    assert result.structured_detail["limitations"] == {
+        "chatgpt-work": list(get_profile("chatgpt-work").limitations),
+    }
+    assert STALE_WORK_COPY_SENTENCE not in result.detail
+    assert "granted=true" not in result.detail.lower()
+
+
+def test_harness_capability_probe_reports_copilot_cli_hook_limit(context, monkeypatch):
+    monkeypatch.setattr("core.harnesses.registry.platform_module.system", lambda: "Linux")
+    receipt = build_receipt_for_ids(
+        ["copilot-cli"],
+        detected_ids=("copilot-cli",),
+        source="user-confirmed",
+        generated_at=NOW,
+    )
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes(canonical_receipt_bytes(receipt))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "OK"
+    assert "GitHub Copilot CLI" in result.detail
+    assert "hook" in result.detail.lower()
+    assert "person" in result.detail.lower()
+    assert "ubuntu cloud" in result.detail.lower()
+    assert "fully automatic" not in result.detail.lower()
+    assert result.structured_detail["selected"] == ["copilot-cli"]
+    assert result.structured_detail["limitations"] == {
+        "copilot-cli": list(get_profile("copilot-cli").limitations),
+    }
+
+
+def test_harness_capability_probe_reports_malformed_receipt_as_broken(context):
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text("not JSON\n", encoding="utf-8")
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "BROKEN"
+    assert "harness" in result.detail.lower()
+    assert result.heal is not None
+    assert result.heal.applied is False
+
+
+def test_harness_capability_probe_reports_non_list_detected_ids_as_broken(context):
+    receipt = build_receipt(
+        [
+            {
+                "id": "codex",
+                "display_name": "Codex",
+                "capabilities": [
+                    {"id": "vault", "mode": "automatic"},
+                ],
+            }
+        ],
+        detected_ids=("codex",),
+        source="detected",
+        generated_at=NOW,
+    )
+    receipt["detected"] = "codex"
+    receipt_path = context.vault_root / "System/.dex/harness-profile.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_bytes((json.dumps(receipt) + "\n").encode("utf-8"))
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert result.verdict == "BROKEN"
+    assert "detected" in result.detail.lower()
+    assert result.heal is not None
+    assert result.heal.applied is False
 
 
 def test_release_catalog_probe_is_calmly_off_for_older_installs(context):

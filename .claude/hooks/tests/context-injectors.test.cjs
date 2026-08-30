@@ -7,6 +7,23 @@ const path = require('node:path');
 
 const FIXTURE_VAULT = path.resolve(__dirname, '../../../core/tests/fixtures/vault');
 
+function findPython() {
+  const candidates = process.platform === 'win32'
+    ? [['py', ['-3']], ['python', []], ['python3', []]]
+    : [['python3', []], ['python', []]];
+  for (const [command, prefix] of candidates) {
+    const result = spawnSync(
+      command,
+      [...prefix, '-c', 'import sys; print(sys.executable)'],
+      { encoding: 'utf-8' },
+    );
+    if (result.status === 0 && result.stdout.trim()) return result.stdout.trim();
+  }
+  throw new Error('Python is required for the shared context hook tests');
+}
+
+const PYTHON = findPython();
+
 function createSandbox(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-context-hook-'));
   const vault = path.join(root, 'vault');
@@ -17,20 +34,31 @@ function createSandbox(t) {
   return { vault, home };
 }
 
-function runHook(scriptName, stdin, sandbox) {
+function runHook(scriptName, stdin, sandbox, envOverrides = {}) {
   const scriptPath = path.join(__dirname, '..', scriptName);
   return spawnSync(process.execPath, [scriptPath], {
     input: stdin,
     encoding: 'utf-8',
+    timeout: 12000,
     env: {
       CLAUDE_HOOK_CONTEXT: '{}',
       CLAUDE_PROJECT_DIR: sandbox.vault,
       DEX_HOOK_DEBUG: '1',
+      DEX_PYTHON: PYTHON,
       HOME: sandbox.home,
       PATH: '/usr/bin:/bin',
       VAULT_PATH: sandbox.vault,
+      ...envOverrides,
     },
   });
+}
+
+function pythonOnlyPath(t) {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-python-only-'));
+  const shim = path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python');
+  fs.symlinkSync(PYTHON, shim);
+  t.after(() => fs.rmSync(bin, { recursive: true, force: true }));
+  return bin;
 }
 
 test('person context injector emits skip reason on invalid JSON', (t) => {
@@ -45,6 +73,17 @@ test('person context injector emits skip reason when file path missing', (t) => 
   const result = runHook('person-context-injector.cjs', JSON.stringify({ tool_input: {} }), sandbox);
   assert.equal(result.status, 0);
   assert.match(result.stderr, /\[dex-hook-skip] missing-file-path-or-recursive-person-file/);
+});
+
+test('person context injector fails open on a malformed file path value', (t) => {
+  const sandbox = createSandbox(t);
+  const result = runHook(
+    'person-context-injector.cjs',
+    JSON.stringify({ tool_input: { file_path: { path: 'not-a-string' } } }),
+    sandbox,
+  );
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /\[dex-hook-skip] invalid-file-path/);
 });
 
 test('company context injector emits skip reason on invalid JSON', (t) => {
@@ -76,6 +115,23 @@ test('person context injector emits fixture person context', (t) => {
   assert.match(result.stdout, /<person_context>/);
   assert.match(result.stdout, /Alice Smith/);
   assert.match(result.stdout, /<\/person_context>/);
+});
+
+test('person context injector falls back to python when python3 is unavailable', (t) => {
+  const sandbox = createSandbox(t);
+  const note = path.join(sandbox.vault, '00-Inbox', 'Meetings', 'person-context.md');
+  fs.writeFileSync(note, '# Meeting\n\nMeeting with Alice Smith about the launch.\n');
+
+  const result = runHook(
+    'person-context-injector.cjs',
+    JSON.stringify({ tool_input: { file_path: note } }),
+    sandbox,
+    { DEX_PYTHON: '', PATH: pythonOnlyPath(t) },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /<person_context>/);
+  assert.match(result.stdout, /Alice Smith/);
 });
 
 test('company context injector emits fixture company context', (t) => {

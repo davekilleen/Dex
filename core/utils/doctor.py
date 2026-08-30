@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -619,6 +619,11 @@ QUICK_CHECKS = (
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
+    CheckDefinition(
+        "harness.capabilities",
+        "Agent harness capabilities",
+        "_probe_harness_capabilities",
+    ),
     CheckDefinition("python.env", "Python environment", "_probe_python_env"),
     CheckDefinition("hooks.wired", "Claude hooks", "_probe_hooks_wired"),
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
@@ -1309,6 +1314,121 @@ def _probe_vault_structure(context: DoctorContext) -> ProbeResult:
             Heal(tier=1, action=f"Create the missing directories: {', '.join(missing)}.", applied=False),
         )
     return ProbeResult("OK", "All standard PARA directories exist")
+
+
+def _door_overlay(
+    context: DoctorContext,
+    detail: str,
+    confirmed_ids: Iterable[str] | None,
+    summary: dict[str, object] | None = None,
+) -> tuple[str, dict[str, object]]:
+    """Name every written door, then keep the stale Work-copy sentence last."""
+    from core.harnesses.chatgpt_work_personal_copy import stale_work_copy_sentence
+    from core.harnesses.doors import attach_door_sentences, door_report
+
+    report = door_report(
+        home=context.home,
+        vault_root=context.vault_root,
+        confirmed_ids=confirmed_ids,
+    )
+    detail = attach_door_sentences(detail, report)
+    structured = dict(summary or {})
+    structured.update(report.as_structured())
+    selected = structured.get("selected")
+    if isinstance(selected, list) and "chatgpt-work" in selected:
+        extra = stale_work_copy_sentence(home=context.home, repo_root=context.repo_root)
+        if extra:
+            if detail and detail[-1] not in ".?!":
+                detail = f"{detail}."
+            detail = f"{detail} {extra}".strip()
+    return detail, structured
+
+
+def _probe_harness_capabilities(context: DoctorContext) -> ProbeResult:
+    """Report the saved host contract without promoting guided work to automatic."""
+    from core.harnesses.registry import get_platform_release, get_profile
+    from core.onboarding.harness_receipt import (
+        HarnessReceiptError,
+        read_receipt,
+        summarize_receipt,
+    )
+
+    try:
+        receipt = read_receipt(context.vault_root)
+    except HarnessReceiptError as error:
+        detail, structured = _door_overlay(
+            context,
+            f"The saved agent harness profile is invalid: {_one_line(error)}",
+            (),
+        )
+        return ProbeResult(
+            "BROKEN",
+            detail,
+            Heal(
+                tier=3,
+                action=(
+                    "Run /setup and confirm the agent harness selection again; "
+                    "Dex will replace only this receipt."
+                ),
+                applied=False,
+            ),
+            structured_detail=structured,
+        )
+    if receipt is None:
+        detail, structured = _door_overlay(
+            context,
+            (
+                "Agent harness capabilities have not been recorded yet; run /setup to "
+                "record your harnesses without restarting onboarding"
+            ),
+            (),
+        )
+        return ProbeResult(
+            "OFF",
+            detail,
+            structured_detail=structured,
+        )
+
+    summary = summarize_receipt(receipt)
+    platform_release = get_platform_release()
+    summary["platform"] = platform_release
+    display_names = [
+        str(profile["display_name"])
+        for profile in receipt["profiles"]
+        if isinstance(profile, dict)
+    ]
+    limitations: dict[str, list[str]] = {}
+    limitation_notes: list[str] = []
+    for selected_id in summary["selected"]:
+        if not isinstance(selected_id, str):
+            continue
+        try:
+            live_profile = get_profile(selected_id)
+        except KeyError:
+            limitations[selected_id] = []
+            continue
+        notes = [str(note) for note in live_profile.limitations]
+        limitations[selected_id] = notes
+        limitation_notes.extend(
+            f"{live_profile.display_name}: {note}" for note in notes if note
+        )
+    summary["limitations"] = limitations
+    modes = summary["modes"]
+    assert isinstance(modes, dict)
+    detail = (
+        f"Selected {', '.join(display_names)}: "
+        f"{modes['automatic']} automatic, "
+        f"{modes['on_demand']} on demand, "
+        f"{modes['guided']} guided, and "
+        f"{modes['unavailable']} unavailable capability assignments; "
+        f"{platform_release['label']} is {platform_release['readiness'].replace('_', ' ')}"
+    )
+    if limitation_notes:
+        detail = f"{detail}. {' '.join(limitation_notes)}"
+    selected = summary["selected"]
+    confirmed_ids = selected if isinstance(selected, list) else ()
+    detail, structured = _door_overlay(context, detail, confirmed_ids, summary)
+    return ProbeResult("OK", detail, structured_detail=structured)
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,10 @@ from pathlib import Path
 
 DEFAULT_MANIFEST = Path("System/.installed-files.manifest")
 REQUIRED_LIFECYCLE_RELEASE_PATHS = (
+    # Every distributed artifact starts with the product-facing harness
+    # bootstrap.  Builders materialize this path from the canonical template
+    # after stripping the contributor-only source AGENTS.md.
+    "AGENTS.md",
     "core/update/journey-protocol-v1.json",
     "core/lifecycle/bridge.py",
     "core/lifecycle/catalog/bridge-release.json",

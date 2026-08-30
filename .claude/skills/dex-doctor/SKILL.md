@@ -144,6 +144,28 @@ deep total, because the check registry can change.
 For each BROKEN item: what it means for the user in one plain sentence (what stopped
 working, since when if known), then the fix path.
 
+For **Agent harness capabilities**, use the saved receipt as the authority. Name every
+selected harness and keep the collector's four delivery labels exact: `automatic`,
+`on_demand`, `guided`, and `unavailable`. Explain `on_demand` as "available when asked".
+Never describe a guided MCP safety check as an automatic block; only a verified pre-tool
+interceptor earns that claim. Name every written door from the collector detail, one
+sentence each, in the order given — confirmed doors, written doors never opened,
+written doors this checkup cannot see, walked doors, and doors that were left.
+Then the notes panel sentence. Then the sentence that a confirmed door is not the same as a walked one.
+Keep those sentences verbatim, including any leftover sentence that proves a leave.
+A confirmed door is not a leave. If a written door is one this checkup cannot detect,
+keep that sentence verbatim: it is a written door and this checkup cannot see whether
+it has been opened. Do not invent a walk or a grant. If the notes panel files are there but the panel is
+not switched on, keep that sentence verbatim, including the named switch. Do not flip
+the switch. If the collector's detail
+ends with a sentence that the personal Work copy is behind this folder, show that
+sentence last and unchanged. If that sentence is absent, stay silent — a missing copy is
+not a grant, and a current copy is not news. Never invent a folder grant or a
+`granted=true` signal. If the check is OFF, calmly offer `/setup` to detect or choose
+harnesses, then still name every written door from the collector detail. If it is
+BROKEN, do not guess from installed commands—use the returned repair, and still name
+every written door.
+
 For the **Entity engine** check, keep the rendering short and plain: say whether entity
 creation is working, off, or needs attention, include the contact/observation counts,
 and call out unresolved verification results or quarantined pages. Mention stale
