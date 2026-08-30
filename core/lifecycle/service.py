@@ -699,6 +699,236 @@ def execute_approved_onboarding_context(
     return _envelope(receipt=executed["receipt"])
 
 
+def _load_room_presence_profile(vault_root: str | Path) -> tuple[Path, bytes, dict[str, object]]:
+    """Read the live profile once so the hash and the parse stay the same bytes."""
+    import yaml
+
+    from core.room_presence import PROFILE_RELATIVE
+
+    root = Path(vault_root)
+    profile = root / PROFILE_RELATIVE
+    if profile.is_symlink() or not profile.is_file():
+        raise PlanRejected("room presence requires a finalized regular user profile")
+    original = profile.read_bytes()
+    try:
+        current = yaml.safe_load(original.decode("utf-8")) or {}
+    except (UnicodeDecodeError, yaml.YAMLError) as error:
+        raise PlanRejected("user profile is not valid YAML") from error
+    if not isinstance(current, dict):
+        raise PlanRejected("user profile must be a YAML object")
+    return profile, original, current
+
+
+def _room_presence_profile_plan(
+    vault_root: str | Path,
+    profile: Path,
+    original: bytes,
+    updated: Mapping[str, object],
+    *,
+    purpose: str,
+) -> tuple[dict[str, object], list[PlanEntry]]:
+    """Build the exact user-profile write for a room-presence mutation."""
+    import yaml
+
+    from core.room_presence import PROFILE_RELATIVE
+
+    if not isinstance(updated, Mapping):
+        raise PlanRejected("room presence update is malformed")
+    plan = [
+        PlanEntry(
+            PROFILE_RELATIVE,
+            yaml.safe_dump(dict(updated), sort_keys=False, allow_unicode=True).encode(
+                "utf-8"
+            ),
+            mode=profile.stat().st_mode & 0o777,
+            expected_current_sha256=hashlib.sha256(original).hexdigest(),
+        )
+    ]
+    transaction = _transaction_preview_document(
+        vault_root,
+        plan,
+        purpose=purpose,
+        operation="room-presence",
+    )
+    return {"writes": transaction["writes"]}, plan
+
+
+def _room_presence_fields_preview(
+    vault_root: str | Path,
+    fields: Mapping[str, object],
+) -> tuple[dict[str, object], list[PlanEntry]]:
+    """Build the exact local card mutation. This does not share anything."""
+    from core.room_presence import apply_local_fields, local_card
+
+    profile, original, current = _load_room_presence_profile(vault_root)
+    if not isinstance(fields, Mapping):
+        raise PlanRejected("room presence fields are malformed")
+    try:
+        updated = apply_local_fields(
+            current,
+            photo=fields.get("photo", None),
+            title=fields.get("title", None),
+            company=fields.get("company", None),
+        )
+    except ValueError as error:
+        raise PlanRejected(str(error)) from error
+    document, plan = _room_presence_profile_plan(
+        vault_root,
+        profile,
+        original,
+        updated,
+        purpose="room-presence",
+    )
+    return {
+        "card": local_card(updated),
+        "shared": False,
+        "writes": document["writes"],
+    }, plan
+
+
+def build_and_preview_room_presence(
+    vault_root: str | Path,
+    fields: Mapping[str, object],
+) -> dict[str, object]:
+    """Show the local photo, title, and company save before writing anything."""
+    preview, _plan = _room_presence_fields_preview(vault_root, fields)
+    return _envelope(
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_room_presence(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+) -> dict[str, object]:
+    """Save only the unchanged local card. This still does not share it."""
+    if not isinstance(preview, Mapping):
+        raise PlanRejected("room presence preview is malformed")
+    fields = {
+        "photo": preview.get("card", {}).get("photo")
+        if isinstance(preview.get("card"), Mapping)
+        else None,
+        "title": preview.get("card", {}).get("title")
+        if isinstance(preview.get("card"), Mapping)
+        else None,
+        "company": preview.get("card", {}).get("company")
+        if isinstance(preview.get("card"), Mapping)
+        else None,
+    }
+    expected_preview, plan = _room_presence_fields_preview(vault_root, fields)
+    expected_bytes = _canonical(expected_preview)
+    if (
+        _canonical(dict(preview)) != expected_bytes
+        or not isinstance(approved_token, str)
+        or not hmac.compare_digest(approved_token, hashlib.sha256(expected_bytes).hexdigest())
+    ):
+        raise PlanRejected("room presence approval does not match the current exact preview")
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="room-presence",
+        operation="room-presence",
+        approved_token=str(
+            _preview_transaction(
+                vault_root,
+                plan,
+                purpose="room-presence",
+                operation="room-presence",
+            )["approval_token"]
+        ),
+    )
+    return _envelope(receipt=executed["receipt"])
+
+
+def _room_presence_share_preview(
+    vault_root: str | Path,
+    room_id: str,
+) -> tuple[dict[str, object], list[PlanEntry]]:
+    """Build the exact share mutation. Audience is still closed until a yes."""
+    from core.room_presence import apply_share, local_card, normalize_room_id, room_view
+
+    profile, original, current = _load_room_presence_profile(vault_root)
+    try:
+        normalized = normalize_room_id(room_id)
+        updated = apply_share(current, normalized)
+    except ValueError as error:
+        raise PlanRejected(str(error)) from error
+    document, plan = _room_presence_profile_plan(
+        vault_root,
+        profile,
+        original,
+        updated,
+        purpose="room-presence-share",
+    )
+    visible = room_view(updated, normalized)
+    return {
+        "room": normalized,
+        "consent_required": "yes",
+        "card": local_card(updated),
+        "visible_after_yes": visible,
+        "writes": document["writes"],
+    }, plan
+
+
+def build_and_preview_room_presence_share(
+    vault_root: str | Path,
+    room_id: str,
+) -> dict[str, object]:
+    """Show what another person would see after a yes. Writes nothing."""
+    preview, _plan = _room_presence_share_preview(vault_root, room_id)
+    return _envelope(
+        preview=preview,
+        approval_token=hashlib.sha256(_canonical(preview)).hexdigest(),
+    )
+
+
+def execute_approved_room_presence_share(
+    vault_root: str | Path,
+    preview: Mapping[str, object],
+    approved_token: str,
+    consent: str,
+) -> dict[str, object]:
+    """Share the card with one room only after an unchanged preview and a yes."""
+    from core.room_presence import require_yes
+
+    if not isinstance(preview, Mapping):
+        raise PlanRejected("room presence share preview is malformed")
+    try:
+        require_yes(consent)
+    except ValueError as error:
+        raise PlanRejected(str(error)) from error
+    room_id = preview.get("room")
+    if not isinstance(room_id, str):
+        raise PlanRejected("room presence share preview is malformed")
+    expected_preview, plan = _room_presence_share_preview(vault_root, room_id)
+    expected_bytes = _canonical(expected_preview)
+    if (
+        _canonical(dict(preview)) != expected_bytes
+        or not isinstance(approved_token, str)
+        or not hmac.compare_digest(approved_token, hashlib.sha256(expected_bytes).hexdigest())
+    ):
+        raise PlanRejected(
+            "room presence share approval does not match the current exact preview"
+        )
+    executed = _execute_approved_transaction(
+        vault_root,
+        plan,
+        purpose="room-presence-share",
+        operation="room-presence",
+        approved_token=str(
+            _preview_transaction(
+                vault_root,
+                plan,
+                purpose="room-presence-share",
+                operation="room-presence",
+            )["approval_token"]
+        ),
+    )
+    return _envelope(receipt=executed["receipt"])
+
+
 def _missing_companies_default_plan(
     vault_root: str | Path,
 ) -> tuple[list[PlanEntry], dict[str, bool]]:
@@ -1705,6 +1935,10 @@ __all__ = [
     "execute_approved_mcp_registration",
     "build_and_preview_onboarding_context",
     "execute_approved_onboarding_context",
+    "build_and_preview_room_presence",
+    "execute_approved_room_presence",
+    "build_and_preview_room_presence_share",
+    "execute_approved_room_presence_share",
     "build_and_preview_automation_claim",
     "execute_approved_automation_claim",
     "build_and_preview_automation_release",

@@ -191,6 +191,76 @@ def test_frozen_service_inputs_and_outputs_conform_to_schema(
         onboarding_execute_response,
     )
 
+    presence_vault = tmp_path / "presence-vault"
+    (presence_vault / "System").mkdir(parents=True)
+    (presence_vault / "System" / "user-profile.yaml").write_text(
+        "name: Example User\n",
+        encoding="utf-8",
+    )
+    presence_fields = {"photo": "System/maya.png", "title": "Designer", "company": ""}
+    presence_request = {
+        "vault_root": str(presence_vault),
+        "fields": presence_fields,
+    }
+    presence_response = service.build_and_preview_room_presence(
+        presence_vault,
+        presence_fields,
+    )
+    _assert_conforms(
+        schema,
+        "build_and_preview_room_presence",
+        presence_request,
+        presence_response,
+    )
+    presence_execute_request = {
+        "vault_root": str(presence_vault),
+        "preview": presence_response["preview"],
+        "approved_token": presence_response["approval_token"],
+    }
+    presence_execute_response = service.execute_approved_room_presence(
+        presence_vault,
+        presence_response["preview"],
+        presence_response["approval_token"],
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_room_presence",
+        presence_execute_request,
+        presence_execute_response,
+    )
+    share_request = {
+        "vault_root": str(presence_vault),
+        "room_id": "design-sync",
+    }
+    share_response = service.build_and_preview_room_presence_share(
+        presence_vault,
+        "design-sync",
+    )
+    _assert_conforms(
+        schema,
+        "build_and_preview_room_presence_share",
+        share_request,
+        share_response,
+    )
+    share_execute_request = {
+        "vault_root": str(presence_vault),
+        "preview": share_response["preview"],
+        "approved_token": share_response["approval_token"],
+        "consent": "yes",
+    }
+    share_execute_response = service.execute_approved_room_presence_share(
+        presence_vault,
+        share_response["preview"],
+        share_response["approval_token"],
+        "yes",
+    )
+    _assert_conforms(
+        schema,
+        "execute_approved_room_presence_share",
+        share_execute_request,
+        share_execute_response,
+    )
+
     automation_vault = tmp_path / "automation-vault"
     (automation_vault / "System").mkdir(parents=True)
     home = tmp_path / "automation-home"
@@ -416,6 +486,10 @@ def test_additive_public_surface_preserves_every_existing_operation() -> None:
         "execute_approved_mcp_registration",
         "build_and_preview_onboarding_context",
         "execute_approved_onboarding_context",
+        "build_and_preview_room_presence",
+        "execute_approved_room_presence",
+        "build_and_preview_room_presence_share",
+        "execute_approved_room_presence_share",
         "build_and_preview_automation_claim",
         "execute_approved_automation_claim",
         "build_and_preview_automation_release",
@@ -446,6 +520,22 @@ def test_additive_public_surface_preserves_every_existing_operation() -> None:
         "abandon_rebuild_capsule",
         "recover_rebuild_transactions",
     ]
+
+
+def test_room_presence_operations_have_frozen_signatures() -> None:
+    assert str(inspect.signature(service.build_and_preview_room_presence)) == (
+        "(vault_root: 'str | Path', fields: 'Mapping[str, object]') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.execute_approved_room_presence)) == (
+        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', approved_token: 'str') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.build_and_preview_room_presence_share)) == (
+        "(vault_root: 'str | Path', room_id: 'str') -> 'dict[str, object]'"
+    )
+    assert str(inspect.signature(service.execute_approved_room_presence_share)) == (
+        "(vault_root: 'str | Path', preview: 'Mapping[str, object]', approved_token: 'str', "
+        "consent: 'str') -> 'dict[str, object]'"
+    )
 
 
 def test_onboarding_context_operations_have_frozen_signatures() -> None:

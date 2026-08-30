@@ -598,6 +598,7 @@ def update_write_verdict(
         "onboarding-provision",
         "analytics-receipt",
         "automation-ownership",
+        "room-presence",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -717,6 +718,46 @@ def update_write_verdict(
             candidate,
             False,
             "outside-onboarding-context",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "room-presence":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "outside-room-presence",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == "System/user-profile.yaml":
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-room-presence",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-room-presence",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )
