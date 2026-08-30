@@ -168,7 +168,7 @@ def test_onboarding_offers_detected_meeting_sources_before_step_one() -> None:
     early_offer = text[meeting_sources_index:step_one_index]
 
     assert calendar_index < meeting_sources_index < step_one_index
-    assert "node .claude/hooks/integration-concierge.cjs" in early_offer
+    assert "node core/integrations/integration-concierge.cjs" in early_offer
     assert all(name in early_offer for name in ("Granola", "Zoom", "Teams"))
     assert "import-transcript-folder" in early_offer
     assert "background" in early_offer

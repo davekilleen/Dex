@@ -1,0 +1,9 @@
+{
+  "dex-core": {
+    "command": "node",
+    "args": [
+      "${PLUGIN_ROOT}/bin/dex-python.mjs",
+      "mcp"
+    ]
+  }
+}

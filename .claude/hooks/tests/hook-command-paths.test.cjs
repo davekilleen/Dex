@@ -7,6 +7,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '../../..');
 const SETTINGS_PATH = path.join(ROOT, '.claude/settings.json');
+const COMPOSITION_REFRESH = path.join(ROOT, '.claude/hooks/claude-composition-refresh.sh');
 
 function walkCommands(value) {
   if (Array.isArray(value)) return value.flatMap(walkCommands);
@@ -123,4 +124,36 @@ test('PreToolUse hooks run from a foreign cwd', () => {
       `${command} could not reach its script from a foreign cwd:\n${result.stderr}`,
     );
   }
+});
+
+test('the composition hook honors the same explicit portable Python command', () => {
+  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-composition-python-'));
+  fs.writeFileSync(path.join(sandbox, 'CLAUDE-custom.md'), '# Personal instructions\n');
+  const command = path.join(sandbox, 'python command probe');
+  const calls = path.join(sandbox, 'python-command-calls');
+  fs.writeFileSync(
+    command,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\nprintf '%s\\n' recomposed\n`,
+    { mode: 0o755 },
+  );
+
+  const result = spawnSync('/bin/bash', [COMPOSITION_REFRESH], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      CLAUDE_PROJECT_DIR: sandbox,
+      DEX_PYTHON: command,
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(calls), true);
+  assert.match(result.stdout, /customisations have been applied/);
+});
+
+test('the composition hook carries native Windows Python discovery', () => {
+  const source = fs.readFileSync(COMPOSITION_REFRESH, 'utf8');
+  assert.match(source, /\.venv\/Scripts\/python\.exe/);
+  assert.match(source, /py -3/);
+  assert.doesNotMatch(source, /(?:^|\s)python3\s+-[cm]\b/m);
 });

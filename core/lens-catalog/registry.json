@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "480213daf8ebc321b89d9c9e3fef8ebeeba9ac05c8eecaeda13c4407a67bccb8",
-        "byte_size": 20528
+        "sha256": "23fc59af24aa10eea9c67a98f2a206c7cac1743fbc9c6d5dd44d5345545d8eac",
+        "byte_size": 21731
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [
@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "ddbd555c2b3edbedf9848753ab014849040b5f3274b48460cef57cf6fc2ceb7d",
-        "byte_size": 17858
+        "sha256": "e2ce405ecd68dc4a216dd9a41658297fa5603d87b2458377d99e74749b236b58",
+        "byte_size": 18392
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -6248,8 +6248,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/setup/SKILL.md",
-        "sha256": "62a3cb301894d034c32c9559c47fb59b8bd67fc3998d8c819a52ea81d686841d",
-        "byte_size": 908
+        "sha256": "d18889c5cc43bac018a3ece071cafee5e2ddefc88a11e009e31a864555de37a4",
+        "byte_size": 1576
       },
       "value": "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs.",
       "jobs_served": [

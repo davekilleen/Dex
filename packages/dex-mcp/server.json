@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.davekilleen/dex",
+  "title": "Dex",
+  "description": "Read-only Dex context and safety tools for any local MCP app.",
+  "version": "1.0.0",
+  "websiteUrl": "https://heydex.ai",
+  "repository": {
+    "url": "https://github.com/davekilleen/Dex",
+    "source": "github",
+    "subfolder": "packages/dex-mcp"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "dex-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DEX_VAULT_PATH",
+          "description": "Path to the Dex folder on this computer.",
+          "isRequired": true,
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

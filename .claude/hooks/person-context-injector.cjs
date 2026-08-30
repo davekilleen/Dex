@@ -1,233 +1,121 @@
 #!/usr/bin/env node
 /**
- * PreToolUse hook: Inject person context when reading files with People/ references
- * 
- * When Claude reads a file containing references to people (by name or file path),
- * this hook looks up the referenced person pages and injects:
- * - Role & company
- * - Last interaction date
- * - Open action items
- * 
- * Detection methods:
- * - File paths containing People/
- * - Names matching files in People/Internal/ or People/External/
- * - Common name patterns in meeting notes
- * 
- * Triggered on Read tool
+ * PreToolUse Read hook: thin wrapper around core/context/person_context.py.
+ *
+ * The Python module is also exposed as Work MCP get_person_context, so every
+ * harness sees the same matching and formatting. This wrapper only translates
+ * Claude's stdin payload and fail-opens when the helper cannot run.
  */
 const fs = require('fs');
 const path = require('path');
-const { parseEntityPage } = require('../../.scripts/lib/entity-pages.cjs');
+const { spawnSync } = require('child_process');
 
 const DEBUG_SKIP = process.env.DEX_HOOK_DEBUG === '1';
 function skip(reason) {
-  if (DEBUG_SKIP) {
-    console.error(`[dex-hook-skip] ${reason}`);
-  }
+  if (DEBUG_SKIP) console.error(`[dex-hook-skip] ${reason}`);
   process.exit(0);
 }
 
-// Read hook input from stdin
+function resolvePython(vaultRoot) {
+  const candidates = [
+    [process.env.DEX_PYTHON, []],
+    [vaultRoot && path.join(vaultRoot, '.venv', 'bin', 'python'), []],
+    [vaultRoot && path.join(vaultRoot, '.venv', 'Scripts', 'python.exe'), []],
+    [path.join(__dirname, '..', '..', '.venv', 'bin', 'python'), []],
+    [path.join(__dirname, '..', '..', '.venv', 'Scripts', 'python.exe'), []],
+    ['py', ['-3']],
+    ['python', []],
+    ['python3', []],
+  ].filter(Boolean);
+  for (const [command, prefix] of candidates) {
+    if (!command) continue;
+    if (path.isAbsolute(command)) {
+      if (fs.existsSync(command)) return { command, prefix };
+      continue;
+    }
+    const probe = spawnSync(command, [...prefix, '-c', ''], {
+      encoding: 'utf-8',
+      timeout: 2000,
+    });
+    if (probe.status === 0) return { command, prefix };
+  }
+  return { command: 'python3', prefix: [] };
+}
+
 let input;
 try {
   input = JSON.parse(fs.readFileSync(0, 'utf-8'));
-} catch (e) {
+} catch (error) {
   skip('invalid-json-input');
 }
 
-const filePath = input.tool_input?.path || input.tool_input?.file_path || '';
-
-// Skip if no file path or if reading a Person page itself (avoid recursion)
-if (!filePath || filePath.includes('/People/')) {
+const filePath = input?.tool_input?.path || input?.tool_input?.file_path || '';
+if (typeof filePath !== 'string') skip('invalid-file-path');
+const normalizedFilePath = filePath.replaceAll('\\', '/');
+if (
+  !filePath ||
+  normalizedFilePath === 'People' ||
+  normalizedFilePath.startsWith('People/') ||
+  normalizedFilePath.includes('/People/')
+) {
   skip('missing-file-path-or-recursive-person-file');
 }
 
-// Skip binary/non-text files (images, PDFs, archives, etc.)
 const ext = path.extname(filePath).toLowerCase();
-const skipExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf', '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx'];
-if (skipExts.includes(ext)) {
-  skip(`unsupported-extension:${ext}`);
-}
+const skipExts = [
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg', '.pdf',
+  '.zip', '.tar', '.gz', '.mp3', '.mp4', '.mov', '.wav', '.pptx', '.xlsx', '.docx',
+];
+if (skipExts.includes(ext)) skip(`unsupported-extension:${ext}`);
 
-const { loadPaths } = require('./paths.cjs');
-const _paths = loadPaths();
-const VAULT_ROOT = _paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
-const PEOPLE_DIR = _paths.PEOPLE_DIR || path.join(_paths.AREAS_DIR, 'People');
-
-// Build an index of all person names to their files
-/**
- * Build a lookup index mapping normalised person names to their file paths.
- * Scans Internal/, External/, and CPO_Network/ subdirectories.
- * @returns {Record<string, string>} Map of lowercase name variants to absolute file paths
- */
-function buildPersonIndex() {
-  const index = {};
-  const subdirs = ['Internal', 'External', 'CPO_Network'];
-  
-  for (const subdir of subdirs) {
-    const dirPath = path.join(PEOPLE_DIR, subdir);
-    if (!fs.existsSync(dirPath)) continue;
-    
-    try {
-      const files = fs.readdirSync(dirPath);
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue;
-        if (file.toLowerCase() === 'readme.md') continue;
-        
-        const fileName = file.replace('.md', '');
-        // Create variations for matching
-        const normalizedName = fileName.toLowerCase();
-        const spacedName = fileName.replace(/_/g, ' ').toLowerCase();
-        
-        const filePath = path.join(dirPath, file);
-        index[normalizedName] = filePath;
-        index[spacedName] = filePath;
-      }
-    } catch (e) {
-      // Skip directories we can't read
-    }
-  }
-  
-  return index;
-}
-
+let vaultRoot;
 try {
-  // Resolve the full file path
-  const fullFilePath = filePath.startsWith('/') ? filePath : path.join(VAULT_ROOT, filePath);
-  
-  if (!fs.existsSync(fullFilePath)) {
-    skip(`target-file-not-found:${fullFilePath}`);
-  }
-  
-  // Read the file to find person references
-  const content = fs.readFileSync(fullFilePath, 'utf-8');
-  
-  // Build person index
-  const personIndex = buildPersonIndex();
-  const personNames = Object.keys(personIndex);
-  
-  if (personNames.length === 0) {
-    skip('no-person-pages-indexed');
-  }
-  
-  // Find referenced people in the content
-  const foundPeople = new Set();
-  
-  // Method 1: File path references (People/Internal/John_Doe.md or just People/Internal/John_Doe)
-  const fileRefPattern = /People\/(?:Internal|External|CPO_Network)\/([A-Za-z0-9_-]+)(?:\.md)?/g;
-  let match;
-  while ((match = fileRefPattern.exec(content)) !== null) {
-    const name = match[1].toLowerCase();
-    if (personIndex[name]) {
-      foundPeople.add(personIndex[name]);
-    }
-  }
-  
-  // Method 2: Direct name matches (only if content looks like meeting notes or has person context)
-  // Look for patterns like "met with John Doe" or "John Doe mentioned"
-  const contentLower = content.toLowerCase();
-  const isMeetingNotes = contentLower.includes('meeting') || 
-                         contentLower.includes('attendee') || 
-                         contentLower.includes('call with') ||
-                         contentLower.includes('met with');
-  
-  if (isMeetingNotes) {
-    for (const name of personNames) {
-      // Only match full names (with underscores or spaces)
-      if (name.includes(' ') || name.includes('_')) {
-        const spacedName = name.replace(/_/g, ' ');
-        if (contentLower.includes(spacedName)) {
-          foundPeople.add(personIndex[name]);
-        }
-      }
-    }
-  }
-  
-  // Only proceed if we found people
-  if (foundPeople.size === 0) {
-    skip('no-person-references-found');
-  }
-  
-  // Look up each person and build context
-  const personContexts = [];
-  
-  for (const personFilePath of foundPeople) {
-    const personInfo = parsePersonPage(personFilePath);
-    if (personInfo) {
-      personContexts.push(personInfo);
-    }
-  }
-  
-  // Only inject if we found relevant person pages
-  if (personContexts.length === 0) {
-    skip('person-context-parse-empty');
-  }
-  
-  // Build context (silent - no headers, just data)
-  const contextLines = [
-    '<person_context>',
-    'Referenced people:'
-  ];
-  
-  for (const person of personContexts) {
-    contextLines.push(`${person.name} - ${person.role || 'No role'} @ ${person.company || 'Unknown'}`);
-    if (person.lastInteraction) {
-      contextLines.push(`  Last interaction: ${person.lastInteraction}`);
-    }
-    if (person.openItems && person.openItems.length > 0) {
-      contextLines.push(`  Open items: ${person.openItems.length}`);
-      person.openItems.slice(0, 2).forEach(item => {
-        contextLines.push(`    - ${item.substring(0, 60)}${item.length > 60 ? '...' : ''}`);
-      });
-    }
-  }
-  
-  contextLines.push('</person_context>');
-  
-  // Output context
-  const output = {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      additionalContext: '\n' + contextLines.join('\n')
-    }
-  };
-  console.log(JSON.stringify(output));
-  
-} catch (e) {
-  skip(`unexpected-error:${e.message}`);
+  const { loadPaths } = require('./paths.cjs');
+  const paths = loadPaths();
+  vaultRoot = paths.VAULT_ROOT || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
+} catch (error) {
+  vaultRoot = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
+}
+if (typeof vaultRoot !== 'string' || !vaultRoot) {
+  vaultRoot = process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd();
 }
 
-/**
- * Parse a person page and extract key info
- */
-/**
- * Parse a person page and extract key info for context injection.
- * @param {string} filePath - Absolute path to the person's markdown file
- * @returns {{ name: string, role: string|null, company: string|null, lastInteraction: string|null, openItems: string[] } | null}
- */
-function parsePersonPage(filePath) {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const entity = parseEntityPage(filePath);
-    
-    const info = {
-      name: entity.name || path.basename(filePath, '.md').replace(/_/g, ' '),
-      role: entity.role,
-      company: entity.company,
-      lastInteraction: entity.last_interaction,
-      openItems: []
-    };
-    
-    // Extract open action items
-    const actionItemRegex = /^- \[ \] (.+)$/gm;
-    let match;
-    while ((match = actionItemRegex.exec(content)) !== null) {
-      info.openItems.push(match[1].replace(/\*\*/g, '').trim());
-    }
-    
-    return info;
-  } catch (e) {
-    return null;
-  }
+const scriptPath = path.join(__dirname, '..', '..', 'core', 'context', 'person_context.py');
+if (!fs.existsSync(scriptPath)) skip('shared-context-module-not-found');
+const fullFilePath = path.isAbsolute(filePath) ? filePath : path.join(vaultRoot, filePath);
+const python = resolvePython(vaultRoot);
+const result = spawnSync(
+  python.command,
+  [...python.prefix, scriptPath, '--vault', vaultRoot, '--from-file', fullFilePath, '--format', 'hook-json'],
+  {
+    encoding: 'utf-8',
+    timeout: 8000,
+    env: {
+      ...process.env,
+      VAULT_PATH: vaultRoot,
+      PYTHONPATH: path.join(__dirname, '..', '..'),
+    },
+  },
+);
+
+if (result.error || result.status !== 0 || !result.stdout) {
+  const detail = (result.stderr || result.error || 'person-context-python-failed').toString().split('\n')[0];
+  skip(`unexpected-error:${detail}`);
 }
+
+let payload;
+try {
+  payload = JSON.parse(result.stdout);
+} catch (error) {
+  skip('unexpected-error:person-context-python-json');
+}
+if (payload?.skip) skip(payload.skip);
+if (!payload?.additionalContext) skip('person-context-parse-empty');
+
+console.log(JSON.stringify({
+  continue: true,
+  hookSpecificOutput: {
+    hookEventName: 'PreToolUse',
+    additionalContext: payload.additionalContext,
+  },
+}));

@@ -8,16 +8,20 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '../../..');
 const HOOK_PATH = path.join(ROOT, '.claude', 'hooks', 'connection-health-checker.cjs');
 const PATHS_PATH = path.join(ROOT, '.claude', 'hooks', 'paths.cjs');
+const PORTABLE_PATHS_PATH = path.join(ROOT, 'core', 'runtime', 'paths.cjs');
 const SETTINGS_PATH = path.join(ROOT, '.claude', 'settings.json');
 
 function createFixture(t, rows = []) {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-connection-health-'));
   const hooksDir = path.join(vault, '.claude', 'hooks');
   const managerDir = path.join(vault, 'core', 'integrations', 'connection-manager');
+  const runtimeDir = path.join(vault, 'core', 'runtime');
   fs.mkdirSync(hooksDir, { recursive: true });
   fs.mkdirSync(managerDir, { recursive: true });
+  fs.mkdirSync(runtimeDir, { recursive: true });
   fs.cpSync(HOOK_PATH, path.join(hooksDir, 'connection-health-checker.cjs'));
   fs.cpSync(PATHS_PATH, path.join(hooksDir, 'paths.cjs'));
+  fs.cpSync(PORTABLE_PATHS_PATH, path.join(runtimeDir, 'paths.cjs'));
   fs.writeFileSync(
     path.join(managerDir, 'health.cjs'),
     [

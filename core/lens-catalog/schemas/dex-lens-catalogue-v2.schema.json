@@ -169,7 +169,7 @@
         },
         "host_adapters": {
           "items": {
-            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "pattern": "^[a-z][a-z0-9-]{1,80}$",
             "type": "string"
           },
           "maxItems": 20,

@@ -1,0 +1,95 @@
+{
+  "adapter": {
+    "directory": ".codex-plugin",
+    "kind": "codex-plugin",
+    "manifest": ".codex-plugin/plugin.json",
+    "status": "native"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The active workspace is available to the agent.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "The package includes a native Codex MCP configuration.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "The generated skills and release-time AGENTS.md bootstrap are portable.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "guided",
+      "notes": "Bundled hooks require explicit user trust before Codex runs them.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "automatic",
+      "notes": "SessionStart context runs automatically after the plugin is trusted.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "The portable plugin does not assume a Codex scheduler.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "Conversation input is host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "The package includes a native .codex-plugin manifest.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "CODEX_CLI",
+      "CODEX_HOME",
+      "CODEX_THREAD_ID"
+    ],
+    "paths": [
+      "/.codex/",
+      "/codex/"
+    ]
+  },
+  "display_name": "Codex",
+  "evidence": [
+    "https://developers.openai.com/plugins/build/plugins",
+    "https://learn.chatgpt.com/docs/hooks"
+  ],
+  "id": "codex",
+  "limitations": [
+    "Codex IDE extensions do not currently load plugins; use Codex CLI or desktop for this package."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Codex",
+  "summary": "Native Dex plugin for Codex CLI and desktop with skills, read-only MCP tools, and shared lifecycle hooks.",
+  "support_level": "supported",
+  "vendor": "OpenAI"
+}

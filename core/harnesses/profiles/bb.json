@@ -1,0 +1,96 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/bb.json",
+    "kind": "bb-plugin",
+    "manifest": "package.json#bb",
+    "status": "native"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The plugin reads the user-selected local Dex vault with containment checks.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "unavailable",
+      "notes": "The native BB integration uses BB tools and RPC rather than MCP.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "Dex skills are bundled in the BB plugin package.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "unavailable",
+      "notes": "The first BB release does not register lifecycle hooks.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "guided",
+      "notes": "Dex status and briefing are available through native BB panels and tools, not automatic session injection.",
+      "status": "partial",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "The first BB release does not schedule jobs.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "BB exposes native tools, CLI commands, and a Dex panel.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "A standalone bb-plugin-dex package is built and SDK-verified; live BB installation remains unreleased.",
+      "status": "native",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "BB_HARNESS",
+      "BB_RUNNER"
+    ],
+    "paths": [
+      "/.bb/",
+      "/.bb/worktrees/",
+      "/bb-plugins/"
+    ]
+  },
+  "display_name": "BB",
+  "evidence": [
+    "https://github.com/get-bb/bb/blob/main/docs/configuration.md#plugins",
+    "https://github.com/get-bb/bb/blob/main/packages/plugin-sdk/README.md"
+  ],
+  "id": "bb",
+  "limitations": [
+    "The package is read-only and unreleased; live bb CLI installation has not yet been verified.",
+    "The standalone package currently targets macOS. BB's documented Windows route uses WSL2, which remains in Dex's deferred Linux lane."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "BB",
+  "summary": "Native BB plugin for read-only Dex status, capability inspection, and work briefing.",
+  "support_level": "supported",
+  "vendor": "Dex"
+}

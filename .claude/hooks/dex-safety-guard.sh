@@ -1,161 +1,79 @@
 #!/bin/bash
-# Dex Safety Guard — PreToolUse hook
-# Guards both Bash commands AND MCP tool preferences.
-# Exit 0 = allow, Exit 2 = block
+# Dex Safety Guard — PreToolUse hook.
+# The shared Python gate owns destructive-command and path decisions. The only
+# Claude-specific rule left here is the configured scraper preference.
+# Exit 0 = allow, exit 2 = block.
 
-INPUT=$(cat)
+INPUT=$(/bin/cat)
 
-# Extract tool name and command from input
-TOOL_NAME=$(echo "$INPUT" | python3 -c "
-import sys, json
+HOOK_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+SAFETY_PY="$HOOK_DIR/../../core/gates/safety.py"
+PYTHON_CMD=()
+if [[ -n "${DEX_PYTHON:-}" && -x "$DEX_PYTHON" ]]; then
+    PYTHON_CMD=("$DEX_PYTHON")
+elif [[ -n "$CLAUDE_PROJECT_DIR" && -x "$CLAUDE_PROJECT_DIR/.venv/bin/python" ]]; then
+    PYTHON_CMD=("$CLAUDE_PROJECT_DIR/.venv/bin/python")
+elif [[ -n "$CLAUDE_PROJECT_DIR" && -x "$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" ]]; then
+    PYTHON_CMD=("$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe")
+elif [[ -x "$HOOK_DIR/../../.venv/bin/python" ]]; then
+    PYTHON_CMD=("$HOOK_DIR/../../.venv/bin/python")
+elif [[ -x "$HOOK_DIR/../../.venv/Scripts/python.exe" ]]; then
+    PYTHON_CMD=("$HOOK_DIR/../../.venv/Scripts/python.exe")
+elif command -v py >/dev/null 2>&1 && py -3 -c "raise SystemExit(0)" >/dev/null 2>&1; then
+    PYTHON_CMD=(py -3)
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD=(python)
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_CMD=(python3)
+fi
+
+# === CLAUDE-ONLY MATCHER (not a shared interceptor) ===
+TOOL_LOWER=""
+if [[ "${#PYTHON_CMD[@]}" -gt 0 ]]; then
+    TOOL_LOWER=$(printf '%s' "$INPUT" | "${PYTHON_CMD[@]}" -c '
+import json
+import sys
 try:
     data = json.loads(sys.stdin.read())
-    print(data.get('tool_name', ''))
-except:
-    print('')
-" 2>/dev/null)
-
-COMMAND=$(echo "$INPUT" | python3 -c "
-import sys, json
-try:
-    data = json.loads(sys.stdin.read())
-    print(data.get('tool_input', {}).get('command', ''))
-except:
-    print('')
-" 2>/dev/null)
-TOOL_LOWER=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
-
-# === MCP TOOL PREFERENCE GUARDS ===
-# Scrapling is the preferred configured scraper. Block unsafe scraper MCPs while
-# leaving native WebFetch available as the fallback when Scrapling is absent.
+    print(str(data.get("tool_name", "")).lower())
+except Exception:
+    print("")
+' 2>/dev/null)
+else
+    case "$INPUT" in
+        *mcp__firecrawl__*|*mcp__rag-web-browser__*|*mcp__rag_web_browser__*)
+            echo "WRONG SCRAPER: Scrapling is the configured default."
+            exit 2
+            ;;
+    esac
+fi
 
 case "$TOOL_LOWER" in
     mcp__firecrawl__*|mcp__rag-web-browser__*|mcp__rag_web_browser__*)
-        echo "WRONG SCRAPER: Scrapling is the configured default. Use scrapling get/fetch/stealthy_fetch instead of $TOOL_NAME."
+        echo "WRONG SCRAPER: Scrapling is the configured default. Use scrapling get/fetch/stealthy_fetch instead of $TOOL_LOWER."
         exit 2
         ;;
 esac
 
-# Nothing further to check for non-Bash tools
-if [ -z "$COMMAND" ]; then
-    exit 0
-fi
-
-# A live brain/vault migration owns the shared mutation lock. Raw Git writes
-# during that window can turn a recoverable pause into a corrupted topology.
-MIGRATION_LOCK="System/.dex/mutation.lock"
-MIGRATION_LOCK_LIVE=""
-if [ -f "$MIGRATION_LOCK" ]; then
-    MIGRATION_LOCK_LIVE=$(python3 -c '
-import json
-import os
-import sys
-
-
-def process_is_running(pid):
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    if os.name == "nt":
-        # os.kill is NOT a liveness probe on Windows: CPython documents that
-        # any sig other than the console-control events unconditionally kills
-        # the target via TerminateProcess. Use a query-only process handle.
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-        kernel32.WaitForSingleObject.restype = wintypes.DWORD
-        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
-        kernel32.CloseHandle.restype = wintypes.BOOL
-        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-        handle = kernel32.OpenProcess(0x1000 | 0x00100000, False, pid)  # QUERY_LIMITED | SYNCHRONIZE
-        if not handle:
-            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED: exists
-        try:
-            return kernel32.WaitForSingleObject(handle, 0) != 0  # 0 = exited
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-
-
-try:
-    with open(sys.argv[1], encoding="utf-8") as handle:
-        lock = json.load(handle)
-    if lock.get("kind") != "migration":
-        raise ValueError("not a migration")
-    if process_is_running(lock["pid"]):
-        print("yes")
-except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-    pass
-' "$MIGRATION_LOCK" 2>/dev/null)
-fi
-if [ "$MIGRATION_LOCK_LIVE" = "yes" ] \
-    && echo "$COMMAND" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+(add|am|apply|bisect[[:space:]]+(good|bad|reset|start)|branch[[:space:]].*(-[dDmM]|--delete|--move)|checkout|cherry-pick|clean|commit|merge|mv|rebase|reset|restore|revert|rm|stash|switch|tag)([[:space:];&|]|$)'; then
-    echo '{"decision":"block","reason":"A brain/vault migration is active. Do not use raw Git repair commands. Run the migrator with --resume to continue or --restore to return to the pre-split layout."}'
+# A missing helper or interpreter means the shared decision cannot be made.
+# Fail closed instead of duplicating matchers here or silently allowing work.
+if [[ ! -f "$SAFETY_PY" ]]; then
+    echo "BLOCKED: the shared Dex safety gate is unavailable. Restore Core before running tools."
     exit 2
 fi
 
-# === HARD BLOCKS (exit 2) ===
-
-# Catastrophic filesystem destruction
-if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?(-[a-zA-Z]*r[a-zA-Z]*\s+)?(\/|~\/?\s|"\$HOME"|\/Users)'; then
-    echo '{"decision":"block","reason":"Blocked: recursive delete targeting root, home, or /Users"}'
+if [[ "${#PYTHON_CMD[@]}" -eq 0 ]]; then
+    echo "BLOCKED: the shared Dex safety gate needs Python 3. Install Python or set DEX_PYTHON."
     exit 2
 fi
 
-if echo "$COMMAND" | grep -qE 'rm\s+-rf\s+/'; then
-    echo '{"decision":"block","reason":"Blocked: rm -rf /"}'
+SAFETY_ARGS=(--hook)
+if [[ -n "$CLAUDE_PROJECT_DIR" ]]; then
+    SAFETY_ARGS+=(--vault "$CLAUDE_PROJECT_DIR")
+fi
+printf '%s' "$INPUT" | "${PYTHON_CMD[@]}" "$SAFETY_PY" "${SAFETY_ARGS[@]}"
+STATUS=$?
+if [[ "$STATUS" -eq 2 ]]; then
     exit 2
 fi
-
-# Disk wiping
-if echo "$COMMAND" | grep -qiE '(diskutil\s+eraseDisk|mkfs\s|dd\s+if=)'; then
-    echo '{"decision":"block","reason":"Blocked: disk wipe/format command"}'
-    exit 2
-fi
-
-# Force push to main/master
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force.*\s+(main|master)'; then
-    echo '{"decision":"block","reason":"Blocked: force push to main/master"}'
-    exit 2
-fi
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*\s+(main|master).*--force'; then
-    echo '{"decision":"block","reason":"Blocked: force push to main/master"}'
-    exit 2
-fi
-
-# SQL destruction
-if echo "$COMMAND" | grep -qiE '(DROP\s+TABLE|DROP\s+DATABASE)'; then
-    echo '{"decision":"block","reason":"Blocked: SQL DROP command"}'
-    exit 2
-fi
-
-# GitHub repo deletion
-if echo "$COMMAND" | grep -qE 'gh\s+repo\s+delete'; then
-    echo '{"decision":"block","reason":"Blocked: GitHub repo deletion"}'
-    exit 2
-fi
-
-# === WARNINGS (allow but flag) ===
-
-# chmod 777
-if echo "$COMMAND" | grep -qE 'chmod\s+777'; then
-    echo '{"decision":"allow","reason":"WARNING: chmod 777 grants full permissions to all users. Consider more restrictive permissions."}'
-    exit 0
-fi
-
-# kill -9
-if echo "$COMMAND" | grep -qE 'kill\s+-9'; then
-    echo '{"decision":"allow","reason":"WARNING: kill -9 force-terminates without cleanup. Ensure this is the intended process."}'
-    exit 0
-fi
-
-# === DEFAULT: ALLOW ===
 exit 0
