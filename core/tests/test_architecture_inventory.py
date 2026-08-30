@@ -87,6 +87,9 @@ def test_inventory_detects_known_tool_and_skill(tmp_path: Path) -> None:
     inventory = output.read_text(encoding="utf-8")
     assert "`dex-work-mcp`" in inventory
     assert "`create_task`" in inventory
+    assert "`boot_today`" in inventory
+    assert "`get_person_context`" in inventory
+    assert "`check_safety_gate`" in inventory
     assert "`daily-plan`" in inventory
     assert "Build today's plan from calendar" in inventory
 

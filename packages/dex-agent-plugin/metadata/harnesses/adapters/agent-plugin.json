@@ -1,0 +1,12 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "agent-plugin",
+  "status": "native",
+  "kind": "agent-plugin-v1",
+  "specification": "https://agent-plugins.org/specification",
+  "native_paths": ["plugin.json", "skills/", "mcp.json"],
+  "example": {
+    "manifest": "packages/dex-agent-plugin/plugin.json",
+    "mcp_config": "packages/dex-agent-plugin/mcp.json"
+  }
+}

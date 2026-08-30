@@ -1,0 +1,94 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/claude-desktop.json",
+    "kind": "mcpb",
+    "manifest": "packages/dex-claude-desktop/manifest.json",
+    "status": "native-build"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "guided",
+      "notes": "The user selects a local Dex vault when installing the desktop extension.",
+      "status": "partial",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "A validated .mcpb artifact exposes Dex's read-only MCP tools locally.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "guided",
+      "notes": "Claude plugins carry Dex skills; the MCPB artifact itself carries tools rather than skills.",
+      "status": "partial",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "unavailable",
+      "notes": "Claude Desktop chat does not run plugin hooks; hooks remain available in Claude Code and Cowork.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "unavailable",
+      "notes": "The MCP Bundle is a tool surface, not a session lifecycle host.",
+      "status": "none",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "automatic",
+      "notes": "Dex background jobs are installed by the operating-system adapter, independently of Claude Desktop.",
+      "status": "scheduled",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "Desktop conversation prompts are host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "unavailable",
+      "notes": "Claude Desktop local tools use MCPB rather than the Agent Plugins package format.",
+      "status": "none",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "CLAUDE_DESKTOP",
+      "CLAUDE_DESKTOP_VERSION"
+    ],
+    "paths": [
+      "/Claude/",
+      "/claude_desktop_config.json",
+      "/Claude Desktop/"
+    ]
+  },
+  "display_name": "Claude Desktop",
+  "evidence": [
+    "https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop",
+    "https://blog.modelcontextprotocol.io/posts/2025-11-20-adopting-mcpb/"
+  ],
+  "id": "claude-desktop",
+  "limitations": [
+    "The desktop bundle requires Dex's supported Python runtime and exposes read-only MCP tools; Claude Desktop chat does not run Dex hooks."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core"
+  ],
+  "name": "Claude Desktop",
+  "summary": "One-click MCP Bundle for Dex's local read-only tools in Claude Desktop on macOS and Windows.",
+  "support_level": "supported",
+  "vendor": "Anthropic"
+}

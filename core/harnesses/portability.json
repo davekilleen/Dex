@@ -1,0 +1,505 @@
+{
+  "classifications": [
+    "portable",
+    "conditional",
+    "claude-only",
+    "broken"
+  ],
+  "generated_by": "scripts/generate-harness-portability.py",
+  "schema_version": "1.0.0",
+  "skills": {
+    "_available/capabilities/career/skills/career-coach": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/capabilities/career/skills/career-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/capabilities/career/skills/resume-builder": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/capabilities/quarter_goals/skills/quarter-plan": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/capabilities/quarter_goals/skills/quarter-review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/customer-success/expansion-opportunities": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/customer-success/health-score": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/customer-success/renewal-prep": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/design/design-review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/design/design-system-audit": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/engineering/architecture-decision": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/engineering/incident-review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/engineering/tech-debt": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/finance/board-prep": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/finance/close-status": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/finance/variance-analysis": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/leadership/decision-log": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/leadership/delegate-check": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/leadership/weekly-reflection": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/marketing/audience-intel": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/marketing/campaign-review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/marketing/content-calendar": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/marketing/messaging-audit": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/operations/metrics-review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/operations/process-audit": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/product/customer-intel": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/product/feature-decision": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/product/roadmap": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/sales/account-plan": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/sales/call-prep": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/sales/deal-review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "_available/sales/pipeline-health": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-algorithmic-art": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-brand-guidelines": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-canvas-design": {
+      "classification": "claude-only",
+      "reason": "bundled font licences contain third-party personal contact details"
+    },
+    "anthropic-doc-coauthoring": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-docx": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-frontend-design": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-internal-comms": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-mcp-builder": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-pdf": {
+      "classification": "broken",
+      "reason": "missing scripts/check_fillable_fields"
+    },
+    "anthropic-pptx": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-skill-creator": {
+      "classification": "broken",
+      "reason": "missing scripts/rotate_pdf.py"
+    },
+    "anthropic-slack-gif-creator": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-theme-factory": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-web-artifacts-builder": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-webapp-testing": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "anthropic-xlsx": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "apple-mail-setup": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "atlassian-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "backup-now": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "backup-restore": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "backup-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "calendar-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "commitments": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "create-mcp": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "create-skill": {
+      "classification": "broken",
+      "reason": "missing evals/trigger-cases.yaml."
+    },
+    "daily-plan": {
+      "body_replacements": [
+        {
+          "pattern": "\\.claude/settings\\.json",
+          "replacement": "the host's lifecycle settings"
+        }
+      ],
+      "classification": "portable",
+      "reason": "Claude settings mention is explanatory only and has a host-neutral wording"
+    },
+    "daily-review": {
+      "body_replacements": [
+        {
+          "pattern": "\\.claude/settings\\.json",
+          "replacement": "the host's lifecycle settings"
+        }
+      ],
+      "classification": "portable",
+      "reason": "Claude settings mention is explanatory only and has a host-neutral wording"
+    },
+    "decision-log": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "delegate-check": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-add-mcp": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "dex-backlog": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-doctor": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-improve": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-level-up": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "dex-obsidian-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-orient": {
+      "classification": "broken",
+      "reason": "missing scripts/dex_state.py"
+    },
+    "dex-rollback": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-update": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "dex-whats-new": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "diff-adopt": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "diff-adopt-profile": {
+      "classification": "claude-only",
+      "reason": "contains founder-specific product copy"
+    },
+    "diff-generate": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "diff-list": {
+      "classification": "broken",
+      "reason": "missing .claude/skills/process-meeting/SKILL.md"
+    },
+    "diff-profile": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "diff-remove": {
+      "classification": "broken",
+      "reason": "missing .claude/skills/process-meeting/SKILL.md"
+    },
+    "enable-semantic-search": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "feedback": {
+      "classification": "claude-only",
+      "reason": "contains founder-specific product copy"
+    },
+    "getting-started": {
+      "body_replacements": [
+        {
+          "pattern": "(?m)^node \\.claude/hooks/integration-concierge\\.cjs\\s*$",
+          "replacement": "Use the harness's MCP integration flow if available; otherwise continue without optional integrations."
+        },
+        {
+          "pattern": "AskUserQuestion",
+          "replacement": "prompt_user"
+        }
+      ],
+      "classification": "portable",
+      "reason": "host prompt and optional integration hook have a portable fallback"
+    },
+    "google-workspace-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "granola-setup": {
+      "body_replacements": [
+        {
+          "pattern": "(?m)^- \\*\\*Official API is the only data source\\.\\*\\*.*$",
+          "replacement": "- **Official API is the only data source.** Do not read local cache files or use spoofed client headers or unofficial crypto helpers. Use only the documented endpoints below with the `Authorization: Bearer` header."
+        }
+      ],
+      "classification": "portable",
+      "reason": "official API guidance has a host-neutral portable wording"
+    },
+    "identity-snapshot": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "industry-truths": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "initiative-kickoff": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "integrate-mcp": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "journal": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "manage-capabilities": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "meeting-closeout": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "meeting-prep": {
+      "body_replacements": [
+        {
+          "pattern": "\\.claude/settings\\.json",
+          "replacement": "the host's lifecycle settings"
+        }
+      ],
+      "classification": "portable",
+      "reason": "Claude settings mention is explanatory only and has a host-neutral wording"
+    },
+    "ms-teams-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "pipedrive-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "pipeline-sync": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "process-meetings": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "product-brief": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "project-health": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "prompt-improver": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "relationship-radar": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "reset": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "review": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "save-insight": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "scrape": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "setup": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
+    "skill-score": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "things-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "todoist-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "trello-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "triage": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "week-plan": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "week-review": {
+      "body_replacements": [
+        {
+          "pattern": "\\.claude/settings\\.json",
+          "replacement": "the host's lifecycle settings"
+        }
+      ],
+      "classification": "portable",
+      "reason": "Claude settings mention is explanatory only and has a host-neutral wording"
+    },
+    "weekly-reflection": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
+    "xray": {
+      "classification": "broken",
+      "reason": "missing .claude/skills/my-skill"
+    },
+    "zoom-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    }
+  },
+  "source": ".claude/skills"
+}

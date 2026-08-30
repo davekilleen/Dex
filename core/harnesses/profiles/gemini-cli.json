@@ -1,0 +1,95 @@
+{
+  "adapter": {
+    "install_guide": "core/harnesses/adapters/gemini-cli.json",
+    "kind": "gemini-extension",
+    "manifest": "gemini-extension.json",
+    "status": "native-build"
+  },
+  "capabilities": [
+    {
+      "id": "vault",
+      "mode": "on_demand",
+      "notes": "The current Gemini workspace is available to the extension.",
+      "status": "native",
+      "tier": 0
+    },
+    {
+      "id": "mcp",
+      "mode": "on_demand",
+      "notes": "The extension declares Dex's relocatable stdio MCP server with extensionPath variables.",
+      "status": "native",
+      "tier": 1
+    },
+    {
+      "id": "agent-skills",
+      "mode": "on_demand",
+      "notes": "Gemini CLI extensions discover Agent Skills from skills/.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "hooks",
+      "mode": "guided",
+      "notes": "SessionStart and BeforeTool map to the shared Dex context and safety core after trust review.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "session-lifecycle",
+      "mode": "automatic",
+      "notes": "SessionStart injects current Dex context on startup, resume, and clear.",
+      "status": "native",
+      "tier": 3
+    },
+    {
+      "id": "background-jobs",
+      "mode": "unavailable",
+      "notes": "The extension does not assume a Gemini scheduler; Dex uses its operating-system scheduler.",
+      "status": "none",
+      "tier": 1
+    },
+    {
+      "id": "interactive-prompts",
+      "mode": "on_demand",
+      "notes": "CLI interaction is host-native.",
+      "status": "native",
+      "tier": 2
+    },
+    {
+      "id": "agent-plugins",
+      "mode": "guided",
+      "notes": "Gemini uses its native extension format; the artifact is generated from the same canonical package sources.",
+      "status": "partial",
+      "tier": 2
+    }
+  ],
+  "detection": {
+    "env": [
+      "GEMINI_CLI",
+      "GEMINI_PROJECT_DIR",
+      "GEMINI_SESSION_ID"
+    ],
+    "paths": [
+      "/.gemini/",
+      "/gemini-cli/"
+    ]
+  },
+  "display_name": "Gemini CLI",
+  "evidence": [
+    "https://github.com/google-gemini/gemini-cli/blob/main/docs/extensions/reference.md",
+    "https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md"
+  ],
+  "id": "gemini-cli",
+  "limitations": [
+    "Gemini uses a separately built extension artifact because its fixed hooks file has a different schema from Claude's."
+  ],
+  "modes": [
+    "tier-0-vault",
+    "tier-1-core",
+    "tier-2-skills"
+  ],
+  "name": "Gemini CLI",
+  "summary": "Native Gemini CLI extension generated from Dex's shared skills, MCP, context, and safety core.",
+  "support_level": "supported",
+  "vendor": "Google"
+}

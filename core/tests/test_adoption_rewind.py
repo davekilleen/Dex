@@ -157,8 +157,8 @@ def test_rewind_catches_drift_immediately_before_snapshot_and_restores_the_edit(
     target = vault / EXISTING_PATH
     real_begin = Transaction.begin
 
-    def begin_then_race(vault_root: Path, plan: list[PlanEntry]):
-        transaction = real_begin(vault_root, plan)
+    def begin_then_race(vault_root: Path, plan: list[PlanEntry], **kwargs):
+        transaction = real_begin(vault_root, plan, **kwargs)
         target.write_bytes(b"edit won immediately before rewind snapshot\n")
         return transaction
 

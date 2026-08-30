@@ -1,0 +1,14 @@
+{
+  "name": "dex",
+  "version": "1.0.0",
+  "description": "Portable Dex context, safety, and work skills.",
+  "author": {
+    "name": "Dex"
+  },
+  "homepage": "https://heydex.ai",
+  "repository": "https://github.com/davekilleen/Dex",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json",
+  "hooks": "./hooks/cursor.json"
+}

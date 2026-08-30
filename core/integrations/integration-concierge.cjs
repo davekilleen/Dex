@@ -1,0 +1,630 @@
+#!/usr/bin/env node
+/**
+ * Integration Concierge — portable vault scanner
+ *
+ * Scans the vault for signals that indicate which external tools the user works with.
+ * Returns intelligent integration recommendations ranked by signal strength.
+ *
+ * Called by:
+ * - Onboarding Step 9 (first-time integration discovery)
+ * - /getting-started (post-onboarding tour)
+ * - /dex-level-up (feature discovery)
+ *
+ * Outputs JSON to stdout with tool signals and recommendations.
+ *
+ * Signal types:
+ * - Direct mentions: "Todoist", "Jira", "Trello" in notes
+ * - URL patterns: zoom.us links, todoist.com links, atlassian.net URLs
+ * - Calendar signatures: "Teams meeting", "Zoom Meeting" in event titles
+ * - Email patterns: @gmail.com, @outlook.com in person pages
+ * - File patterns: .ics attachments, Jira ticket IDs (PROJ-123)
+ * - Installed macOS app bundles
+ * - Configured MCP servers
+ */
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const { loadPaths } = require('../runtime/paths.cjs');
+
+const _paths = loadPaths();
+const VAULT_ROOT = _paths.VAULT_ROOT || process.env.DEX_PROJECT_DIR || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || path.resolve(__dirname, '../..');
+const CONFIG_FILE = path.join(VAULT_ROOT, 'System', 'integrations', 'config.yaml');
+const ARCHIVES_BASENAME = path.basename(_paths.ARCHIVES_DIR);
+
+// ---------------------------------------------------------------------------
+// Integration signal definitions
+// ---------------------------------------------------------------------------
+
+const INTEGRATIONS = {
+  'google-workspace': {
+    id: 'google-workspace',
+    name: 'Google Workspace (Gmail + Calendar + Docs)',
+    shortName: 'Gmail',
+    route: 'skill',
+    setup: '/google-workspace-setup',
+    mcpServers: ['google-workspace-mcp'],
+    signals: {
+      keywords: ['gmail', 'google docs', 'google sheets', 'google drive', 'google calendar', 'google meet'],
+      urls: [/gmail\.com/i, /docs\.google\.com/i, /drive\.google\.com/i, /meet\.google\.com/i, /calendar\.google\.com/i],
+      email: [/@gmail\.com/i, /@googlemail\.com/i],
+      calendar: [/google meet/i],
+    },
+    value: 'Email digest in daily plans, email context in meeting prep, follow-up detection',
+    setupTime: '3 min',
+    auth: 'OAuth (Google account)',
+  },
+  teams: {
+    id: 'teams',
+    name: 'Microsoft Teams',
+    shortName: 'Teams',
+    route: 'skill',
+    setup: '/ms-teams-setup',
+    apps: ['Microsoft Teams.app'],
+    mcpServers: ['teams-mcp'],
+    signals: {
+      keywords: ['microsoft teams', 'teams meeting', 'teams call', 'ms teams'],
+      urls: [/teams\.microsoft\.com/i, /teams\.live\.com/i],
+      email: [/@outlook\.com/i, /@hotmail\.com/i, /@live\.com/i],
+      calendar: [/teams meeting/i, /microsoft teams/i],
+    },
+    value: 'Teams digest alongside Slack, chat context in meeting prep',
+    setupTime: '2 min',
+    auth: 'OAuth (Microsoft account)',
+  },
+  todoist: {
+    id: 'todoist',
+    name: 'Todoist',
+    shortName: 'Todoist',
+    route: 'skill',
+    setup: '/todoist-setup',
+    apps: ['Todoist.app'],
+    mcpServers: ['todoist-mcp'],
+    signals: {
+      keywords: ['todoist', 'todoist task', 'todoist project'],
+      urls: [/todoist\.com/i, /app\.todoist\.com/i],
+    },
+    value: 'Two-way task sync — complete in either place, both stay current',
+    setupTime: '1 min',
+    auth: 'API key (from Todoist settings)',
+  },
+  things: {
+    id: 'things',
+    name: 'Things 3',
+    shortName: 'Things 3',
+    route: 'skill',
+    setup: '/things-setup',
+    apps: ['Things3.app'],
+    mcpServers: ['things3-mcp'],
+    signals: {
+      keywords: ['things 3', 'things app', 'things today', 'things inbox'],
+      urls: [/things:\/\//i, /culturedcode\.com/i],
+    },
+    value: 'Two-way task sync, Mac-native, works offline, no account needed',
+    setupTime: '30 sec',
+    auth: 'None (local AppleScript)',
+  },
+  trello: {
+    id: 'trello',
+    name: 'Trello',
+    shortName: 'Trello',
+    route: 'skill',
+    setup: '/trello-setup',
+    apps: ['Trello.app'],
+    mcpServers: ['mcp-server-trello'],
+    signals: {
+      keywords: ['trello', 'trello board', 'trello card'],
+      urls: [/trello\.com/i],
+    },
+    value: 'Board sync — cards become tasks, moving to Done completes in Dex',
+    setupTime: '2 min',
+    auth: 'API key + token',
+  },
+  zoom: {
+    id: 'zoom',
+    name: 'Zoom',
+    shortName: 'Zoom',
+    route: 'skill',
+    setup: '/zoom-setup',
+    apps: ['zoom.us.app'],
+    mcpServers: ['zoom-mcp'],
+    signals: {
+      keywords: ['zoom call', 'zoom meeting', 'zoom recording', 'zoom link'],
+      urls: [/zoom\.us/i, /zoom\.com/i],
+      calendar: [/zoom meeting/i],
+    },
+    value: 'Recording access and meeting scheduling',
+    setupTime: '2 min',
+    auth: 'OAuth (Zoom account)',
+    note: 'If Granola is connected, Zoom mainly adds scheduling (meetings already captured).',
+  },
+  atlassian: {
+    id: 'atlassian',
+    name: 'Atlassian (Jira + Confluence)',
+    shortName: 'Jira/Confluence',
+    route: 'skill',
+    setup: '/atlassian-setup',
+    mcpServers: ['atlassian-mcp'],
+    signals: {
+      keywords: ['jira', 'confluence', 'atlassian', 'sprint', 'epic', 'jira ticket'],
+      urls: [/atlassian\.net/i, /jira\./i, /confluence\./i],
+      patterns: [/[A-Z]{2,10}-\d{1,6}/g], // Jira ticket IDs like PROJ-123
+    },
+    value: 'Jira tickets and Confluence docs in daily plans, sprint tracking',
+    setupTime: '3 min',
+    auth: 'OAuth (Atlassian Cloud)',
+  },
+  slack: {
+    id: 'slack',
+    name: 'Slack',
+    shortName: 'Slack',
+    route: 'connect',
+    apps: ['Slack.app'],
+    signals: {},
+    value: 'Work conversations and decisions as context when a Dex workflow supports Slack',
+  },
+  notion: {
+    id: 'notion',
+    name: 'Notion',
+    shortName: 'Notion',
+    route: 'connect',
+    apps: ['Notion.app'],
+    signals: {},
+    value: 'Knowledge and project docs as context when a Dex workflow supports Notion',
+  },
+  linear: {
+    id: 'linear',
+    name: 'Linear',
+    shortName: 'Linear',
+    route: 'connect',
+    apps: ['Linear.app'],
+    signals: {},
+    value: 'Issues and project updates as context when a Dex workflow supports Linear',
+  },
+  obsidian: {
+    id: 'obsidian',
+    name: 'Obsidian',
+    shortName: 'Obsidian',
+    route: 'connect',
+    apps: ['Obsidian.app'],
+    signals: {},
+    value: 'Your existing notes workspace as context for choosing the right setup',
+  },
+  granola: {
+    id: 'granola',
+    name: 'Granola',
+    shortName: 'Granola',
+    route: 'connect',
+    apps: ['Granola.app'],
+    signals: {},
+    value: 'Your meeting notes and transcripts as context in planning and prep',
+    auth: 'API key',
+  },
+  cursor: {
+    id: 'cursor',
+    name: 'Cursor',
+    shortName: 'Cursor',
+    route: 'connect',
+    apps: ['Cursor.app'],
+    signals: {},
+    value: 'Your coding environment as a signal for relevant developer workflows',
+  },
+  figma: {
+    id: 'figma',
+    name: 'Figma',
+    shortName: 'Figma',
+    route: 'connect',
+    apps: ['Figma.app'],
+    signals: {},
+    value: 'Design files and comments as context when a Dex workflow supports Figma',
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Environment scanning
+// ---------------------------------------------------------------------------
+
+function scanInstalledApps() {
+  const hasAppDirOverride = process.env.DEX_APP_DIRS !== undefined;
+  if (process.platform !== 'darwin' && !hasAppDirOverride) return {};
+
+  try {
+    const appDirs = hasAppDirOverride
+      ? process.env.DEX_APP_DIRS.split(path.delimiter).filter(Boolean)
+      : ['/Applications', path.join(os.homedir(), 'Applications')];
+    const installedApps = [];
+
+    for (const appDir of appDirs) {
+      try {
+        if (!fs.existsSync(appDir)) continue;
+        for (const basename of fs.readdirSync(appDir)) {
+          if (fs.existsSync(path.join(appDir, basename))) {
+            installedApps.push(basename);
+          }
+        }
+      } catch {
+        // Missing or unreadable app directories are expected — skip silently.
+      }
+    }
+
+    const matches = {};
+    for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+      if (!integration.apps) continue;
+
+      const matchedApps = integration.apps
+        .map(app => installedApps.find(installed => installed.toLowerCase() === app.toLowerCase()))
+        .filter(Boolean);
+      if (matchedApps.length > 0) {
+        matches[key] = [...new Set(matchedApps)];
+      }
+    }
+    return matches;
+  } catch {
+    return {};
+  }
+}
+
+function scanMcpConfig() {
+  try {
+    const configPaths = [
+      path.join(VAULT_ROOT, '.mcp.json'),
+      path.join(VAULT_ROOT, 'System', '.mcp.json'),
+      path.join(VAULT_ROOT, '.claude', 'mcp-servers.json'),
+    ];
+    const configuredServers = [];
+
+    for (const configPath of configPaths) {
+      try {
+        if (!fs.existsSync(configPath)) continue;
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (!config || typeof config !== 'object' || Array.isArray(config)) continue;
+
+        const servers = config.mcpServers
+          && typeof config.mcpServers === 'object'
+          && !Array.isArray(config.mcpServers)
+          ? config.mcpServers
+          : config;
+        for (const serverName of Object.keys(servers)) {
+          if (!configuredServers.some(name => name.toLowerCase() === serverName.toLowerCase())) {
+            configuredServers.push(serverName);
+          }
+        }
+      } catch {
+        // Missing or malformed MCP configs are expected — skip silently.
+      }
+    }
+
+    const matches = {};
+    for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+      if (!integration.mcpServers) continue;
+
+      const matchedServers = configuredServers.filter((configured) => {
+        const configuredName = configured.toLowerCase();
+        return integration.mcpServers.some((server) => {
+          const expectedName = server.toLowerCase();
+          return configuredName === expectedName
+            || configuredName.includes(expectedName);
+        });
+      });
+      if (matchedServers.length > 0) {
+        matches[key] = matchedServers;
+      }
+    }
+    return matches;
+  } catch {
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Vault scanning
+// ---------------------------------------------------------------------------
+
+function scanDirectory(dir, extensions, maxDepth = 3, depth = 0) {
+  const files = [];
+  if (depth >= maxDepth) return files;
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      // Skip hidden dirs, node_modules, archives, System
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      if (entry.name === ARCHIVES_BASENAME || entry.name === 'z. Archive') continue;
+
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...scanDirectory(fullPath, extensions, maxDepth, depth + 1));
+      } else if (extensions.some(ext => entry.name.endsWith(ext))) {
+        files.push(fullPath);
+      }
+    }
+  } catch {
+    // Permission denied or other error — skip silently
+  }
+  return files;
+}
+
+function scanForSignals() {
+  const results = {};
+  const installedApps = scanInstalledApps();
+  const configuredMcp = scanMcpConfig();
+
+  for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+    const matchedApps = installedApps[key] || [];
+    const matchedMcp = configuredMcp[key] || [];
+    results[key] = {
+      ...integration,
+      score: (matchedApps.length > 0 ? 6 : 0) + (matchedMcp.length > 0 ? 4 : 0),
+      mentions: 0,
+      examples: [],
+      installedApps: matchedApps,
+      configuredMcp: matchedMcp,
+    };
+  }
+
+  // Scan markdown files across the vault
+  const scanDirs = [
+    _paths.INBOX_DIR,
+    _paths.PROJECTS_DIR,
+    _paths.AREAS_DIR,
+    _paths.TASKS_DIR,
+    _paths.WEEK_PRIORITIES_DIR,
+  ];
+
+  const files = [];
+  for (const dir of scanDirs) {
+    if (fs.existsSync(dir)) {
+      files.push(...scanDirectory(dir, ['.md'], 4));
+    }
+  }
+
+  // Limit to most recent 200 files for performance
+  const recentFiles = files
+    .map(f => ({ path: f, mtime: fs.statSync(f).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, 200);
+
+  for (const { path: filePath } of recentFiles) {
+    let content;
+    try {
+      content = fs.readFileSync(filePath, 'utf-8').toLowerCase();
+    } catch {
+      continue;
+    }
+
+    const shortPath = path.relative(VAULT_ROOT, filePath);
+
+    for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+      const signals = integration.signals;
+      let fileHits = 0;
+
+      // Keyword search
+      if (signals.keywords) {
+        for (const kw of signals.keywords) {
+          const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          const matches = content.match(regex);
+          if (matches) {
+            fileHits += matches.length;
+          }
+        }
+      }
+
+      // URL pattern search
+      if (signals.urls) {
+        for (const pattern of signals.urls) {
+          const matches = content.match(pattern);
+          if (matches) {
+            fileHits += matches.length;
+          }
+        }
+      }
+
+      // Calendar signature search
+      if (signals.calendar) {
+        for (const pattern of signals.calendar) {
+          const matches = content.match(pattern);
+          if (matches) {
+            fileHits += matches.length * 2; // Calendar signals are high-confidence
+          }
+        }
+      }
+
+      // Jira-style ticket pattern search
+      if (signals.patterns) {
+        for (const pattern of signals.patterns) {
+          const matches = content.match(pattern);
+          if (matches) {
+            // Filter out false positives (common abbreviations)
+            const real = matches.filter(m => !['AM', 'PM', 'UK', 'US', 'EU', 'AI', 'VP', 'HR', 'IT', 'QA'].includes(m.split('-')[0]));
+            fileHits += real.length;
+          }
+        }
+      }
+
+      if (fileHits > 0) {
+        results[key].mentions += fileHits;
+        results[key].score += fileHits;
+        if (results[key].examples.length < 3) {
+          results[key].examples.push(shortPath);
+        }
+      }
+    }
+  }
+
+  // Email pattern scan (person pages only)
+  const peopleDirs = [
+    path.join(_paths.PEOPLE_DIR, 'Internal'),
+    path.join(_paths.PEOPLE_DIR, 'External'),
+  ];
+
+  for (const dir of peopleDirs) {
+    if (!fs.existsSync(dir)) continue;
+    const personFiles = scanDirectory(dir, ['.md'], 2);
+    for (const pf of personFiles) {
+      let content;
+      try {
+        content = fs.readFileSync(pf, 'utf-8');
+      } catch {
+        continue;
+      }
+
+      for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+        if (integration.signals.email) {
+          for (const pattern of integration.signals.email) {
+            if (pattern.test(content)) {
+              results[key].score += 3; // High signal from person pages
+              results[key].mentions++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Check already-enabled integrations
+// ---------------------------------------------------------------------------
+
+function getEnabledIntegrations() {
+  try {
+    const config = fs.readFileSync(CONFIG_FILE, 'utf-8');
+    const enabled = [];
+    // Simple regex to find enabled integrations
+    const blocks = config.split(/^(?=\w)/m);
+    for (const block of blocks) {
+      const nameMatch = block.match(/^([\w-]+):/);
+      const enabledMatch = block.match(/enabled:\s*true/);
+      if (nameMatch && enabledMatch) {
+        enabled.push(nameMatch[1]);
+      }
+    }
+    return enabled;
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Check Granola status (for Zoom recommendation)
+// ---------------------------------------------------------------------------
+
+function isGranolaConfigured() {
+  try {
+    const config = fs.readFileSync(CONFIG_FILE, 'utf-8');
+    return /granola:[\s\S]*?enabled:\s*true/.test(config);
+  } catch {
+    // Also check if Granola MCP is in the server list
+    const mcpConfigPaths = [
+      path.join(VAULT_ROOT, '.mcp.json'),
+      path.join(VAULT_ROOT, 'System', '.mcp.json'),
+    ];
+    for (const mcpConfigPath of mcpConfigPaths) {
+      try {
+        const mcpConfig = fs.readFileSync(mcpConfigPath, 'utf-8');
+        return mcpConfig.includes('granola');
+      } catch {
+        // Root config is canonical; System/.mcp.json is a legacy fallback.
+      }
+    }
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generate recommendations
+// ---------------------------------------------------------------------------
+
+function generateRecommendations(signals) {
+  const enabled = getEnabledIntegrations();
+  const hasGranola = isGranolaConfigured();
+
+  const recommendations = {
+    high_value: [],    // Score >= 5 and not enabled
+    moderate_value: [], // Score 1-4 and not enabled
+    available: [],     // Score 0, not enabled
+    already_connected: [], // Already enabled
+    connect_detected: [], // Installed apps that route through /connect
+  };
+
+  for (const [key, data] of Object.entries(signals)) {
+    const entry = {
+      id: key,
+      name: data.name,
+      shortName: data.shortName,
+      route: data.route,
+      setup: data.setup,
+      value: data.value,
+      setupTime: data.setupTime,
+      auth: data.auth,
+      score: data.score,
+      mentions: data.mentions,
+      examples: data.examples,
+      installedApps: data.installedApps,
+      configuredMcp: data.configuredMcp,
+      reason: data.installedApps.length > 0
+        ? 'installed on your Mac'
+        : data.configuredMcp.length > 0
+          ? 'already set up but not switched on yet'
+          : data.mentions > 0
+            ? `${data.mentions} mention${data.mentions === 1 ? '' : 's'} in your notes${data.examples.length > 0 ? ` (e.g. ${data.examples[0]})` : ''}`
+            : 'available to connect',
+    };
+
+    if (data.route === 'connect') {
+      if (data.score > 0) {
+        recommendations.connect_detected.push(entry);
+      }
+      continue;
+    }
+
+    if (enabled.includes(key)) {
+      recommendations.already_connected.push({
+        id: key,
+        name: data.shortName,
+      });
+      continue;
+    }
+
+    // Add Granola note to Zoom
+    if (key === 'zoom' && hasGranola) {
+      entry.note = 'You already have Granola capturing meetings. Zoom mainly adds scheduling capability.';
+      entry.score = Math.max(0, entry.score - 3); // Reduce score since overlap
+    }
+
+    if (data.note) {
+      entry.note = entry.note || data.note;
+    }
+
+    if (entry.score >= 5) {
+      recommendations.high_value.push(entry);
+    } else if (entry.score >= 1) {
+      recommendations.moderate_value.push(entry);
+    } else {
+      recommendations.available.push(entry);
+    }
+  }
+
+  // Sort each tier by score descending
+  recommendations.high_value.sort((a, b) => b.score - a.score);
+  recommendations.moderate_value.sort((a, b) => b.score - a.score);
+  recommendations.connect_detected.sort((a, b) => b.score - a.score);
+
+  return recommendations;
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+function main() {
+  const signals = scanForSignals();
+  const recommendations = generateRecommendations(signals);
+
+  console.log(JSON.stringify(recommendations, null, 2));
+}
+
+main();

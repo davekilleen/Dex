@@ -15,14 +15,34 @@ fi
 echo "$NOW" > "$DEDUP_FILE"
 
 CLAUDE_DIR="$CLAUDE_PROJECT_DIR"
-PILLARS_FILE="$CLAUDE_DIR/System/pillars.yaml"
-QUARTER_GOALS="$CLAUDE_DIR/01-Quarter_Goals/Quarter_Goals.md"
-WEEK_PRIORITIES="$CLAUDE_DIR/02-Week_Priorities/Week_Priorities.md"
-TASKS_FILE="$CLAUDE_DIR/03-Tasks/Tasks.md"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEX_REPO_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
 LEARNINGS_DIR="$CLAUDE_DIR/06-Resources/Learnings"
 MISTAKES_FILE="$LEARNINGS_DIR/Mistake_Patterns.md"
 PREFERENCES_FILE="$LEARNINGS_DIR/Working_Preferences.md"
 ONBOARDING_MARKER="$CLAUDE_DIR/System/.onboarding-complete"
+
+# Resolve one portable Python command for every stock hook path. Native Windows
+# installs expose either a venv python.exe or the Python launcher (`py -3`),
+# while macOS installs normally expose a Unix venv or python3.
+DEX_PYTHON_CMD=()
+if [[ -n "${DEX_PYTHON:-}" && -x "$DEX_PYTHON" ]]; then
+    DEX_PYTHON_CMD=("$DEX_PYTHON")
+elif [[ -x "$CLAUDE_DIR/.venv/bin/python" ]]; then
+    DEX_PYTHON_CMD=("$CLAUDE_DIR/.venv/bin/python")
+elif [[ -x "$CLAUDE_DIR/.venv/Scripts/python.exe" ]]; then
+    DEX_PYTHON_CMD=("$CLAUDE_DIR/.venv/Scripts/python.exe")
+elif [[ -x "$DEX_REPO_DIR/.venv/bin/python" ]]; then
+    DEX_PYTHON_CMD=("$DEX_REPO_DIR/.venv/bin/python")
+elif [[ -x "$DEX_REPO_DIR/.venv/Scripts/python.exe" ]]; then
+    DEX_PYTHON_CMD=("$DEX_REPO_DIR/.venv/Scripts/python.exe")
+elif command -v py >/dev/null 2>&1 && py -3 -c "raise SystemExit(0)" >/dev/null 2>&1; then
+    DEX_PYTHON_CMD=(py -3)
+elif command -v python >/dev/null 2>&1; then
+    DEX_PYTHON_CMD=(python)
+elif command -v python3 >/dev/null 2>&1; then
+    DEX_PYTHON_CMD=(python3)
+fi
 
 echo "=== Dex Session Context ==="
 echo ""
@@ -36,11 +56,10 @@ echo ""
 # refuses to see (breadcrumb guards, symlink normalization, plist parsing,
 # and path-boundary matching all come from that one implementation).
 if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/utils/launch_agents.py" ]]; then
-    STALE_JOB_PYTHON="python3"
-    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
-        STALE_JOB_PYTHON="$CLAUDE_DIR/.venv/bin/python"
+    STALE_JOB_STATUS=""
+    if (( ${#DEX_PYTHON_CMD[@]} )); then
+        STALE_JOB_STATUS=$( (cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -m core.utils.launch_agents --stale-check --vault "$CLAUDE_DIR") 2>/dev/null || true )
     fi
-    STALE_JOB_STATUS=$( (cd "$CLAUDE_DIR" && "$STALE_JOB_PYTHON" -m core.utils.launch_agents --stale-check --vault "$CLAUDE_DIR") 2>/dev/null || true )
     if [[ "$STALE_JOB_STATUS" == "stale-job-found" ]]; then
         echo "Dex found a background job that still points to this vault's old location — run /dex-doctor to fix this safely."
     fi
@@ -69,11 +88,7 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
     # helper owns consent, delivery, and the safe local receipt. Keep the
     # result long enough to show a fixed, non-sensitive receipt failure; never
     # print helper output or retry the delivery. A first-run vault emits none.
-    if [[ -f "$CLAUDE_DIR/core/mcp/analytics_helper.py" ]]; then
-        ANALYTICS_PYTHON="python3"
-        if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
-            ANALYTICS_PYTHON="$CLAUDE_DIR/.venv/bin/python"
-        fi
+    if [[ -f "$CLAUDE_DIR/core/mcp/analytics_helper.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
         ANALYTICS_TOTAL_TIMEOUT_SECONDS=3
         # macOS has no GNU timeout command. This standard-library wrapper
         # bounds the whole helper process (startup, imports, receipt work, and
@@ -81,7 +96,7 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
         # timeout so a stalled descendant cannot outlive session start.
         ANALYTICS_RESULT=$(
             cd "$CLAUDE_DIR" && VAULT_PATH="$CLAUDE_DIR" \
-                "$ANALYTICS_PYTHON" - "$ANALYTICS_PYTHON" \
+                "${DEX_PYTHON_CMD[@]}" - "${DEX_PYTHON_CMD[@]}" \
                     core/mcp/analytics_helper.py --event session_started \
                     --request-timeout-seconds 2 "$ANALYTICS_TOTAL_TIMEOUT_SECONDS" \
                     2>/dev/null <<'PY'
@@ -138,50 +153,14 @@ fi
 
 echo ""
 
-# STRATEGIC HIERARCHY (Top-Down)
-
-# 1. Strategic Pillars
-if [[ -f "$PILLARS_FILE" ]]; then
-    echo "--- Strategic Pillars ---"
-    # Extract pillar names and descriptions
-    awk '/^  - id:/{getline; name=$0; getline; desc=$0; gsub(/^[[:space:]]*name: "/, "", name); gsub(/"$/, "", name); gsub(/^[[:space:]]*description: "/, "", desc); gsub(/"$/, "", desc); print "• " name " — " desc}' "$PILLARS_FILE" 2>/dev/null | head -5
-    echo "---"
-    echo ""
-fi
-
-# 2. Quarterly Goals
-if [[ -f "$QUARTER_GOALS" ]]; then
-    # Check if goals are filled in (not template)
-    if ! grep -q "^\[Goal 1 Title\]" "$QUARTER_GOALS" 2>/dev/null; then
-        echo "--- Quarter Goals ---"
-        # Extract goal titles and progress
-        awk '/^### [0-9]\./,/^---$/{if(/^### [0-9]\./) print; if(/^\*\*Progress:\*\*/) print}' "$QUARTER_GOALS" 2>/dev/null | head -10
-        echo "---"
-        echo ""
-    fi
-fi
-
-# 3. Weekly Priorities
-if [[ -f "$WEEK_PRIORITIES" ]]; then
-    # Extract current week's priorities section
-    WEEK_PRIORITIES_CONTENT=$(awk '/^## 🎯 This Week|^## This Week/,/^---$/{if(!/^##/ && !/^---/ && NF) print}' "$WEEK_PRIORITIES" 2>/dev/null)
-    if [[ -n "$WEEK_PRIORITIES_CONTENT" ]]; then
-        echo "--- Weekly Priorities ---"
-        echo "$WEEK_PRIORITIES_CONTENT"
-        echo "---"
-        echo ""
-    fi
-fi
-
-# TACTICAL CONTEXT
-
-# 4. Urgent Tasks
-if [[ -f "$TASKS_FILE" ]]; then
-    URGENT=$(grep -i "P0\|urgent\|today\|overdue" "$TASKS_FILE" 2>/dev/null | grep "^\- \[ \]" | head -3)
-    if [[ -n "$URGENT" ]]; then
-        echo "--- Urgent Tasks ---"
-        echo "$URGENT"
-        echo "---"
+# STRATEGIC HIERARCHY + urgent tasks — same payload as Work MCP boot_today.
+# The hook stays a thin wrapper so Cursor/ChatGPT/Codex calling the tool get
+# the same facts Claude Code injects here. Do not re-extract these in bash.
+SESSION_BOOT_PY="$HOOK_DIR/../../core/context/session_boot.py"
+if [[ -f "$SESSION_BOOT_PY" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+    BOOT_OUTPUT=$("${DEX_PYTHON_CMD[@]}" "$SESSION_BOOT_PY" --vault "$CLAUDE_DIR" --format hook-text 2>/dev/null || true)
+    if [[ -n "$BOOT_OUTPUT" ]]; then
+        echo "$BOOT_OUTPUT"
         echo ""
     fi
 fi
@@ -279,9 +258,9 @@ fi
 
 # 13. Recent Errors (from web app, server, or CLI)
 ERROR_QUEUE="$CLAUDE_DIR/.logs/error-queue.json"
-if [[ -f "$ERROR_QUEUE" ]]; then
+if [[ -f "$ERROR_QUEUE" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
     # Count unacknowledged errors using python (available on macOS)
-    UNACK_COUNT=$(python3 -c "
+    UNACK_COUNT=$("${DEX_PYTHON_CMD[@]}" -c "
 import json
 try:
     with open('$ERROR_QUEUE') as f:
@@ -295,7 +274,7 @@ except:
     if [[ "$UNACK_COUNT" -gt 0 ]]; then
         echo "--- ⚠️ Recent Errors ($UNACK_COUNT) ---"
         # Show the most recent 3 unacknowledged errors
-        python3 -c "
+        "${DEX_PYTHON_CMD[@]}" -c "
 import json
 with open('$ERROR_QUEUE') as f:
     q = json.load(f)
@@ -319,12 +298,8 @@ fi
 # any queued errors. Silent when everything is healthy (no output = no display).
 if [[ -f "$ONBOARDING_MARKER" ]]; then
     DEX_CORE_DIR="$CLAUDE_DIR"
-    if [[ -f "$DEX_CORE_DIR/core/utils/preflight.py" ]]; then
-        HEALTH_PYTHON="python3"
-        if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
-            HEALTH_PYTHON="$CLAUDE_DIR/.venv/bin/python"
-        fi
-        if ! HEALTH_OUTPUT=$(cd "$DEX_CORE_DIR" && "$HEALTH_PYTHON" -c "
+    if [[ -f "$DEX_CORE_DIR/core/utils/preflight.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+        if ! HEALTH_OUTPUT=$(cd "$DEX_CORE_DIR" && "${DEX_PYTHON_CMD[@]}" -c "
 import sys
 sys.path.insert(0, '.')
 from core.utils.preflight import run_preflight, format_output, format_errors
@@ -350,14 +325,14 @@ fi
 # interrupted checks remain eligible for retry. The Python runner owns the
 # process-safe lock so overlapping sessions cannot launch duplicate checks.
 if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/utils/session_health.py" ]]; then
-    HEALTH_PYTHON="python3"
-    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
-        HEALTH_PYTHON="$CLAUDE_DIR/.venv/bin/python"
-    fi
-    "$HEALTH_PYTHON" "$CLAUDE_DIR/core/utils/session_health.py" \
+    if (( ${#DEX_PYTHON_CMD[@]} )); then
+        "${DEX_PYTHON_CMD[@]}" "$CLAUDE_DIR/core/utils/session_health.py" \
         --vault "$CLAUDE_DIR" \
         --repo "$CLAUDE_DIR" >/dev/null 2>&1
-    DAILY_HEALTH_STATUS=$?
+        DAILY_HEALTH_STATUS=$?
+    else
+        DAILY_HEALTH_STATUS=127
+    fi
     if [[ "$DAILY_HEALTH_STATUS" -ne 0 \
         && "$DAILY_HEALTH_STATUS" -ne 1 \
         && "$DAILY_HEALTH_STATUS" -ne 3 ]]; then
@@ -371,8 +346,8 @@ fi
 
 # 20. Latest smoke result — surface only actionable broken journeys.
 SMOKE_LAST_RUN="$CLAUDE_DIR/System/.smoke-last-run.json"
-if [[ -f "$ONBOARDING_MARKER" && -f "$SMOKE_LAST_RUN" ]]; then
-    SMOKE_ALERT=$(python3 -c "
+if [[ -f "$ONBOARDING_MARKER" && -f "$SMOKE_LAST_RUN" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+    SMOKE_ALERT=$("${DEX_PYTHON_CMD[@]}" -c "
 import json
 try:
     with open('$SMOKE_LAST_RUN') as handle:
@@ -406,14 +381,10 @@ fi
 # (core/health/promises.py), which Doctor and Proactive Health audit.
 {
     DEX_LAUNCH_AGENTS_DIR="${DEX_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
-    AUTOMATION_OWNER_PYTHON="python3"
-    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
-        AUTOMATION_OWNER_PYTHON="$CLAUDE_DIR/.venv/bin/python"
-    fi
     while IFS='|' read -r JOB_NAME JOB_LOG_RELATIVE_PATH JOB_MAX_AGE_SECONDS JOB_EXPECTED_CADENCE JOB_LABEL JOB_MODE; do
         [[ -f "$DEX_LAUNCH_AGENTS_DIR/$JOB_NAME.plist" ]] || continue
-        if [[ -f "$CLAUDE_DIR/core/utils/launch_agents.py" ]] && (
-            cd "$CLAUDE_DIR" && "$AUTOMATION_OWNER_PYTHON" -m core.utils.launch_agents \
+        if [[ -f "$CLAUDE_DIR/core/utils/launch_agents.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]] && (
+            cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -m core.utils.launch_agents \
                 --offloaded-check --vault "$CLAUDE_DIR" \
                 --plist-relative "Library/LaunchAgents/$JOB_NAME.plist"
         ) >/dev/null 2>&1; then
@@ -475,14 +446,10 @@ EOF
 # No snapshot is the quiet preparing state. Warnings, staleness, recoveries,
 # and repeated critical states do not interrupt the session; only a newly
 # critical latest snapshot receives the attention block.
-if [[ -f "$CLAUDE_DIR/core/utils/health_session.py" ]]; then
-    HEALTH_PYTHON="python3"
-    if [[ -f "$CLAUDE_DIR/.venv/bin/python" ]]; then
-        HEALTH_PYTHON="$CLAUDE_DIR/.venv/bin/python"
-    fi
+if [[ -f "$CLAUDE_DIR/core/utils/health_session.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
     (
         cd "$CLAUDE_DIR" || exit 0
-        "$HEALTH_PYTHON" -m core.utils.health_session --vault "$CLAUDE_DIR"
+        "${DEX_PYTHON_CMD[@]}" -m core.utils.health_session --vault "$CLAUDE_DIR"
     ) 2>/dev/null || true
 fi
 

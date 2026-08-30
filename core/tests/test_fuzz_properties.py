@@ -134,7 +134,7 @@ def test_release_catalog_random_invalid_mutations_never_parse_silently():
     mutations = (
         lambda d: d.update({f"unknown_{rng.randrange(1_000_000)}": True}),
         lambda d: d.pop(rng.choice(tuple(d))),
-        lambda d: d.update({"catalog_version": rng.choice((0, 2, 99, "1"))}),
+        lambda d: d.update({"catalog_version": rng.choice((0, 99, "1"))}),
         lambda d: d["release"].update({"source_commit": f"{rng.randrange(10**8):08d}"}),
         lambda d: d["release"]["manifest"].update({"sha256": "x" * rng.randrange(1, 63)}),
         lambda d: d["items"][0].update({"kind": rng.choice((None, 1, [], {}))}),
@@ -144,8 +144,10 @@ def test_release_catalog_random_invalid_mutations_never_parse_silently():
     )
 
     for _ in range(180):
-        document = copy.deepcopy(valid_document())
+        original = valid_document()
+        document = copy.deepcopy(original)
         rng.choice(mutations)(document)
+        assert document != original, "fuzz mutation must change the valid document"
         # Recompute identity for structural/model mutations so the parser has
         # to reject the mutation itself rather than merely noticing stale hash.
         integrity = document.get("integrity")

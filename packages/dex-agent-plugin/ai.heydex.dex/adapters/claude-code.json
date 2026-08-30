@@ -1,0 +1,11 @@
+{
+  "adapter_schema_version": "1.0.0",
+  "harness_id": "claude-code",
+  "status": "native",
+  "kind": "claude-plugin",
+  "native_paths": [".claude-plugin/plugin.json", "skills/", "hooks/hooks.json", ".mcp.json"],
+  "example": {
+    "manifest": "packages/dex-agent-plugin/.claude-plugin/plugin.json",
+    "note": "Install the reviewed local package or a future marketplace release. Shared SessionStart and PreToolUse behavior comes from the same portable runtime as other hosts."
+  }
+}

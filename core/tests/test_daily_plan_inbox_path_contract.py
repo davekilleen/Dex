@@ -59,7 +59,10 @@ def test_chassis_daily_plans_dir_is_inbox_daily_plans() -> None:
     )
     assert contract["vault_relative_paths"]["DAILY_PLANS_DIR"] == DAILY_PLANS_RELATIVE
 
-    hook_paths = _read(REPO_ROOT / ".claude/hooks/paths.cjs")
+    hook_wrapper = _read(REPO_ROOT / ".claude/hooks/paths.cjs")
+    assert "core/runtime/paths.cjs" in hook_wrapper.replace("\\", "/")
+
+    hook_paths = _read(REPO_ROOT / "core/runtime/paths.cjs")
     assert "DAILY_PLANS_DIR" in hook_paths
     assert "Daily_Plans" in hook_paths
 

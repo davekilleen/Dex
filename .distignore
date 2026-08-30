@@ -38,6 +38,9 @@ DISTRIBUTION_READY.md
 scripts/
 .claude/skills/dex-orient/
 
+# Unreleased founder host-path test pages — not a user distribution surface
+docs/founder-test-cards/
+
 # Issue tracking (worktree artifacts)
 .ao-issue.md
 

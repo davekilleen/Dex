@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: a0083bce62a1d986ceb68952f487780548bf34cca5d87a9502de13d9edd954e1 -->
+<!-- Content SHA-256: daf6a681729572ab6d6babee9de155e41540bf5df719e2f8711b6291daff5d03 -->
 
 # Architecture Inventory
 
@@ -18,11 +18,11 @@ This inventory is derived only from repository code and shipped skill files.
 | `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 7 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_blob`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
 | `dex-granola-mcp` | `core/mcp/granola_server.py` | 6 | yes | `granola_check_available`, `granola_get_extent`, `granola_get_meeting_details`, `granola_get_recent_meetings`, `granola_get_today_meetings`, `granola_search_meetings` |
 | `dex-improvements-mcp` | `core/mcp/dex_improvements_server.py` | 9 | no | `capture_idea`, `enrich_idea`, `get_backlog_stats`, `get_idea_details`, `list_ideas`, `mark_implemented`, `synthesize_changelog`, `synthesize_learnings`, `validate_backlog` |
-| `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 15 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
+| `dex-onboarding-mcp` | `core/mcp/onboarding_server.py` | 17 | no | `apply_confirmed_onboarding_context`, `check_onboarding_complete`, `cleanup_qa_session`, `finalize_onboarding`, `generate_nudge_calendar`, `get_onboarding_status`, `inspect_harnesses`, `prepare_entity_page_offer`, `preview_confirmed_onboarding_context`, `respond_to_entity_page_offer`, `run_first_week_analysis`, `save_calendar_selection`, `save_harness_selection`, `set_entity_creation_default`, `start_onboarding_session`, `validate_and_save_step`, `verify_dependencies` |
 | `dex-pipedrive-mcp` | `core/integrations/pipedrive/pipedrive_server.py` | 15 | yes | `pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal` |
 | `dex-resume-mcp` | `core/mcp/resume_server.py` | 12 | yes | `add_role`, `compile_resume`, `export_resume`, `extract_achievements`, `generate_linkedin`, `generate_role_writeup`, `list_sessions`, `load_session`, `pull_career_evidence`, `save_session`, `start_session`, `validate_metrics` |
 | `dex-session-memory` | `core/mcp/session_memory_server.py` | 8 | no | `get_entity_timeline`, `get_observation_timeline`, `get_recent_decisions`, `get_recent_tool_usage`, `get_session_context`, `get_session_summary`, `search_observations`, `search_sessions` |
-| `dex-work-mcp` | `core/mcp/work_server.py` | 47 | yes | `analyze_calendar_capacity`, `build_company_index`, `build_people_index`, `capture_skill_rating`, `check_goal_alignment`, `check_priority_limits`, `classify_task_effort`, `complete_weekly_priority`, `confirm_goal_link`, `confirm_relationship`, `create_company`, `create_person`, `create_quarterly_goal`, `create_task`, `create_weekly_priority`, `detect_soft_commitments`, `dismiss_relationship`, `get_blocked_tasks`, `get_commitments_due`, `get_goal_status`, `get_meeting_context`, `get_pillar_summary`, `get_quarter_velocity`, `get_quarterly_goals`, `get_skill_ratings`, `get_system_status`, `get_week_priorities`, `get_week_progress`, `get_weekly_planning_context`, `get_work_summary`, `list_companies`, `list_tasks`, `lookup_person`, `match_capture_to_calendar`, `migrate_quarterly_goals`, `migrate_weekly_priorities`, `process_inbox_with_dedup`, `query_meeting_cache`, `rebuild_meeting_cache`, `record_external_task_mapping`, `refresh_company`, `suggest_focus`, `suggest_task_scheduling`, `sync_external_tasks`, `sync_task_refs`, `update_goal_progress`, `update_task_status` |
+| `dex-work-mcp` | `core/mcp/work_server.py` | 50 | yes | `analyze_calendar_capacity`, `boot_today`, `build_company_index`, `build_people_index`, `capture_skill_rating`, `check_goal_alignment`, `check_priority_limits`, `check_safety_gate`, `classify_task_effort`, `complete_weekly_priority`, `confirm_goal_link`, `confirm_relationship`, `create_company`, `create_person`, `create_quarterly_goal`, `create_task`, `create_weekly_priority`, `detect_soft_commitments`, `dismiss_relationship`, `get_blocked_tasks`, `get_commitments_due`, `get_goal_status`, `get_meeting_context`, `get_person_context`, `get_pillar_summary`, `get_quarter_velocity`, `get_quarterly_goals`, `get_skill_ratings`, `get_system_status`, `get_week_priorities`, `get_week_progress`, `get_weekly_planning_context`, `get_work_summary`, `list_companies`, `list_tasks`, `lookup_person`, `match_capture_to_calendar`, `migrate_quarterly_goals`, `migrate_weekly_priorities`, `process_inbox_with_dedup`, `query_meeting_cache`, `rebuild_meeting_cache`, `record_external_task_mapping`, `refresh_company`, `suggest_focus`, `suggest_task_scheduling`, `sync_external_tasks`, `sync_task_refs`, `update_goal_progress`, `update_task_status` |
 
 ## Skills
 
@@ -127,7 +127,7 @@ References are exact tool-name matches in skill bodies (frontmatter excluded). U
 | `dex-customization-migration-mcp` | 1 | normal | `dex-update` (`read_customization_capsule_blob`, `read_customization_capsule_section`) |
 | `dex-granola-mcp` | 4 | normal | `daily-plan` (`granola_get_recent_meetings`); `getting-started` (`granola_check_available`, `granola_get_recent_meetings`); `week-plan` (`granola_get_today_meetings`); `zoom-setup` (`granola_check_available`) |
 | `dex-improvements-mcp` | 7 | normal | `daily-plan` (`list_ideas`, `synthesize_changelog`, `synthesize_learnings`); `daily-review` (`list_ideas`); `dex-backlog` (`capture_idea`, `mark_implemented`); `dex-doctor` (`capture_idea`); `dex-level-up` (`capture_idea`); `dex-whats-new` (`synthesize_changelog`, `synthesize_learnings`); `week-review` (`list_ideas`) |
-| `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`start_onboarding_session`) |
+| `dex-onboarding-mcp` | 3 | normal | `getting-started` (`check_onboarding_complete`); `reset` (`finalize_onboarding`, `start_onboarding_session`); `setup` (`inspect_harnesses`, `save_harness_selection`, `start_onboarding_session`) |
 | `dex-pipedrive-mcp` | 2 | normal | `pipedrive-setup` (`pipedrive_list_stages`, `pipedrive_list_users`, `pipedrive_status`); `pipeline-sync` (`pipedrive_add_deal_activity`, `pipedrive_add_deal_note`, `pipedrive_create_deal`, `pipedrive_create_org`, `pipedrive_find_deal`, `pipedrive_find_org`, `pipedrive_get_deal`, `pipedrive_get_mapping`, `pipedrive_get_pipeline_snapshot`, `pipedrive_list_deals`, `pipedrive_save_mapping`, `pipedrive_status`, `pipedrive_update_deal`) |
 | `dex-resume-mcp` | 0 | **under-surfaced** | — |
 | `dex-session-memory` | 0 | **under-surfaced** | — |
@@ -150,13 +150,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 45 | `replace` |
+| `brain` | 46 | `replace` |
 | `seed` | 38 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
-| `vault` | 17 | `never` |
+| `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
 
-<details><summary><code>brain</code> declared paths (45)</summary>
+<details><summary><code>brain</code> declared paths (46)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -192,6 +192,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/README.md` (file; `brain-system-readme`)
 - `core` (dir; `brain-core`)
 - `core/data/sync-folder-markers.json` (file; `brain-sync-folder-markers`)
+- `core/harnesses/templates/product-AGENTS.md` (file; `brain-product-agents-template`)
 - `docs` (dir; `brain-docs`)
 - `install.sh` (file; `brain-install`)
 - `package-lock.json` (file; `brain-package-lock`)
@@ -263,9 +264,11 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>vault</code> declared paths (17)</summary>
+<details><summary><code>vault</code> declared paths (19)</summary>
 
+- `.agents/skills/*-custom` (dir; `vault-agents-skills-custom`)
 - `.claude/skills-custom` (dir; `vault-skills-custom`)
+- `.claude/skills/*-custom` (dir; `vault-claude-skills-custom`)
 - `.env` (file; `vault-env`)
 - `.mcp.json` (file; `vault-mcp-json`)
 - `00-Inbox` (dir; `vault-inbox`)

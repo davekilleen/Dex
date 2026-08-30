@@ -98,7 +98,10 @@ class Rule:
     """One ownership rule. ``path`` is vault-relative, POSIX separators.
 
     ``kind`` is ``"file"`` (exact match) or ``"dir"`` (the path itself and
-    everything under it). ``note`` documents WHY, for humans and reviews.
+    everything under it). Directory paths may contain shell-style wildcards;
+    matching is segment-aware so a ``*-custom`` namespace cannot consume a
+    slash and accidentally classify a sibling subtree. ``note`` documents WHY,
+    for humans and reviews.
     """
 
     rule_id: str
@@ -134,6 +137,13 @@ RULES: tuple[Rule, ...] = (
     _r("brain-dot-scripts", ".scripts", "dir", "brain"),
     _r("brain-packages", "packages", "dir", "brain",
        "package sources are brain; the committed dist/ views are generated (below)"),
+    _r(
+        "brain-product-agents-template",
+        "core/harnesses/templates/product-AGENTS.md",
+        "file",
+        "brain",
+        "versionless root bootstrap copied into every release and vault bundle",
+    ),
     _r("brain-claude", ".claude", "dir", "brain",
        "shipped skills/hooks/flows; user skills belong in .claude/skills-custom/ (vault)"),
     _r("brain-agents", ".agents", "dir", "brain"),
@@ -177,7 +187,13 @@ RULES: tuple[Rule, ...] = (
        "file", "brain"),
     _r("brain-staging", "staging", "dir", "brain",
        "dev-only staging scaffolding; excluded from releases"),
-    _r("brain-agents-md", "AGENTS.md", "file", "brain"),
+    _r(
+        "brain-agents-md",
+        "AGENTS.md",
+        "file",
+        "brain",
+        "source checkout contains contributor guidance; distribution builders substitute the product bootstrap",
+    ),
     _r("brain-readme", "README.md", "file", "brain"),
     _r("brain-changelog", "CHANGELOG.md", "file", "brain"),
     _r("brain-contributing", "CONTRIBUTING.md", "file", "brain"),
@@ -341,6 +357,10 @@ RULES: tuple[Rule, ...] = (
        "removal approval"),
     _r("vault-claude-custom", "CLAUDE-custom.md", "file", "vault",
        "the one canonical home for user instructions (Vault_Contract §5)"),
+    _r("vault-claude-skills-custom", ".claude/skills/*-custom", "dir", "vault",
+       "user-authored skill convention; never replace a generated or shipped skill"),
+    _r("vault-agents-skills-custom", ".agents/skills/*-custom", "dir", "vault",
+       "user-authored portable skill convention; never replace a generated skill"),
     _r("vault-skills-custom", ".claude/skills-custom", "dir", "vault"),
     _r("vault-mcp-custom", "core/mcp-custom", "dir", "vault"),
     _r("vault-mcp-premium", "core/mcp-premium", "dir", "vault"),
@@ -525,6 +545,7 @@ ONBOARDING_PROVISION_PATHS = frozenset(
         "System/pillars.yaml",
         "System/.onboarding-complete",
         "System/.onboarding-session.json",
+        "System/.dex/harness-profile.json",
         "CLAUDE.md",
         ".mcp.json",
         "core/paths.json",
@@ -544,6 +565,12 @@ ONBOARDING_PROVISION_PATHS = frozenset(
 CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
 CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
 CUSTOMIZATION_MIGRATION_SEAM_PATHS = ("CLAUDE-custom.md",)
+CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS = frozenset(
+    {
+        "vault-claude-skills-custom",
+        "vault-agents-skills-custom",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -598,6 +625,8 @@ def update_write_verdict(
         "onboarding-provision",
         "analytics-receipt",
         "automation-ownership",
+        "conflict-resolution",
+        "adoption-rewind",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -888,6 +917,66 @@ def update_write_verdict(
             resolution.rule_id if resolution is not None else None,
         )
 
+    if operation == "conflict-resolution":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+            resolution = resolve(candidate)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        if resolution.rule_id in CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS:
+            return WriteVerdict(
+                resolution.path,
+                not exists,
+                "write-if-absent",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+
+    if operation == "adoption-rewind":
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+            resolution = resolve(candidate)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+        if resolution.rule_id in CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS:
+            return WriteVerdict(
+                resolution.path,
+                True,
+                "restore-custom-sidecar",
+                resolution.ownership,
+                resolution.rule_id,
+            )
+
     try:
         resolution = resolve(path)
     except ContractViolation:
@@ -943,6 +1032,24 @@ def is_denied(path: str) -> bool:
     return False
 
 
+def _matches_dir_rule(candidate: str, rule_path: str) -> bool:
+    """Return whether ``candidate`` is a directory rule's path or descendant.
+
+    Most rules are literal prefixes. A small number intentionally use a
+    segment wildcard (currently ``*-custom``) to describe user namespaces;
+    matching each segment independently keeps ``*`` from crossing a slash.
+    """
+    rule_segments = rule_path.split("/")
+    candidate_segments = candidate.split("/")
+    if len(candidate_segments) < len(rule_segments):
+        return False
+    matched_segments = candidate_segments[: len(rule_segments)]
+    return all(
+        fnmatch.fnmatchcase(candidate_segment, rule_segment)
+        for candidate_segment, rule_segment in zip(matched_segments, rule_segments)
+    )
+
+
 def resolve(path: str) -> Resolution:
     """Resolve ``path`` to its ownership class.
 
@@ -961,7 +1068,7 @@ def resolve(path: str) -> Resolution:
                 # Exact file match always wins outright.
                 return Resolution(candidate, rule.ownership, rule.rule_id, denied)
         else:
-            if candidate == rule.path or candidate.startswith(rule.path + "/"):
+            if _matches_dir_rule(candidate, rule.path):
                 specificity = rule.path.count("/") + 1
                 if specificity > best_specificity:
                     best = rule
