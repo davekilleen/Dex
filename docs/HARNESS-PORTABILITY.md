@@ -82,6 +82,22 @@ and the final publication step succeeds.
 | Pi | Use the native `dex-pi/extensions/dex` package from the pinned [`dex-pi` commit `5bf33ad7b23a06a890b25445cb1b4f4077b2ac19`](https://github.com/davekilleen/dex-pi/tree/5bf33ad7b23a06a890b25445cb1b4f4077b2ac19) and open the full Dex folder. | Pi has no built-in MCP client; its extension supplies native tools and lifecycle events instead. Core verifies the pinned manifest and source-level lifecycle markers when the checkout is available; live installation remains a release-candidate check. |
 | BB | Install the separately built `bb-plugin-dex` package from a reviewed local path and select the vault in settings. | Version one is macOS-only and read-only: status, capabilities, brief, CLI, and panel; no jobs, writes, provider bridge, or marketplace release. BB's Windows route uses WSL2 and stays in the deferred Linux lane. |
 
+Each written host above has one uninstall line. Residue is named even when the host has no clean first-party command. Dex does not ship an uninstaller.
+
+| Harness | How to leave |
+| --- | --- |
+| Codex CLI / desktop | Run `codex plugin remove dex@dex-unreleased`, then `codex plugin marketplace remove dex-unreleased`. Leftover: hook trust in `~/.codex/config.toml`. |
+| ChatGPT Work desktop | Uninstall Dex in the Plugins tab, delete `~/.codex/plugins/dex`, and remove the Dex listing from `~/.agents/plugins/marketplace.json`. Leftover: the vault-folder grant — a person must revoke it; this runner will not invent that grant. The cache at `~/.codex/plugins/cache/dex-unreleased/dex/local/` is not Work proof. |
+| Claude Code | Stop using `claude --plugin-dir ./packages/dex-agent-plugin`; that flag is a test invocation, not an install. If you later installed from a marketplace, run `claude plugin uninstall` with the same plugin@marketplace name you installed. Leftover: plugin cache and hook trust. |
+| Claude Desktop | Uninstall the Dex extension in Settings > Extensions. Leftover: the Dex vault path in that extension's configuration. |
+| Claude Cowork | Uninstall Dex in Customize → Plugins. Leftover: the Dex folder grant. |
+| GitHub Copilot CLI | Run `copilot plugin uninstall dex-agent-plugin`. Leftover: a direct-install copy under `~/.copilot/installed-plugins/_direct/`. |
+| Cursor | Delete or unlink `~/.cursor/plugins/local/dex` and reload Cursor. Leftover: hook approval. |
+| Gemini CLI | Run `gemini extensions uninstall dex`. Leftover: hook approval in Gemini CLI settings. |
+| Agent Plugins v1 client | Stop pointing the client at the Dex plugin folder. Leftover: none that Dex owns; Dex does not claim a cache here. |
+| Pi | Run `pi remove` on the same native `dex-pi/extensions/dex` source you installed (`pi uninstall` is the alias). Leftover: extension registration in Pi settings until a new session. |
+| BB | Run `bb plugin remove` for the local `bb-plugin-dex` package. Leftover: the vault setting; local source files stay on disk. |
+
 ## Acceptance journey
 
 After installation, verify these outcomes in a fresh task:

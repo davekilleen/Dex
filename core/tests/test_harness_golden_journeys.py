@@ -237,3 +237,48 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
     assert "Exact-commit native evidence belongs to the draft pull request" in guide
     assert "| macOS | Release-ready |" not in guide
     assert "| Windows | Release-ready |" not in guide
+
+
+_JOURNEY_TABLE_HEADER = "| Harness | Local package journey | Honest boundary |"
+_LEAVE_TABLE_HEADER = "| Harness | How to leave |"
+
+
+def _markdown_table_rows(guide: str, header: str) -> list[tuple[str, ...]]:
+    lines = guide.splitlines()
+    try:
+        start = next(index for index, line in enumerate(lines) if line.strip() == header)
+    except StopIteration as exc:
+        raise AssertionError(f"missing table header: {header}") from exc
+
+    rows: list[tuple[str, ...]] = []
+    for line in lines[start + 1 :]:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            break
+        cells = tuple(cell.strip() for cell in stripped.strip("|").split("|"))
+        if cells and all(cell and set(cell) <= set("-:") for cell in cells):
+            continue
+        rows.append(cells)
+    return rows
+
+
+def test_each_written_host_has_one_uninstall_line_that_names_residue() -> None:
+    """A new host row in the install table must ship with one How to leave line."""
+    guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
+    journey_rows = _markdown_table_rows(guide, _JOURNEY_TABLE_HEADER)
+    leave_rows = _markdown_table_rows(guide, _LEAVE_TABLE_HEADER)
+
+    assert journey_rows, "local installation journeys table is empty"
+    journey_hosts = [row[0] for row in journey_rows]
+    leave_hosts = [row[0] for row in leave_rows]
+    assert leave_hosts == journey_hosts, (
+        "every written host row needs one matching How to leave row; "
+        f"install={journey_hosts!r} leave={leave_hosts!r}"
+    )
+    for host, row in zip(leave_hosts, leave_rows, strict=True):
+        assert len(row) >= 2, f"{host} How to leave row has no uninstall cell"
+        leave = row[1]
+        assert leave, f"{host} is missing an uninstall line"
+        assert "leftover" in leave.lower(), (
+            f"{host} must name residue honestly (include leftover): {leave!r}"
+        )
