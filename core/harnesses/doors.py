@@ -6,6 +6,7 @@ A written door with no install artifact has never been opened.
 A left door is a walk artifact that is gone while leftover residue remains.
 Confirming a door is not the same as walking it.
 A confirmed door is not a leave. Leftovers are named only when a leave is proved.
+Notes-panel files without the switch are named; this module never flips that switch.
 
 This module never writes a grant, a grant receipt, or a grant flag.
 """
@@ -22,6 +23,11 @@ from core.harnesses.registry import list_profiles
 CONFIRMED_IS_NOT_WALKED = "A confirmed door is not the same as a walked one."
 NOTES_PANEL_INSTALLED = "The notes panel is installed on this machine."
 NOTES_PANEL_MISSING = "The notes panel is not installed on this machine."
+NOTES_PANEL_SWITCH = "`.obsidian/community-plugins.json` listing `dex-readonly`"
+NOTES_PANEL_HALF_ON = (
+    "The notes panel files are there, but the panel is not switched on. "
+    f"The switch is {NOTES_PANEL_SWITCH}; this checkup will not flip it."
+)
 NOTES_PANEL_LEFTOVER = (
     "`.obsidian/community-plugins.json` may still list `dex-readonly` until you "
     "remove that name; the workspace layout may still show an empty Dex panel slot."
@@ -119,9 +125,11 @@ class DoorReport:
 
     doors: tuple[DoorState, ...]
     notes_panel_installed: bool
+    notes_panel_switched_on: bool
     notes_panel_left: bool
     notes_panel_sentence: str
     notes_panel_leftover: str | None = None
+    notes_panel_switch: str | None = None
     confirmed_is_not_walked: str = CONFIRMED_IS_NOT_WALKED
 
     def sentences(self) -> tuple[str, ...]:
@@ -134,11 +142,14 @@ class DoorReport:
     def as_structured(self) -> dict[str, object]:
         notes_panel: dict[str, object] = {
             "installed": self.notes_panel_installed,
+            "switched_on": self.notes_panel_switched_on,
             "left": self.notes_panel_left,
             "sentence": self.notes_panel_sentence,
         }
         if self.notes_panel_leftover is not None:
             notes_panel["leftover"] = self.notes_panel_leftover
+        if self.notes_panel_switch is not None:
+            notes_panel["switch"] = self.notes_panel_switch
         return {
             "doors": [door.as_dict() for door in self.doors],
             "notes_panel": notes_panel,
@@ -165,10 +176,12 @@ def door_sentence(
     return f"{name} is a written door you have never opened."
 
 
-def notes_panel_sentence(*, installed: bool, leftover: bool) -> str:
-    """Return the notes-panel sentence, naming leftover residue after a leave."""
-    if installed:
+def notes_panel_sentence(*, installed: bool, leftover: bool, switched_on: bool) -> str:
+    """Return the notes-panel sentence, naming a half-on switch or leftover residue."""
+    if installed and switched_on:
         return NOTES_PANEL_INSTALLED
+    if installed:
+        return NOTES_PANEL_HALF_ON
     if leftover:
         return f"{NOTES_PANEL_MISSING} Leftover: {NOTES_PANEL_LEFTOVER}"
     return NOTES_PANEL_MISSING
@@ -179,9 +192,14 @@ def notes_panel_installed(vault_root: Path) -> bool:
     return _is_regular_file(Path(vault_root) / NOTES_PANEL_MANIFEST)
 
 
+def notes_panel_switched_on(vault_root: Path) -> bool:
+    """Return True when the notes-panel switch lists dex-readonly."""
+    return _community_plugins_list_dex_readonly(Path(vault_root) / NOTES_PANEL_COMMUNITY_PLUGINS)
+
+
 def notes_panel_leftover_present(vault_root: Path) -> bool:
     """Return True when the notes-panel listing remains after the plugin is gone."""
-    return _community_plugins_list_dex_readonly(Path(vault_root) / NOTES_PANEL_COMMUNITY_PLUGINS)
+    return notes_panel_switched_on(vault_root)
 
 
 def door_is_walked(profile_id: str, *, home: Path) -> bool:
@@ -242,15 +260,20 @@ def door_report(
             )
         )
     installed = notes_panel_installed(vault_root)
-    leftover_notes = (not installed) and notes_panel_leftover_present(vault_root)
+    switched_on = notes_panel_switched_on(vault_root)
+    leftover_notes = (not installed) and switched_on
+    half_on = installed and not switched_on
     return DoorReport(
         doors=tuple(doors),
         notes_panel_installed=installed,
+        notes_panel_switched_on=switched_on,
         notes_panel_left=leftover_notes,
         notes_panel_leftover=NOTES_PANEL_LEFTOVER if leftover_notes else None,
+        notes_panel_switch=NOTES_PANEL_SWITCH if half_on else None,
         notes_panel_sentence=notes_panel_sentence(
             installed=installed,
             leftover=leftover_notes,
+            switched_on=switched_on,
         ),
     )
 

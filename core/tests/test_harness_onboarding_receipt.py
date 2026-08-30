@@ -164,3 +164,5 @@ def test_doctor_instructions_preserve_delivery_mode_truth() -> None:
     assert "notes panel" in section
     assert "leftover sentence that proves a leave" in section
     assert "A confirmed door is not a leave" in section
+    assert "files are there but the panel is" in section
+    assert "Do not flip" in section
