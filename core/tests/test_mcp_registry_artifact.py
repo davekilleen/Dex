@@ -26,6 +26,7 @@ READ_ONLY_TOOLS = {
     "ask_what_was_decided",
     "ask_what_is_still_open_with_people",
     "ask_who_is_in_todays_plan",
+    "ask_who_is_named_in_note",
     "check_safety_gate",
 }
 
@@ -159,6 +160,12 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
         "# Daily Plan\n\n**Attendees:** Ada Lovelace\n",
         encoding="utf-8",
     )
+    meetings = vault / "00-Inbox" / "Meetings"
+    meetings.mkdir(parents=True)
+    (meetings / "2026-08-30 - Engine review.md").write_text(
+        "# Engine review\n\nWalked [[Ada Lovelace]] through the memo.\n",
+        encoding="utf-8",
+    )
     decisions = vault / "06-Resources" / "Decisions"
     decisions.mkdir(parents=True)
     (decisions / "Decision_Log.md").write_text(
@@ -242,6 +249,18 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
                     "arguments": {"vault_path": str(empty_vault)},
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_who_is_named_in_note",
+                    "arguments": {
+                        "vault_path": str(vault),
+                        "note_path": "00-Inbox/Meetings/2026-08-30 - Engine review.md",
+                    },
+                },
+            },
         ],
         vault=vault,
     )
@@ -299,6 +318,21 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     assert none_today["found"] is False
     assert none_today["matches"] == []
     assert none_today["sentence"] == "Nobody is named in today's plan."
+    note_tool = next(tool for tool in tools if tool["name"] == "ask_who_is_named_in_note")
+    assert "note" in note_tool["description"].lower()
+    assert "own order" in note_tool["description"]
+    required_note = (note_tool.get("inputSchema") or {}).get("required") or []
+    assert "note_path" in required_note
+    who_in_note = responses[10]["result"]["structuredContent"]
+    assert who_in_note["found"] is True
+    assert who_in_note["matches"][0]["person"] == "Ada Lovelace"
+    assert who_in_note["matches"][0]["role"] == "Founder"
+    assert who_in_note["matches"][0]["company"] == "Analytical Engines"
+    assert who_in_note["matches"][0]["last_interaction"] == "2026-04-12"
+    assert who_in_note["matches"][0]["open_items"] == ["Send the operating memo"]
+    assert who_in_note["matches"][0]["page"] == (
+        "05-Areas/People/Internal/Ada_Lovelace.md"
+    )
 
 
 def test_live_npm_publish_is_refused(tmp_path: Path) -> None:

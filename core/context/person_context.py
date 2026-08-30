@@ -34,6 +34,12 @@ FILE_REF = re.compile(
 OPEN_ITEM = re.compile(r"^- \[ \] (.+)$", re.MULTILINE)
 NONE_OPEN_SENTENCE = "No unchecked to-dos on person pages."
 NONE_TODAY_PEOPLE_SENTENCE = "Nobody is named in today's plan."
+NONE_NOTE_PEOPLE_SENTENCE = "That note does not name anyone from your person pages."
+NOTE_MISSING_SENTENCE = "There is no note at that path in your Dex folder."
+NOTE_REFUSED_SENTENCE = (
+    "That path is not a note this box will read. "
+    "It reads only notes inside your own Dex folder."
+)
 MEETING_HINTS = ("meeting", "attendee", "call with", "met with")
 WIKI_LINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 PERSON_FIELD = re.compile(
@@ -358,6 +364,89 @@ def ask_who_is_in_todays_plan(
     matches = [_today_people_row(root, path) for path in _people_named_in_plan(content, index)]
     if not matches:
         return empty
+    return {"found": True, "matches": matches, "sentence": ""}
+
+
+def _empty_who_in_note(sentence: str) -> dict[str, Any]:
+    return {"found": False, "matches": [], "sentence": sentence}
+
+
+def _note_path_read_fence(
+    root: Path, note_path: str | Path | None
+) -> tuple[str | None, Path | None]:
+    """Reuse find_people_in_file read fences. Never follow a symlink."""
+    if note_path is None:
+        return NOTE_REFUSED_SENTENCE, None
+    try:
+        raw_path = str(note_path)
+        target = Path(note_path)
+    except (TypeError, ValueError, OSError):
+        return NOTE_REFUSED_SENTENCE, None
+    normalised_raw_path = raw_path.replace("\\", "/")
+    if (
+        not raw_path.strip()
+        or normalised_raw_path == "People"
+        or normalised_raw_path.startswith("People/")
+        or "/People/" in normalised_raw_path
+    ):
+        return NOTE_REFUSED_SENTENCE, None
+    if target.suffix.lower() in SKIP_EXTS:
+        return NOTE_REFUSED_SENTENCE, None
+    resolved = target if target.is_absolute() else root / target
+    try:
+        if resolved.is_symlink():
+            return NOTE_REFUSED_SENTENCE, None
+    except OSError:
+        return NOTE_REFUSED_SENTENCE, None
+    try:
+        resolved = resolved.resolve()
+    except OSError:
+        return NOTE_MISSING_SENTENCE, None
+    if not _inside(root, resolved):
+        return NOTE_REFUSED_SENTENCE, None
+    try:
+        if not resolved.is_file():
+            return NOTE_MISSING_SENTENCE, None
+    except OSError:
+        return NOTE_MISSING_SENTENCE, None
+    return None, resolved
+
+
+def ask_who_is_named_in_note(
+    vault: str | Path | None,
+    note_path: str | Path | None,
+) -> dict[str, Any]:
+    """Return each named person in one note, never raising.
+
+    Each row carries recorded role, company, last interaction, every open
+    item, and the person page, in the note's own order of first mention.
+    Missing fields stay empty. The function never writes and never
+    reaches the network. Paths outside the vault, person-tree recursion,
+    binary files, and symlinks are refused. A missing file gets an honest
+    sentence. A note that names nobody gets an honest sentence.
+    """
+    nobody = _empty_who_in_note(NONE_NOTE_PEOPLE_SENTENCE)
+    root = _coerce_root(vault)
+    if root is None:
+        return nobody
+    fence, path = _note_path_read_fence(root, note_path)
+    if fence is not None:
+        return _empty_who_in_note(fence)
+    if path is None:
+        return _empty_who_in_note(NOTE_REFUSED_SENTENCE)
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return _empty_who_in_note(NOTE_REFUSED_SENTENCE)
+    index = _index_person_pages(root)
+    if not index:
+        return nobody
+    matches = [
+        _today_people_row(root, person_path)
+        for person_path in _people_named_in_plan(content, index)
+    ]
+    if not matches:
+        return nobody
     return {"found": True, "matches": matches, "sentence": ""}
 
 
