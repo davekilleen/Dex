@@ -1,11 +1,14 @@
 # Dex panel for Obsidian (read-only, local)
 
 Open your Dex folder in Obsidian and see today's brief. Under that brief,
-Decided lately shows recorded decision words from your own files, each naming
-the note and the date, without typing. Type a topic to look for a specific
+who today's plan names shows people from today's plan, with role and company
+from your own person pages, each naming the page, without typing. Decided
+lately shows recorded decision words from your own files, each naming the
+note and the date, without typing. Type a topic to look for a specific
 decision. Type a person's name to see who they are from your own files. When
-nothing is there, or nothing matches, one honest sentence says so. This panel
-does not edit notes, run Dex commands, or use the internet.
+nobody is named, there is no plan for today, nothing is there, or nothing
+matches, one honest sentence says so. This panel does not edit notes, run Dex
+commands, or use the internet.
 
 This is an unreleased local install. It has not been submitted to the Obsidian
 community store.
@@ -18,9 +21,11 @@ community store.
 4. Turn off **Restricted Mode**.
 5. Enable **Dex** under community plugins.
 6. Look at the Dex panel on the right. Today's brief should be there. Under
-   it, Decided lately shows recorded decisions without typing. Type a topic
+   it, who today's plan names shows people from today's plan without typing.
+   Decided lately shows recorded decisions without typing. Type a topic
    if you want a specific match. Type a person's name to see who they are.
-   If nothing is there, or nothing matches, one honest sentence says so.
+   If nobody is named, there is no plan for today, nothing is there, or
+   nothing matches, one honest sentence says so.
 
 You can copy the folder by hand, or from the Dex checkout run:
 

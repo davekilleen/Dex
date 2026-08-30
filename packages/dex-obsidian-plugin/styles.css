@@ -46,7 +46,8 @@
   min-width: 0;
 }
 
-.dex-readonly-panel .dex-readonly-lately {
+.dex-readonly-panel .dex-readonly-lately,
+.dex-readonly-panel .dex-readonly-today-people {
   margin: 0 0 8px;
 }
 

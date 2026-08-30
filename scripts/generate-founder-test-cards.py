@@ -7,7 +7,7 @@ This lot covers the Obsidian notes panel only. The page is derived from
 The card restates the read-only fence, names How to leave, and ends honestly:
 nobody has walked this on a real desktop. No page includes a publish step.
 
-Unreleased. Do not merge. Do not publish. Leave lab 558 open.
+Unreleased. Do not merge. Do not publish. Leave lab 570 open.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/558"
+LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/570"
 GENERATOR = "scripts/generate-founder-test-cards.py"
 THIS_LOT_IDS = frozenset({"obsidian"})
 WORK_ID = "chatgpt-work"
@@ -92,6 +92,8 @@ def _is_step(sentence: str) -> bool:
         return False
     if "today" in stripped and "brief" in stripped and "appear" in stripped:
         return True
+    if "who today's plan names" in stripped:
+        return True
     if "decided lately" in stripped:
         return True
     return any(stripped.startswith(prefix) for prefix in ACTION_PREFIXES)
@@ -158,6 +160,13 @@ def expected_sight(sentence: str, *, stop: bool, harness_id: str = "") -> str:
         return (
             "Who they are appears from your own files. When nothing matches, "
             "one honest sentence says so. Notes are unchanged. " + tail
+        )
+    if harness_id == "obsidian" and "who today's plan names" in lower:
+        return (
+            "Who today's plan names shows people from today's plan, with role "
+            "and company from your own person pages, each naming the page, "
+            "without typing. When nobody is named, or there is no plan for "
+            "today, one honest sentence says so. Notes are unchanged. " + tail
         )
     if harness_id == "obsidian" and "type a topic" in lower:
         return (
@@ -233,7 +242,8 @@ def _obsidian_fence_and_leave(example: dict) -> list[str]:
     lines = [
         "## Read-only fence",
         "",
-        "Today's brief, then Decided lately, then a topic ask, then a person name. "
+        "Today's brief, then who today's plan names, then Decided lately, "
+        "then a topic ask, then a person name. "
         "The panel does not edit notes. "
         "It does not use the internet. It is not on any community list.",
         "",
@@ -360,9 +370,9 @@ def render_index(adapters: list[dict]) -> str:
         "regenerate this page. CI fails on drift.",
         "",
         "The card restates the read-only fence, names How to leave, and walks "
-        "Decided lately under today's brief, then the topic ask, then a person "
-        "name. Nobody has walked this on a real desktop. Other hosts' cards "
-        "are not merged from draft PR 660.",
+        "who today's plan names under today's brief, then Decided lately, then "
+        "the topic ask, then a person name. Nobody has walked this on a real "
+        "desktop. Other hosts' cards are not merged from draft PR 660.",
         "",
         "## Cards",
         "",

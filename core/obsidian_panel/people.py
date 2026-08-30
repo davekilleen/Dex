@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+from core.paths import DAILY_PLANS_DIR, resolve_for_vault
+
 EMPTY_SENTENCE = "No person in your files matched that name."
+TODAY_HEADING = "Who today's plan names"
+NOBODY_NAMED = "Today's plan does not name anyone in your files."
+NO_PLAN = "There is no plan for today in your files."
 PEOPLE_TREES = (
     "05-Areas/People/Internal",
     "05-Areas/People/External",
@@ -18,6 +24,7 @@ PERSON_FIELD = re.compile(
     re.IGNORECASE,
 )
 HEADING = re.compile(r"^#\s+(.+)$")
+WIKI_LINK = re.compile(r"\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]")
 BLANK_VALUES = {"", "null", "none", "~"}
 
 
@@ -107,6 +114,112 @@ def format_person_match(record: dict[str, str]) -> str:
     return f"{who} (note: {record.get('note', '')})"
 
 
+def _is_name_boundary(char: str) -> bool:
+    if not char:
+        return True
+    return not (char.isalnum() or char == "_")
+
+
+def _first_named_index(haystack: str, needle: str) -> int | None:
+    target = str(needle or "").strip()
+    if len(target) < 2:
+        return None
+    lowered = haystack.lower()
+    look = target.lower()
+    start = 0
+    while True:
+        index = lowered.find(look, start)
+        if index < 0:
+            return None
+        before = haystack[index - 1] if index else ""
+        after_at = index + len(target)
+        after = haystack[after_at] if after_at < len(haystack) else ""
+        if _is_name_boundary(before) and _is_name_boundary(after):
+            return index
+        start = index + 1
+
+
+def _record_needles(record: dict[str, str]) -> list[str]:
+    needles: list[str] = []
+    seen: set[str] = set()
+    for raw in (
+        str(record.get("name") or ""),
+        str(record.get("note") or "").replace("_", " "),
+        str(record.get("note") or ""),
+    ):
+        value = raw.strip()
+        key = value.lower()
+        if len(value) < 2 or key in seen:
+            continue
+        seen.add(key)
+        needles.append(value)
+    needles.sort(key=len, reverse=True)
+    return needles
+
+
+def _wiki_target_note(raw: str) -> str:
+    target = str(raw or "").strip().replace("\\", "/")
+    if not target:
+        return ""
+    base = Path(target).name
+    if base.lower().endswith(".md"):
+        base = base[:-3]
+    return base.strip()
+
+
+def _record_matches_wiki(record: dict[str, str], target: str) -> bool:
+    note = str(record.get("note") or "")
+    name = str(record.get("name") or "")
+    stem = _wiki_target_note(target)
+    if not stem:
+        return False
+    folded = stem.replace(" ", "_")
+    spaced = stem.replace("_", " ")
+    return (
+        stem.lower() == note.lower()
+        or folded.lower() == note.lower()
+        or spaced.lower() == note.replace("_", " ").lower()
+        or spaced.lower() == name.lower()
+        or stem.lower() == name.lower()
+    )
+
+
+def people_named_in_plan(
+    records: list[dict[str, str]],
+    plan_text: str,
+) -> list[dict[str, str]]:
+    """Return person pages named in a plan, in plan order. Never invents fields."""
+    haystack = str(plan_text or "")
+    if not haystack.strip() or not records:
+        return []
+    hits: list[tuple[int, dict[str, str]]] = []
+    for match in WIKI_LINK.finditer(haystack):
+        for record in records:
+            if _record_matches_wiki(record, match.group(1)):
+                hits.append((match.start(), record))
+                break
+    for record in records:
+        earliest: int | None = None
+        for needle in _record_needles(record):
+            index = _first_named_index(haystack, needle)
+            if index is None:
+                continue
+            if earliest is None or index < earliest:
+                earliest = index
+        if earliest is not None:
+            hits.append((earliest, record))
+    hits.sort(key=lambda item: item[0])
+    ordered: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for _index, record in hits:
+        key = str(record.get("note") or record.get("name") or "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(record)
+    return ordered
+
+
 def iter_person_markdown(vault: Path) -> list[tuple[str, str]]:
     files: list[tuple[str, str]] = []
     for tree in PEOPLE_TREES:
@@ -134,23 +247,56 @@ def ask_who_they_are(
 ) -> dict[str, Any]:
     """Return who a named person is from local files. Never writes. Never sends."""
     root = Path(vault).expanduser()
+    records = _load_person_records(root)
+    matches = match_people(records, name)
+    public = [_public_person(row) for row in matches]
+    return {
+        "matches": public,
+        "empty": None if public else EMPTY_SENTENCE,
+        "lines": [format_person_match(row) for row in public],
+    }
+
+
+def _public_person(record: dict[str, str]) -> dict[str, str]:
+    return {
+        "name": record["name"],
+        "role": record["role"],
+        "company": record["company"],
+        "note": record["note"],
+    }
+
+
+def _load_person_records(root: Path) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     for relative, text in iter_person_markdown(root):
         record = collect_person_record(text, relative)
         if record:
             records.append(record)
-    matches = match_people(records, name)
-    public = [
-        {
-            "name": row["name"],
-            "role": row["role"],
-            "company": row["company"],
-            "note": row["note"],
+    return records
+
+
+def people_named_in_today_plan(
+    vault: str | Path,
+    *,
+    today: date | None = None,
+) -> dict[str, Any]:
+    """Return who today's plan names from local person pages. Never writes."""
+    stamp = today or date.today()
+    root = Path(vault).expanduser()
+    path = resolve_for_vault(root, DAILY_PLANS_DIR) / f"{stamp.isoformat()}.md"
+    if not path.is_file():
+        return {
+            "matches": [],
+            "empty": NO_PLAN,
+            "lines": [],
+            "plan": False,
         }
-        for row in matches
-    ]
+    records = _load_person_records(root)
+    matches = people_named_in_plan(records, _read_text(path))
+    public = [_public_person(row) for row in matches]
     return {
         "matches": public,
-        "empty": None if public else EMPTY_SENTENCE,
+        "empty": None if public else NOBODY_NAMED,
         "lines": [format_person_match(row) for row in public],
+        "plan": True,
     }

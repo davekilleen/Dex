@@ -4,13 +4,13 @@
 
 Unreleased. Not a live install. Do not publish. Do not merge.
 
-**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/558
+**Lab issue (leave open):** https://github.com/davekilleen/dex-product-gtm-lab/issues/570
 
 **Adapter source:** `core/harnesses/adapters/obsidian.json`
 
 ## Adapter text (quoted — source of truth)
 
-> Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. Type a person's name and see who they are from your own files. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian.
+> Open the Dex folder in Obsidian. Copy packages/dex-obsidian-plugin into .obsidian/plugins/dex-readonly, or run python3 -m core.obsidian_panel install --vault /path/to/your/Dex. Turn off Restricted Mode. Enable Dex. Today's brief appears in the side panel. Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. When nobody is named, one honest sentence says so. When there is no plan for today, one honest sentence says so. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date. When nothing matches, one honest sentence says so. Type a person's name and see who they are from your own files. The panel does not edit notes, run commands, or use the internet. Do not submit this to the Obsidian community store. VS Code and Kiro shared lot files are deferred. This runner will not invent a ChatGPT Work folder grant. Ubuntu Cloud is not a person opening Obsidian.
 
 ## Named adapter fields
 
@@ -78,37 +78,47 @@ Unreleased. Not a live install. Do not publish. Do not merge.
 
 ### Step 6
 
-6. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing.
+6. Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing.
+
+**What you should see:** Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. When nobody is named, or there is no plan for today, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
+
+- [ ] I saw that.
+
+**If this fails, send back this exact sentence:** `obsidian step 6 failed: Who today's plan names shows people from today's plan, with role and company from your own person pages, each naming the page, without typing. When nobody is named, or there is no plan for today, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
+
+### Step 7
+
+7. Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing.
 
 **What you should see:** Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
 
 - [ ] I saw that.
 
-**If this fails, send back this exact sentence:** `obsidian step 6 failed: Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
+**If this fails, send back this exact sentence:** `obsidian step 7 failed: Decided lately shows recorded decision words from your own files, each naming the note and the date, without typing. When nothing is there, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
 
-### Step 7
+### Step 8
 
-7. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date.
+8. Type a topic under today's brief and see recorded decision words from your own files, each naming the note and the date.
 
 **What you should see:** Recorded decision words from your own files appear, each naming the note and the date. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
 
 - [ ] I saw that.
 
-**If this fails, send back this exact sentence:** `obsidian step 7 failed: Recorded decision words from your own files appear, each naming the note and the date. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
+**If this fails, send back this exact sentence:** `obsidian step 8 failed: Recorded decision words from your own files appear, each naming the note and the date. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
 
-### Step 8
+### Step 9
 
-8. Type a person's name and see who they are from your own files.
+9. Type a person's name and see who they are from your own files.
 
 **What you should see:** Who they are appears from your own files. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.
 
 - [ ] I saw that.
 
-**If this fails, send back this exact sentence:** `obsidian step 8 failed: Who they are appears from your own files. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
+**If this fails, send back this exact sentence:** `obsidian step 9 failed: Who they are appears from your own files. When nothing matches, one honest sentence says so. Notes are unchanged. This is still a written path, not a live install. Nobody has walked this on a real desktop.`
 
 ## Read-only fence
 
-Today's brief, then Decided lately, then a topic ask, then a person name. The panel does not edit notes. It does not use the internet. It is not on any community list.
+Today's brief, then who today's plan names, then Decided lately, then a topic ask, then a person name. The panel does not edit notes. It does not use the internet. It is not on any community list.
 
 ## How to leave
 
@@ -120,6 +130,8 @@ This is a written path. Nobody has opened this panel on a real desktop from this
 
 ## Limits from the adapter (not steps)
 
+- When nobody is named, one honest sentence says so.
+- When there is no plan for today, one honest sentence says so.
 - When nothing is there, one honest sentence says so.
 - When nothing matches, one honest sentence says so.
 - The panel does not edit notes, run commands, or use the internet.

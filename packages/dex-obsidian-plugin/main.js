@@ -8,6 +8,9 @@ const DAILY_PLAN_LIMIT = 24;
 const EMPTY_SENTENCE = "No recorded decision in your files matched that topic.";
 const LATELY_EMPTY = "No recorded decision in your files lately.";
 const PERSON_EMPTY = "No person in your files matched that name.";
+const TODAY_PEOPLE_HEADING = "Who today's plan names";
+const NOBODY_NAMED = "Today's plan does not name anyone in your files.";
+const NO_PLAN = "There is no plan for today in your files.";
 const LATELY_LIMIT = 3;
 const NO_DATE = "no date in that note";
 const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
@@ -31,6 +34,7 @@ const DATE_IN_NAME = /^(\d{4}-\d{2}-\d{2})/;
 const FRONTMATTER_DATE = /^date:\s*['"]?(\d{4}-\d{2}-\d{2})/im;
 const PERSON_FIELD = /^(?:\|\s*(?:\*\*)?)?(name|role|company)(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$/i;
 const PERSON_HEADING = /^#\s+(.+)$/;
+const WIKI_LINK = /\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]/g;
 const BLANK_VALUES = new Set(["", "null", "none", "~"]);
 
 function todayLabel(now) {
@@ -447,6 +451,127 @@ function formatPersonMatch(record) {
   return `${who} (note: ${record.note || ""})`;
 }
 
+function isNameBoundary(char) {
+  if (!char) {
+    return true;
+  }
+  return !/[\p{L}\p{N}_]/u.test(char);
+}
+
+function firstNamedIndex(haystack, needle) {
+  const target = String(needle || "").trim();
+  if (target.length < 2) {
+    return -1;
+  }
+  const lowered = String(haystack || "").toLowerCase();
+  const look = target.toLowerCase();
+  let start = 0;
+  while (start <= lowered.length) {
+    const index = lowered.indexOf(look, start);
+    if (index < 0) {
+      return -1;
+    }
+    const before = index ? haystack[index - 1] : "";
+    const afterAt = index + target.length;
+    const after = afterAt < haystack.length ? haystack[afterAt] : "";
+    if (isNameBoundary(before) && isNameBoundary(after)) {
+      return index;
+    }
+    start = index + 1;
+  }
+  return -1;
+}
+
+function recordNeedles(record) {
+  const needles = [];
+  const seen = new Set();
+  const note = String(record.note || "");
+  [String(record.name || ""), note.replace(/_/g, " "), note].forEach((raw) => {
+    const value = String(raw || "").trim();
+    const key = value.toLowerCase();
+    if (value.length < 2 || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    needles.push(value);
+  });
+  needles.sort((left, right) => right.length - left.length);
+  return needles;
+}
+
+function wikiTargetNote(raw) {
+  const target = String(raw || "").trim().replace(/\\/g, "/");
+  if (!target) {
+    return "";
+  }
+  const base = target.split("/").pop() || "";
+  return base.replace(/\.md$/i, "").trim();
+}
+
+function recordMatchesWiki(record, target) {
+  const note = String(record.note || "");
+  const name = String(record.name || "");
+  const stem = wikiTargetNote(target);
+  if (!stem) {
+    return false;
+  }
+  const folded = stem.replace(/ /g, "_");
+  const spaced = stem.replace(/_/g, " ");
+  return (
+    stem.toLowerCase() === note.toLowerCase()
+    || folded.toLowerCase() === note.toLowerCase()
+    || spaced.toLowerCase() === note.replace(/_/g, " ").toLowerCase()
+    || spaced.toLowerCase() === name.toLowerCase()
+    || stem.toLowerCase() === name.toLowerCase()
+  );
+}
+
+function peopleNamedInPlan(records, planText) {
+  const haystack = String(planText || "");
+  if (!haystack.trim() || !records.length) {
+    return [];
+  }
+  const hits = [];
+  const wiki = new RegExp(WIKI_LINK.source, "g");
+  let match = wiki.exec(haystack);
+  while (match) {
+    for (let index = 0; index < records.length; index += 1) {
+      if (recordMatchesWiki(records[index], match[1])) {
+        hits.push({ at: match.index, record: records[index] });
+        break;
+      }
+    }
+    match = wiki.exec(haystack);
+  }
+  records.forEach((record) => {
+    let earliest = -1;
+    recordNeedles(record).forEach((needle) => {
+      const at = firstNamedIndex(haystack, needle);
+      if (at < 0) {
+        return;
+      }
+      if (earliest < 0 || at < earliest) {
+        earliest = at;
+      }
+    });
+    if (earliest >= 0) {
+      hits.push({ at: earliest, record });
+    }
+  });
+  hits.sort((left, right) => left.at - right.at);
+  const ordered = [];
+  const seen = new Set();
+  hits.forEach((hit) => {
+    const key = String(hit.record.note || hit.record.name || "");
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    ordered.push(hit.record);
+  });
+  return ordered;
+}
+
 async function loadDecisionRecords(app) {
   const files = app.vault.getMarkdownFiles ? app.vault.getMarkdownFiles() : [];
   const records = [];
@@ -476,6 +601,35 @@ async function loadPersonRecords(app) {
     }
   }
   return records;
+}
+
+async function renderTodayPeople(root, app, now) {
+  const heading = root.createEl("h2", { text: TODAY_PEOPLE_HEADING });
+  heading.addClass("dex-readonly-heading");
+  const stamp = todayStamp(now);
+  const relative = `00-Inbox/Daily_Plans/${stamp}.md`;
+  const file = app.vault.getAbstractFileByPath(relative);
+  if (!file || !file.extension) {
+    root.createEl("p", {
+      text: NO_PLAN,
+      cls: "dex-readonly-empty",
+    });
+    return;
+  }
+  const text = await readVaultText(app, relative);
+  const records = await loadPersonRecords(app);
+  const matches = peopleNamedInPlan(records, text);
+  if (!matches.length) {
+    root.createEl("p", {
+      text: NOBODY_NAMED,
+      cls: "dex-readonly-empty",
+    });
+    return;
+  }
+  const list = root.createEl("ul", { cls: "dex-readonly-today-people" });
+  for (const match of matches) {
+    list.createEl("li", { text: formatPersonMatch(match) });
+  }
 }
 
 async function renderLately(root, app) {
@@ -595,6 +749,7 @@ class DexBriefView extends ItemView {
     const root = this.containerEl.children[1];
     const brief = await buildTodayBrief(this.app);
     renderBrief(root, brief);
+    await renderTodayPeople(root, this.app);
     await renderLately(root, this.app);
     renderAsk(root, this.app);
     renderPerson(root, this.app);
@@ -633,6 +788,7 @@ module.exports.buildTodayBrief = buildTodayBrief;
 module.exports.renderBrief = renderBrief;
 module.exports.renderAsk = renderAsk;
 module.exports.renderLately = renderLately;
+module.exports.renderTodayPeople = renderTodayPeople;
 module.exports.renderPerson = renderPerson;
 module.exports.todayLabel = todayLabel;
 module.exports.collectDecisionRecords = collectDecisionRecords;
@@ -641,9 +797,13 @@ module.exports.recentDecisions = recentDecisions;
 module.exports.formatDecisionMatch = formatDecisionMatch;
 module.exports.collectPersonRecord = collectPersonRecord;
 module.exports.matchPeople = matchPeople;
+module.exports.peopleNamedInPlan = peopleNamedInPlan;
 module.exports.formatPersonMatch = formatPersonMatch;
 module.exports.isPersonMarkdown = isPersonMarkdown;
 module.exports.EMPTY_SENTENCE = EMPTY_SENTENCE;
 module.exports.LATELY_EMPTY = LATELY_EMPTY;
 module.exports.LATELY_LIMIT = LATELY_LIMIT;
 module.exports.PERSON_EMPTY = PERSON_EMPTY;
+module.exports.TODAY_PEOPLE_HEADING = TODAY_PEOPLE_HEADING;
+module.exports.NOBODY_NAMED = NOBODY_NAMED;
+module.exports.NO_PLAN = NO_PLAN;

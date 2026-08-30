@@ -127,6 +127,7 @@ def test_obsidian_install_contract_names_local_panel_and_no_store() -> None:
     assert "dex folder" in example["vault_grant"].lower()
     assert "obsidian" in guide
     assert "today" in guide
+    assert "who today's plan names" in guide
     assert "decided lately" in guide
     assert "type a topic" in guide
     assert "person's name" in guide

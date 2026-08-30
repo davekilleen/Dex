@@ -12,7 +12,7 @@ GENERATOR_PATH = REPO_ROOT / "scripts" / "generate-founder-test-cards.py"
 ADAPTERS = REPO_ROOT / "core" / "harnesses" / "adapters"
 CARDS = REPO_ROOT / "docs" / "founder-test-cards"
 HOST_ID = "obsidian"
-LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/558"
+LAB_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/570"
 LEAVE_MARKERS = (
     "disable dex",
     ".obsidian/plugins/dex-readonly",
@@ -20,7 +20,7 @@ LEAVE_MARKERS = (
     "community-plugins.json",
 )
 FENCE_MARKERS = (
-    "today's brief, then decided lately, then a topic ask, then a person name",
+    "today's brief, then who today's plan names, then decided lately, then a topic ask, then a person name",
     "does not edit notes",
     "does not use the internet",
     "not on any community list",
@@ -93,6 +93,7 @@ def test_obsidian_steps_include_the_brief_and_skip_publish() -> None:
     assert any("restricted mode" in item.lower() for item in steps)
     assert any("enable dex" in item.lower() for item in steps)
     assert any("today's brief appears" in item.lower() for item in steps)
+    assert any("who today's plan names" in item.lower() for item in steps)
     assert any("decided lately" in item.lower() for item in steps)
     assert any("type a topic" in item.lower() for item in steps)
     assert any("type a person's name" in item.lower() for item in steps)

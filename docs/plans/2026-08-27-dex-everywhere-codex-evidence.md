@@ -180,6 +180,10 @@ Under today's brief, Decided lately shows recorded decision words from the perso
 
 Type a person's name in the notes panel and see who they are from your own files. Nothing is edited. Nothing is sent. When nothing matches, one honest sentence says so. Leave [lab 558](https://github.com/davekilleen/dex-product-gtm-lab/issues/558) open. Do not merge draft PR 670. Do not merge draft PR 669. Do not merge draft PR 671. Do not merge draft PR 620. Do not continue leftover PR 619. Do not merge lab PR 532. This runner will not invent a ChatGPT Work folder grant.
 
+## Obsidian notes panel who today's plan names (lab 570) — written path only
+
+Under today's brief, who today's plan names shows people from today's plan, with role and company from the person's own person pages, each naming the page, without typing. Missing fields are omitted, never invented. When nobody is named, one honest sentence says so. When there is no plan for today, one honest sentence says so. Nothing is edited. Nothing is sent. Leave [lab 570](https://github.com/davekilleen/dex-product-gtm-lab/issues/570) open. Do not merge draft PR 673. Do not merge draft PR 672. Do not merge draft PR 674. Do not merge draft PR 669. Do not merge draft PR 670. Do not merge draft PR 671. Do not merge draft PR 620. Do not continue leftover PR 619. Do not merge lab PR 569. This runner will not invent a ChatGPT Work folder grant.
+
 ## Deliberately not started
 
 - A live ChatGPT Work desktop install or recorded vault grant on a real Mac or Windows machine
