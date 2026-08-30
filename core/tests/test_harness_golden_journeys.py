@@ -248,3 +248,39 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
     assert "Exact-commit native evidence belongs to the draft pull request" in guide
     assert "| macOS | Release-ready |" not in guide
     assert "| Windows | Release-ready |" not in guide
+
+
+_LEAVE_TABLE_HEADER = "| Harness | How to leave |"
+
+
+def _markdown_table_rows(guide: str, header: str) -> list[tuple[str, ...]]:
+    lines = guide.splitlines()
+    try:
+        start = next(index for index, line in enumerate(lines) if line.strip() == header)
+    except StopIteration as exc:
+        raise AssertionError(f"missing table header: {header}") from exc
+
+    rows: list[tuple[str, ...]] = []
+    for line in lines[start + 1 :]:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            break
+        cells = tuple(cell.strip() for cell in stripped.strip("|").split("|"))
+        if cells and all(cell and set(cell) <= set("-:") for cell in cells):
+            continue
+        rows.append(cells)
+    return rows
+
+
+def test_obsidian_has_one_uninstall_line_that_names_residue() -> None:
+    """The notes panel ships with one How to leave line. Residue is named."""
+    guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
+    leave_rows = {row[0]: row[1] for row in _markdown_table_rows(guide, _LEAVE_TABLE_HEADER)}
+    assert "Obsidian" in leave_rows, leave_rows
+    leave = leave_rows["Obsidian"]
+    lowered = leave.lower()
+    assert "disable" in lowered
+    assert ".obsidian/plugins/dex-readonly" in leave
+    assert "leftover" in lowered
+    assert "community-plugins.json" in leave
+    assert "workspace layout" in lowered

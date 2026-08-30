@@ -9,6 +9,7 @@
     "local_package": "./packages/dex-obsidian-plugin",
     "install_path": ".obsidian/plugins/dex-readonly",
     "install_command": "python3 -m core.obsidian_panel install --vault /path/to/your/Dex",
+    "uninstall_guide": "Disable Dex in Obsidian's community plugin list, then delete .obsidian/plugins/dex-readonly from the vault. Leftover: .obsidian/community-plugins.json may still list dex-readonly until you remove that name; the workspace layout may still show an empty Dex panel slot.",
     "community_store": "not-submitted",
     "network": "none",
     "writes": "none",
