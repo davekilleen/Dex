@@ -244,6 +244,7 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
         "ask_what_is_still_open_with_people",
         "ask_who_is_in_todays_plan",
         "ask_who_is_named_in_note",
+        "ask_what_is_still_open_in_note",
         "check_safety_gate",
     }
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"

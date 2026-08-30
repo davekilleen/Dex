@@ -35,6 +35,7 @@ OPEN_ITEM = re.compile(r"^- \[ \] (.+)$", re.MULTILINE)
 NONE_OPEN_SENTENCE = "No unchecked to-dos on person pages."
 NONE_TODAY_PEOPLE_SENTENCE = "Nobody is named in today's plan."
 NONE_NOTE_PEOPLE_SENTENCE = "That note does not name anyone from your person pages."
+NONE_NOTE_OPEN_SENTENCE = "That note has no unchecked to-dos."
 NOTE_MISSING_SENTENCE = "There is no note at that path in your Dex folder."
 NOTE_REFUSED_SENTENCE = (
     "That path is not a note this box will read. "
@@ -448,6 +449,41 @@ def ask_who_is_named_in_note(
     if not matches:
         return nobody
     return {"found": True, "matches": matches, "sentence": ""}
+
+
+def _empty_open_in_note(sentence: str) -> dict[str, Any]:
+    return {"found": False, "items": [], "sentence": sentence}
+
+
+def ask_what_is_still_open_in_note(
+    vault: str | Path | None,
+    note_path: str | Path | None,
+) -> dict[str, Any]:
+    """Return every unchecked to-do written in one note, never raising.
+
+    Items are the note's own words, in the note's own top-to-bottom order.
+    Person pages are not a substitute. The function never writes and never
+    reaches the network. Paths outside the vault, person-tree recursion,
+    binary files, and symlinks are refused. A missing file gets an honest
+    sentence. A note with no unchecked to-dos gets an honest sentence.
+    """
+    empty = _empty_open_in_note(NONE_NOTE_OPEN_SENTENCE)
+    root = _coerce_root(vault)
+    if root is None:
+        return empty
+    fence, path = _note_path_read_fence(root, note_path)
+    if fence is not None:
+        return _empty_open_in_note(fence)
+    if path is None:
+        return _empty_open_in_note(NOTE_REFUSED_SENTENCE)
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return _empty_open_in_note(NOTE_REFUSED_SENTENCE)
+    items = [text for text in _open_items(content) if text]
+    if not items:
+        return empty
+    return {"found": True, "items": items, "sentence": ""}
 
 
 def get_person_context(vault: str | Path | None, name: Any) -> dict[str, Any]:

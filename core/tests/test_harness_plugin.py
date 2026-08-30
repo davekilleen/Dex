@@ -309,6 +309,7 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
         "ask_what_is_still_open_with_people",
         "ask_who_is_in_todays_plan",
         "ask_who_is_named_in_note",
+        "ask_what_is_still_open_in_note",
         "check_safety_gate",
     }
     desktop = tmp_path / "dex-claude-desktop"
@@ -444,7 +445,10 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     meetings.mkdir(parents=True)
     note = meetings / "2026-08-30 - Engine review.md"
     note.write_text(
-        "# Engine review\n\nWalked [[Ada Lovelace]] through the memo.\n",
+        "# Engine review\n\n"
+        "Walked [[Ada Lovelace]] through the memo.\n"
+        "- [ ] Follow up on the engine memo\n"
+        "- [x] Already walked through it\n",
         encoding="utf-8",
     )
     decisions = vault / "06-Resources" / "Decisions"
@@ -530,10 +534,22 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
                     },
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_is_still_open_in_note",
+                    "arguments": {
+                        "vault_path": str(vault),
+                        "note_path": "00-Inbox/Meetings/2026-08-30 - Engine review.md",
+                    },
+                },
+            },
         ],
         cwd=vault,
     )
-    assert len(responses) == 10
+    assert len(responses) == 11
     names = {tool["name"] for tool in responses[1]["result"]["tools"]}
     assert names == {
         "dex_harness_profiles",
@@ -543,6 +559,7 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "ask_what_is_still_open_with_people",
         "ask_who_is_in_todays_plan",
         "ask_who_is_named_in_note",
+        "ask_what_is_still_open_in_note",
         "check_safety_gate",
     }
     ask_tool = next(
@@ -595,6 +612,18 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
     )
     required_note = (note_tool.get("inputSchema") or {}).get("required") or []
     assert "note_path" in required_note
+    open_in_note = responses[10]["result"]["structuredContent"]
+    assert open_in_note["found"] is True
+    assert open_in_note["items"] == ["Follow up on the engine memo"]
+    assert open_in_note["sentence"] == ""
+    assert "Send the operating memo" not in open_in_note["items"]
+    open_note_tool = next(
+        tool
+        for tool in responses[1]["result"]["tools"]
+        if tool["name"] == "ask_what_is_still_open_in_note"
+    )
+    required_open_note = (open_note_tool.get("inputSchema") or {}).get("required") or []
+    assert "note_path" in required_open_note
 
 
 def test_plugin_hooks_inject_session_context_and_block_destructive_work(tmp_path: Path) -> None:

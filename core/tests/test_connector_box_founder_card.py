@@ -13,6 +13,7 @@ LATELY_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/537"
 OPEN_ITEMS_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/559"
 TODAY_PEOPLE_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/571"
 WHO_IN_NOTE_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/594"
+OPEN_IN_NOTE_ISSUE = "https://github.com/davekilleen/dex-product-gtm-lab/issues/605"
 PACK_COMMAND = "python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-artifact"
 LEAVE_SENTENCE = "delete the packed file and build folder"
 MODEL_OR_VENDOR = re.compile(
@@ -33,6 +34,7 @@ def test_founder_card_walks_pack_checksum_and_future_name() -> None:
     assert OPEN_ITEMS_ISSUE in card
     assert TODAY_PEOPLE_ISSUE in card
     assert WHO_IN_NOTE_ISSUE in card
+    assert OPEN_IN_NOTE_ISSUE in card
     assert PACK_COMMAND in card
     assert "SHA-256 sidecar" in card
     assert "io.github.davekilleen/dex" in card
@@ -49,6 +51,10 @@ def test_founder_card_walks_pack_checksum_and_future_name() -> None:
     assert "who is named in one of your own notes" in card
     assert "connector-box step 8 failed: the packed box did not answer who is named in a note." in card
     assert "Who is named in a note listed from that note and person pages" in card
+    assert "who is named in one of your own notes" in card
+    assert "what is still open in one of your own notes" in card
+    assert "connector-box step 9 failed: the packed box did not answer what is still open in a note." in card
+    assert "What is still open in a note listed from that note" in card
     assert LEAVE_SENTENCE in card
     assert "Nobody has walked this card" in card
     assert "Do not publish" in card
@@ -66,8 +72,9 @@ def test_founder_card_walks_pack_checksum_and_future_name() -> None:
         "### Step 6",
         "### Step 7",
         "### Step 8",
+        "### Step 9",
     ]
-    assert card.count("- [ ] I saw that.") == 8
+    assert card.count("- [ ] I saw that.") == 9
     leave = card.split("## Leave", 1)[1].split("## Status", 1)[0]
     assert leave.strip() == "When you are finished, delete the packed file and build folder."
 

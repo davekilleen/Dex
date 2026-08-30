@@ -200,6 +200,15 @@ def _claude_desktop_manifest() -> dict:
                     "folder."
                 ),
             },
+            {
+                "name": "ask_what_is_still_open_in_note",
+                "description": (
+                    "Answer what is still open in one note inside this Dex "
+                    "folder: every unchecked to-do written in that note, in "
+                    "the note's own order. Not the open items on person "
+                    "pages. Refuses paths outside the folder."
+                ),
+            },
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
         ],
         "compatibility": {

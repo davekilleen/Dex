@@ -19,6 +19,7 @@ if str(RUNTIME) not in sys.path:
 
 from core.context.decision_record import ask_what_was_decided  # noqa: E402
 from core.context.person_context import (  # noqa: E402
+    ask_what_is_still_open_in_note,
     ask_what_is_still_open_with_people,
     ask_who_is_in_todays_plan,
     ask_who_is_named_in_note,
@@ -148,6 +149,26 @@ def _tools() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "ask_what_is_still_open_in_note",
+            "description": (
+                "Answer what is still open in one note inside this Dex "
+                "folder: every unchecked to-do written in that note, in "
+                "the note's own order. Not the open items on person "
+                "pages. Refuses paths outside the folder."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **vault,
+                    "note_path": {
+                        "type": "string",
+                        "description": "A path inside the Dex folder",
+                    },
+                },
+                "required": ["note_path"],
+            },
+        },
+        {
             "name": "check_safety_gate",
             "description": "Check a proposed command or path before a harness executes it.",
             "inputSchema": {
@@ -212,6 +233,13 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
             return _tool_result(
                 request_id,
                 ask_who_is_named_in_note(
+                    _vault(arguments), arguments.get("note_path")
+                ),
+            )
+        if name == "ask_what_is_still_open_in_note":
+            return _tool_result(
+                request_id,
+                ask_what_is_still_open_in_note(
                     _vault(arguments), arguments.get("note_path")
                 ),
             )

@@ -10,6 +10,7 @@ This is a local pack check. It is not a catalogue install.
 - https://github.com/davekilleen/dex-product-gtm-lab/issues/559
 - https://github.com/davekilleen/dex-product-gtm-lab/issues/571
 - https://github.com/davekilleen/dex-product-gtm-lab/issues/594
+- https://github.com/davekilleen/dex-product-gtm-lab/issues/605
 
 ## Steps
 
@@ -97,11 +98,21 @@ python3 scripts/build-mcp-registry-artifact.py --output-dir build/mcp-registry-a
 
 **If this fails, send back this exact sentence:** `connector-box step 8 failed: the packed box did not answer who is named in a note.`
 
+### Step 9
+
+1. Before anything is published, ask the packed box what is still open in one of your own notes, by its path inside the folder.
+
+**What you should see:** Every unchecked to-do written in that note, in the note's own order, each line the note's own words. A note with no unchecked to-dos gets one honest sentence.
+
+- [ ] I saw that.
+
+**If this fails, send back this exact sentence:** `connector-box step 9 failed: the packed box did not answer what is still open in a note.`
+
 ## After the last checkbox
 
 If every box is checked, send this exact sentence:
 
-`connector-box pack matched. SHA-256 sidecar present. Future catalogue name is io.github.davekilleen/dex. Decision ask answered from a decision record. Lately ask answered with no topic. Open items with people listed from person pages. People in today's plan listed from the plan and person pages. Who is named in a note listed from that note and person pages. Not a catalogue install.`
+`connector-box pack matched. SHA-256 sidecar present. Future catalogue name is io.github.davekilleen/dex. Decision ask answered from a decision record. Lately ask answered with no topic. Open items with people listed from person pages. People in today's plan listed from the plan and person pages. Who is named in a note listed from that note and person pages. What is still open in a note listed from that note. Not a catalogue install.`
 
 If any box is unchecked, send only the failure sentence from that step. Do not continue past a failed step. Do not publish. Do not sign. Do not store a secret. Do not invite anyone.
 

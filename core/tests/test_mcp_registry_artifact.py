@@ -27,6 +27,7 @@ READ_ONLY_TOOLS = {
     "ask_what_is_still_open_with_people",
     "ask_who_is_in_todays_plan",
     "ask_who_is_named_in_note",
+    "ask_what_is_still_open_in_note",
     "check_safety_gate",
 }
 
@@ -163,7 +164,10 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     meetings = vault / "00-Inbox" / "Meetings"
     meetings.mkdir(parents=True)
     (meetings / "2026-08-30 - Engine review.md").write_text(
-        "# Engine review\n\nWalked [[Ada Lovelace]] through the memo.\n",
+        "# Engine review\n\n"
+        "Walked [[Ada Lovelace]] through the memo.\n"
+        "- [ ] Follow up on the engine memo\n"
+        "- [x] Already walked through it\n",
         encoding="utf-8",
     )
     decisions = vault / "06-Resources" / "Decisions"
@@ -261,6 +265,18 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
                     },
                 },
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask_what_is_still_open_in_note",
+                    "arguments": {
+                        "vault_path": str(vault),
+                        "note_path": "00-Inbox/Meetings/2026-08-30 - Engine review.md",
+                    },
+                },
+            },
         ],
         vault=vault,
     )
@@ -333,6 +349,18 @@ def test_packed_server_still_reads_a_vault_and_refuses_destruction(tmp_path: Pat
     assert who_in_note["matches"][0]["page"] == (
         "05-Areas/People/Internal/Ada_Lovelace.md"
     )
+    open_in_note_tool = next(
+        tool for tool in tools if tool["name"] == "ask_what_is_still_open_in_note"
+    )
+    assert "still open in one note" in open_in_note_tool["description"]
+    assert "person pages" in open_in_note_tool["description"]
+    required_open_note = (open_in_note_tool.get("inputSchema") or {}).get("required") or []
+    assert "note_path" in required_open_note
+    open_in_note = responses[11]["result"]["structuredContent"]
+    assert open_in_note["found"] is True
+    assert open_in_note["items"] == ["Follow up on the engine memo"]
+    assert open_in_note["sentence"] == ""
+    assert "Send the operating memo" not in open_in_note["items"]
 
 
 def test_live_npm_publish_is_refused(tmp_path: Path) -> None:
