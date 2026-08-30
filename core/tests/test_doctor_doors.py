@@ -11,7 +11,10 @@ import pytest
 from core.harnesses.chatgpt_work_personal_copy import STALE_WORK_COPY_SENTENCE
 from core.harnesses.doors import (
     CONFIRMED_IS_NOT_WALKED,
+    LEFTOVER_COPY,
+    LEFTOVER_DETECTORS,
     NOTES_PANEL_INSTALLED,
+    NOTES_PANEL_LEFTOVER,
     NOTES_PANEL_MISSING,
     WALK_RULES,
     door_report,
@@ -61,6 +64,8 @@ def test_every_written_adapter_has_a_walk_rule() -> None:
     adapter_ids = {path.stem for path in ADAPTER_ROOT.glob("*.json")}
     profile_ids = {profile.id for profile in list_profiles()}
     assert set(WALK_RULES) == adapter_ids == profile_ids
+    assert set(LEFTOVER_COPY) == adapter_ids
+    assert set(LEFTOVER_DETECTORS) == adapter_ids
 
 
 def test_doctor_names_every_written_door_before_setup(context: doctor.DoctorContext) -> None:
@@ -81,6 +86,7 @@ def test_doctor_names_every_written_door_before_setup(context: doctor.DoctorCont
         profile.id for profile in list_profiles()
     ]
     assert result.structured_detail["notes_panel"]["installed"] is False
+    assert result.structured_detail["notes_panel"]["left"] is False
     _assert_no_granted_true(result.structured_detail)
     _assert_no_granted_true(result.detail)
 
@@ -105,6 +111,8 @@ def test_doctor_names_confirmed_doors_without_calling_them_walked(
     assert result.structured_detail["doors"][5]["id"] == "codex"
     assert result.structured_detail["doors"][5]["confirmed"] is True
     assert result.structured_detail["doors"][5]["walked"] is False
+    assert result.structured_detail["doors"][5]["left"] is False
+    assert "You left Codex." not in result.detail
     _assert_no_granted_true(result.structured_detail)
 
 
@@ -132,6 +140,8 @@ def test_doctor_names_a_walked_work_copy_without_inventing_a_folder_grant(
     work = next(door for door in result.structured_detail["doors"] if door["id"] == "chatgpt-work")
     assert work["confirmed"] is True
     assert work["walked"] is True
+    assert work["left"] is False
+    assert "You left ChatGPT Work companion." not in result.detail
     _assert_no_granted_true(result.structured_detail)
 
 
@@ -150,10 +160,9 @@ def test_doctor_names_the_notes_panel_when_its_manifest_is_present(
 
     result = doctor._probe_harness_capabilities(context)
 
-    assert NOTES_PANEL_INSTALLED in result.detail
-    assert NOTES_PANEL_MISSING not in result.detail
     assert "You confirmed Cursor, and it is walked on this machine." in result.detail
     assert result.structured_detail["notes_panel"]["installed"] is True
+    assert result.structured_detail["notes_panel"]["left"] is False
     assert result.detail.index(NOTES_PANEL_INSTALLED) < result.detail.index(
         CONFIRMED_IS_NOT_WALKED
     )
@@ -203,7 +212,197 @@ def test_door_report_covers_the_adapter_registry_without_a_grant_flag(
     encoded = json.dumps(report.as_structured())
 
     assert [door.id for door in report.doors] == [profile.id for profile in list_profiles()]
-    assert all(not door.confirmed and not door.walked for door in report.doors)
+    assert all(not door.confirmed and not door.walked and not door.left for door in report.doors)
     assert report.notes_panel_installed is False
+    assert report.notes_panel_left is False
     assert "granted" not in encoded
     assert encoded.count(CONFIRMED_IS_NOT_WALKED) == 1
+    assert "You left " not in encoded
+    assert "Leftover:" not in encoded
+
+
+def test_doctor_proves_a_work_leave_and_names_the_grant_leftover(
+    context: doctor.DoctorContext,
+) -> None:
+    _write_receipt(context, ["chatgpt-work"])
+    cache = (
+        context.home
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / "dex-unreleased"
+        / "dex"
+        / "local"
+    )
+    cache.mkdir(parents=True)
+
+    result = doctor._probe_harness_capabilities(context)
+    leftover = LEFTOVER_COPY["chatgpt-work"]
+    work = next(door for door in result.structured_detail["doors"] if door["id"] == "chatgpt-work")
+
+    assert f"You left ChatGPT Work companion. Leftover: {leftover}" in result.detail
+    assert "You confirmed ChatGPT Work companion." not in result.detail
+    assert "You confirmed ChatGPT Work companion, and it is walked on this machine." not in (
+        result.detail
+    )
+    assert "ChatGPT Work companion is a written door you have never opened." not in result.detail
+    assert work["confirmed"] is True
+    assert work["walked"] is False
+    assert work["left"] is True
+    assert work["leftover"] == leftover
+    assert "granted" not in json.dumps(work)
+    _assert_no_granted_true(result.structured_detail)
+    _assert_no_granted_true(result.detail)
+
+
+def test_doctor_proves_a_work_leave_from_a_marketplace_listing_without_inventing_a_grant(
+    context: doctor.DoctorContext,
+) -> None:
+    marketplace = context.home / ".agents" / "plugins" / "marketplace.json"
+    marketplace.parent.mkdir(parents=True)
+    marketplace.write_text(
+        json.dumps(
+            {
+                "name": "dex-unreleased",
+                "plugins": [{"name": "dex", "source": {"source": "local", "path": "./.codex/plugins/dex"}}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_harness_capabilities(context)
+    leftover = LEFTOVER_COPY["chatgpt-work"]
+    work = next(door for door in result.structured_detail["doors"] if door["id"] == "chatgpt-work")
+
+    assert f"You left ChatGPT Work companion. Leftover: {leftover}" in result.detail
+    assert work["confirmed"] is False
+    assert work["walked"] is False
+    assert work["left"] is True
+    assert work["leftover"] == leftover
+    _assert_no_granted_true(result.structured_detail)
+    _assert_no_granted_true(result.detail)
+
+
+def test_confirmed_work_without_residue_is_not_a_leave(
+    context: doctor.DoctorContext,
+) -> None:
+    _write_receipt(context, ["chatgpt-work"])
+
+    result = doctor._probe_harness_capabilities(context)
+    work = next(door for door in result.structured_detail["doors"] if door["id"] == "chatgpt-work")
+
+    assert "You confirmed ChatGPT Work companion." in result.detail
+    assert "You left ChatGPT Work companion." not in result.detail
+    assert "Leftover:" not in result.detail
+    assert work["left"] is False
+    assert "leftover" not in work
+    _assert_no_granted_true(result.structured_detail)
+
+
+def test_walked_work_copy_with_cache_is_not_a_leave(
+    context: doctor.DoctorContext,
+) -> None:
+    _write_receipt(context, ["chatgpt-work"])
+    manifest = (
+        context.home / ".codex" / "plugins" / "dex" / ".codex-plugin" / "plugin.json"
+    )
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"name": "dex", "version": "1.0.1"}) + "\n")
+    cache = (
+        context.home
+        / ".codex"
+        / "plugins"
+        / "cache"
+        / "dex-unreleased"
+        / "dex"
+        / "local"
+    )
+    cache.mkdir(parents=True)
+
+    result = doctor._probe_harness_capabilities(context)
+    work = next(door for door in result.structured_detail["doors"] if door["id"] == "chatgpt-work")
+
+    assert "You confirmed ChatGPT Work companion, and it is walked on this machine." in (
+        result.detail
+    )
+    assert "You left ChatGPT Work companion." not in result.detail
+    assert work["walked"] is True
+    assert work["left"] is False
+    _assert_no_granted_true(result.structured_detail)
+
+
+def test_doctor_proves_a_notes_panel_leave_and_names_the_listing_leftover(
+    context: doctor.DoctorContext,
+) -> None:
+    listing = context.vault_root / ".obsidian" / "community-plugins.json"
+    listing.parent.mkdir(parents=True)
+    listing.write_text('["dex-readonly"]\n', encoding="utf-8")
+
+    result = doctor._probe_harness_capabilities(context)
+    expected = f"{NOTES_PANEL_MISSING} Leftover: {NOTES_PANEL_LEFTOVER}"
+
+    assert expected in result.detail
+    assert result.detail.index(expected) < result.detail.index(CONFIRMED_IS_NOT_WALKED)
+    assert result.structured_detail["notes_panel"]["installed"] is False
+    assert result.structured_detail["notes_panel"]["left"] is True
+    assert result.structured_detail["notes_panel"]["leftover"] == NOTES_PANEL_LEFTOVER
+    _assert_no_granted_true(result.structured_detail)
+
+
+def test_notes_panel_listing_is_not_a_leave_while_the_plugin_is_installed(
+    context: doctor.DoctorContext,
+) -> None:
+    manifest = context.vault_root / ".obsidian" / "plugins" / "dex-readonly" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("{}\n", encoding="utf-8")
+    listing = context.vault_root / ".obsidian" / "community-plugins.json"
+    listing.write_text('["dex-readonly"]\n', encoding="utf-8")
+
+    result = doctor._probe_harness_capabilities(context)
+
+    assert NOTES_PANEL_INSTALLED in result.detail
+    assert "Leftover:" not in result.detail
+    assert result.structured_detail["notes_panel"]["installed"] is True
+    assert result.structured_detail["notes_panel"]["left"] is False
+    _assert_no_granted_true(result.structured_detail)
+
+
+def test_doctor_names_cursor_and_copilot_leftovers_after_a_leave(
+    context: doctor.DoctorContext,
+) -> None:
+    cursor_dir = context.home / ".cursor" / "plugins" / "local" / "dex"
+    cursor_dir.mkdir(parents=True)
+    copilot_dir = (
+        context.home / ".copilot" / "installed-plugins" / "_direct" / "dex-agent-plugin"
+    )
+    copilot_dir.mkdir(parents=True)
+
+    result = doctor._probe_harness_capabilities(context)
+    by_id = {door["id"]: door for door in result.structured_detail["doors"]}
+
+    assert f"You left Cursor. Leftover: {LEFTOVER_COPY['cursor']}" in result.detail
+    assert (
+        f"You left GitHub Copilot CLI. Leftover: {LEFTOVER_COPY['copilot-cli']}"
+        in result.detail
+    )
+    assert by_id["cursor"]["left"] is True
+    assert by_id["copilot-cli"]["left"] is True
+    assert by_id["cursor"]["walked"] is False
+    assert by_id["copilot-cli"]["walked"] is False
+    _assert_no_granted_true(result.structured_detail)
+
+
+def test_leftover_copy_is_final_and_never_sets_granted() -> None:
+    assert LEFTOVER_COPY["chatgpt-work"] == (
+        "the vault-folder grant — a person must revoke it; this runner will not "
+        "invent that grant. The cache at `~/.codex/plugins/cache/dex-unreleased/dex/local/` "
+        "is not Work proof."
+    )
+    assert LEFTOVER_COPY["cursor"] == "hook approval."
+    assert (
+        LEFTOVER_COPY["copilot-cli"]
+        == "a direct-install copy under `~/.copilot/installed-plugins/_direct/`."
+    )
+    _assert_no_granted_true(LEFTOVER_COPY)
+    _assert_no_granted_true(NOTES_PANEL_LEFTOVER)

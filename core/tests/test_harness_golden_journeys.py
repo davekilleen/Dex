@@ -229,6 +229,7 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
         assert label in guide
     assert "Unreleased build" in guide
     assert "have not been merged, published" in guide
+    assert "Doctor proves the leave and names leftovers" in guide
     assert "Do not run an actual destructive command" in guide
     assert "`codex/harness-portable-dex-resume`" in guide
     assert "**Branch:** `codex/harness-portable-dex-resume`" in plan

@@ -12,7 +12,8 @@ stores the confirmed selection at `System/.dex/harness-profile.json`. Doctor
 reports the same receipt. It names every written door on this machine, one
 sentence each: which doors were confirmed, which written doors have never been
 opened, whether the notes panel is installed, and that a confirmed door is not
-the same as a walked one.
+the same as a walked one. If a written door or the notes panel has been left,
+Doctor proves the leave and names leftovers.
 
 ## Platform boundary for this release
 
@@ -99,7 +100,8 @@ After installation, verify these outcomes in a fresh task:
 6. Doctor reports the confirmed harness receipt and does not call a guided or
    unavailable feature automatic. It names every written door on this machine,
    one sentence each, including never-opened doors and whether the notes panel
-   is installed. A confirmed door is not the same as a walked one.
+   is installed. A confirmed door is not the same as a walked one. If a written
+   door or the notes panel has been left, Doctor proves the leave and names leftovers.
 
 Do not run an actual destructive command to test a hook. The package's hook and
 MCP test harnesses submit the proposal as data only.

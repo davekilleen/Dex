@@ -162,3 +162,5 @@ def test_doctor_instructions_preserve_delivery_mode_truth() -> None:
     assert "Name every written door" in section
     assert "confirmed door is not the same as a walked one" in section
     assert "notes panel" in section
+    assert "leftover sentence that proves a leave" in section
+    assert "A confirmed door is not a leave" in section
