@@ -6,7 +6,10 @@ const URGENT_LIMIT = 3;
 const GOAL_LIMIT = 10;
 const DAILY_PLAN_LIMIT = 24;
 const EMPTY_SENTENCE = "No recorded decision in your files matched that topic.";
+const LATELY_EMPTY = "No recorded decision in your files lately.";
+const LATELY_LIMIT = 3;
 const NO_DATE = "no date in that note";
+const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
 const USER_TREES = [
   "00-Inbox",
   "04-Projects",
@@ -310,6 +313,27 @@ function formatDecisionMatch(record) {
   return `${record.words} (note: ${record.note}, date: ${record.date})`;
 }
 
+function recentDecisions(records, limit) {
+  const cap = Number.isFinite(limit) ? limit : LATELY_LIMIT;
+  const dated = [];
+  for (const record of records) {
+    const stamp = String(record.date || "");
+    if (!DATE_STAMP.test(stamp)) {
+      continue;
+    }
+    dated.push(record);
+  }
+  dated.sort((left, right) => {
+    const a = String(left.date || "");
+    const b = String(right.date || "");
+    if (a === b) {
+      return 0;
+    }
+    return a < b ? 1 : -1;
+  });
+  return dated.slice(0, Math.max(0, cap));
+}
+
 function isUserMarkdown(path) {
   const relative = String(path || "").replace(/^\/+/, "");
   if (!relative.toLowerCase().endsWith(".md")) {
@@ -330,6 +354,24 @@ async function loadDecisionRecords(app) {
     records.push(...collectDecisionRecords(text, relative));
   }
   return records;
+}
+
+async function renderLately(root, app) {
+  const heading = root.createEl("h2", { text: "Decided lately" });
+  heading.addClass("dex-readonly-heading");
+  const records = await loadDecisionRecords(app);
+  const matches = recentDecisions(records, LATELY_LIMIT);
+  if (!matches.length) {
+    root.createEl("p", {
+      text: LATELY_EMPTY,
+      cls: "dex-readonly-empty",
+    });
+    return;
+  }
+  const list = root.createEl("ul", { cls: "dex-readonly-lately" });
+  for (const match of matches) {
+    list.createEl("li", { text: formatDecisionMatch(match) });
+  }
 }
 
 function renderAsk(root, app) {
@@ -390,6 +432,7 @@ class DexBriefView extends ItemView {
     const root = this.containerEl.children[1];
     const brief = await buildTodayBrief(this.app);
     renderBrief(root, brief);
+    await renderLately(root, this.app);
     renderAsk(root, this.app);
     root.createEl("p", {
       text: "This panel is read-only. It does not edit notes, run commands, or use the internet.",
@@ -425,8 +468,12 @@ module.exports.VIEW_TYPE = VIEW_TYPE;
 module.exports.buildTodayBrief = buildTodayBrief;
 module.exports.renderBrief = renderBrief;
 module.exports.renderAsk = renderAsk;
+module.exports.renderLately = renderLately;
 module.exports.todayLabel = todayLabel;
 module.exports.collectDecisionRecords = collectDecisionRecords;
 module.exports.matchDecisions = matchDecisions;
+module.exports.recentDecisions = recentDecisions;
 module.exports.formatDecisionMatch = formatDecisionMatch;
 module.exports.EMPTY_SENTENCE = EMPTY_SENTENCE;
+module.exports.LATELY_EMPTY = LATELY_EMPTY;
+module.exports.LATELY_LIMIT = LATELY_LIMIT;

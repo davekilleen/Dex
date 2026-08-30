@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 
 EMPTY_SENTENCE = "No recorded decision in your files matched that topic."
+LATELY_EMPTY = "No recorded decision in your files lately."
+LATELY_LIMIT = 3
 NO_DATE = "no date in that note"
+DATE_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 USER_TREES = (
     "00-Inbox",
     "04-Projects",
@@ -134,6 +137,22 @@ def format_decision_match(record: dict[str, str]) -> str:
     )
 
 
+def recent_decisions(
+    records: list[dict[str, str]],
+    *,
+    limit: int = LATELY_LIMIT,
+) -> list[dict[str, str]]:
+    """Return the latest dated records. No topic. Never writes."""
+    dated: list[dict[str, str]] = []
+    for record in records:
+        stamp = str(record.get("date") or "")
+        if not DATE_STAMP.match(stamp):
+            continue
+        dated.append(record)
+    dated.sort(key=lambda row: str(row.get("date") or ""), reverse=True)
+    return dated[: max(0, int(limit))]
+
+
 def iter_user_markdown(vault: Path) -> list[tuple[str, str]]:
     files: list[tuple[str, str]] = []
     for tree in USER_TREES:
@@ -165,5 +184,27 @@ def ask_recorded_decisions(
     return {
         "matches": public,
         "empty": None if public else EMPTY_SENTENCE,
+        "lines": [format_decision_match(row) for row in public],
+    }
+
+
+def recent_recorded_decisions(
+    vault: str | Path,
+    *,
+    limit: int = LATELY_LIMIT,
+) -> dict[str, Any]:
+    """Return the latest dated recorded decisions. Never writes. Never sends."""
+    root = Path(vault).expanduser()
+    records: list[dict[str, str]] = []
+    for relative, text in iter_user_markdown(root):
+        records.extend(collect_decision_records(text, relative))
+    matches = recent_decisions(records, limit=limit)
+    public = [
+        {"words": row["words"], "note": row["note"], "date": row["date"]}
+        for row in matches
+    ]
+    return {
+        "matches": public,
+        "empty": None if public else LATELY_EMPTY,
         "lines": [format_decision_match(row) for row in public],
     }

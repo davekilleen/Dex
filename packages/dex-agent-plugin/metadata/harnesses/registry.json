@@ -280,7 +280,7 @@
       "name": "Obsidian",
       "display_name": "Obsidian",
       "vendor": "Obsidian",
-      "summary": "Local read-only Dex panel in Obsidian: today's brief, then a topic ask from your own files. No edits, no commands, no internet.",
+      "summary": "Local read-only Dex panel in Obsidian: today's brief, Decided lately, then a topic ask from your own files. No edits, no commands, no internet.",
       "adapter": {"kind": "obsidian-plugin", "status": "native-local", "manifest": "packages/dex-obsidian-plugin/manifest.json", "install_guide": "core/harnesses/adapters/obsidian.json"},
       "support_level": "supported",
       "capabilities": [
@@ -288,7 +288,7 @@
         {"id": "mcp", "status": "none", "tier": 1, "mode": "unavailable", "notes": "This panel does not run Dex MCP tools or commands."},
         {"id": "agent-skills", "status": "none", "tier": 2, "mode": "unavailable", "notes": "The panel does not load Dex slash commands or skills."},
         {"id": "hooks", "status": "none", "tier": 3, "mode": "unavailable", "notes": "Obsidian does not run Dex lifecycle hooks."},
-        {"id": "session-lifecycle", "status": "partial", "tier": 3, "mode": "guided", "notes": "Today's brief appears when the Dex folder is open and the panel is enabled. Under that brief, a topic ask reads recorded decisions from local files."},
+        {"id": "session-lifecycle", "status": "partial", "tier": 3, "mode": "guided", "notes": "Today's brief appears when the Dex folder is open and the panel is enabled. Under that brief, Decided lately shows recorded decisions from local files without typing. A topic ask can look for a specific decision."},
         {"id": "background-jobs", "status": "none", "tier": 1, "mode": "unavailable", "notes": "The panel does not schedule jobs."},
         {"id": "interactive-prompts", "status": "none", "tier": 2, "mode": "unavailable", "notes": "The panel has no command palette entries and does not ask for edits."},
         {"id": "agent-plugins", "status": "none", "tier": 2, "mode": "unavailable", "notes": "This is a local Obsidian plugin, not an Agent Plugins package."}
