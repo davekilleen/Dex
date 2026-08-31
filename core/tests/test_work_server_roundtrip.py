@@ -209,6 +209,26 @@ def test_valid_weekly_priority_link_round_trips_into_week_progress(task_vault):
     assert linked["tasks_done"] == 0
 
 
+def test_comma_form_priority_is_visible_in_week_tools(task_vault):
+    priority_id = "week-2026-W36-p1"
+    task_vault["priorities"].write_text(
+        "# Week Priorities\n\n"
+        f"1. **Finish customer evidence**, **Test Pillar** ^{priority_id}\n",
+        encoding="utf-8",
+    )
+
+    priorities = _call_tool(
+        "get_week_priorities",
+        {"week_date": "2026-08-31"},
+    )
+    progress = _call_tool("get_week_progress")
+
+    assert priorities["count"] == 1
+    assert [item["priority_id"] for item in priorities["priorities"]] == [priority_id]
+    assert progress["summary"]["total"] == 1
+    assert [item["priority_id"] for item in progress["priorities"]] == [priority_id]
+
+
 def test_invalid_weekly_priority_lists_available_ids_without_writing(task_vault):
     available_id = "week-2026-W28-p1"
     task_vault["priorities"].write_text(

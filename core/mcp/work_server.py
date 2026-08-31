@@ -2521,6 +2521,8 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
         # Or task-style: - [ ] **Priority Title** ^week-2026-W05-p1
         
         priority_match = re.match(r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
+        if not priority_match:
+            priority_match = re.match(r'(\d+)\.\s+\*\*(.+?)\*\*,\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
         if priority_match:
             priority_num = int(priority_match.group(1))
             title = priority_match.group(2).strip()
