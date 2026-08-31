@@ -16,16 +16,60 @@ Usage:
 
 import json
 import sys
+import threading
 import time
 from datetime import datetime
 
 import EventKit
 from Foundation import NSDate, NSRunLoop
 
+REMINDERS_ACCESS_DENIED = (
+    "Reminders access denied. Enable it in System Settings → "
+    "Privacy & Security → Reminders, then try again."
+)
+
+
+def request_reminders_access(store, completion):
+    """Request full Reminders access with the current macOS API when available."""
+    if hasattr(store, "requestFullAccessToRemindersWithCompletion_"):
+        store.requestFullAccessToRemindersWithCompletion_(completion)
+    else:
+        store.requestAccessToEntityType_completion_(
+            EventKit.EKEntityTypeReminder, completion
+        )
+
+
+def ensure_reminders_access(store):
+    """Return whether the store has full Reminders access, requesting it once if new."""
+    status = EventKit.EKEventStore.authorizationStatusForEntityType_(
+        EventKit.EKEntityTypeReminder
+    )
+    full_access = getattr(EventKit, "EKAuthorizationStatusFullAccess", 3)
+    if status == full_access:
+        return True
+
+    not_determined = getattr(EventKit, "EKAuthorizationStatusNotDetermined", 0)
+    if status != not_determined:
+        return False
+
+    done = threading.Event()
+    result = [False]
+
+    def completion(granted, error):
+        result[0] = bool(granted)
+        done.set()
+
+    request_reminders_access(store, completion)
+    done.wait(timeout=60)
+    return result[0]
+
 
 def get_store():
     """Get an authorized EKEventStore for Reminders."""
     store = EventKit.EKEventStore.alloc().init()
+    if not ensure_reminders_access(store):
+        print(json.dumps({"error": REMINDERS_ACCESS_DENIED}))
+        sys.exit(1)
     return store
 
 

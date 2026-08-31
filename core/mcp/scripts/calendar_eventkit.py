@@ -27,6 +27,11 @@ CALENDAR_ACCESS_DENIED = (
     "Calendar access denied. Enable in System Settings → Privacy & Security → Calendars. "
     f"See {CALENDAR_SETUP_DOC.relative_to(VAULT_ROOT)} for full setup."
 )
+CALENDAR_ACCESS_WRITE_ONLY = (
+    "Calendar access is set to Add Events Only. Dex needs Full Access to read events. "
+    "In System Settings → Privacy & Security → Calendars, change the app running Dex to Full Access. "
+    f"See {CALENDAR_SETUP_DOC.relative_to(VAULT_ROOT)} for full setup."
+)
 
 
 def request_calendar_access(store, completion):
@@ -46,11 +51,14 @@ def request_calendar_access(store, completion):
 def ensure_calendar_access(store):
     """Request calendar access if needed; wait for user to grant. Required to see all calendars (e.g. Google)."""
     status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
-    # 3 = Authorized, 2 = Denied, 0 = NotDetermined, 1 = Restricted
+    # 3 = FullAccess, 2 = Denied, 0 = NotDetermined, 1 = Restricted, 4 = WriteOnly
     if status == 3:
         return True
     if status == 2:
         return False
+    if status == getattr(EventKit, "EKAuthorizationStatusWriteOnly", 4):
+        print(json.dumps({"error": CALENDAR_ACCESS_WRITE_ONLY}))
+        sys.exit(1)
     # NotDetermined or Restricted: request access
     done = threading.Event()
     result = [None]
