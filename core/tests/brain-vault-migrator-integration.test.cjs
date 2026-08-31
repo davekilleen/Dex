@@ -109,6 +109,7 @@ function snapshotKnownUserFiles(root) {
     '05-Areas/People/External/Ada_Lovelace.md',
     '.claude/skills-custom/foo/SKILL.md',
     '.mcp.json',
+    'System/user-profile.yaml',
     'System/integrations/config.yaml',
     'System/integrations/slack.yaml',
     'System/user-profile.yaml',
@@ -396,6 +397,69 @@ test('real migration preserves user bytes and creates two isolated histories', (
   migrate(vault, '--restore');
   assert.deepEqual(snapshotFiles(vault), secondCycleSnapshot);
   assert.match(fs.readFileSync(path.join(vault, '.gitignore'), 'utf8'), /changed after the first restore/);
+});
+
+test('status refuses a completed journal when the live vault Git folder is missing', () => {
+  const vault = makeFixture();
+  migrate(vault, '--auto');
+  fs.renameSync(path.join(vault, '.git'), path.join(vault, '.git 2'));
+
+  const result = migrate(vault, '--status', { expectedStatus: 1 });
+
+  assert.match(
+    result.stdout + result.stderr,
+    /journal says complete.*live topology is restore-archive/i,
+  );
+  assert.doesNotMatch(result.stdout, /Migration status: complete/);
+  assert.equal(fs.existsSync(path.join(vault, '.git')), false);
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'pre-split-archive.git')), true);
+  assert.equal(fs.existsSync(path.join(vault, '.git 2')), true);
+});
+
+test('status refuses a completed journal when the vault branch was moved into a collision folder', () => {
+  const vault = makeFixture();
+  migrate(vault, '--auto');
+  const branch = git(vault, 'symbolic-ref', 'HEAD');
+  const branchPath = path.join(vault, '.git', ...branch.split('/'));
+  const collisionPath = path.join(
+    vault,
+    '.git',
+    'refs',
+    'heads 2',
+    path.basename(branchPath),
+  );
+  fs.mkdirSync(path.dirname(collisionPath), { recursive: true });
+  fs.renameSync(branchPath, collisionPath);
+
+  const result = migrate(vault, '--status', { expectedStatus: 1 });
+
+  assert.match(
+    result.stdout + result.stderr,
+    /journal says complete.*vault Git branch is not usable/i,
+  );
+  assert.equal(fs.existsSync(branchPath), false);
+  assert.equal(fs.existsSync(collisionPath), true);
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'pre-split-archive.git')), true);
+});
+
+test('resume preserves every Git folder when a completed journal has an invalid live topology', () => {
+  const vault = makeFixture();
+  migrate(vault, '--auto');
+  fs.renameSync(path.join(vault, '.git'), path.join(vault, '.git 2'));
+  const statePath = path.join(vault, 'System', '.dex', 'migration-v2-state.json');
+  const stateBefore = fs.readFileSync(statePath);
+
+  const result = migrate(vault, '--resume', { expectedStatus: 1 });
+
+  assert.match(
+    result.stdout + result.stderr,
+    /journal says complete.*live topology is restore-archive/i,
+  );
+  assert.equal(fs.existsSync(path.join(vault, '.git')), false);
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'pre-split-archive.git')), true);
+  assert.equal(fs.existsSync(path.join(vault, '.dex', 'brain.git')), true);
+  assert.equal(fs.existsSync(path.join(vault, '.git 2')), true);
+  assert.deepEqual(fs.readFileSync(statePath), stateBefore);
 });
 
 test('every journaled phase can stop, resume, and restore byte-exactly', { timeout: 240_000 }, () => {

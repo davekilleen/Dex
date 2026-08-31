@@ -2338,12 +2338,28 @@ function journalAfterPhase(root, state, phase) {
   writeJournal(root, state);
 }
 
+function assertCompletedTopology(root, state) {
+  if (state?.status !== 'complete') return false;
+  const decision = topologyDecision(inspectTopology(root));
+  if (decision !== 'post-split') {
+    throw new Error(`Migration journal says complete, but the live topology is ${decision}. Dex stopped without changing files because the vault Git folder is not safely usable.`);
+  }
+  const vaultGit = path.join(root, '.git');
+  const head = gitDir(root, vaultGit, ['rev-parse', '--verify', 'HEAD^{commit}'], {
+    allowFailure: true,
+  });
+  if (head.status !== 0) {
+    throw new Error('Migration journal says complete, but the vault Git branch is not usable. Dex stopped without changing files and preserved every Git folder for recovery.');
+  }
+  return true;
+}
+
 function runPhases(root, mode, options = {}) {
   let state = readJournal(root);
   if (mode === 'resume' && !state) {
     throw new Error('There is no saved migration to resume. Run --dry-run first, then --auto when you are ready.');
   }
-  if (state?.status === 'complete' && topologyDecision(inspectTopology(root)) === 'post-split') {
+  if (assertCompletedTopology(root, state)) {
     console.log('The brain and vault split is already complete. Nothing changed.');
     return 0;
   }
@@ -2421,8 +2437,10 @@ function runPhases(root, mode, options = {}) {
 function statusMigration(root) {
   const state = readJournal(root);
   const topology = inspectTopology(root);
+  assertCompletedTopology(root, state);
+  const decision = topologyDecision(topology);
   console.log(`Migration status: ${state?.status || 'not started'}.`);
-  console.log(`Topology: ${topologyDecision(topology)}.`);
+  console.log(`Topology: ${decision}.`);
   if (state?.nextPhase !== undefined && state.nextPhase <= 9) {
     console.log(`Next phase: P${state.nextPhase}.`);
   }
