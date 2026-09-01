@@ -2236,7 +2236,9 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
             impact_level = None
             
             j = i + 1
-            while j < len(lines) and not lines[j].startswith('###'):
+            while j < len(lines) and not re.match(
+                r'^(?:##\s|###\s|---\s*$)', lines[j]
+            ):
                 if '**What success looks like:**' in lines[j]:
                     # Read next non-empty line
                     k = j + 1
