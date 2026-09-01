@@ -50,3 +50,17 @@ memory/
 
 # This file itself
 .distignore
+
+# Dev-only build-agent skills (founder ruling 2026-09-01: never shipped;
+# see .claude/skills/README-dev-skills.md)
+.claude/skills/README-dev-skills.md
+.claude/skills/playbook-*
+.claude/skills/principle-*
+.claude/skills/blast-radius/
+.claude/skills/create-verification-skill/
+.claude/skills/maintain-verification-skill/
+.claude/skills/figure-it-out/
+.claude/skills/show-me-your-work/
+.claude/skills/tdd/
+.claude/skills/technical-writing/
+.claude/skills/unslop/

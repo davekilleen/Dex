@@ -119,3 +119,34 @@ only when a host or credential change genuinely needs it.
 - System docs canon: `docs/Dex_System/` is canonical; the copies under
   `06-Resources/Dex_System/` are compatibility bridge files — keep them
   byte-identical until the physical move lands (see `docs/Dex_System/README.md`).
+
+## Dev playbooks and skills (founder-only, never shipped)
+
+Ported build-agent skills live in `.claude/skills/` alongside the product
+skills; every one of them is excluded from user distribution via
+`.distignore` (founder ruling, 2026-09-01 — build tooling is available
+only to the founder). Provenance: `.claude/skills/README-dev-skills.md`.
+If you add a dev skill, add its `.distignore` entry in the same change.
+
+Route your task to a playbook and copy its steps into your todo list
+verbatim before task-specific todos. A step you choose not to do stays
+listed with `skip: <reason>`; skipping silently is not allowed.
+
+| Task shape | Load |
+|---|---|
+| Bug fix | playbook-bug-fix |
+| New feature | playbook-feature |
+| Perf / metric improvement | playbook-hillclimb |
+| "How/why" investigation | playbook-investigation |
+| Ship / land | playbook-shipping + playbook-opening-a-pr |
+| Resume prior work | playbook-session-pickup |
+| Stopping mid-task | playbook-pause-safely |
+| Unattended run | playbook-autonomous-run + show-me-your-work |
+| No match | figure-it-out |
+
+Also standing, from the same port: if a question's answer is observable
+by running something, run the experiment instead of asking; prove it
+works before claiming it (state your blast-radius evidence rung); a
+duration is not a finish condition; when you repeatedly do something by
+hand, build the tool you wish you had; write replies per unslop and docs
+per technical-writing.
