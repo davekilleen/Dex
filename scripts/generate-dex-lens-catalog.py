@@ -16,8 +16,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Mapping, Protocol, TypeVar
 
-import jsonschema
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
@@ -30,9 +28,14 @@ from core.lens_catalog_discovery import (
     discover_system_engines,
 )
 from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
+from core.lens_significant_capabilities import (
+    SignificantCapabilityRegistryError,
+    validate_significant_capability_registry,
+)
 
 REGISTRY_PATH = Path("core/lens-catalog/registry.json")
 ENRICHED_REGISTRY_PATH = Path("core/lens-catalog/enriched-registry.json")
+SIGNIFICANT_REGISTRY_PATH = Path("core/lens-catalog/significant-capabilities.json")
 LENS_CATALOG_SCHEMA_PATH = Path("core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json")
 PACKAGE_PATH = Path("package.json")
 CHANGELOG_PATH = Path("CHANGELOG.md")
@@ -68,6 +71,10 @@ CANONICAL_JOB_IDS = (
     "evolve-the-system-itself",
 )
 IMPACT_TIERS = frozenset({"core", "high", "medium", "niche"})
+ENRICHED_PUBLICATION_HOLD = (
+    "enriched catalogue signing and publication remain blocked until Core vendors "
+    "the exact tagged Lens contract for complete MCP tool inventories"
+)
 
 
 class LensCatalogError(RuntimeError):
@@ -451,13 +458,33 @@ def _validate_against_lens_schema(
     *,
     schema_path: Path | None = None,
     required_lens_version: str | None = None,
+    require_complete_mcp_inventory: bool = False,
 ) -> None:
+    try:
+        import jsonschema
+    except ImportError as error:
+        raise LensCatalogError("jsonschema is required to validate a Dex Lens catalogue") from error
+
     selected_schema = schema_path or release_root / LENS_CATALOG_SCHEMA_PATH
     schema = _mapping(_closed_json(selected_schema), context=str(selected_schema))
     if required_lens_version is not None and schema.get("x-dex-lens-minimum-version") != required_lens_version:
         raise LensCatalogError(
             f"enriched catalogue schema must declare x-dex-lens-minimum-version {required_lens_version}"
         )
+    if require_complete_mcp_inventory:
+        definitions = schema.get("$defs")
+        mcp_entry = definitions.get("McpServerCapabilityEntryV2") if isinstance(definitions, Mapping) else None
+        properties = mcp_entry.get("properties") if isinstance(mcp_entry, Mapping) else None
+        if not (
+            isinstance(mcp_entry, Mapping)
+            and mcp_entry.get("x-dex-lens-mcp-tool-inventory") is True
+            and isinstance(properties, Mapping)
+            and {"tools", "tool_inventory"} <= set(properties)
+        ):
+            raise LensCatalogError(
+                "enriched preview requires complete MCP tool inventory support; "
+                "the released Lens contract supplied here is stale"
+            )
     wire_envelope = json.loads(_canonical_json(envelope))
     try:
         jsonschema.Draft202012Validator(schema).validate(wire_envelope)
@@ -723,6 +750,59 @@ def _preview_evidence(source_paths: tuple[str, ...], *, title: str) -> tuple[dic
     )
 
 
+def _assert_complete_mcp_inventory(
+    discovered_candidates: tuple[object, ...],
+    emitted_entries: list[dict[str, object]],
+) -> None:
+    """Fail closed unless emitted MCP inventories exactly match discovery."""
+
+    discovered: dict[str, object] = {}
+    for candidate in discovered_candidates:
+        capability_id = getattr(candidate, "capability_id", None)
+        if not isinstance(capability_id, str) or capability_id in discovered:
+            raise LensCatalogError("MCP discovery did not produce unique canonical server ids")
+        discovered[capability_id] = candidate
+
+    emitted: dict[str, Mapping[str, object]] = {}
+    for entry in emitted_entries:
+        if entry.get("capability_class") != "mcp-server":
+            continue
+        capability_id = entry.get("capability_id")
+        if not isinstance(capability_id, str) or capability_id in emitted:
+            raise LensCatalogError("emitted MCP catalogue did not contain unique canonical server ids")
+        emitted[capability_id] = entry
+
+    missing_servers = sorted(set(discovered) - set(emitted))
+    extra_servers = sorted(set(emitted) - set(discovered))
+    if missing_servers or extra_servers:
+        details = []
+        if missing_servers:
+            details.append("missing " + ", ".join(missing_servers))
+        if extra_servers:
+            details.append("unknown " + ", ".join(extra_servers))
+        raise LensCatalogError("MCP server inventory mismatch: " + "; ".join(details))
+
+    for capability_id, candidate in discovered.items():
+        expected_tools = tuple(getattr(candidate, "tools", ()))
+        entry = emitted[capability_id]
+        raw_tools = entry.get("tools")
+        actual_tools = tuple(raw_tools) if isinstance(raw_tools, (list, tuple)) else ()
+        exact_order = actual_tools == expected_tools
+        exact_set = set(actual_tools) == set(expected_tools)
+        examples = entry.get("example_tools")
+        example_tools = tuple(examples) if isinstance(examples, (list, tuple)) else ()
+        if not (
+            entry.get("tool_inventory") == "complete"
+            and entry.get("tool_count") == len(expected_tools)
+            and exact_order
+            and exact_set
+            and set(example_tools) <= set(expected_tools)
+        ):
+            raise LensCatalogError(
+                f"MCP tool inventory mismatch for {capability_id}: emitted tools must exactly match discovery"
+            )
+
+
 def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
     catalog_version, release_version, catalogue = _build_catalogue(
         release_root,
@@ -738,9 +818,10 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
         raise LensCatalogError(f"{ENRICHED_REGISTRY_PATH} has an unsupported registry version")
 
     try:
+        mcp_candidates = discover_mcp_servers(release_root)
         discovered = {
             "mcp-server": _index_discovered_candidates(
-                discover_mcp_servers(release_root), capability_class="mcp-server"
+                mcp_candidates, capability_class="mcp-server"
             ),
             "scheduled-automation": _index_discovered_candidates(
                 discover_scheduled_automations(release_root),
@@ -835,6 +916,8 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
                 "server_name": candidate.server_name,
                 "tool_count": candidate.tool_count,
                 "example_tools": candidate.example_tools,
+                "tools": candidate.tools,
+                "tool_inventory": "complete",
                 "source_paths": source_paths,
             }
         elif capability_class == "scheduled-automation":
@@ -876,8 +959,21 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
                 **class_fields,
             }
         )
+    _assert_complete_mcp_inventory(mcp_candidates, preview_entries)
     catalogue["capabilities"] = preview_entries
     return catalog_version + 1, release_version, catalogue
+
+
+def validate_release_coverage(release_root: Path) -> None:
+    """Validate all guarded enriched coverage without signing or writing output."""
+
+    root = release_root.resolve()
+    payload = _closed_json(root / SIGNIFICANT_REGISTRY_PATH)
+    try:
+        validate_significant_capability_registry(payload, release_root=root)
+    except SignificantCapabilityRegistryError as error:
+        raise LensCatalogError(f"significant capability coverage is invalid: {error}") from error
+    _build_enriched_catalogue(root)
 
 
 def _signature(payload: str, *, signing_key_env: str, key_id: str, test_deterministic: bool) -> str:
@@ -921,21 +1017,16 @@ def generate_lens_catalog(
     enriched: bool = False,
 ) -> tuple[Path, Path]:
     release_root = release_root.resolve()
-    issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
     if enriched:
-        catalog_version, release_version, catalogue = _build_enriched_catalogue(release_root)
-    else:
-        catalog_version, release_version, catalogue = _build_catalogue(release_root)
+        raise LensCatalogError(ENRICHED_PUBLICATION_HOLD)
+    issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
+    catalog_version, release_version, catalogue = _build_catalogue(release_root)
     metadata = {
         "contract_version": CONTRACT_VERSION,
         "catalog_version": catalog_version,
         "produced_at": issued.isoformat().replace("+00:00", "Z"),
         "expires_at": (issued + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
-        "producer": (
-            f"Dex Core enriched release pipeline v{release_version}"
-            if enriched
-            else f"Dex Core release pipeline v{release_version}"
-        ),
+        "producer": f"Dex Core release pipeline v{release_version}",
         "core_release": f"v{release_version}",
         "key_id": key_id,
     }
@@ -943,7 +1034,6 @@ def generate_lens_catalog(
     _validate_against_lens_schema(
         release_root,
         {**signed_payload, "signature": "schema-validation-placeholder"},
-        required_lens_version="0.1.9" if enriched else None,
     )
     payload = _canonical_json(signed_payload)
     signature = ""
@@ -999,6 +1089,7 @@ def generate_enriched_preview(
         envelope,
         schema_path=lens_schema.resolve(),
         required_lens_version="0.1.9",
+        require_complete_mcp_inventory=True,
     )
     destination = output_dir / "dex-lens-catalog-enriched-preview.json"
     _atomic_write(destination, (_canonical_json(envelope) + "\n").encode("utf-8"))
@@ -1018,9 +1109,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--enriched", action="store_true")
     parser.add_argument("--enriched-preview", action="store_true")
     parser.add_argument("--lens-schema", type=Path)
+    parser.add_argument("--validate-release-coverage", action="store_true")
     args = parser.parse_args(raw_argv)
 
     try:
+        if args.validate_release_coverage:
+            incompatible = (
+                args.enriched
+                or args.enriched_preview
+                or args.sign
+                or args.lens_schema is not None
+                or any(
+                    argument == option or argument.startswith(f"{option}=")
+                    for argument in raw_argv
+                    for option in ("--output-dir", "--issued-at", "--signing-key-env", "--key-id")
+                )
+            )
+            if incompatible:
+                raise LensCatalogError(
+                    "--validate-release-coverage cannot generate, sign, or publish catalogue output"
+                )
+            validate_release_coverage(args.release_root)
+            print("Dex Lens release coverage is valid; no catalogue output was written")
+            return 0
         if args.enriched and args.enriched_preview:
             raise LensCatalogError("--enriched and --enriched-preview are mutually exclusive")
         if args.enriched_preview:

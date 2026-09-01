@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from core import lens_significant_capabilities as significant_capabilities
 from core.lens_significant_capabilities import (
     REGISTRY_PATH,
     SignificantCapabilityRegistryError,
@@ -216,7 +217,7 @@ def test_components_assessments_and_stored_status_are_closed() -> None:
     _assert_invalid(unsafe_text, "control characters")
 
 
-def test_provider_identity_and_missing_dependency_fail_honestly() -> None:
+def test_provider_identity_and_missing_dependency_fail_honestly(tmp_path: Path) -> None:
     payload = _valid_registry()
     unknown_provider = copy.deepcopy(payload)
     provider = next(
@@ -229,7 +230,10 @@ def test_provider_identity_and_missing_dependency_fail_honestly() -> None:
     _assert_invalid(unknown_provider, "unknown provider")
 
     with pytest.raises(SignificantCapabilityRegistryError, match="pinned provider source"):
-        validate_significant_capability_registry(payload, release_root=REPO_ROOT)
+        significant_capabilities._default_provider_resolver(
+            "google",
+            release_root=tmp_path,
+        )
 
 
 def test_mcp_component_sets_must_match_every_discovered_server_exactly() -> None:

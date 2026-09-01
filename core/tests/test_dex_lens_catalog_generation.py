@@ -16,7 +16,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
-from core.lens_catalog_discovery import discover_active_skills
+from core.lens_catalog_discovery import discover_active_skills, discover_mcp_servers
 from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -665,90 +665,142 @@ def test_released_enriched_schema_declares_capability_id_uniqueness() -> None:
     assert capabilities["x-dex-lens-unique-by"] == "capability_id"
 
 
-def test_enriched_preview_validates_all_four_classes_against_released_schema(tmp_path: Path) -> None:
+def test_enriched_catalogue_emits_every_discovered_mcp_tool_in_canonical_order() -> None:
+    generator = _load_generator_module()
+
+    _catalog_version, _release_version, catalogue = generator._build_enriched_catalogue(
+        REPO_ROOT
+    )
+
+    emitted = {
+        entry["capability_id"]: entry
+        for entry in catalogue["capabilities"]
+        if entry["capability_class"] == "mcp-server"
+    }
+    discovered = {
+        candidate.capability_id: candidate for candidate in discover_mcp_servers(REPO_ROOT)
+    }
+    assert set(emitted) == set(discovered)
+    for capability_id, candidate in discovered.items():
+        assert emitted[capability_id]["tools"] == candidate.tools
+        assert emitted[capability_id]["tool_inventory"] == "complete"
+        assert emitted[capability_id]["tool_count"] == len(candidate.tools)
+        assert set(emitted[capability_id]["example_tools"]) <= set(candidate.tools)
+
+    assert len(emitted["dex-work-mcp"]["tools"]) == 50
+    assert len(emitted["dex-career-mcp"]["tools"]) == 8
+
+
+def test_complete_mcp_inventory_gate_rejects_emitted_tool_drift() -> None:
+    generator = _load_generator_module()
+    _catalog_version, _release_version, catalogue = generator._build_enriched_catalogue(
+        REPO_ROOT
+    )
+    broken = json.loads(json.dumps(catalogue))
+    work = next(
+        entry
+        for entry in broken["capabilities"]
+        if entry["capability_id"] == "dex-work-mcp"
+    )
+    work["tools"].pop()
+
+    with pytest.raises(generator.LensCatalogError, match="MCP tool inventory mismatch.*dex-work-mcp"):
+        generator._assert_complete_mcp_inventory(
+            discover_mcp_servers(REPO_ROOT), broken["capabilities"]
+        )
+
+
+def test_release_coverage_gate_validates_significant_registry_before_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _load_generator_module()
+    events: list[str] = []
+
+    def validate(payload: object, *, release_root: Path) -> None:
+        assert isinstance(payload, dict)
+        assert release_root == REPO_ROOT
+        events.append("significant")
+
+    def build(release_root: Path) -> tuple[int, str, dict[str, object]]:
+        assert release_root == REPO_ROOT
+        events.append("catalogue")
+        return 6, "1.97.6", {}
+
+    monkeypatch.setattr(generator, "validate_significant_capability_registry", validate)
+    monkeypatch.setattr(generator, "_build_enriched_catalogue", build)
+
+    generator.validate_release_coverage(REPO_ROOT)
+
+    assert events == ["significant", "catalogue"]
+
+
+def test_release_coverage_gate_reports_significant_registry_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _load_generator_module()
+
+    def reject(_payload: object, *, release_root: Path) -> None:
+        assert release_root == REPO_ROOT
+        raise generator.SignificantCapabilityRegistryError("provider identity disappeared")
+
+    monkeypatch.setattr(generator, "validate_significant_capability_registry", reject)
+
+    with pytest.raises(
+        generator.LensCatalogError,
+        match="significant capability coverage is invalid.*provider identity disappeared",
+    ):
+        generator.validate_release_coverage(REPO_ROOT)
+
+
+def test_enriched_preview_fails_honestly_against_stale_released_schema(tmp_path: Path) -> None:
     output = tmp_path / "dist"
     result = _generate_enriched(output, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
-    assert result.returncode == 0, result.stderr
-    assert sorted(path.name for path in output.iterdir()) == ["dex-lens-catalog-enriched-preview.json"]
-    envelope = json.loads((output / "dex-lens-catalog-enriched-preview.json").read_text())
-    assert envelope["signature"] == "UNSIGNED-PREVIEW-NOT-FOR-PUBLICATION"
-    assert envelope["metadata"]["produced_at"] == "2026-08-25T12:00:00Z"
-    classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
-    assert {item: classes.count(item) for item in set(classes)} == {
-        "active-skill": 94,
-        "mcp-server": 11,
-        "scheduled-automation": 5,
-        "system-engine": 5,
-    }
-    availability = [entry["availability"] for entry in envelope["catalogue"]["capabilities"]]
-    assert {item: availability.count(item) for item in set(availability)} == {
-        "active": 84,
-        "dormant": 29,
-        "parked": 2,
-    }
-    released_schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
-    jsonschema.Draft202012Validator(released_schema).validate(envelope)
+    assert result.returncode == 1
+    assert "complete MCP tool inventory" in result.stderr
+    assert "released Lens contract" in result.stderr
+    assert not output.exists()
 
 
-def test_committed_enriched_example_is_generator_output_and_matches_released_schema(tmp_path: Path) -> None:
+def test_stale_schema_refusal_does_not_overwrite_the_committed_preview(tmp_path: Path) -> None:
+    before = ENRICHED_EXAMPLE.read_bytes()
     result = _generate_enriched(tmp_path, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
-    assert result.returncode == 0, result.stderr
-    generated = json.loads((tmp_path / "dex-lens-catalog-enriched-preview.json").read_text())
-    committed = json.loads(ENRICHED_EXAMPLE.read_text())
-    assert committed == generated
-    schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
-    jsonschema.Draft202012Validator(schema).validate(committed)
+    assert result.returncode == 1
+    assert not (tmp_path / "dex-lens-catalog-enriched-preview.json").exists()
+    assert ENRICHED_EXAMPLE.read_bytes() == before
 
 
-def test_signed_enriched_release_path_emits_catalogue_version_six(
+def test_signed_enriched_release_path_is_blocked_until_exact_lens_contract_is_vendored(
     tmp_path: Path, signing_key_b64: str
 ) -> None:
     result = _generate_enriched_release(tmp_path, signing_key_b64)
 
-    assert result.returncode == 0, result.stderr
-    release_version = json.loads((REPO_ROOT / "package.json").read_text())["version"]
-    expected = [
-        "dex-lens-catalog-latest.json",
-        "dex-lens-catalog-latest.json.sha256",
-        f"dex-lens-catalog-v{release_version}.json",
-        f"dex-lens-catalog-v{release_version}.json.sha256",
-    ]
-    assert sorted(path.name for path in tmp_path.iterdir()) == expected
-    envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
-    assert envelope["metadata"]["catalog_version"] == 6
-    assert envelope["metadata"]["producer"] == (
-        f"Dex Core enriched release pipeline v{release_version}"
+    assert result.returncode == 1
+    assert "signing and publication remain blocked" in result.stderr
+    assert "exact tagged Lens contract" in result.stderr
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_unsigned_enriched_release_path_is_also_blocked(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--release-root",
+            str(REPO_ROOT),
+            "--output-dir",
+            str(tmp_path),
+            "--enriched",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
     )
-    classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
-    assert {item: classes.count(item) for item in set(classes)} == {
-        "active-skill": 94,
-        "mcp-server": 11,
-        "scheduled-automation": 5,
-        "system-engine": 5,
-    }
-    assert len(base64.b64decode(envelope["signature"], validate=True)) == 64
-    schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
-    jsonschema.Draft202012Validator(schema).validate(envelope)
 
-
-def test_corrected_catalogue_has_complete_truthful_identity_sets(
-    tmp_path: Path, signing_key_b64: str
-) -> None:
-    result = _generate_enriched_release(tmp_path, signing_key_b64)
-
-    assert result.returncode == 0, result.stderr
-    envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
-    entries = envelope["catalogue"]["capabilities"]
-    by_id = {entry["capability_id"]: entry for entry in entries}
-
-    assert envelope["metadata"]["catalog_version"] == 6
-    assert len(entries) == len(by_id) == 115
-    assert "connect" not in by_id
-    assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
-    assert by_id["connection-manager-engine"]["availability"] == "parked"
-    assert sum(entry.get("tool_count", 0) for entry in entries) == 151
+    assert result.returncode == 1
+    assert "signing and publication remain blocked" in result.stderr
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:

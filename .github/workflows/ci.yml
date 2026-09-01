@@ -358,6 +358,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
       - name: Decide whether the Lens catalogue release path changed
         id: changes
         env:
@@ -382,18 +385,10 @@ jobs:
       - name: Dry-run the Lens catalogue release environment
         if: steps.changes.outputs.should_run == 'true'
         run: |
-          OUTPUT_DIR="$RUNNER_TEMP/dex-lens-catalog-dry-run"
-          python3 -m venv .lens-venv
-          .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
-          .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
+          npm ci --ignore-scripts
+          python3 scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
-            --output-dir "$OUTPUT_DIR" \
-            --enriched
-          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
-          test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json"
-          test -f "$OUTPUT_DIR/dex-lens-catalog-v$VERSION.json.sha256"
-          test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json"
-          test -f "$OUTPUT_DIR/dex-lens-catalog-latest.json.sha256"
+            --validate-release-coverage
 
   build-release:
     needs: [quality, test-results, portable-plugin-platforms]
@@ -480,41 +475,16 @@ jobs:
           python3 scripts/build-portable-harness-artifacts.py \
             --output-dir dist/portable-harness \
             --release-status stable
-      - name: Generate signed Dex Lens catalog
-        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
-        env:
-          # Dex Lens v0.1.9 release verification and Front Desk release review are required
-          # before setting DEX_LENS_CATALOG_RELEASE_GATE_ENABLED=true for a live release.
-          # The value must be a base64-encoded Ed25519 PEM private key stored as an
-          # environment secret; no generated private key belongs in the repo.
-          DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64: ${{ secrets.DEX_LENS_CATALOG_ED25519_PRIVATE_KEY_B64 }}
+      - name: Validate held Dex Lens catalogue coverage
+        if: steps.release_guard.outputs.already_published != 'true'
         run: |
-          # build-release never runs actions/setup-python, so `python3` here is the
-          # runner's Homebrew interpreter and PEP 668 refuses a system-wide install:
-          # `pip install cryptography` died with externally-managed-environment and
-          # took the whole release with it. An isolated venv keeps the install off the
-          # system interpreter without --break-system-packages (which Homebrew warns
-          # can break the runner) and without changing `python3` for any other step.
-          # jsonschema is installed too: the producer imports it at module scope, so
-          # a venv holding only cryptography would fail on the very next line.
-          python3 -m venv .lens-venv
-          .lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema
-          .lens-venv/bin/python scripts/generate-dex-lens-catalog.py \
+          # This checks discovery, exact MCP tools, significant-family coverage,
+          # aliases, components and the pinned provider identities. It writes no
+          # catalogue. Signing stays held until Core vendors an exact tagged Lens
+          # contract that understands complete MCP tool inventories.
+          python3 scripts/generate-dex-lens-catalog.py \
             --release-root "$PWD" \
-            --output-dir dist \
-            --enriched \
-            --sign \
-            --key-id dex-core-lens-1
-      - name: Upload Dex Lens catalog for Pages
-        if: steps.release_guard.outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
-        with:
-          name: dex-lens-catalog-pages
-          path: |
-            dist/dex-lens-catalog-latest.json
-            dist/dex-lens-catalog-latest.json.sha256
-          if-no-files-found: error
-          retention-days: 1
+            --validate-release-coverage
       - name: Push release branch and immutable tag
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
@@ -535,14 +505,9 @@ jobs:
         if: steps.release_guard.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          LENS_CATALOG_ENABLED: ${{ vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           EXTRA=()
-          if [ "$LENS_CATALOG_ENABLED" = "true" ]; then
-            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json")
-            EXTRA+=(--extra-asset "dist/dex-lens-catalog-v$VERSION.json.sha256")
-          fi
           EXTRA+=(--extra-asset "dist/portable-harness/dex-claude-desktop.mcpb")
           EXTRA+=(--extra-asset "dist/portable-harness/dex-gemini-extension.tar.gz")
           EXTRA+=(--extra-asset "dist/portable-harness/artifacts.json")
@@ -639,12 +604,6 @@ jobs:
         with:
           name: release-health-inputs
           path: .
-      - name: Download Dex Lens latest catalog
-        if: needs['build-release'].outputs.already_published != 'true' && vars.DEX_LENS_CATALOG_RELEASE_GATE_ENABLED == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
-        with:
-          name: dex-lens-catalog-pages
-          path: dex-lens-catalog-pages
       - name: Build release health page
         env:
           SOURCE_SHA: ${{ github.sha }}
@@ -658,10 +617,6 @@ jobs:
             --quality-conclusion success \
             --output health.json
           python scripts/render-health-page.py --input health.json --output public/health.html
-          if [ -f dex-lens-catalog-pages/dex-lens-catalog-latest.json ]; then
-            cp dex-lens-catalog-pages/dex-lens-catalog-latest.json public/dex-lens-catalog-latest.json
-            cp dex-lens-catalog-pages/dex-lens-catalog-latest.json.sha256 public/dex-lens-catalog-latest.json.sha256
-          fi
       - name: Configure GitHub Pages
         id: pages
         continue-on-error: true
