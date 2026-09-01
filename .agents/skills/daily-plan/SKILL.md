@@ -348,13 +348,16 @@ source, run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable o
 `mail.apple-search` check reports `OK` / `feature_status: ok`.
 
 If connected and healthy:
-1. Get unread count and priority emails from monitored labels
+1. Use an attention-inbox count for the headline, never a provider-wide unread total.
+   For Google Workspace, count `is:unread category:primary`; use monitored labels
+   separately to find priority messages. For Apple Mail, count unread messages in Inbox
+   mailboxes. If the source cannot scope this reliably, omit the headline unread count.
 2. Flag emails needing reply (> 48h since received, from key contacts in `05-Areas/People/`)
 3. Surface email threads with today's meeting attendees
 
 Include in plan:
 
-> "Email: [X] unread, [Y] need replies. [Z] threads with today's meeting attendees."
+> "Email: [X] unread in Primary/Inbox, [Y] need replies. [Z] threads with today's meeting attendees."
 
 For Apple Mail, never interpret an empty search as "no matching mail" unless that health check
 is OK. If a connected source is broken or could not be checked, **do not silently skip**:
