@@ -160,6 +160,14 @@ def test_aliases_are_closed_and_do_not_collide_with_canonical_ids() -> None:
     payload = _valid_registry()
     aliases = payload["capability_aliases"]
     assert all(set(alias) == {"alias", "capability_id"} for alias in aliases)
+    alias_map = {item["alias"]: item["capability_id"] for item in aliases}
+    assert {
+        "calendar": "dex-calendar-mcp",
+        "career": "dex-career-mcp",
+        "granola": "dex-granola-mcp",
+        "resume": "dex-resume-mcp",
+        "work": "dex-work-mcp",
+    }.items() <= alias_map.items()
 
     duplicate = copy.deepcopy(payload)
     duplicate["capability_aliases"].append(copy.deepcopy(aliases[0]))

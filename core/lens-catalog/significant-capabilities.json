@@ -2,6 +2,26 @@
   "registry_version": 1,
   "capability_aliases": [
     {
+      "alias": "calendar",
+      "capability_id": "dex-calendar-mcp"
+    },
+    {
+      "alias": "career",
+      "capability_id": "dex-career-mcp"
+    },
+    {
+      "alias": "granola",
+      "capability_id": "dex-granola-mcp"
+    },
+    {
+      "alias": "resume",
+      "capability_id": "dex-resume-mcp"
+    },
+    {
+      "alias": "work",
+      "capability_id": "dex-work-mcp"
+    },
+    {
       "alias": "work-mcp",
       "capability_id": "dex-work-mcp"
     },
