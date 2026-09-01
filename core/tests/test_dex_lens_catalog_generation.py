@@ -28,11 +28,10 @@ PROPOSED_SIGNIFICANT_LENS_SCHEMA = (
     / "core/tests/fixtures/dex-lens-catalogue-significant-preview.schema.json"
 )
 ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
-# Lens v0.1.9 producer bytes plus the host-adapter pattern
-# `^[a-z][a-z0-9-]{1,80}$`, which is required so two-character harness
-# ids (`bb`, `pi`) can appear in compatibility.host_adapters.
+# Exact schema bytes exported by the latest tagged Lens release. Proposed
+# schema changes belong only in PROPOSED_SIGNIFICANT_LENS_SCHEMA.
 LENS_PRODUCER_SCHEMA_SHA256 = (
-    "030a3bdb4471e7bc57753fbb9bef3a12511bc08de726e5614f94da706de9fe0d"
+    "5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7"
 )
 PROPOSED_SIGNIFICANT_LENS_SCHEMA_SHA256 = (
     "c44e1802911e8db1d7c86f5cf8fc79a0ea4bacb1c9b2c0b1d1e483fed27e4ca7"
@@ -312,7 +311,6 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
     assert capability["compatibility"]["host_requirements"] == ["skills-directory"]
     assert capability["compatibility"]["host_adapters"] == [
         "agent-plugin",
-        "bb",
         "chatgpt-work",
         "claude-code",
         "codex",
@@ -320,7 +318,6 @@ def test_generates_canonical_unsigned_lens_catalog_payload(tmp_path: Path) -> No
         "cowork",
         "cursor",
         "gemini-cli",
-        "pi",
     ]
     assert "Needs hooks" not in " ".join(capability["compatibility"]["limitations"])
     assert capability["portable_brief"]["goal"].startswith("Create a daily planning routine")
@@ -713,6 +710,10 @@ def test_enriched_catalogue_emits_the_validated_significant_family_contract() ->
     assert catalogue["capability_aliases"] == significant["capability_aliases"]
     assert catalogue["capability_families"] == significant["families"]
     assert len(catalogue["capability_families"]) == 14
+    enriched_skill = next(
+        item for item in catalogue["capabilities"] if item["capability_id"] == "daily-plan"
+    )
+    assert {"bb", "pi"} <= set(enriched_skill["compatibility"]["host_adapters"])
     assert {family["family_id"] for family in catalogue["capability_families"]} == {
         "meeting-follow-through",
         "living-people-company-context",

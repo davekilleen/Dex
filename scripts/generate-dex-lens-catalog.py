@@ -366,6 +366,7 @@ def _host_adapters_for_skill(
     source: Mapping[str, object],
     *,
     context: str,
+    include_proposed_short_ids: bool = False,
 ) -> tuple[str, ...]:
     portability_document = _mapping(
         _closed_json(release_root / HARNESS_PORTABILITY_PATH),
@@ -413,6 +414,11 @@ def _host_adapters_for_skill(
         # portable yet; the portability reason remains the authority for the
         # limitation and prevents claiming other hosts.
         adapters = claude_native
+    if not include_proposed_short_ids:
+        # The exact released Lens schema still requires three-character host
+        # adapter ids. Keep the newer `bb` and `pi` ids in the guarded preview
+        # only until Lens releases the compatible contract.
+        adapters = [adapter for adapter in adapters if len(adapter) >= 3]
     if not adapters:
         raise LensCatalogError(f"{context} resolves to no host adapters")
     return tuple(adapters)
@@ -657,6 +663,7 @@ def _build_catalogue(
                 release_root,
                 source,
                 context=context,
+                include_proposed_short_ids=enriched,
             ),
         )
         if availability == "dormant" and not include_dormant:
