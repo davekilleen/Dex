@@ -60,12 +60,12 @@ def _valid_registry() -> dict[str, object]:
     return payload
 
 
-def _assert_invalid(payload: dict[str, object], message: str) -> None:
+def _assert_invalid(payload: dict[str, object], message: str, *, resolver=_provider_resolver) -> None:
     with pytest.raises(SignificantCapabilityRegistryError, match=message):
         validate_significant_capability_registry(
             payload,
             release_root=REPO_ROOT,
-            provider_resolver=_provider_resolver,
+            provider_resolver=resolver,
         )
 
 
@@ -230,6 +230,69 @@ def test_provider_identity_and_missing_dependency_fail_honestly() -> None:
 
     with pytest.raises(SignificantCapabilityRegistryError, match="pinned provider source"):
         validate_significant_capability_registry(payload, release_root=REPO_ROOT)
+
+
+def test_mcp_component_sets_must_match_every_discovered_server_exactly() -> None:
+    payload = _valid_registry()
+    work_family = next(
+        family for family in payload["families"] if family["family_id"] == "proactive-health-and-recovery"
+    )
+    work_family["components"] = [
+        component
+        for component in work_family["components"]
+        if not (
+            component["component_type"] == "mcp-tool"
+            and component["server_id"] == "dex-work-mcp"
+            and component["tool_name"] == "check_safety_gate"
+        )
+    ]
+    _assert_invalid(payload, "MCP tool coverage mismatch.*dex-work-mcp")
+
+
+def test_safe_change_family_does_not_claim_held_customization_activation() -> None:
+    payload = _valid_registry()
+    safe_change = next(family for family in payload["families"] if family["family_id"] == "safe-change-and-rewind")
+    text = safe_change["outcome"].lower()
+    assert "custom" not in text
+    assert "dex-customization-migration-mcp" not in safe_change["member_capability_ids"]
+    assert all(
+        not (component["component_type"] == "mcp-tool" and component["server_id"] == "dex-customization-migration-mcp")
+        for component in safe_change["components"]
+    )
+    adoption = next(
+        family for family in payload["families"] if family["family_id"] == "capability-discovery-and-adoption"
+    )
+    assert "assessment and capsule evidence" in adoption["outcome"]
+    assert "activation and rewind remain held" in adoption["outcome"]
+
+
+def test_source_components_resolve_against_the_closed_reviewed_set() -> None:
+    payload = _valid_registry()
+    source = next(
+        component
+        for family in payload["families"]
+        for component in family["components"]
+        if component["component_type"] == "source-component"
+    )
+    source["component_id"] = "fabricated-source-component"
+    _assert_invalid(payload, "unknown source component")
+
+
+@pytest.mark.parametrize("value", [False, "false", "true", {"exists": "true"}])
+def test_provider_resolvers_require_explicit_boolean_existence(value: object) -> None:
+    _assert_invalid(
+        _raw_registry(),
+        "unknown provider",
+        resolver=lambda _provider_id: value,
+    )
+
+
+def test_mapping_provider_resolver_requires_each_value_to_be_true() -> None:
+    _assert_invalid(
+        _raw_registry(),
+        "unknown provider",
+        resolver={"google": False, "linear": True},
+    )
 
 
 def test_active_core_and_high_leaves_must_be_covered_or_excepted() -> None:

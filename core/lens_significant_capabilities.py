@@ -36,7 +36,6 @@ PROVIDER_SOURCE_VERSION = "0.70.5"
 _ID_RE = re.compile(r"^[a-z][a-z0-9-]{2,80}$")
 _TOOL_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
-_SAFE_COMPONENT_RE = re.compile(r"^[^\\\x00-\x1f\x7f]+$")
 _IMPACT_TIERS = frozenset({"core", "high", "medium", "niche"})
 _AVAILABILITIES = frozenset({"active", "dormant", "parked"})
 _ASSESSMENT_PROFILES = frozenset(
@@ -53,6 +52,24 @@ _ASSESSMENT_PROFILES = frozenset(
     }
 )
 _COMPONENT_TYPES = frozenset({"capability", "mcp-tool", "nango-provider", "source-component"})
+_SOURCE_COMPONENT_IDS = frozenset(
+    {
+        "meeting-processing",
+        "people-company-context",
+        "work-task-continuity",
+        "external-task-sync",
+        "connection-manager-catalog",
+        "pipedrive-pipeline",
+        "daily-planning",
+        "session-memory",
+        "doctor-health",
+        "vault-backup",
+        "lifecycle-safe-rewind",
+        "capability-adoption",
+        "privacy-feedback",
+        "career-evidence",
+    }
+)
 _FAMILY_IDS = (
     "meeting-follow-through",
     "living-people-company-context",
@@ -161,7 +178,10 @@ def _unique(values: tuple[str, ...], *, context: str) -> None:
 def _source_component_id(value: object, *, context: str) -> str:
     """Validate the Lens source-component identity (never an executable path)."""
 
-    return _identifier(value, context=context)
+    component_id = _identifier(value, context=context)
+    if component_id not in _SOURCE_COMPONENT_IDS:
+        raise SignificantCapabilityRegistryError(f"{context} references unknown source component {component_id!r}")
+    return component_id
 
 
 def _read_catalogue_annotations(
@@ -388,7 +408,7 @@ def _resolve_provider(
     if provider_resolver is None:
         return _default_provider_resolver(provider_id, release_root=release_root)
     if isinstance(provider_resolver, Mapping):
-        return provider_id in provider_resolver
+        return _provider_exists(provider_resolver.get(provider_id))
     try:
         result = provider_resolver(provider_id)
     except SignificantCapabilityRegistryError:
@@ -397,9 +417,20 @@ def _resolve_provider(
         raise SignificantCapabilityRegistryError(
             f"pinned provider source resolver failed for {provider_id!r}: {error}"
         ) from error
-    if isinstance(result, Mapping):
-        return bool(result.get("exists", result.get("known", False)))
-    return result is True
+    return _provider_exists(result)
+
+
+def _provider_exists(value: object) -> bool:
+    """Accept only an explicit boolean existence assertion from a resolver."""
+
+    if value is True:
+        return True
+    if isinstance(value, Mapping):
+        # A resolver may return a small identity record, but its existence bit
+        # must itself be the literal boolean ``True``.  Truthy strings such as
+        # ``"false"`` are deliberately rejected.
+        return value.get("exists") is True
+    return False
 
 
 def _component_identity(component: Mapping[str, object]) -> tuple[object, ...]:
@@ -474,6 +505,7 @@ def _validation_errors(
 
     covered_ids: set[str] = set()
     component_seen: dict[tuple[object, ...], str] = {}
+    emitted_mcp_tools: dict[str, set[str]] = {}
     for index, raw_family in enumerate(families):
         context = f"family {index}"
         try:
@@ -594,6 +626,7 @@ def _validation_errors(
                         raise SignificantCapabilityRegistryError(
                             f"{component_context} MCP server is not a family member"
                         )
+                    emitted_mcp_tools.setdefault(server_id, set()).add(tool_name)
                 elif component_type == "nango-provider":
                     _exact_fields(
                         component,
@@ -716,6 +749,17 @@ def _validation_errors(
 
     if set(family_ids_seen) == set(_FAMILY_IDS):
         all_mcp_ids = set(mcp_tools)
+        for server_id, expected_tools in mcp_tools.items():
+            actual_tools = emitted_mcp_tools.get(server_id, set())
+            missing_tools = sorted(set(expected_tools) - actual_tools)
+            extra_tools = sorted(actual_tools - set(expected_tools))
+            if missing_tools or extra_tools:
+                details: list[str] = []
+                if missing_tools:
+                    details.append("missing " + ", ".join(missing_tools))
+                if extra_tools:
+                    details.append("unknown " + ", ".join(extra_tools))
+                errors.append(f"MCP tool coverage mismatch for {server_id}: " + "; ".join(details))
         missing_mcp = sorted(all_mcp_ids - covered_ids - exception_ids)
         if missing_mcp:
             errors.append("MCP servers are not mapped to a family or reviewed exception: " + ", ".join(missing_mcp))

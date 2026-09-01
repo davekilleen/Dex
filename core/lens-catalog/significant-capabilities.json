@@ -1101,7 +1101,7 @@
     {
       "family_id": "safe-change-and-rewind",
       "title": "Changes stay reviewable and rewindable",
-      "outcome": "Updates and customisation changes pass through preview, backup, verification and receipt-backed rewind rather than editing the live system blindly.",
+      "outcome": "Supported updates and local configuration changes pass through preview, backup, verification and receipt-backed rewind rather than editing the live system blindly.",
       "jobs": [
         "evolve-the-system-itself"
       ],
@@ -1112,8 +1112,7 @@
         "dex-update",
         "dex-rollback",
         "reset",
-        "manage-capabilities",
-        "dex-customization-migration-mcp"
+        "manage-capabilities"
       ],
       "components": [
         {
@@ -1133,45 +1132,6 @@
           "capability_id": "manage-capabilities"
         },
         {
-          "component_type": "capability",
-          "capability_id": "dex-customization-migration-mcp"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "assess_customizations"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "preview_customization_capsule"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "read_activation_status"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "read_customization_capsule_blob"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "read_customization_capsule_section"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "read_customization_migration_status"
-        },
-        {
-          "component_type": "mcp-tool",
-          "server_id": "dex-customization-migration-mcp",
-          "tool_name": "read_staging_status"
-        },
-        {
           "component_type": "source-component",
           "component_id": "lifecycle-safe-rewind"
         }
@@ -1184,7 +1144,7 @@
     {
       "family_id": "capability-discovery-and-adoption",
       "title": "Useful capability is discoverable and adoptable",
-      "outcome": "A person can inspect, create, review and adopt methods through explicit lifecycle boundaries without copying somebody else's private system.",
+      "outcome": "A person can inspect, create, review and adopt methods through explicit lifecycle boundaries without copying somebody else's private system. Customization migration is surfaced here only for assessment and capsule evidence; activation and rewind remain held.",
       "jobs": [
         "evolve-the-system-itself",
         "reflect-and-improve-continuously"
@@ -1360,6 +1320,41 @@
           "component_type": "mcp-tool",
           "server_id": "dex-onboarding-mcp",
           "tool_name": "verify_dependencies"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "assess_customizations"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "preview_customization_capsule"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_activation_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_customization_capsule_blob"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_customization_capsule_section"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_customization_migration_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_staging_status"
         },
         {
           "component_type": "source-component",
