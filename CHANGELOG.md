@@ -18,6 +18,10 @@ along than it was.
 
 * **A new heading or a divider ends the goal.** Checkboxes below that line stay
   out of the goal's milestones. Real milestones above the line are unchanged.
+* **The daily plan no longer treats every unread email as the headline backlog.**
+  Promotions and other folders could make the plan say hundreds when only a few
+  messages were in Primary or Inbox. The headline now counts that attention
+  inbox, and omits the number if the source cannot scope it reliably.
 
 Public Latest remains 1.97.6 until the next numbered release.
 

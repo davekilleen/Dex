@@ -139,7 +139,10 @@ server as connected. Before querying any connected email source, run
 
 If the source is connected and healthy:
 
-- Get unread count and priority emails
+- Use an attention-inbox count for the headline, never a provider-wide unread total.
+  For Google Workspace, count `is:unread category:primary`; use monitored labels
+  separately to find priority messages. For Apple Mail, count unread messages in Inbox
+  mailboxes. If the source cannot scope this reliably, omit the headline unread count.
 - Flag emails needing reply (received more than 48 hours ago, from key contacts
   in `05-Areas/People/`)
 - Surface threads involving the target date's meeting attendees
