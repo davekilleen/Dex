@@ -1457,6 +1457,6 @@
   "title": "SignedCatalogueEnvelopeV2",
   "type": "object",
   "x-dex-lens-contract-status": "unreleased-significant-family-preview",
-  "x-dex-lens-minimum-version": "0.1.9",
+  "x-dex-lens-minimum-version": "0.1.16",
   "x-dex-lens-reference-validator": "capability_exchange.catalogue.schema_contract.iter_catalogue_schema_errors"
 }

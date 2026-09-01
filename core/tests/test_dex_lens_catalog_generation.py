@@ -34,7 +34,7 @@ LENS_PRODUCER_SCHEMA_SHA256 = (
     "5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7"
 )
 PROPOSED_SIGNIFICANT_LENS_SCHEMA_SHA256 = (
-    "8a0df662643cf8681abdda8de5dc43bb8c32cdedb9e3737e3e53cb59dd747fb7"
+    "b15af8bccecc5cfb3a5e33fc1e44679e34c5539d0fb79d565ed67b56deee2e3b"
 )
 
 WAVE3_IDS = (
@@ -733,6 +733,37 @@ def test_enriched_catalogue_emits_the_validated_significant_family_contract() ->
     }
 
 
+def test_real_significant_preview_reserves_version_after_live_catalogue_v6() -> None:
+    generator = _load_generator_module()
+
+    catalog_version, _release_version, _catalogue = generator._build_enriched_catalogue(
+        REPO_ROOT
+    )
+
+    assert catalog_version == 7
+
+
+def test_significant_preview_requires_the_next_lens_contract(
+    tmp_path: Path,
+) -> None:
+    generator = _load_generator_module()
+    old_schema = json.loads(PROPOSED_SIGNIFICANT_LENS_SCHEMA.read_text())
+    old_schema["x-dex-lens-minimum-version"] = "0.1.9"
+    old_schema_path = tmp_path / "old-significant-schema.json"
+    old_schema_path.write_text(json.dumps(old_schema), encoding="utf-8")
+
+    with pytest.raises(
+        generator.LensCatalogError,
+        match="x-dex-lens-minimum-version 0.1.16",
+    ):
+        generator.generate_enriched_preview(
+            REPO_ROOT,
+            output_dir=tmp_path / "output",
+            lens_schema=old_schema_path,
+            issued_at="2026-08-25T12:00:00Z",
+        )
+
+
 def test_committed_significant_preview_is_exact_generated_output(tmp_path: Path) -> None:
     assert (
         hashlib.sha256(PROPOSED_SIGNIFICANT_LENS_SCHEMA.read_bytes()).hexdigest()
@@ -821,7 +852,7 @@ def test_enriched_preview_fails_honestly_against_stale_released_schema(tmp_path:
     result = _generate_enriched(output, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
     assert result.returncode == 1
-    assert "unreleased significant-family Lens contract" in result.stderr
+    assert "x-dex-lens-minimum-version 0.1.16" in result.stderr
     assert not output.exists()
 
 

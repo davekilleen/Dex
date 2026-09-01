@@ -44,6 +44,12 @@ HARNESS_PORTABILITY_PATH = Path("core/harnesses/portability.json")
 CONTRACT_VERSION = "dex-lens-catalogue-v2"
 MINIMUM_LENS_CONTRACT = "0.1.0"
 PROPOSED_LENS_CONTRACT_STATUS = "unreleased-significant-family-preview"
+# Catalogue v6 is already the signed live Core v1.97.2 catalogue.  The first
+# envelope carrying the unreleased significant-family contract must therefore
+# use the next catalogue identity even though the legacy skill registry remains
+# on its own version counter.
+SIGNIFICANT_PREVIEW_CATALOG_VERSION = 7
+SIGNIFICANT_PREVIEW_MINIMUM_LENS_VERSION = "0.1.16"
 REGISTRY_VERSION = 1
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 KEBAB = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
@@ -1001,7 +1007,7 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
     catalogue["capability_families"] = json.loads(
         _canonical_json(significant_contract["families"])
     )
-    return catalog_version + 1, release_version, catalogue
+    return SIGNIFICANT_PREVIEW_CATALOG_VERSION, release_version, catalogue
 
 
 def validate_release_coverage(release_root: Path) -> None:
@@ -1128,7 +1134,7 @@ def generate_enriched_preview(
         release_root,
         envelope,
         schema_path=lens_schema.resolve(),
-        required_lens_version="0.1.9",
+        required_lens_version=SIGNIFICANT_PREVIEW_MINIMUM_LENS_VERSION,
         required_contract_status=PROPOSED_LENS_CONTRACT_STATUS,
         require_complete_mcp_inventory=True,
     )
