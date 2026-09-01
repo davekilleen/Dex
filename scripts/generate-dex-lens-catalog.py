@@ -803,12 +803,29 @@ def _assert_complete_mcp_inventory(
             )
 
 
+def _validated_significant_contract(release_root: Path) -> Mapping[str, object]:
+    """Load the one reviewed family contract and fail closed before emission."""
+
+    payload = _mapping(
+        _closed_json(release_root / SIGNIFICANT_REGISTRY_PATH),
+        context=str(SIGNIFICANT_REGISTRY_PATH),
+    )
+    try:
+        validate_significant_capability_registry(payload, release_root=release_root)
+    except SignificantCapabilityRegistryError as error:
+        raise LensCatalogError(
+            f"significant capability coverage is invalid: {error}"
+        ) from error
+    return payload
+
+
 def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, object]]:
     catalog_version, release_version, catalogue = _build_catalogue(
         release_root,
         include_dormant=True,
         enriched=True,
     )
+    significant_contract = _validated_significant_contract(release_root)
     registry = _mapping(
         _closed_json(release_root / ENRICHED_REGISTRY_PATH),
         context=str(ENRICHED_REGISTRY_PATH),
@@ -961,6 +978,12 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
         )
     _assert_complete_mcp_inventory(mcp_candidates, preview_entries)
     catalogue["capabilities"] = preview_entries
+    catalogue["capability_aliases"] = json.loads(
+        _canonical_json(significant_contract["capability_aliases"])
+    )
+    catalogue["capability_families"] = json.loads(
+        _canonical_json(significant_contract["families"])
+    )
     return catalog_version + 1, release_version, catalogue
 
 

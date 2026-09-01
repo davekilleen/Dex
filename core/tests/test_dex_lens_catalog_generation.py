@@ -23,12 +23,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
 RELEASED_LENS_SCHEMA = REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json"
+PROPOSED_SIGNIFICANT_LENS_SCHEMA = (
+    REPO_ROOT
+    / "core/tests/fixtures/dex-lens-catalogue-significant-preview.schema.json"
+)
 ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
 # Lens v0.1.9 producer bytes plus the host-adapter pattern
 # `^[a-z][a-z0-9-]{1,80}$`, which is required so two-character harness
 # ids (`bb`, `pi`) can appear in compatibility.host_adapters.
 LENS_PRODUCER_SCHEMA_SHA256 = (
     "030a3bdb4471e7bc57753fbb9bef3a12511bc08de726e5614f94da706de9fe0d"
+)
+PROPOSED_SIGNIFICANT_LENS_SCHEMA_SHA256 = (
+    "c44e1802911e8db1d7c86f5cf8fc79a0ea4bacb1c9b2c0b1d1e483fed27e4ca7"
 )
 
 WAVE3_IDS = (
@@ -689,6 +696,57 @@ def test_enriched_catalogue_emits_every_discovered_mcp_tool_in_canonical_order()
 
     assert len(emitted["dex-work-mcp"]["tools"]) == 50
     assert len(emitted["dex-career-mcp"]["tools"]) == 8
+
+
+def test_enriched_catalogue_emits_the_validated_significant_family_contract() -> None:
+    generator = _load_generator_module()
+    significant = json.loads(
+        (REPO_ROOT / "core/lens-catalog/significant-capabilities.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    _catalog_version, _release_version, catalogue = generator._build_enriched_catalogue(
+        REPO_ROOT
+    )
+
+    assert catalogue["capability_aliases"] == significant["capability_aliases"]
+    assert catalogue["capability_families"] == significant["families"]
+    assert len(catalogue["capability_families"]) == 14
+    assert {family["family_id"] for family in catalogue["capability_families"]} == {
+        "meeting-follow-through",
+        "living-people-company-context",
+        "durable-task-continuity",
+        "external-task-interoperability",
+        "connected-work-context",
+        "pipedrive-pipeline-continuity",
+        "daily-weekly-operating-rhythm",
+        "durable-work-memory",
+        "proactive-health-and-recovery",
+        "backup-and-restore-confidence",
+        "safe-change-and-rewind",
+        "capability-discovery-and-adoption",
+        "privacy-safe-feedback-loop",
+        "career-growth-evidence",
+    }
+
+
+def test_committed_significant_preview_is_exact_generated_output(tmp_path: Path) -> None:
+    assert (
+        hashlib.sha256(PROPOSED_SIGNIFICANT_LENS_SCHEMA.read_bytes()).hexdigest()
+        == PROPOSED_SIGNIFICANT_LENS_SCHEMA_SHA256
+    )
+
+    result = _generate_enriched(
+        tmp_path,
+        "--lens-schema",
+        str(PROPOSED_SIGNIFICANT_LENS_SCHEMA),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        tmp_path / "dex-lens-catalog-enriched-preview.json"
+    ).read_bytes() == ENRICHED_EXAMPLE.read_bytes()
 
 
 def test_complete_mcp_inventory_gate_rejects_emitted_tool_drift() -> None:
