@@ -34,7 +34,7 @@ LENS_PRODUCER_SCHEMA_SHA256 = (
     "5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7"
 )
 PROPOSED_SIGNIFICANT_LENS_SCHEMA_SHA256 = (
-    "c44e1802911e8db1d7c86f5cf8fc79a0ea4bacb1c9b2c0b1d1e483fed27e4ca7"
+    "8a0df662643cf8681abdda8de5dc43bb8c32cdedb9e3737e3e53cb59dd747fb7"
 )
 
 WAVE3_IDS = (
@@ -525,7 +525,7 @@ def test_generator_orders_active_entries_by_discovery_not_registry(tmp_path: Pat
     ]
 
 
-def test_enriched_preview_requires_a_lens_0_1_9_schema(tmp_path: Path) -> None:
+def test_enriched_preview_requires_the_proposed_significant_family_schema(tmp_path: Path) -> None:
     missing = _generate_enriched(tmp_path / "missing")
 
     assert missing.returncode == 1
@@ -649,6 +649,7 @@ def test_vendored_lens_schema_matches_pinned_producer_bytes() -> None:
 
     assert hashlib.sha256(schema_bytes).hexdigest() == LENS_PRODUCER_SCHEMA_SHA256
     assert schema["x-dex-lens-minimum-version"] == "0.1.9"
+    assert "x-dex-lens-contract-status" not in schema
     assert [
         branch["$ref"].rsplit("/", 1)[1]
         for branch in schema["$defs"]["CatalogueCapabilityEntryV2"]["oneOf"]
@@ -737,6 +738,10 @@ def test_committed_significant_preview_is_exact_generated_output(tmp_path: Path)
         hashlib.sha256(PROPOSED_SIGNIFICANT_LENS_SCHEMA.read_bytes()).hexdigest()
         == PROPOSED_SIGNIFICANT_LENS_SCHEMA_SHA256
     )
+    proposed_schema = json.loads(PROPOSED_SIGNIFICANT_LENS_SCHEMA.read_text())
+    assert proposed_schema["x-dex-lens-contract-status"] == (
+        "unreleased-significant-family-preview"
+    )
 
     result = _generate_enriched(
         tmp_path,
@@ -816,8 +821,7 @@ def test_enriched_preview_fails_honestly_against_stale_released_schema(tmp_path:
     result = _generate_enriched(output, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
     assert result.returncode == 1
-    assert "complete MCP tool inventory" in result.stderr
-    assert "released Lens contract" in result.stderr
+    assert "unreleased significant-family Lens contract" in result.stderr
     assert not output.exists()
 
 

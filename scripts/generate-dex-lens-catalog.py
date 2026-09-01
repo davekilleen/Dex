@@ -43,6 +43,7 @@ HARNESS_REGISTRY_PATH = Path("core/harnesses/registry.json")
 HARNESS_PORTABILITY_PATH = Path("core/harnesses/portability.json")
 CONTRACT_VERSION = "dex-lens-catalogue-v2"
 MINIMUM_LENS_CONTRACT = "0.1.0"
+PROPOSED_LENS_CONTRACT_STATUS = "unreleased-significant-family-preview"
 REGISTRY_VERSION = 1
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 KEBAB = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
@@ -464,6 +465,7 @@ def _validate_against_lens_schema(
     *,
     schema_path: Path | None = None,
     required_lens_version: str | None = None,
+    required_contract_status: str | None = None,
     require_complete_mcp_inventory: bool = False,
 ) -> None:
     try:
@@ -476,6 +478,14 @@ def _validate_against_lens_schema(
     if required_lens_version is not None and schema.get("x-dex-lens-minimum-version") != required_lens_version:
         raise LensCatalogError(
             f"enriched catalogue schema must declare x-dex-lens-minimum-version {required_lens_version}"
+        )
+    if (
+        required_contract_status is not None
+        and schema.get("x-dex-lens-contract-status") != required_contract_status
+    ):
+        raise LensCatalogError(
+            "enriched preview requires the explicitly unreleased significant-family "
+            "Lens contract"
         )
     if require_complete_mcp_inventory:
         definitions = schema.get("$defs")
@@ -1095,7 +1105,7 @@ def generate_enriched_preview(
     issued_at: str | None = None,
     key_id: str = "dex-core-lens-1",
 ) -> Path:
-    """Write one unsigned, non-release preview for the Lens 0.1.9 contract."""
+    """Write one unsigned preview against the proposed significant-family contract."""
 
     release_root = release_root.resolve()
     issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
@@ -1119,6 +1129,7 @@ def generate_enriched_preview(
         envelope,
         schema_path=lens_schema.resolve(),
         required_lens_version="0.1.9",
+        required_contract_status=PROPOSED_LENS_CONTRACT_STATUS,
         require_complete_mcp_inventory=True,
     )
     destination = output_dir / "dex-lens-catalog-enriched-preview.json"
@@ -1175,7 +1186,10 @@ def main(argv: list[str] | None = None) -> int:
             ):
                 raise LensCatalogError("enriched previews cannot use signing options")
             if args.lens_schema is None:
-                raise LensCatalogError("--enriched-preview requires --lens-schema from Dex Lens 0.1.9 or newer")
+                raise LensCatalogError(
+                    "--enriched-preview requires --lens-schema for the proposed "
+                    "significant-family contract"
+                )
             preview = generate_enriched_preview(
                 args.release_root,
                 output_dir=args.output_dir,
