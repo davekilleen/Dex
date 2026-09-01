@@ -21,10 +21,24 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ENRICHED_REGISTRY = REPO_ROOT / "core/lens-catalog/enriched-registry.json"
 
 
-def _write_mcp_server(root: Path, *, duplicate_server: bool = False) -> Path:
+def _write_mcp_server(
+    root: Path,
+    *,
+    duplicate_server: bool = False,
+    advertised_tools: tuple[str, ...] = ("example_tool",),
+    dispatched_tools: tuple[str, ...] = ("example_tool",),
+) -> Path:
     path = root / "core/mcp/example_server.py"
     path.parent.mkdir(parents=True, exist_ok=True)
     second_server = 'shadow = Server("dex-example")\n' if duplicate_server else ""
+    advertised = ", ".join(
+        f'Tool(name="{name}", description="Example.", inputSchema={{}})'
+        for name in advertised_tools
+    )
+    dispatch = "\n".join(
+        f'    if name == "{name}":\n        return {{"ok": True}}'
+        for name in dispatched_tools
+    )
     path.write_text(
         "from mcp.server import Server\n"
         "from mcp.types import Tool\n\n"
@@ -32,7 +46,10 @@ def _write_mcp_server(root: Path, *, duplicate_server: bool = False) -> Path:
         f"{second_server}"
         "@server.list_tools()\n"
         "async def list_tools():\n"
-        '    return [Tool(name="example_tool", description="Example.", inputSchema={})]\n',
+        f"    return [{advertised}]\n\n"
+        "async def call_tool(name, arguments):\n"
+        f"{dispatch}\n"
+        "    raise ValueError(name)\n",
         encoding="utf-8",
     )
     return path
@@ -88,6 +105,29 @@ def test_mcp_discovery_rejects_duplicate_literal_server_declarations(tmp_path: P
     source = _write_mcp_server(tmp_path, duplicate_server=True)
 
     with pytest.raises(LensDiscoveryError, match="exactly one literal Server name"):
+        discover_mcp_server_source(tmp_path, source)
+
+
+@pytest.mark.parametrize(
+    ("advertised_tools", "dispatched_tools", "missing_side"),
+    [
+        (("advertised_only",), (), "not dispatchable"),
+        ((), ("dispatch_only",), "not advertised"),
+    ],
+)
+def test_mcp_discovery_rejects_one_sided_tool_contracts(
+    tmp_path: Path,
+    advertised_tools: tuple[str, ...],
+    dispatched_tools: tuple[str, ...],
+    missing_side: str,
+) -> None:
+    source = _write_mcp_server(
+        tmp_path,
+        advertised_tools=advertised_tools,
+        dispatched_tools=dispatched_tools,
+    )
+
+    with pytest.raises(LensDiscoveryError, match=missing_side):
         discover_mcp_server_source(tmp_path, source)
 
 

@@ -356,12 +356,14 @@ def _default_provider_resolver(
     provider_id: str,
     *,
     release_root: Path,
-) -> bool:
-    """Resolve a provider through the pinned local Nango dependency.
+) -> dict[str, bool]:
+    """Resolve provider existence, support, and vetting from Core's own sources.
 
     The dependency is intentionally not vendored.  A missing package (or a
     package with a different version) is an explicit validation failure rather
-    than an invitation to silently accept a guessed provider id.
+    than an invitation to silently accept a guessed provider id.  Support and
+    security-review claims come from the shipped connection-manager catalog
+    and pin registry, never from the broad Nango catalog alone.
     """
 
     package_root = release_root / "node_modules/@nangohq/providers"
@@ -377,11 +379,31 @@ def _default_provider_resolver(
     if package.get("version") != PROVIDER_SOURCE_VERSION:
         raise SignificantCapabilityRegistryError(f"pinned provider source version is not {PROVIDER_SOURCE_VERSION}")
 
+    connection_manager = release_root / "core/integrations/connection-manager"
+    catalog_path = connection_manager / "catalog.cjs"
+    pins_path = connection_manager / "pinned-providers.cjs"
+    for source in (catalog_path, pins_path):
+        if source.is_symlink() or not source.is_file():
+            raise SignificantCapabilityRegistryError(
+                f"pinned provider source is unavailable: {source} is missing or unsafe"
+            )
+
     script = (
         "const providers = require('@nangohq/providers'); "
-        "if (typeof providers.getProvider !== 'function') process.exit(3); "
-        "const provider = providers.getProvider(process.argv[1]); "
-        "process.stdout.write(provider ? '1' : '0');"
+        "const catalog = require('./core/integrations/connection-manager/catalog.cjs'); "
+        "const pins = require('./core/integrations/connection-manager/pinned-providers.cjs'); "
+        "if (typeof providers.getProvider !== 'function' || "
+        "typeof catalog.getProviderConfig !== 'function' || typeof pins.isVetted !== 'function') "
+        "process.exit(3); "
+        "const providerId = process.argv[1]; "
+        "const provider = providers.getProvider(providerId); "
+        "let supported = false; "
+        "if (provider) { "
+        "try { supported = catalog.getProviderConfig(providerId).supported === true; } catch {} "
+        "} "
+        "process.stdout.write(JSON.stringify({"
+        "exists: Boolean(provider), supported, security_vetted: pins.isVetted(providerId) === true"
+        "}));"
     )
     try:
         result = subprocess.run(
@@ -396,7 +418,18 @@ def _default_provider_resolver(
         raise SignificantCapabilityRegistryError(f"pinned provider source is unavailable: {error}") from error
     if result.returncode != 0:
         raise SignificantCapabilityRegistryError("pinned provider source could not resolve provider identities")
-    return result.stdout.strip() == "1"
+    try:
+        truth = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise SignificantCapabilityRegistryError(
+            "pinned provider source returned malformed provider truth"
+        ) from error
+    normalized = _provider_truth(truth)
+    if normalized is None:
+        raise SignificantCapabilityRegistryError(
+            "pinned provider source returned malformed provider truth"
+        )
+    return normalized
 
 
 def _resolve_provider(
@@ -404,11 +437,11 @@ def _resolve_provider(
     *,
     release_root: Path,
     provider_resolver: ProviderResolver | Mapping[str, object] | None,
-) -> bool:
+) -> dict[str, bool] | None:
     if provider_resolver is None:
         return _default_provider_resolver(provider_id, release_root=release_root)
     if isinstance(provider_resolver, Mapping):
-        return _provider_exists(provider_resolver.get(provider_id))
+        return _provider_truth(provider_resolver.get(provider_id))
     try:
         result = provider_resolver(provider_id)
     except SignificantCapabilityRegistryError:
@@ -417,26 +450,38 @@ def _resolve_provider(
         raise SignificantCapabilityRegistryError(
             f"pinned provider source resolver failed for {provider_id!r}: {error}"
         ) from error
-    return _provider_exists(result)
+    return _provider_truth(result)
 
 
-def _provider_exists(value: object) -> bool:
-    """Accept only an explicit boolean existence assertion from a resolver."""
+def _provider_truth(value: object) -> dict[str, bool] | None:
+    """Accept only the three literal booleans that make a provider claim safe."""
 
-    if value is True:
-        return True
-    if isinstance(value, Mapping):
-        # A resolver may return a small identity record, but its existence bit
-        # must itself be the literal boolean ``True``.  Truthy strings such as
-        # ``"false"`` are deliberately rejected.
-        return value.get("exists") is True
-    return False
+    if not isinstance(value, Mapping):
+        return None
+    fields = {"exists", "supported", "security_vetted"}
+    if set(value) != fields or any(type(value.get(field)) is not bool for field in fields):
+        return None
+    return {
+        "exists": value["exists"] is True,
+        "supported": value["supported"] is True,
+        "security_vetted": value["security_vetted"] is True,
+    }
 
 
 def _component_identity(component: Mapping[str, object]) -> tuple[object, ...]:
-    """Return a stable identity for duplicate-component detection."""
+    """Return the class-discriminated identity defined by the Lens contract."""
 
-    return tuple(sorted(component.items(), key=lambda item: item[0]))
+    component_type = component.get("component_type")
+    identity_fields = {
+        "capability": ("capability_id",),
+        "mcp-tool": ("server_id", "tool_name"),
+        "nango-provider": ("provider_id",),
+        "source-component": ("component_id",),
+    }
+    fields = identity_fields.get(component_type)
+    if fields is None:
+        return (component_type,)
+    return (component_type, *(component.get(field) for field in fields))
 
 
 def _validation_errors(
@@ -577,6 +622,12 @@ def _validation_errors(
                 component_type = component.get("component_type")
                 if component_type not in _COMPONENT_TYPES:
                     raise SignificantCapabilityRegistryError(f"{component_context} has unknown component type")
+                identity = _component_identity(component)
+                identity_is_hashable = all(isinstance(value, str) for value in identity)
+                if identity_is_hashable and (
+                    identity in family_component_seen or identity in component_seen
+                ):
+                    raise SignificantCapabilityRegistryError(f"duplicate component in {component_context}")
                 if component_type == "capability":
                     _exact_fields(
                         component,
@@ -658,13 +709,23 @@ def _validation_errors(
                         )
                     if type(component.get("security_vetted")) is not bool:
                         raise SignificantCapabilityRegistryError(f"{component_context} security_vetted must be boolean")
-                    if not _resolve_provider(
+                    provider_truth = _resolve_provider(
                         provider_id,
                         release_root=release_root,
                         provider_resolver=provider_resolver,
-                    ):
+                    )
+                    if provider_truth is None or provider_truth["exists"] is not True:
                         raise SignificantCapabilityRegistryError(
                             f"{component_context} references unknown provider {provider_id!r}"
+                        )
+                    expected_support = "supported" if provider_truth["supported"] else "unsupported"
+                    if component.get("dex_support") != expected_support:
+                        raise SignificantCapabilityRegistryError(
+                            f"{component_context} dex_support does not match authoritative provider truth"
+                        )
+                    if component.get("security_vetted") is not provider_truth["security_vetted"]:
+                        raise SignificantCapabilityRegistryError(
+                            f"{component_context} security_vetted does not match authoritative provider truth"
                         )
                 else:
                     _exact_fields(
@@ -678,7 +739,9 @@ def _validation_errors(
                     )
 
                 identity = _component_identity(component)
-                if identity in family_component_seen or identity in component_seen:
+                if not identity_is_hashable and (
+                    identity in family_component_seen or identity in component_seen
+                ):
                     raise SignificantCapabilityRegistryError(f"duplicate component in {component_context}")
                 family_component_seen.add(identity)
                 component_seen[identity] = component_context

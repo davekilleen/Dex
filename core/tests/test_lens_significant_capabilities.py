@@ -41,10 +41,14 @@ EXPECTED_FAMILIES = {
 }
 
 
-def _provider_resolver(provider_id: str) -> bool:
-    """Inject the two reviewed provider identities in test-only fixtures."""
+def _provider_resolver(provider_id: str) -> dict[str, bool]:
+    """Inject authoritative connection-manager truth in test-only fixtures."""
 
-    return provider_id in {"google", "linear"}
+    return {
+        "exists": provider_id in {"google", "linear"},
+        "supported": provider_id in {"google", "linear"},
+        "security_vetted": provider_id in {"google", "linear"},
+    }
 
 
 def _raw_registry() -> dict[str, object]:
@@ -257,6 +261,108 @@ def test_provider_identity_and_missing_dependency_fail_honestly(tmp_path: Path) 
         )
 
 
+def test_provider_claims_must_match_connection_manager_support_and_vetting() -> None:
+    payload = _valid_registry()
+    provider = next(
+        component
+        for family in payload["families"]
+        for component in family["components"]
+        if component["component_type"] == "nango-provider"
+    )
+    provider["provider_id"] = "github"
+
+    _assert_invalid(
+        payload,
+        "security_vetted does not match authoritative provider truth",
+        resolver=lambda provider_id: {
+            "exists": provider_id in {"github", "google", "linear"},
+            "supported": provider_id in {"github", "google", "linear"},
+            "security_vetted": provider_id in {"google", "linear"},
+        },
+    )
+
+
+def test_provider_support_claim_must_match_connection_manager_truth() -> None:
+    payload = _valid_registry()
+    provider = next(
+        component
+        for family in payload["families"]
+        for component in family["components"]
+        if component["component_type"] == "nango-provider"
+    )
+    provider["dex_support"] = "unsupported"
+
+    _assert_invalid(payload, "dex_support does not match authoritative provider truth")
+
+
+def test_canonical_provider_rows_are_exactly_the_reviewed_google_and_linear_set() -> None:
+    payload = _valid_registry()
+    providers = {
+        component["provider_id"]: component
+        for family in payload["families"]
+        for component in family["components"]
+        if component["component_type"] == "nango-provider"
+    }
+
+    assert set(providers) == {"google", "linear"}
+    assert all(provider["dex_support"] == "supported" for provider in providers.values())
+    assert all(provider["security_vetted"] is True for provider in providers.values())
+
+
+def test_provider_duplicate_identity_ignores_mutable_claim_fields() -> None:
+    payload = _valid_registry()
+    family = next(
+        item
+        for item in payload["families"]
+        if any(component["component_type"] == "nango-provider" for component in item["components"])
+    )
+    provider = next(
+        component for component in family["components"] if component["component_type"] == "nango-provider"
+    )
+    duplicate = copy.deepcopy(provider)
+    duplicate["dex_support"] = "unsupported"
+    duplicate["security_vetted"] = False
+    family["components"].append(duplicate)
+
+    _assert_invalid(payload, "duplicate component")
+
+    assert significant_capabilities._component_identity(provider) == (
+        "nango-provider",
+        provider["provider_id"],
+    )
+    assert significant_capabilities._component_identity(provider) == (
+        significant_capabilities._component_identity(duplicate)
+    )
+
+
+@pytest.mark.parametrize(
+    ("component", "identity"),
+    [
+        (
+            {"component_type": "capability", "capability_id": "daily-plan"},
+            ("capability", "daily-plan"),
+        ),
+        (
+            {
+                "component_type": "mcp-tool",
+                "server_id": "dex-work-mcp",
+                "tool_name": "create_task",
+            },
+            ("mcp-tool", "dex-work-mcp", "create_task"),
+        ),
+        (
+            {"component_type": "source-component", "component_id": "work-task-continuity"},
+            ("source-component", "work-task-continuity"),
+        ),
+    ],
+)
+def test_component_identity_matches_the_lens_contract(
+    component: dict[str, str],
+    identity: tuple[str, ...],
+) -> None:
+    assert significant_capabilities._component_identity(component) == identity
+
+
 def test_mcp_component_sets_must_match_every_discovered_server_exactly() -> None:
     payload = _valid_registry()
     work_family = next(
@@ -303,8 +409,19 @@ def test_source_components_resolve_against_the_closed_reviewed_set() -> None:
     _assert_invalid(payload, "unknown source component")
 
 
-@pytest.mark.parametrize("value", [False, "false", "true", {"exists": "true"}])
-def test_provider_resolvers_require_explicit_boolean_existence(value: object) -> None:
+@pytest.mark.parametrize(
+    "value",
+    [
+        False,
+        "false",
+        "true",
+        {"exists": "true", "supported": True, "security_vetted": True},
+        {"exists": True, "supported": "true", "security_vetted": True},
+        {"exists": True, "supported": True, "security_vetted": "true"},
+        {"exists": True, "supported": True},
+    ],
+)
+def test_provider_resolvers_require_three_literal_boolean_truth_fields(value: object) -> None:
     _assert_invalid(
         _raw_registry(),
         "unknown provider",
@@ -316,7 +433,10 @@ def test_mapping_provider_resolver_requires_each_value_to_be_true() -> None:
     _assert_invalid(
         _raw_registry(),
         "unknown provider",
-        resolver={"google": False, "linear": True},
+        resolver={
+            "google": {"exists": False, "supported": True, "security_vetted": True},
+            "linear": {"exists": True, "supported": True, "security_vetted": True},
+        },
     )
 
 
