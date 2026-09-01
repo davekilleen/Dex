@@ -142,6 +142,19 @@ def test_session_memory_is_explicitly_in_durable_work_memory() -> None:
     assert "dex-session-memory" in family["member_capability_ids"]
 
 
+def test_connected_work_family_explains_connector_breadth_without_overclaiming_support() -> None:
+    payload = load_significant_capability_registry(
+        release_root=REPO_ROOT,
+        provider_resolver=_provider_resolver,
+    )
+    family = next(
+        item for item in payload["families"] if item["family_id"] == "connected-work-context"
+    )
+
+    assert "hundreds of connector definitions" in family["outcome"]
+    assert "explicitly supported and security-vetted" in family["outcome"]
+
+
 def test_career_family_contains_both_servers_and_exact_tool_components() -> None:
     payload = load_significant_capability_registry(
         release_root=REPO_ROOT,

@@ -502,7 +502,7 @@
     {
       "family_id": "connected-work-context",
       "title": "Connected work context is understandable",
-      "outcome": "Calendar, mail, meetings and collaboration services can inform local work when explicitly connected, while held connection routes remain clearly marked as groundwork.",
+      "outcome": "Calendar, mail, meetings and collaboration services can inform local work when explicitly connected. A directory of hundreds of connector definitions makes more tools discoverable, but only connectors Dex has explicitly supported and security-vetted are treated as ready to use; held connection routes remain groundwork.",
       "jobs": [
         "capture-without-friction",
         "start-each-day-focused",
