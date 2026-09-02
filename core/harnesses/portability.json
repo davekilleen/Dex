@@ -492,6 +492,10 @@
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"
     },
+    "wispr-setup": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
     "xray": {
       "classification": "broken",
       "reason": "missing .claude/skills/my-skill"

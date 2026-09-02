@@ -21,10 +21,10 @@ def _write_skill(root: Path, skill_id: str, *, name: str | None = None, descript
     return path
 
 
-def test_shipped_release_has_exactly_65_active_first_party_skills() -> None:
+def test_shipped_release_has_exactly_66_active_first_party_skills() -> None:
     candidates = discover_active_skills(REPO_ROOT)
 
-    assert len(candidates) == 65
+    assert len(candidates) == 66
     assert tuple(candidate.capability_id for candidate in candidates) == tuple(
         sorted(candidate.capability_id for candidate in candidates)
     )
