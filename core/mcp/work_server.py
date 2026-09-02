@@ -2590,6 +2590,47 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     
     return priorities
 
+def _task_ids_named_in_priority_success_criteria(priority_id: str) -> set[str]:
+    """Return exact task IDs named in one priority's success criteria."""
+    priorities_file = get_week_priorities_file()
+    if not priorities_file.exists():
+        return set()
+
+    lines = priorities_file.read_text().split('\n')
+    priority_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if extract_priority_id(line) == priority_id
+        ),
+        None,
+    )
+    if priority_index is None:
+        return set()
+
+    priority_indent = _indent_width(lines[priority_index])
+    referenced_task_ids = set()
+    task_id_pattern = r'(?<![A-Za-z0-9_-])(task-\d{8}-\d{3,})(?![A-Za-z0-9_-])'
+
+    for line in lines[priority_index + 1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _indent_width(line) <= priority_indent:
+            break
+
+        success_criteria = re.match(
+            r'^-\s*Success criteria\s*:\s*(.+)$',
+            stripped,
+            re.IGNORECASE,
+        )
+        if success_criteria:
+            referenced_task_ids.update(
+                re.findall(task_id_pattern, success_criteria.group(1))
+            )
+
+    return referenced_task_ids
+
 def find_linked_tasks(priority_id: str) -> List[Dict[str, Any]]:
     """Find all tasks linked to a weekly priority"""
     tasks_file = get_tasks_file()
@@ -2599,20 +2640,25 @@ def find_linked_tasks(priority_id: str) -> List[Dict[str, Any]]:
     content = tasks_file.read_text()
     lines = content.split('\n')
     
+    referenced_task_ids = _task_ids_named_in_priority_success_criteria(priority_id)
     linked_tasks = []
     for i, line in enumerate(lines):
         if not (line.strip().startswith('- [ ]') or line.strip().startswith('- [x]')):
             continue
 
+        task_id = extract_task_id(line)
         linked_text = '\n'.join([line, *_task_child_lines(lines, i)])
         priority_pattern = (
             rf'(?<![A-Za-z0-9_-]){re.escape(priority_id)}(?![A-Za-z0-9_-])'
         )
-        if not re.search(priority_pattern, linked_text):
+        if (
+            not re.search(priority_pattern, linked_text)
+            and task_id not in referenced_task_ids
+        ):
             continue
 
         linked_tasks.append({
-            'task_id': extract_task_id(line),
+            'task_id': task_id,
             'title': _task_title_from_line(line).split('|', 1)[0].strip(),
             'completed': '- [x]' in line,
             'line_number': i + 1

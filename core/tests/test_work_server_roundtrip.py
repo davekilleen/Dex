@@ -209,6 +209,41 @@ def test_valid_weekly_priority_link_round_trips_into_week_progress(task_vault):
     assert linked["tasks_done"] == 0
 
 
+def test_public_week_progress_counts_completed_task_named_in_success_criteria(
+    task_vault,
+):
+    priority_id = "week-2026-W28-p3"
+    task_id = "task-20260711-062"
+    task_vault["priorities"].write_text(
+        "# Week Priorities\n\n"
+        f"3. Restore customer confidence — **Test Pillar** ^{priority_id}\n"
+        f"   - Success criteria: Complete {task_id} and share the result\n",
+        encoding="utf-8",
+    )
+    task_vault["tasks"].write_text(
+        "# Tasks\n\n## Done\n"
+        f"- [x] Share customer recovery result ^{task_id} ✅ 2026-07-11 16:30\n"
+        "   - Pillar: Test Pillar | Priority: P1\n",
+        encoding="utf-8",
+    )
+
+    progress = _call_tool("get_week_progress")
+    priority = next(
+        item for item in progress["priorities"]
+        if item["priority_id"] == priority_id
+    )
+
+    assert priority == {
+        "priority_id": priority_id,
+        "title": "Restore customer confidence",
+        "pillar": "Test Pillar",
+        "status": "complete",
+        "tasks_done": 1,
+        "tasks_total": 1,
+        "warning": None,
+    }
+
+
 def test_comma_form_priority_is_visible_in_week_tools(task_vault):
     priority_id = "week-2026-W36-p1"
     task_vault["priorities"].write_text(

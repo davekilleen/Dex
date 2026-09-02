@@ -29,6 +29,10 @@ along than it was.
 * **Blocked tasks no longer stay behind after Dex says their status changed.**
   The task tool now recognizes the blocked marker in the main list and other
   copies, can mark a task blocked, and completes every matching copy together.
+* **Weekly progress no longer ignores a completed task the priority already
+  named by ID in Success criteria.** Progress stayed “not started” unless that
+  task also had a separate weekly-priority backlink. Only exact task IDs count;
+  close names are still ignored.
 
 Public Latest remains 1.97.6 until the next numbered release.
 
