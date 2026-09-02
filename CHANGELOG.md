@@ -22,6 +22,10 @@ along than it was.
   Promotions and other folders could make the plan say hundreds when only a few
   messages were in Primary or Inbox. The headline now counts that attention
   inbox, and omits the number if the source cannot scope it reliably.
+* **Creating a task no longer refuses a company Dex already has, just because
+  the page filename is the short name and the display name is longer.** A
+  filename-only match is enough. Close-but-not-exact names still get a list of
+  suggestions instead of a guess.
 
 Public Latest remains 1.97.6 until the next numbered release.
 

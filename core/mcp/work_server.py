@@ -1456,6 +1456,14 @@ def resolve_account_link(account: str) -> Dict[str, Any]:
             if given_folded == (company.get('name') or '').casefold()
         ]
         how = 'name'
+        if not matches:
+            given_filename = Path(given).stem.replace('_', ' ').casefold()
+            matches = [
+                company for company in companies
+                if given_filename
+                == Path(company.get('path') or '').stem.replace('_', ' ').casefold()
+            ]
+            how = 'filename'
 
     candidate_paths = sorted({
         company['path'] for company in matches

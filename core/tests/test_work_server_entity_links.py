@@ -440,6 +440,34 @@ def test_create_task_resolves_account_by_domain(entity_vault):
     assert resolved_path in entity_vault["tasks"].read_text(encoding="utf-8")
 
 
+def test_create_task_resolves_account_by_exact_filename_when_display_name_differs(
+    entity_vault,
+):
+    company = _write_company(
+        entity_vault,
+        "ACME_INC.md",
+        "Acme Incorporated",
+    )
+    resolved_path = _vault_relative(company, entity_vault["root"])
+
+    created = _call_tool(
+        "create_task",
+        {
+            "title": "Prepare the Acme account review",
+            "pillar": "pillar_1",
+            "account": "ACME INC",
+        },
+    )
+
+    assert created["success"] is True
+    assert created["links"]["account"] == {
+        "given": "ACME INC",
+        "resolved_path": resolved_path,
+        "how": "filename",
+    }
+    assert created["task"]["account"] == resolved_path
+
+
 def test_create_task_strong_goal_inference_uses_title_and_context(entity_vault):
     goal_id = "Q3-2026-goal-1"
     _write_goals(
