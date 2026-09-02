@@ -70,6 +70,13 @@ CLAUDE-custom.md
 core/mcp-custom/
 core/mcp-premium/
 
+# Captain's Log capture skill (user custom) and its private build-log data.
+# Ignored so a fork of this vault does not inherit one user's custom skill or
+# their candid Captain's Log reflections / build logs.
+.opencode/skill/capture-log-custom/
+**/REFLECTIONS.md
+**/*-LOG.md
+
 # User data folders (PARA structure)
 00-Inbox/
 01-Quarter_Goals/
@@ -258,3 +265,7 @@ scripts/private/
 .codex-analytics-task.md
 .codex-*-task.md
 System/.doctor-last-run.json
+
+# Generated per machine (absolute paths) by scripts/generate-harness-config.py --format opencode;
+# opencode.json.example is the tracked seed.
+opencode.json
