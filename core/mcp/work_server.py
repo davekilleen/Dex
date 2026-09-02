@@ -591,7 +591,7 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
 
 def _task_title_from_line(line: str) -> str:
     """Extract task text while accepting both completion timestamp layouts."""
-    title = re.sub(r'^\s*-\s*\[[x ]\]\s*', '', line, count=1)
+    title = re.sub(r'^\s*-\s*\[[ bBxX]\]\s*', '', line, count=1)
     title = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', title)
     title = re.sub(r'\s*\^task-\d{8}-\d{3,}\b', '', title)
     title = title.strip()
@@ -708,7 +708,9 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
             lines = content.split('\n')
 
             for i, line in enumerate(lines):
-                if anchored.search(line) and ('- [ ]' in line or '- [x]' in line):
+                if anchored.search(line) and re.match(
+                    r'^\s*-\s*\[[ bBxX]\]', line
+                ):
                     # Extract task title
                     title = _task_title_from_line(line).split('|', 1)[0].strip()
                     
@@ -717,7 +719,7 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
                         'line_number': i + 1,
                         'line_content': line,
                         'title': title,
-                        'completed': '- [x]' in line
+                        'completed': bool(re.match(r'^\s*-\s*\[[xX]\]', line))
                     })
         except Exception as e:
             logger.error(f"Error reading {md_file}: {e}")
@@ -763,8 +765,16 @@ def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
         return None
     return task_id
 
-def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, Any]:
+def update_task_status_everywhere(
+    task_id: str, completed: str | bool
+) -> Dict[str, Any]:
     """Update task status for all instances of a task ID across all files"""
+    status_code = (
+        ('d' if completed else 'n')
+        if isinstance(completed, bool)
+        else completed
+    )
+    completed = status_code == 'd'
     instances = find_task_by_id(task_id)
     
     if not instances:
@@ -788,7 +798,9 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
             
             # Update checkbox and normalize completion metadata around the anchor.
             if completed:
-                new_line = old_line.replace('- [ ]', '- [x]')
+                new_line = re.sub(
+                    r'^(\s*)-\s*\[[ bBxX]\]', r'\1- [x]', old_line, count=1
+                )
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
                 task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
                 if task_id_match:
@@ -797,8 +809,16 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
                     ).rstrip()
                     new_line = f'{without_anchor} ✅ {completion_timestamp} ^{task_id}'
             else:
-                # Uncompleting: change checkbox and remove timestamp
-                new_line = old_line.replace('- [x]', '- [ ]')
+                # Non-completed statuses carry no completion timestamp. Blocked
+                # remains distinct; not-started and started retain the legacy
+                # open-checkbox representation.
+                target_checkbox = '- [b]' if status_code == 'b' else '- [ ]'
+                new_line = re.sub(
+                    r'^(\s*)-\s*\[[ bBxX]\]',
+                    lambda match: f'{match.group(1)}{target_checkbox}',
+                    old_line,
+                    count=1,
+                )
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
                 task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
                 if task_id_match:
@@ -826,7 +846,11 @@ def update_task_status_everywhere(task_id: str, completed: bool) -> Dict[str, An
         'success': len(failed_files) == 0,
         'task_id': task_id,
         'title': instances[0]['title'] if instances else '',
-        'status': 'completed' if completed else 'not_completed',
+        'status': (
+            'completed'
+            if completed
+            else ('blocked' if status_code == 'b' else 'not_completed')
+        ),
         'completed_at': completion_timestamp if completed else None,
         'updated_files': updated_files,
         'instances_found': len(instances)
@@ -2739,9 +2763,11 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             continue
         
         # Parse task lines
-        if line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'):
+        checkbox_match = re.match(r'^-\s*\[([ bBxX])\]', line.strip())
+        if checkbox_match:
             task_counter += 1
-            completed = line.strip().startswith('- [x]')
+            checkbox_status = checkbox_match.group(1).lower()
+            completed = checkbox_status == 'x'
             
             # Extract task ID if present
             task_id = extract_task_id(line)
@@ -2757,7 +2783,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 continue
             
             # Determine status
-            status = 'd' if completed else 'n'
+            status = 'd' if completed else ('b' if checkbox_status == 'b' else 'n')
             
             metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
 
@@ -5105,7 +5131,7 @@ async def _handle_call_tool_inner(
         
         # If task_id provided, use it directly
         if task_id:
-            result = update_task_status_everywhere(task_id, completed)
+            result = update_task_status_everywhere(task_id, new_status)
             if not result['success']:
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
             
@@ -5157,7 +5183,7 @@ async def _handle_call_tool_inner(
             
             # If task has an ID, use the sync function
             if task.get('task_id'):
-                result = update_task_status_everywhere(task['task_id'], completed)
+                result = update_task_status_everywhere(task['task_id'], new_status)
 
                 if not result['success']:
                     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]

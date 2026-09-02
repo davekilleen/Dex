@@ -662,6 +662,90 @@ def test_completion_normalizes_old_and_new_layouts_with_anchor_last(
     assert parsed["title"] == "Finish launch report"
 
 
+def test_status_tool_completes_blocked_canonical_task_and_open_copy(
+    task_vault, monkeypatch
+):
+    task_id = "task-20260711-049"
+    task_vault["tasks"].write_text(
+        f"# Tasks\n\n## Blocked\n- [b] Ship launch brief ^{task_id}\n",
+        encoding="utf-8",
+    )
+    archive_file = task_vault["root"] / "05-Areas" / "Projects" / "Launch.md"
+    archive_file.parent.mkdir(parents=True)
+    archive_file.write_text(
+        f"# Launch\n\n- [ ] Ship launch brief ^{task_id}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "_tz_now", lambda: datetime(2026, 7, 11, 21, 15))
+
+    result = _call_tool(
+        "update_task_status",
+        {"task_id": task_id, "status": "d"},
+    )
+
+    assert result["success"] is True
+    assert result["instances_found"] == 2
+    expected_line = (
+        "- [x] Ship launch brief ✅ 2026-07-11 21:15 "
+        f"^{task_id}"
+    )
+    assert task_vault["tasks"].read_text(encoding="utf-8").splitlines()[-1] == (
+        expected_line
+    )
+    assert archive_file.read_text(encoding="utf-8").splitlines()[-1] == expected_line
+
+
+def test_status_tool_marks_every_task_copy_blocked(task_vault):
+    task_id = "task-20260711-050"
+    task_vault["tasks"].write_text(
+        f"# Tasks\n\n## Next\n- [ ] Wait for customer evidence ^{task_id}\n",
+        encoding="utf-8",
+    )
+    project_file = task_vault["root"] / "04-Projects" / "Launch.md"
+    project_file.parent.mkdir(parents=True)
+    project_file.write_text(
+        f"# Launch\n\n- [ ] Wait for customer evidence ^{task_id}\n",
+        encoding="utf-8",
+    )
+
+    result = _call_tool(
+        "update_task_status",
+        {"task_id": task_id, "status": "b"},
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "blocked"
+    assert result["instances_found"] == 2
+    expected_line = f"- [b] Wait for customer evidence ^{task_id}"
+    assert task_vault["tasks"].read_text(encoding="utf-8").splitlines()[-1] == (
+        expected_line
+    )
+    assert project_file.read_text(encoding="utf-8").splitlines()[-1] == expected_line
+
+
+def test_status_tool_finds_and_completes_blocked_task_by_title(
+    task_vault, monkeypatch
+):
+    task_id = "task-20260711-051"
+    task_vault["tasks"].write_text(
+        f"# Tasks\n\n## Blocked\n- [b] Publish launch brief ^{task_id}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "_tz_now", lambda: datetime(2026, 7, 11, 21, 15))
+
+    result = _call_tool(
+        "update_task_status",
+        {"task_title": "Publish launch brief", "status": "d"},
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "completed"
+    assert task_vault["tasks"].read_text(encoding="utf-8").splitlines()[-1] == (
+        "- [x] Publish launch brief ✅ 2026-07-11 21:15 "
+        f"^{task_id}"
+    )
+
+
 @pytest.mark.parametrize(
     "task_line",
     [

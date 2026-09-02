@@ -26,6 +26,9 @@ along than it was.
   the page filename is the short name and the display name is longer.** A
   filename-only match is enough. Close-but-not-exact names still get a list of
   suggestions instead of a guess.
+* **Blocked tasks no longer stay behind after Dex says their status changed.**
+  The task tool now recognizes the blocked marker in the main list and other
+  copies, can mark a task blocked, and completes every matching copy together.
 
 Public Latest remains 1.97.6 until the next numbered release.
 
