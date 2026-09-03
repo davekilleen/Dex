@@ -294,7 +294,6 @@ def test_explicit_section_argument_still_wins(task_vault):
 
 from datetime import date  # noqa: E402
 
-
 STRUCTURED_GOALS = (
     "---\n"
     "quarter: Q3 2026\n"
