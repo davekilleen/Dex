@@ -565,6 +565,17 @@ ONBOARDING_PROVISION_PATHS = frozenset(
 CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
 CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
 CUSTOMIZATION_MIGRATION_SEAM_PATHS = ("CLAUDE-custom.md",)
+
+# Transition capsules snapshot the two reset-owned config files before a
+# re-onboarding mutates them. They live outside the update lane's capsule root
+# because its status projection treats every entry there as an update capsule.
+TRANSITION_CAPSULE_PREFIX = "System/.dex/transition-capsules/"
+TRANSITION_RESTORE_PATHS = frozenset(
+    {
+        "System/user-profile.yaml",
+        "System/pillars.yaml",
+    }
+)
 CONFLICT_RESOLUTION_CUSTOM_NAMESPACE_RULE_IDS = frozenset(
     {
         "vault-claude-skills-custom",
@@ -623,6 +634,8 @@ def update_write_verdict(
         "legacy-qmd-reconciliation",
         "onboarding-context",
         "onboarding-provision",
+        "transition-capsule",
+        "transition-restore",
         "analytics-receipt",
         "automation-ownership",
         "conflict-resolution",
@@ -666,6 +679,52 @@ def update_write_verdict(
             candidate,
             False,
             "outside-onboarding-provision",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation in ("transition-capsule", "transition-restore"):
+        outside_reason = f"outside-{operation}"
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                outside_reason,
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        allowed = (
+            candidate.startswith(TRANSITION_CAPSULE_PREFIX)
+            if operation == "transition-capsule"
+            else candidate in TRANSITION_RESTORE_PATHS
+        )
+        if allowed:
+            return WriteVerdict(
+                candidate,
+                True,
+                f"write-{operation}",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            outside_reason,
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )

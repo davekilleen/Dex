@@ -819,6 +819,54 @@ def _profile_changes(planned: Dict[str, Any]) -> List[Dict[str, Any]]:
     return changes
 
 
+def _transition_allowed_prefixes(session: Dict[str, Any]) -> List[str]:
+    """Dotted-key prefixes the replayed onboarding steps were allowed to change.
+
+    Namespaced by target: ``profile.`` for user-profile.yaml, ``pillars.``
+    for pillars.yaml, ``rooms.`` for the effective room map. Everything the
+    user did not re-answer stays outside this set, so the verifier can flag
+    any other key that moved.
+    """
+    data = _approved_profile_session_data(session)
+    prefixes = {f"profile.{key}" for key in data if key != "capabilities"}
+    for room in data.get("capabilities") or {}:
+        prefixes.add(f"profile.capabilities.{room}")
+        prefixes.add(f"rooms.{room}")
+        # Re-answered rooms also realign their legacy config switch.
+        config = capability_rooms.surfaces_for(room).get("config")
+        if isinstance(config, str):
+            prefixes.add(f"profile.{config}.enabled")
+    if "pillars" in data:
+        prefixes.add("pillars.pillars")
+    return sorted(prefixes)
+
+
+def _capture_transition_capsule(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Snapshot the pre-change profile, pillars, and room map before mutation."""
+    from core.customization_migration import transition as transition_capsules
+
+    return transition_capsules.create_transition_capsule(
+        BASE_DIR,
+        allowed_prefixes=_transition_allowed_prefixes(session),
+        rooms=transition_capsules.effective_room_map(BASE_DIR),
+    )
+
+
+def _run_transition_verification(capsule_id: str) -> Dict[str, Any]:
+    """Verify the finalize outcome; a failure is reported, never raised."""
+    try:
+        from core.customization_migration import transition as transition_capsules
+
+        return transition_capsules.verify_transition(BASE_DIR, capsule_id)
+    except Exception as error:
+        return {
+            "verified": False,
+            "capsule_id": capsule_id,
+            "error": str(error),
+            "summary": f"The transition could not be verified: {error}",
+        }
+
+
 def _preview_through_provisioner(session: Dict) -> Dict[str, Any]:
     """Describe the exact read-only plan produced by the real provisioner."""
     receipt = _run_onboarding_provisioner(session, dry_run=True)
@@ -2126,6 +2174,47 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="verify_transition",
+            description=(
+                "After finalize runs on a vault that already completed onboarding, prove "
+                "nothing was silently lost: diff the pre-change snapshot against the current "
+                "profile, pillars, and rooms, allowing only the keys the re-answered steps "
+                "chose to change. Defaults to the most recent snapshot."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "capsule_id": {
+                        "type": "string",
+                        "description": "Snapshot to verify against; omit for the most recent one",
+                    }
+                },
+            },
+        ),
+        types.Tool(
+            name="restore_transition_capsule",
+            description=(
+                "Restore System/user-profile.yaml and System/pillars.yaml exactly as a "
+                "pre-change snapshot recorded them. Previews by default; pass dry_run=false "
+                "to write. Refuses a snapshot whose recorded fingerprints no longer match "
+                "its stored content, and never touches anything else."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "capsule_id": {
+                        "type": "string",
+                        "description": "Snapshot to restore from; omit for the most recent one",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true (default), show what would change without writing",
+                        "default": True,
+                    },
+                },
+            },
+        ),
+        types.Tool(
             name="check_onboarding_complete",
             description="Check if onboarding is complete and get vault age. Returns completion status and days since setup.",
             inputSchema={
@@ -2983,6 +3072,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     marker_key: marker_preview,
                     'preview_user_profile': profile_preview,
                     'preview_pillars': pillars_preview,
+                    # A vault that completed onboarding gets a pre-change
+                    # snapshot of its profile, pillars, and room map before
+                    # anything is rewritten.
+                    'would_create_transition_capsule': MARKER_FILE.exists(),
                     'session_data_snapshot': data
                 }
 
@@ -3019,6 +3112,25 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 "errors": []
             }
 
+            # A vault that completed onboarding is being reconfigured, not
+            # built: nothing may mutate until the pre-change profile, pillars,
+            # and room map are captured for verification and restore.
+            transition_capsule = None
+            if MARKER_FILE.exists():
+                try:
+                    transition_capsule = _capture_transition_capsule(session)
+                except Exception as error:
+                    logger.error(f"Transition capsule capture failed: {error}")
+                    result = create_error_response(
+                        "Refusing to change settings without a pre-change "
+                        f"snapshot: {error}",
+                        suggestion=(
+                            "Nothing was changed. Fix the snapshot failure and "
+                            "call finalize_onboarding again"
+                        ),
+                    )
+                    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
             try:
                 logger.info("Routing onboarding finalization through the provision contract")
                 summary = _finalize_through_provisioner(session)
@@ -3035,6 +3147,26 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         f"file{'s' if len(replaced) != 1 else ''} "
                         f"({', '.join(replaced)})"
                     )
+                if transition_capsule is not None:
+                    summary['transition_capsule'] = transition_capsule
+                    verification = _run_transition_verification(
+                        transition_capsule['capsule_id']
+                    )
+                    summary['transition_verification'] = verification
+                    if verification.get('verified') is True:
+                        completion_message += (
+                            ". Pre-change snapshot "
+                            f"{transition_capsule['capsule_id']} kept. "
+                            f"{verification['summary']}"
+                        )
+                    else:
+                        completion_message += (
+                            ". WARNING — the transition did not verify: "
+                            f"{verification['summary']} The pre-change snapshot "
+                            f"{transition_capsule['capsule_id']} can put "
+                            "user-profile.yaml and pillars.yaml back exactly as "
+                            "they were via restore_transition_capsule."
+                        )
                 result = create_success_response(summary, completion_message)
                 surface_analytics_attempt(
                     result,
@@ -3051,6 +3183,50 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
+        elif name == "verify_transition":
+            from core.customization_migration import transition as transition_capsules
+
+            try:
+                report = transition_capsules.verify_transition(
+                    BASE_DIR, arguments.get("capsule_id")
+                )
+            except Exception as error:
+                result = create_error_response(str(error))
+            else:
+                result = create_success_response(report, report["summary"])
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "restore_transition_capsule":
+            from core.customization_migration import transition as transition_capsules
+
+            dry_run = arguments.get("dry_run", True)
+            if not isinstance(dry_run, bool):
+                result = create_error_response("dry_run must be true or false")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            try:
+                report = transition_capsules.restore_transition_capsule(
+                    BASE_DIR, arguments.get("capsule_id"), dry_run=dry_run
+                )
+            except Exception as error:
+                result = create_error_response(str(error))
+            else:
+                to_restore = [
+                    item["path"]
+                    for item in report["files"]
+                    if item["action"] == "restore"
+                ]
+                if report["restored"]:
+                    message = "Restored exactly as captured: " + ", ".join(to_restore)
+                elif to_restore:
+                    message = (
+                        "Preview only — nothing written. Would restore: "
+                        + ", ".join(to_restore)
+                    )
+                else:
+                    message = "Already matches the snapshot; nothing to restore."
+                result = create_success_response(report, message)
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
         elif name == "check_onboarding_complete":
             if not MARKER_FILE.exists():
                 result = create_success_response({

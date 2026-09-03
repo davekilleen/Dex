@@ -438,6 +438,18 @@ def test_reset_uses_the_canonical_onboarding_route_without_moving_user_content()
     assert "clears the calendar answer and\n   the harness confirmation" in reset
     assert "refuses to run" in reset
 
+    # The pre-change snapshot and its verification: finalize captures the two
+    # settings files and the room states before rewriting, and the skill must
+    # relay the verification honestly instead of declaring success itself —
+    # including the restore path when the check fails.
+    assert "**Snapshotted and checked:**" in reset
+    assert "transition_verification" in reset
+    assert "Lost: none." in reset
+    assert "say so plainly instead of declaring\n   success" in reset
+    assert "restore_transition_capsule" in reset
+    assert "`dry_run=false`" in reset
+    assert "it is not a backup of anything else" in reset
+
     for retired_promise in (
         "Create new folder structure",
         "Move existing content",
@@ -661,3 +673,47 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     assert "first-class Calendar surfaces" in skill
     assert "Do not promise that a Mac permission dialog will appear" in skill
     assert "Do not send them to a standalone terminal as the only path" in skill
+
+
+def test_goal_backlog_grooming_never_deletes_silently_and_offers_once() -> None:
+    """The grooming skill's two ratified promises: no silent removals, no nagging."""
+    grooming = _read(".claude/skills/goal-backlog/SKILL.md")
+
+    # Never delete or move a task without showing exactly what changes.
+    assert "**Never delete or move a task silently.**" in grooming
+    assert "you show the exact lines that will change" in grooming
+    assert "Show the exact lines that will be removed and get an explicit yes" in grooming
+    assert "Never batch-delete on one blanket approval" in grooming
+
+    # Completion is not the only exit, and Someday parks without destroying.
+    assert "completion is not the only exit" in grooming.lower()
+    assert "Nothing is deleted; moving the lines back revives the task." in grooming
+    assert "Marking a task done to tidy it away" in grooming
+
+    # Provisional goals: offer to structure them once, then drop it.
+    assert "Offer **once**" in grooming
+    assert "don't raise it again this session" in grooming
+    assert "don't repeat the offer per goal" in grooming
+
+    # Degradation is honest: an off room or failed read never becomes fake grooming.
+    assert "one calm line" in grooming
+    assert "say the backlog could not be checked" in grooming.lower()
+    assert "Do not improvise a grooming pass from grep" in grooming
+
+
+def test_planning_skills_pull_from_the_groomed_backlog_not_prose() -> None:
+    """/week-plan reads the groomed order; /triage only offers a queue jump when one exists."""
+    week_plan = _read(".claude/skills/week-plan/SKILL.md")
+    triage = _read(".claude/skills/triage/SKILL.md")
+
+    # The prose-only instruction is gone; a concrete call path replaces it.
+    assert "Find tasks that could advance stalled goals" not in week_plan
+    assert "get_weekly_planning_context()" in week_plan
+    assert "`next_up_tasks`" in week_plan
+    assert "`get_goal_backlog(goal_id)`" in week_plan
+    assert "Say it once for the whole plan, not per goal" in week_plan
+
+    # Triage asks the queue-jump question only for goals with a groomed order.
+    assert "get_goal_backlog(goal_id)" in triage
+    assert "set_task_next_up" in triage
+    assert "If the goal has no next-up order, say nothing" in triage

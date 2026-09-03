@@ -35,7 +35,18 @@ Otherwise:
 4. Before finalizing, call `finalize_onboarding(dry_run=True)` and show the user
    what it reports it would create, plus the `profile_changes` list — every
    profile setting that will change, old value → new value. Settings not in that
-   list carry forward. Then call `finalize_onboarding()`.
+   list carry forward. Tell the user that on a vault that already completed
+   onboarding, finalizing first takes a snapshot of the current profile, pillars
+   and room choices — before anything is rewritten — so the reset can be checked
+   afterwards and undone if it went wrong. Then call `finalize_onboarding()`.
+5. After finalizing, show the user the `transition_verification` summary from the
+   finalize response — it reads "Changed (you chose): … Carried forward: N
+   settings. Lost: none." Read it before relaying it: if it reports anything
+   lost or changed outside their answers, say so plainly instead of declaring
+   success, and offer `restore_transition_capsule` — preview first (it defaults
+   to a dry run), then rerun it with `dry_run=false` if they want the two
+   settings files put back exactly as they were. `verify_transition` re-runs the
+   same check anytime against the snapshot named in the response.
 
 ## What a reset actually changes
 
@@ -58,6 +69,11 @@ Say this honestly — do not promise more:
   `Portfolio/`, that is a manual choice the user makes afterwards — offer to help,
   do not do it silently as part of the reset. The completion marker keeps its
   original setup date; the reset is recorded alongside it, not over it.
+- **Snapshotted and checked:** before rewriting anything, finalize captures the
+  current `user-profile.yaml`, `pillars.yaml` and room states, then verifies the
+  result against the keys the re-answered steps were allowed to change. The
+  snapshot stays in `System/.dex/transition-capsules/` and can restore those two
+  files exactly — it is not a backup of anything else.
 
 ## Rules
 

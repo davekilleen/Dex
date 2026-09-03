@@ -6061,8 +6061,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/reset/SKILL.md",
-        "sha256": "e52089add29013a2b212c5ea6bb311878eb54bf76294bfb5e7055cf7603b5d86",
-        "byte_size": 4233
+        "sha256": "1631d25c499a2173bc8371415187be66b52baf81d9125622dfbad7dc6da4f7e9",
+        "byte_size": 5489
       },
       "value": "Restructure an existing Dex vault for a new role or changed preferences, without losing data.",
       "jobs_served": [
