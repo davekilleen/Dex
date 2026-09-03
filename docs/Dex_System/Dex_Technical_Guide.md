@@ -703,6 +703,7 @@ directly under the task:
 - **Goal link:** `- Goal: Q1-2026-goal-1` (the `^Qn-YYYY-goal-N` ID from your quarter goals; a trailing `(?)` marks a tentative link awaiting confirmation)
 - **Weekly priority link:** `- Weekly priority: [week-2026-W05-p1]`
 - **Project link:** `- Project: 04-Projects/Mobile_App.md`
+- **Next up:** `- Next up: 1` (optional "take this first" position within the task's goal — or its pillar when it has no goal; set during `/goal-backlog` grooming, pulled first by `/week-plan`)
 
 Several fields can share one bullet separated by `|`, exactly as Dex writes them
 when it creates a task for you.

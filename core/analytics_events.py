@@ -18,6 +18,7 @@ SAFE_ANALYTICS_EVENT_NAMES = frozenset(
         "daily_review_completed",
         "dex_analytics_test",
         "getting_started_completed",
+        "goal_backlog_completed",
         "idea_captured",
         "idea_implemented",
         "improvement_workshopped",

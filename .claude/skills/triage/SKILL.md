@@ -253,6 +253,16 @@ Extract uncompleted tasks from notes and route them appropriately.
    - Skip: Don't process
    - Defer: Leave for later
 
+8. **Queue-Jump Check (one line, only when it applies)**
+
+   After routing, for each created task that landed under a goal: call
+   `get_goal_backlog(goal_id)` once. If that goal's tasks carry a groomed
+   `next_up` order, ask in a single line whether the new item jumps the queue —
+   "This lands under Goal X, which has a groomed order — should it go first?"
+   If yes, call `set_task_next_up(task_id, next_up=1)` (or the position they
+   name). If the goal has no next-up order, say nothing — grooming belongs to
+   `/goal-backlog`, not triage.
+
 ---
 
 ## Mode: All (Default)

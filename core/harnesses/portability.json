@@ -350,6 +350,10 @@
       "classification": "portable",
       "reason": "host prompt and optional integration hook have a portable fallback"
     },
+    "goal-backlog": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
+    },
     "google-workspace-setup": {
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"
