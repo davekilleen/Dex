@@ -3,8 +3,9 @@
 **Status:** Design draft for founder review. Nothing here is built. Grounded in a
 code audit of `core/mcp/work_server.py` and the planning skills on 2026-09-03.
 
-**Decision:** Pending. The recommendation below is a generated per-goal backlog
-view plus grooming skill, not a new hand-maintained document type.
+**Decision:** Ratified by the founder on 2026-09-03 (see Founder rulings at the
+end): a generated per-goal backlog view plus grooming skill, not a new
+hand-maintained document type.
 
 ## The user problem (verbatim, from beta feedback 2026-09-03)
 
@@ -192,13 +193,18 @@ law should not be weakened. Two honest options:
 4. Beta trial with the reporter per Option A; her idea-023 write-up reviewed
    for anything this design misses.
 
-## Open questions for the founder
+## Founder rulings (2026-09-03)
 
-1. Does `Next up` ordering earn its place, or is groom-and-retire (Layer 3
-   minus ordering) enough for a first cut?
-2. Should the unparseable seed goals file be fixed by making the seed
-   parseable, by teaching the parser the freeform shape, or by promoting
-   `/quarter-plan` out of the gated room? (Recommendation: parseable seed +
-   promote the skill; parser leniency invites silent half-matches.)
-3. Is Option B worth building now as general experiment infrastructure, or
-   deferred until an experiment actually rewrites user content?
+1. **`Next up` ordering ships in v1** alongside grooming and retiring — it is
+   what turns `/week-plan`'s output from a task dump into "Goal 2's next two
+   items fit Wednesday's block".
+2. **Goals seed: both.** Ship a parseable seed (examples already in the
+   `### N. Title — **Pillar** ^Qn-YYYY-goal-N` shape) AND promote
+   `/quarter-plan` out of the gated room, AND add a lenient fallback parser
+   for legacy freeform files. Implementation guard: goals recovered by the
+   lenient parser must be marked provisional and surfaced for one-time
+   confirmation ("want me to structure these?"), never silently half-matched —
+   a goal that parses wrong is worse than one that visibly needs structuring.
+3. **Option B (`/dex-experiment` transaction) is deferred** until an
+   experiment actually rewrites user content. The task-backlog beta trial runs
+   per Option A (additive change, branch install, one-command undo).

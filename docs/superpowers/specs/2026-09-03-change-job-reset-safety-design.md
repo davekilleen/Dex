@@ -4,8 +4,8 @@
 code audit of `core/mcp/onboarding_server.py`, `core/provision.cjs`,
 `core/customization_migration/`, and the reset/onboarding flow on 2026-09-03.
 
-**Decision:** Pending. Recommendation: fix reset's silent losses first (they are
-defects against the skill's own promise), then build `/change-job` as
+**Decision:** Ratified by the founder on 2026-09-03 (see Founder rulings at the
+end). Fix reset's silent losses first, then build `/change-job` as
 re-onboarding with carry-forward plus a guided migration pass — reusing the
 existing customization-capsule machinery as the "nothing thrown out" verifier
 rather than building a new MCP server.
@@ -238,16 +238,19 @@ plus a per-pass ledger.
 4. Beta trial with the reporter; review her idea-022 write-up for anything
    missed.
 
-## Open questions for the founder
+## Founder rulings (2026-09-03)
 
-1. Naming: keep `/reset` and add `/change-job` as the guided transition on top
-   (recommended — reset stays the honest low-level lever), or fold both into
-   one skill?
-2. Should Phase 0's carry-forward merge also apply to first-run `--onboard`
-   over a crashed/partial profile, or only when `.onboarding-complete` exists?
-3. People re-routing: move pages on disk (folder is the index's source of
-   truth today) or teach the index to trust frontmatter `location:` and stop
-   moving files? Recommendation: move on disk now — smaller change, matches
-   current reader behavior.
-4. Does the transition capsule surface in `/dex-doctor` (a "pending/verified
-   transition" probe) the way update capsules do?
+1. **Naming:** keep `/reset` as the honest low-level lever; add `/change-job`
+   as the guided transition on top. `/change-job` gets the natural-language
+   triggers ("I changed jobs", "new role"); `/reset` gains a pointer to it.
+2. **Carry-forward scope:** the merge applies only when
+   `System/.onboarding-complete` exists. A crashed half-onboarding keeps
+   today's replace-from-answers behavior, so a broken first run cannot
+   fossilize junk into the profile.
+3. **People re-routing:** move pages on disk — recompute location from
+   recorded emails, move between Internal/External, rewrite the `location:`
+   frontmatter and its mirror, rebuild the index. Frontmatter-as-truth is not
+   adopted.
+4. **Doctor probe:** yes — `/dex-doctor` gets a role-transition capsule probe
+   (pending/verified transition, open rollback window), reusing the existing
+   capsule-status pattern.
