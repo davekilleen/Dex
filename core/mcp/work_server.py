@@ -462,6 +462,50 @@ def default_section_for_priority(priority: str, tasks_content: str) -> Optional[
             return heading
     return None
 
+def _normalized_project_path(value: str) -> str:
+    """Compare project paths leniently: case and a trailing .md never matter."""
+    return value.strip().rstrip('/').removesuffix('.md').casefold()
+
+# An open backlog task counts as stale once its ID date is this many days old
+# ("3+ weeks untouched" in grooming language).
+STALE_TASK_DAYS = 21
+
+PRIORITY_ORDER = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+
+def task_staleness_days(task: Dict[str, Any]) -> Optional[int]:
+    """Days since the task ID's creation date; None when the task has no ID."""
+    match = re.fullmatch(
+        r'task-(\d{4})(\d{2})(\d{2})-\d{3,}', task.get('task_id') or ''
+    )
+    if not match:
+        return None
+    try:
+        created = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return None
+    return max((_tz_today() - created).days, 0)
+
+def backlog_sort_key(task: Dict[str, Any]) -> tuple:
+    """Order a backlog group: next-up order, then priority, then oldest first.
+
+    Tasks without a dated ID carry no age, so they sort after dated tasks of
+    the same priority. The sort is stable; next-up values need not be unique.
+    """
+    next_up = task.get('next_up')
+    priority_rank = PRIORITY_ORDER.get(task.get('priority'), len(PRIORITY_ORDER))
+    id_match = re.fullmatch(r'task-(\d{8})-(\d{3,})', task.get('task_id') or '')
+    age_key = (
+        (id_match.group(1), int(id_match.group(2)))
+        if id_match
+        else ('99999999', float('inf'))
+    )
+    return (
+        0 if next_up is not None else 1,
+        next_up if next_up is not None else 0,
+        priority_rank,
+        age_key,
+    )
+
 def active_tasks_for_priority_limits(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Return open canonical backlog tasks for priority limit checks."""
     return [
@@ -550,7 +594,7 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
         bullet = re.sub(r'^[ \t]+-\s*', '', child_line, count=1)
         for part in bullet.split('|'):
             match = re.match(
-                r'^\s*(Pillar|Priority|Weekly priority|Due|Source|Project|Goal)\s*:\s*(.*?)\s*$',
+                r'^\s*(Pillar|Priority|Weekly priority|Due|Source|Project|Goal|Next up)\s*:\s*(.*?)\s*$',
                 part,
                 re.IGNORECASE,
             )
@@ -595,6 +639,11 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
         goal = goal_match.group(1)
         goal_tentative = bool(goal_match.group(2))
 
+    next_up = None
+    next_up_match = re.fullmatch(r'[1-9]\d*', fields.get('next up', ''))
+    if next_up_match:
+        next_up = int(next_up_match.group(0))
+
     return {
         'pillar': pillar,
         'priority': priority,
@@ -604,6 +653,7 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
         'project': fields.get('project') or None,
         'goal': goal,
         'goal_tentative': goal_tentative,
+        'next_up': next_up,
     }
 
 def _task_title_from_line(line: str) -> str:
@@ -2455,26 +2505,41 @@ def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     return linked_priorities
 
 def calculate_goal_progress(goal_id: str) -> Dict[str, Any]:
-    """Calculate goal progress based on linked weekly priorities"""
+    """Calculate goal progress based on linked weekly priorities.
+
+    Linked-task counts are reported alongside so goal health reflects the
+    backlog pool, but they never move the percentage itself.
+    """
     priorities = find_linked_priorities(goal_id)
-    
+
+    linked_tasks = [
+        task for task in get_all_tasks()
+        if task.get('source', 'tasks') == 'tasks' and task.get('goal') == goal_id
+    ]
+    open_tasks = sum(1 for task in linked_tasks if not task.get('completed'))
+    done_tasks = sum(1 for task in linked_tasks if task.get('completed'))
+
     if not priorities:
         return {
             'progress': 0,
             'total_priorities': 0,
             'completed_priorities': 0,
-            'calculation_method': 'no_linked_priorities'
+            'calculation_method': 'no_linked_priorities',
+            'open_tasks': open_tasks,
+            'done_tasks': done_tasks,
         }
-    
+
     completed = sum(1 for p in priorities if p['completed'])
     total = len(priorities)
     progress = int((completed / total) * 100) if total > 0 else 0
-    
+
     return {
         'progress': progress,
         'total_priorities': total,
         'completed_priorities': completed,
-        'calculation_method': 'automatic'
+        'calculation_method': 'automatic',
+        'open_tasks': open_tasks,
+        'done_tasks': done_tasks,
     }
 
 def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
@@ -2964,8 +3029,9 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'project': metadata['project'],
                 'goal': metadata['goal'],
                 'goal_tentative': metadata['goal_tentative'],
+                'next_up': metadata['next_up'],
             })
-    
+
     return tasks
 
 def get_all_tasks() -> List[Dict[str, Any]]:
@@ -4037,7 +4103,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="list_tasks",
-            description="List tasks with optional filters (pillar, priority, status, source)",
+            description="List tasks with optional filters (pillar, priority, status, source, goal, project, weekly_priority)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -4045,6 +4111,9 @@ async def handle_list_tools() -> list[types.Tool]:
                     "priority": {"type": "string", "description": "Filter by priority (P0, P1, P2, P3)"},
                     "status": {"type": "string", "description": "Filter by status (n, s, b, d)"},
                     "source": {"type": "string", "description": "Filter by source (tasks, week_priorities)"},
+                    "goal": {"type": "string", "description": "Filter by quarterly goal ID (e.g., Q3-2026-goal-2). Special values: 'none' = tasks with no goal link, 'tentative' = tasks whose goal link is still tentative (?)"},
+                    "project": {"type": "string", "description": "Filter by vault-relative project path (e.g., 04-Projects/Foo.md; trailing .md optional)"},
+                    "weekly_priority": {"type": "string", "description": "Filter by linked weekly priority ID (e.g., week-2026-W05-p1)"},
                     "include_done": {"type": "boolean", "description": "Include completed tasks", "default": False}
                 }
             }
@@ -4064,6 +4133,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "due": {"type": "string", "description": "Optional due date in YYYY-MM-DD format"},
                     "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
                     "goal": {"type": "string", "description": "Optional quarterly goal ID (e.g., Q3-2026-goal-2)"},
+                    "next_up": {"type": "integer", "minimum": 1, "description": "Optional 'take this first' order within the task's goal (or pillar for goal-less work); 1 = first"},
                     "on_duplicate": {"type": "string", "enum": ["fail", "force"], "default": "fail", "description": "Fail on similar tasks, or force creation past only the similarity check"},
                     "account": {"type": "string", "description": "Account page path, company name, URL, or domain to resolve and link"},
                     "people": {"type": "array", "items": {"type": "string"}, "description": "Person page paths or names to resolve and link"},
@@ -4104,6 +4174,26 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                 },
                 "required": ["task_id", "action"],
+            },
+        ),
+        types.Tool(
+            name="set_task_next_up",
+            description="Add, update, or clear the 'Next up' order on a canonical task in 03-Tasks/Tasks.md. Pass next_up=null (or omit it) to clear. The order is read per goal (or per pillar for goal-less work) by get_goal_backlog; values need not be unique.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "pattern": r"^task-\d{8}-\d{3,}$",
+                        "description": "Task ID without the leading caret (e.g., task-20260128-001)",
+                    },
+                    "next_up": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "description": "Position within the task's goal/pillar queue (1 = first); null clears the order",
+                    },
+                },
+                "required": ["task_id"],
             },
         ),
         types.Tool(
@@ -4251,6 +4341,16 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "quarter": {"type": "string", "description": "Quarter (e.g., 'Q1 2026') - defaults to current quarter"},
                     "include_completed": {"type": "boolean", "description": "Include completed goals", "default": True}
+                }
+            }
+        ),
+        types.Tool(
+            name="get_goal_backlog",
+            description="Grouped open-task backlog for grooming: one group per quarterly goal, then per pillar for goal-less work, then fully orphaned work. Groups are sorted next-up order, then priority (P0 first), then oldest first, and carry counts plus staleness.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "goal_id": {"type": "string", "description": "A quarterly goal ID (e.g., 'Q3-2026-goal-2') for one group, or 'all' for every group", "default": "all"}
                 }
             }
         ),
@@ -4627,7 +4727,8 @@ async def handle_list_tools() -> list[types.Tool]:
 # Tools that write to vault files and should trigger search index refresh
 WRITE_TOOLS = {
     "confirm_relationship", "dismiss_relationship",
-    "create_task", "update_task_status", "confirm_goal_link", "create_company", "refresh_company",
+    "create_task", "update_task_status", "confirm_goal_link", "set_task_next_up",
+    "create_company", "refresh_company",
     "sync_external_tasks",
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
@@ -4641,7 +4742,8 @@ CAPABILITY_TOOL_ROOMS = {
     },
     "quarter_goals": {
         "confirm_goal_link", "create_quarterly_goal", "get_quarterly_goals",
-        "get_goal_status", "update_goal_progress", "check_goal_alignment",
+        "get_goal_status", "get_goal_backlog", "update_goal_progress",
+        "check_goal_alignment",
         "get_quarter_velocity", "migrate_quarterly_goals",
         "get_weekly_planning_context",
     },
@@ -4706,6 +4808,8 @@ async def handle_call_tool(
                 "create_quarterly_goal": "Quarterly goal creation failed",
                 "get_quarterly_goals": "Quarterly goals lookup failed",
                 "get_goal_status": "Goal status lookup failed",
+                "get_goal_backlog": "Goal backlog lookup failed",
+                "set_task_next_up": "Next-up ordering update failed",
                 "update_goal_progress": "Goal progress update failed",
                 "create_weekly_priority": "Weekly priority creation failed",
                 "get_week_priorities": "Weekly priorities lookup failed",
@@ -4770,9 +4874,32 @@ async def _handle_call_tool_inner(
             
             if arguments.get('status'):
                 tasks = [t for t in tasks if t.get('status') == arguments['status']]
-            
+
             if arguments.get('source'):
                 tasks = [t for t in tasks if t.get('source') == arguments['source']]
+
+            goal_filter = arguments.get('goal')
+            if goal_filter:
+                if goal_filter == 'none':
+                    tasks = [t for t in tasks if not t.get('goal')]
+                elif goal_filter == 'tentative':
+                    tasks = [t for t in tasks if t.get('goal') and t.get('goal_tentative')]
+                else:
+                    tasks = [t for t in tasks if t.get('goal') == goal_filter]
+
+            if arguments.get('project'):
+                wanted = _normalized_project_path(arguments['project'])
+                tasks = [
+                    t for t in tasks
+                    if t.get('project')
+                    and _normalized_project_path(t['project']) == wanted
+                ]
+
+            if arguments.get('weekly_priority'):
+                tasks = [
+                    t for t in tasks
+                    if t.get('weekly_priority_id') == arguments['weekly_priority']
+                ]
         else:
             tasks = [t for t in tasks if not t.get('completed')]
         
@@ -4794,6 +4921,7 @@ async def _handle_call_tool_inner(
         due = arguments.get('due', '')
         project = arguments.get('project', '')
         goal = arguments.get('goal', '')
+        next_up = arguments.get('next_up')
         on_duplicate = arguments.get('on_duplicate', 'fail')
         account = arguments.get('account', '') or ''
         people = arguments.get('people', []) or []
@@ -4870,6 +4998,15 @@ async def _handle_call_tool_inner(
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": f"Invalid due date '{due}'. Use YYYY-MM-DD format."
+            }, indent=2))]
+
+        # bool is an int subtype, so exclude it explicitly.
+        if next_up is not None and (
+            isinstance(next_up, bool) or not isinstance(next_up, int) or next_up < 1
+        ):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid next_up '{next_up}'. Must be a positive integer."
             }, indent=2))]
 
         if project:
@@ -5076,6 +5213,8 @@ async def _handle_call_tool_inner(
         if goal:
             tentative_marker = ' (?)' if goal_tentative else ''
             task_entry += f" | Goal: {goal}{tentative_marker}"
+        if next_up is not None:
+            task_entry += f" | Next up: {next_up}"
         
         # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
@@ -5160,6 +5299,7 @@ async def _handle_call_tool_inner(
                 "project": project if project else None,
                 "goal": goal if goal else None,
                 "goal_tentative": goal_tentative,
+                "next_up": next_up,
                 "account": account if account else None,
                 "people": people if people else None,
                 "source": source if source else None
@@ -5299,6 +5439,114 @@ async def _handle_call_tool_inner(
             }
 
         tasks_file.write_text("\n".join(lines))
+        return [types.TextContent(type="text", text=json.dumps(result))]
+
+    elif name == "set_task_next_up":
+        task_id = arguments["task_id"]
+        next_up = arguments.get("next_up")
+        # bool is an int subtype, so exclude it explicitly.
+        if next_up is not None and (
+            isinstance(next_up, bool) or not isinstance(next_up, int) or next_up < 1
+        ):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": f"Invalid next_up '{next_up}'. Must be a positive integer or null.",
+            }))]
+
+        tasks_file = get_tasks_file()
+        if not tasks_file.exists():
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        lines = tasks_file.read_text().split("\n")
+        task_anchor = re.compile(rf"\^{re.escape(task_id)}(?![A-Za-z0-9_-])")
+        task_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if re.match(r"^-\s*\[[ bBsSxX/]\]", line.strip()) and task_anchor.search(line)
+            ),
+            None,
+        )
+        if task_index is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "task not found",
+            }))]
+
+        indexed_child_lines = _task_child_lines(lines, task_index, include_indices=True)
+        next_up_field = re.compile(r"\s*Next up\s*:\s*(\d+)\s*", re.IGNORECASE)
+
+        metadata_line_index = None
+        metadata_parts = None
+        field_part_index = None
+        for child_index, child_line in indexed_child_lines:
+            bullet_match = re.match(r"^([ \t]+-\s*)(.*)$", child_line)
+            if not bullet_match:
+                continue
+            parts = bullet_match.group(2).split("|")
+            for part_index, part in enumerate(parts):
+                if next_up_field.fullmatch(part):
+                    metadata_line_index = child_index
+                    metadata_parts = parts
+                    field_part_index = part_index
+                    break
+            if metadata_line_index is not None:
+                break
+
+        previous_next_up = None
+        if metadata_line_index is not None:
+            previous_next_up = int(
+                next_up_field.fullmatch(metadata_parts[field_part_index]).group(1)
+            )
+
+        changed = True
+        if next_up is None:
+            if metadata_line_index is None:
+                changed = False
+            else:
+                remaining_parts = [
+                    part.strip()
+                    for part_index, part in enumerate(metadata_parts)
+                    if part_index != field_part_index and part.strip()
+                ]
+                if remaining_parts:
+                    prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+                    lines[metadata_line_index] = prefix + " | ".join(remaining_parts)
+                else:
+                    del lines[metadata_line_index]
+        elif metadata_line_index is not None:
+            metadata_parts[field_part_index] = re.sub(
+                r"\d+", str(next_up), metadata_parts[field_part_index], count=1
+            )
+            prefix = re.match(r"^([ \t]+-\s*)", lines[metadata_line_index]).group(1)
+            lines[metadata_line_index] = prefix + "|".join(metadata_parts)
+        else:
+            # New bullet goes after everything indented under the task so no
+            # existing child structure is reordered.
+            task_indent = _indent_width(lines[task_index])
+            insert_at = task_index + 1
+            while (
+                insert_at < len(lines)
+                and _is_indented_bullet(lines[insert_at])
+                and _indent_width(lines[insert_at]) > task_indent
+            ):
+                insert_at += 1
+            leading = re.match(r"^[ \t]*", lines[task_index]).group(0)
+            lines.insert(insert_at, f"{leading}\t- Next up: {next_up}")
+
+        if changed:
+            tasks_file.write_text("\n".join(lines))
+
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "next_up": next_up,
+            "previous_next_up": previous_next_up,
+            "changed": changed,
+        }
         return [types.TextContent(type="text", text=json.dumps(result))]
 
     elif name == "update_task_status":
@@ -5834,6 +6082,8 @@ async def _handle_call_tool_inner(
             "linked_priorities_count": len(linked_priorities),
             "completed_priorities": progress_info['completed_priorities'],
             "total_priorities": progress_info['total_priorities'],
+            "open_tasks": progress_info['open_tasks'],
+            "done_tasks": progress_info['done_tasks'],
             "stalled": stalled,
             "warning": "No linked priorities yet" if stalled else None
         }
@@ -6234,7 +6484,153 @@ async def _handle_call_tool_inner(
             result['recommendations'].append(f"{len(goals_with_no_priorities)} goals have no weekly priorities - create priorities to advance them")
         
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
+    elif name == "get_goal_backlog":
+        requested_goal_id = str(arguments.get('goal_id') or 'all').strip() or 'all'
+
+        goals = (
+            parse_quarterly_goals(QUARTER_GOALS_FILE)
+            if QUARTER_GOALS_FILE.exists()
+            else []
+        )
+        goals_by_id = {
+            quarterly_goal['goal_id']: quarterly_goal
+            for quarterly_goal in goals
+            if quarterly_goal.get('goal_id')
+        }
+        if requested_goal_id != 'all' and requested_goal_id not in goals_by_id:
+            available_text = ', '.join(sorted(goals_by_id)) or 'none'
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    f"Unknown quarterly goal '{requested_goal_id}'. "
+                    f"Available goal ids: {available_text}, or 'all'."
+                ),
+                "available_goal_ids": sorted(goals_by_id),
+            }, indent=2))]
+
+        open_backlog = sorted(
+            (
+                task for task in get_all_tasks()
+                if not task.get('completed')
+                and task.get('source', 'tasks') == 'tasks'
+            ),
+            key=backlog_sort_key,
+        )
+
+        def summarize_task(task: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                'id': task.get('task_id'),
+                'title': task.get('title'),
+                'priority': task.get('priority'),
+                'pillar': task.get('pillar'),
+                'due': task.get('due'),
+                'next_up': task.get('next_up'),
+                'tentative': bool(task.get('goal_tentative')),
+                'staleness_days': task_staleness_days(task),
+            }
+
+        def group_counts(summaries: List[Dict[str, Any]]) -> Dict[str, int]:
+            return {
+                'count': len(summaries),
+                'stale_count': sum(
+                    1 for summary in summaries
+                    if summary['staleness_days'] is not None
+                    and summary['staleness_days'] >= STALE_TASK_DAYS
+                ),
+            }
+
+        tasks_by_goal: Dict[str, List[Dict[str, Any]]] = {}
+        tasks_by_pillar: Dict[str, List[Dict[str, Any]]] = {}
+        orphaned_tasks: List[Dict[str, Any]] = []
+        for task in open_backlog:
+            if task.get('goal'):
+                tasks_by_goal.setdefault(task['goal'], []).append(task)
+            elif task.get('pillar'):
+                tasks_by_pillar.setdefault(task['pillar'], []).append(task)
+            else:
+                orphaned_tasks.append(task)
+
+        goal_groups = []
+        for quarterly_goal in goals:
+            goal_id = quarterly_goal.get('goal_id')
+            if not goal_id:
+                continue
+            if requested_goal_id != 'all' and goal_id != requested_goal_id:
+                continue
+            summaries = [
+                summarize_task(task) for task in tasks_by_goal.pop(goal_id, [])
+            ]
+            group = {
+                'goal_id': goal_id,
+                'goal_title': quarterly_goal.get('title'),
+                'pillar': quarterly_goal.get('pillar'),
+                'tasks': summaries,
+                **group_counts(summaries),
+            }
+            if quarterly_goal.get('provisional'):
+                group['provisional'] = True
+                group['note'] = (
+                    "This goal is provisional (recovered from freeform text); "
+                    "tasks cannot link to it until it is structured."
+                )
+            goal_groups.append(group)
+
+        # Tasks linked to a goal ID absent from the current goals file (e.g.
+        # a previous quarter's goal) still surface rather than silently vanish.
+        if requested_goal_id == 'all':
+            for goal_id in sorted(tasks_by_goal):
+                summaries = [summarize_task(task) for task in tasks_by_goal[goal_id]]
+                goal_groups.append({
+                    'goal_id': goal_id,
+                    'goal_title': None,
+                    'pillar': None,
+                    'goal_missing': True,
+                    'tasks': summaries,
+                    **group_counts(summaries),
+                })
+
+        pillar_groups = []
+        orphaned_group = None
+        if requested_goal_id == 'all':
+            for pillar_id in sorted(tasks_by_pillar):
+                summaries = [
+                    summarize_task(task) for task in tasks_by_pillar[pillar_id]
+                ]
+                pillar_groups.append({
+                    'pillar': pillar_id,
+                    'pillar_name': PILLARS.get(pillar_id, {}).get('name', pillar_id),
+                    'tasks': summaries,
+                    **group_counts(summaries),
+                })
+            orphaned_summaries = [summarize_task(task) for task in orphaned_tasks]
+            orphaned_group = {
+                'tasks': orphaned_summaries,
+                **group_counts(orphaned_summaries),
+            }
+
+        result = {
+            'goal_id': requested_goal_id,
+            'goal_groups': goal_groups,
+            'pillar_groups': pillar_groups,
+            'orphaned': orphaned_group,
+            'open_task_count': len(open_backlog),
+            'stale_after_days': STALE_TASK_DAYS,
+        }
+        provisional_count = sum(
+            1 for quarterly_goal in goals if quarterly_goal.get('provisional')
+        )
+        if provisional_count:
+            result['provisional_count'] = provisional_count
+            result['provisional_note'] = (
+                f"{provisional_count} goals were recovered from a freeform list "
+                "and are provisional: their IDs are generated, nothing links to "
+                "them automatically, and they parse fully once structured "
+                "(### N. Title — **Pillar** ^Qn-YYYY-goal-N). Offer once to "
+                "structure them; don't nag."
+            )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
     elif name == "get_quarter_velocity":
         quarter = arguments.get('quarter') if arguments else None
         
@@ -6310,6 +6706,14 @@ async def _handle_call_tool_inner(
         weeks_remaining = quarter_info.get('weeks_remaining', 0)
         weeks_elapsed = 13 - weeks_remaining
 
+        # Open backlog pool, so goal health reflects tasks and not just the
+        # week's priorities.
+        open_backlog = [
+            task for task in get_all_tasks()
+            if not task.get('completed')
+            and task.get('source', 'tasks') == 'tasks'
+        ]
+
         # Build goal health report
         goal_health = []
         for goal in goals:
@@ -6322,6 +6726,24 @@ async def _handle_call_tool_inner(
                     next_milestone = m.get('title')
                     break
 
+            goal_tasks = sorted(
+                (
+                    task for task in open_backlog
+                    if task.get('goal') == goal.get('goal_id')
+                ),
+                key=backlog_sort_key,
+            )
+            next_up_tasks = [
+                {
+                    'task_id': task.get('task_id'),
+                    'title': task.get('title'),
+                    'priority': task.get('priority'),
+                    'next_up': task.get('next_up'),
+                }
+                for task in goal_tasks
+                if task.get('next_up') is not None
+            ][:3]
+
             goal_health.append({
                 'goal_id': goal.get('goal_id'),
                 'title': goal.get('title'),
@@ -6332,6 +6754,8 @@ async def _handle_call_tool_inner(
                 'next_milestone': next_milestone,
                 'linked_priority_count': len(linked_priorities),
                 'has_activity': len(linked_priorities) > 0,
+                'open_task_count': len(goal_tasks),
+                'next_up_tasks': next_up_tasks,
             })
 
         # Identify neglected goals (0 linked priorities)
