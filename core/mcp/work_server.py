@@ -147,6 +147,7 @@ from core.entity_engine import (
     render_company_page,
 )
 from core.entity_engine import index as entity_index
+from core.entity_engine import reroute as entity_reroute
 from core.gates.safety import evaluate_safety_gate
 from core.meeting_capture_match import match_capture_to_calendar
 from core.paths import (
@@ -1701,6 +1702,49 @@ def create_person_data(
     }
     if collision:
         result['collision'] = True
+    return result
+
+
+def reroute_people_data(
+    dry_run: bool = True,
+    domains: list[str] | None = None,
+) -> Dict[str, Any]:
+    """Recompute Internal/External routing from recorded emails.
+
+    Classification is recomputed from scratch against the supplied internal
+    domains (default: the profile's current email_domain set), so the tool
+    needs no memory of the previous domains. Dry-run returns the full proposed
+    plan; applying moves pages, rewrites their location frontmatter and its
+    mirror through the entity engine, and rebuilds the People index once.
+    """
+    if domains is not None:
+        internal_domains = entity_reroute.normalise_domains(domains)
+        if not internal_domains:
+            return {
+                'success': False,
+                'error': 'domains was supplied but contained no usable email domains',
+            }
+    else:
+        internal_domains = _profile_email_domains()
+        if not internal_domains:
+            return {
+                'success': False,
+                'error': (
+                    'No internal email domain is configured. Set email_domain in '
+                    'System/user-profile.yaml (or pass domains explicitly) before '
+                    're-routing people.'
+                ),
+            }
+
+    result = entity_reroute.reroute_people(
+        BASE_DIR,
+        _resolve_people_dir(),
+        internal_domains,
+        dry_run=bool(dry_run),
+    )
+    if result.get('success') and not result.get('dry_run'):
+        build_people_index_data()
+        result['index_rebuilt'] = True
     return result
 
 
@@ -4681,6 +4725,40 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="reroute_people",
+            description=(
+                "Recompute each person's internal/external location from the "
+                "emails recorded on their page and move pages between "
+                "People/Internal and People/External to match. Defaults to a "
+                "dry-run that returns the full proposed plan (moves with the "
+                "deciding email, already-correct count, ambiguous pages, "
+                "collision warnings). Pass dry_run=false to apply: pages are "
+                "moved (collisions skipped, never overwritten), location "
+                "frontmatter and its mirror are rewritten, and the People "
+                "index is rebuilt. Pages with no recorded emails are listed "
+                "as ambiguous and never guessed; People/CPO_Network is never "
+                "touched."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Return the proposed plan without changing anything (default true)",
+                    },
+                    "domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Internal email domains to classify against. Defaults to the "
+                            "email_domain currently configured in System/user-profile.yaml."
+                        ),
+                    },
+                },
+            },
+        ),
+        types.Tool(
             name="query_meeting_cache",
             description="Query the meeting context cache for fast meeting lookup. Returns cached decisions, action items, and key points (~50 tokens each vs 2,000 for full notes).",
             inputSchema={
@@ -4733,7 +4811,8 @@ WRITE_TOOLS = {
     "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
-    "build_people_index", "build_company_index", "create_person", "rebuild_meeting_cache", "capture_skill_rating",
+    "build_people_index", "build_company_index", "create_person", "reroute_people",
+    "rebuild_meeting_cache", "capture_skill_rating",
 }
 
 CAPABILITY_TOOL_ROOMS = {
@@ -4779,11 +4858,14 @@ async def handle_call_tool(
         result = await _handle_call_tool_inner(name, safe_arguments)
 
         # Refresh QMD search index after any write operation (non-blocking)
-        is_dry_run_sync = (
+        is_dry_run_write = (
             name == "sync_external_tasks"
             and bool(safe_arguments.get("dry_run", False))
+        ) or (
+            name == "reroute_people"
+            and bool(safe_arguments.get("dry_run", True))
         )
-        if name in WRITE_TOOLS and not is_dry_run_sync:
+        if name in WRITE_TOOLS and not is_dry_run_write:
             refresh_search_index()
 
         return result
@@ -4826,6 +4908,7 @@ async def handle_call_tool(
                 "classify_task_effort": "Task effort classification failed",
                 "analyze_calendar_capacity": "Calendar capacity analysis failed",
                 "suggest_task_scheduling": "Task scheduling suggestion failed",
+                "reroute_people": "People re-routing failed",
                 "boot_today": "Session boot context failed",
                 "get_person_context": "Person context lookup failed",
                 "check_safety_gate": "Safety gate check failed",
@@ -7014,6 +7097,13 @@ async def _handle_call_tool_inner(
                 _fire_analytics_event,
                 'person_page_created',
             )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "reroute_people":
+        result = reroute_people_data(
+            dry_run=arguments.get('dry_run', True) if arguments else True,
+            domains=arguments.get('domains') if arguments else None,
+        )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "query_meeting_cache":
