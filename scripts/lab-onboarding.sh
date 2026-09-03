@@ -1,10 +1,41 @@
 #!/usr/bin/env bash
 # Practice-folder starter for /setup-lab. Does not patch shipped /setup.
 # Finishes the behind-the-scenes setup so the first chat can say hello.
+#
+# Two ways to run it:
+#   scripts/lab-onboarding.sh [target-folder]
+#       Copies the Dex folder this script lives in into a practice folder.
+#   scripts/lab-onboarding.sh --from-github[=branch] [target-folder]
+#       Downloads a fresh copy of Dex from GitHub instead — nothing on this
+#       computer is used as the source. This is the mode to give a tester who
+#       already has their own Dex folder: the practice copy is brand new and
+#       their real folder is never read or written. The branch defaults to main.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${1:-"$HOME/Dex-lab-onboarding"}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." 2>/dev/null && pwd || pwd)"
+GITHUB_REPO="davekilleen/Dex"
+
+REMOTE_REF=""
+TARGET=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --from-github)
+      REMOTE_REF="main"
+      ;;
+    --from-github=*)
+      REMOTE_REF="${1#--from-github=}"
+      ;;
+    --help|-h)
+      sed -n '2,14p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      TARGET="$1"
+      ;;
+  esac
+  shift
+done
+TARGET="${TARGET:-"$HOME/Dex-lab-onboarding"}"
 
 plain_fail() {
   echo
@@ -13,17 +44,79 @@ plain_fail() {
   exit 1
 }
 
-copy_practice_tree() {
-  mkdir -p "$TARGET"
-  if [ ! -d "$TARGET/.git" ] && [ "$TARGET" != "$ROOT" ]; then
-    echo "Making a practice copy in $TARGET."
-    rsync -a --delete \
-      --exclude '.git' \
-      --exclude 'System/.onboarding-complete' \
-      --exclude 'System/.onboarding-session.json' \
-      --exclude 'System/.onboarding-lab' \
-      "$ROOT/" "$TARGET/"
+is_practice_copy() {
+  [ -f "$1/System/.onboarding-lab" ]
+}
+
+looks_like_a_real_vault() {
+  # A folder someone actually finished setting up, or wrote notes into.
+  [ -f "$1/System/.onboarding-complete" ] && grep -q '"user_name"' "$1/System/.onboarding-complete" 2>/dev/null && return 0
+  [ -f "$1/System/user-profile.yaml" ] && ! is_practice_copy "$1" && return 0
+  return 1
+}
+
+is_empty_dir() {
+  [ -d "$1" ] && [ -z "$(ls -A "$1" 2>/dev/null)" ]
+}
+
+# Refuse before a single byte is written anywhere.
+guard_target() {
+  if looks_like_a_real_vault "$TARGET"; then
+    plain_fail "That folder looks like a real Dex folder someone already uses: $TARGET
+The practice starter never writes into a real Dex folder. Pick a new, empty folder
+(or just run the starter with no folder name) and your real folder stays exactly as it is."
   fi
+  if [ -e "$TARGET" ] && [ ! -d "$TARGET" ]; then
+    plain_fail "That name already belongs to a file, not a folder: $TARGET
+Pick a folder name that does not exist yet. Nothing was changed."
+  fi
+  if [ -d "$TARGET" ] && ! is_empty_dir "$TARGET" && ! is_practice_copy "$TARGET"; then
+    if [ -n "$REMOTE_REF" ] || [ "$TARGET" != "$ROOT" ]; then
+      plain_fail "That folder already has things in it: $TARGET
+The practice starter only writes into a brand-new folder, or a practice folder it
+made earlier. Pick a new name and everything you have stays exactly as it is."
+    fi
+  fi
+}
+
+download_fresh_copy() {
+  command -v curl >/dev/null 2>&1 || plain_fail "This Mac needs curl before the practice folder can download."
+  command -v tar >/dev/null 2>&1 || plain_fail "This Mac needs tar before the practice folder can download."
+  STAGE="$(mktemp -d "${TMPDIR:-/tmp}/dex-lab-starter.XXXXXX")"
+  trap 'rm -rf "$STAGE"' EXIT
+  echo "Downloading a fresh copy of Dex ($REMOTE_REF)..."
+  curl -fsSL "https://github.com/$GITHUB_REPO/archive/refs/heads/$REMOTE_REF.tar.gz" -o "$STAGE/dex.tar.gz" || \
+    curl -fsSL "https://github.com/$GITHUB_REPO/archive/refs/tags/$REMOTE_REF.tar.gz" -o "$STAGE/dex.tar.gz" || \
+    plain_fail "Could not download Dex from GitHub. Check the internet connection and try again."
+  tar -xzf "$STAGE/dex.tar.gz" -C "$STAGE" || plain_fail "Could not unpack the downloaded copy. Try again."
+  SOURCE="$(find "$STAGE" -mindepth 1 -maxdepth 1 -type d | head -1)"
+  [ -n "$SOURCE" ] && [ -f "$SOURCE/core/provision.cjs" ] || \
+    plain_fail "The downloaded copy is missing pieces. Try again, or send Dave the last few lines."
+}
+
+copy_practice_tree() {
+  local source="$1"
+  mkdir -p "$TARGET"
+  if [ "$TARGET" = "$source" ]; then
+    return 0
+  fi
+  local delete_flag=""
+  if is_practice_copy "$TARGET"; then
+    # Refreshing a practice copy the starter made earlier is the only time
+    # anything in the target may be replaced.
+    delete_flag="--delete"
+  fi
+  command -v rsync >/dev/null 2>&1 || \
+    plain_fail "This computer needs rsync before the practice folder can be made. It comes with macOS; on Linux install it with your package manager."
+  echo "Making a practice copy in $TARGET."
+  rsync -a $delete_flag \
+    --exclude '.git' \
+    --exclude 'node_modules' \
+    --exclude '.venv' \
+    --exclude 'System/.onboarding-complete' \
+    --exclude 'System/.onboarding-session.json' \
+    --exclude 'System/.onboarding-lab' \
+    "$source/" "$TARGET/"
 }
 
 mark_first_command() {
@@ -114,7 +207,14 @@ bootstrap_practice_folder() {
   practice_ready || plain_fail "The practice folder is still not ready. Try the starter once more, or send Dave the last few lines."
 }
 
-copy_practice_tree
+guard_target
+
+SOURCE="$ROOT"
+if [ -n "$REMOTE_REF" ]; then
+  download_fresh_copy
+fi
+
+copy_practice_tree "$SOURCE"
 mark_first_command
 mkdir -p "$TARGET/System"
 if [ ! -f "$TARGET/System/.onboarding-lab" ]; then

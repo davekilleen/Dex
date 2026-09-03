@@ -283,6 +283,36 @@ That script (when written) should: create or use a practice folder, finish a **f
 
 Empty-connector testing is mandatory: run Scenario B on a machine/account with company apps off, and prove the connect-at-the-right-time copy.
 
+### Giving the preview to a tester who already has a Dex vault
+
+The starter (`scripts/lab-onboarding.sh`) is safe to hand to a tester whose
+real vault must never be touched:
+
+- **Refuse-first guards.** Before writing a single byte it refuses any target
+  that looks like a real Dex folder (a completed setup marker naming a person,
+  or a `System/user-profile.yaml` without the lab marker), any target that is a
+  file, and any non-empty folder that is not a practice copy the starter made
+  earlier. The refusal names the folder and confirms nothing was changed.
+- **`--delete` only inside a marked practice copy.** A refresh may replace files
+  only in a folder carrying `System/.onboarding-lab`. Every other folder is
+  copy-into-empty or refuse.
+- **`--from-github[=branch]` mode.** Downloads a pristine Dex from GitHub into
+  the practice folder, so nothing on the tester's machine — including their real
+  vault — is used as the source. Until the preview merges, point it at the
+  preview branch.
+
+Tester one-liner (replace BRANCH with the preview branch, or drop `=BRANCH`
+once merged to main):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/davekilleen/Dex/BRANCH/scripts/lab-onboarding.sh | bash -s -- --from-github=BRANCH
+```
+
+That makes `~/Dex-lab-onboarding`, finishes the behind-the-scenes setup, and
+prints "type `/setup-lab`". Their real vault is never read or written; when
+they are done, the practice folder can simply be deleted. Guards are covered by
+`core/tests/test_lab_onboarding.py`.
+
 ---
 
 ## Prerequisites (before any user sees this hour)

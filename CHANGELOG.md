@@ -9,6 +9,31 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased — next public version is 1.97.7
 
+The last goal in your quarterly plan could pick up checkboxes that belonged to
+the next section — carried work, a divider, a later heading. Dex then treated
+that unrelated list as milestones for the goal, so progress looked further
+along than it was.
+
+**What this fixes for you:**
+
+* **A new heading or a divider ends the goal.** Checkboxes below that line stay
+  out of the goal's milestones. Real milestones above the line are unchanged.
+* **The daily plan no longer treats every unread email as the headline backlog.**
+  Promotions and other folders could make the plan say hundreds when only a few
+  messages were in Primary or Inbox. The headline now counts that attention
+  inbox, and omits the number if the source cannot scope it reliably.
+* **Creating a task no longer refuses a company Dex already has, just because
+  the page filename is the short name and the display name is longer.** A
+  filename-only match is enough. Close-but-not-exact names still get a list of
+  suggestions instead of a guess.
+* **Blocked tasks no longer stay behind after Dex says their status changed.**
+  The task tool now recognizes the blocked marker in the main list and other
+  copies, can mark a task blocked, and completes every matching copy together.
+* **Weekly progress no longer ignores a completed task the priority already
+  named by ID in Success criteria.** Progress stayed “not started” unless that
+  task also had a separate weekly-priority backlink. Only exact task IDs count;
+  close names are still ignored.
+
 ### 🗓️ A preview first hour you can try before it replaces setup
 
 A new preview of the first hour with Dex is available as `/setup-lab`, for
@@ -35,31 +60,11 @@ trying and refining before it becomes everyone's first setup. Your usual
   all of those pages — then keeps filing new ones.
 * **The getting-started tour no longer dies on a Mac with the built-in Python.**
   Date-only meeting dates are read instead of crashing.
-
-The last goal in your quarterly plan could pick up checkboxes that belonged to
-the next section — carried work, a divider, a later heading. Dex then treated
-that unrelated list as milestones for the goal, so progress looked further
-along than it was.
-
-**What this fixes for you:**
-
-* **A new heading or a divider ends the goal.** Checkboxes below that line stay
-  out of the goal's milestones. Real milestones above the line are unchanged.
-* **The daily plan no longer treats every unread email as the headline backlog.**
-  Promotions and other folders could make the plan say hundreds when only a few
-  messages were in Primary or Inbox. The headline now counts that attention
-  inbox, and omits the number if the source cannot scope it reliably.
-* **Creating a task no longer refuses a company Dex already has, just because
-  the page filename is the short name and the display name is longer.** A
-  filename-only match is enough. Close-but-not-exact names still get a list of
-  suggestions instead of a guess.
-* **Blocked tasks no longer stay behind after Dex says their status changed.**
-  The task tool now recognizes the blocked marker in the main list and other
-  copies, can mark a task blocked, and completes every matching copy together.
-* **Weekly progress no longer ignores a completed task the priority already
-  named by ID in Success criteria.** Progress stayed “not started” unless that
-  task also had a separate weekly-priority backlink. Only exact task IDs count;
-  close names are still ignored.
+* **The practice starter can never touch a folder you already use.** Before it
+  writes anything, it checks the folder it was pointed at. A real Dex folder, a
+  folder with anything in it, or a plain file gets a polite no and stays exactly
+  as it was. It can also download a brand-new copy of Dex straight from the
+  internet, so a tester with their own Dex never has it read or copied.
 
 Public Latest remains 1.97.6 until the next numbered release.
 

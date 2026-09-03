@@ -40,6 +40,69 @@ def test_lab_starter_is_valid_bash() -> None:
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
 
 
+def _run_starter(target: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", str(SCRIPT), str(target)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def test_lab_starter_refuses_a_real_vault_and_changes_nothing(tmp_path: Path) -> None:
+    vault = tmp_path / "her-vault"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / "user-profile.yaml").write_text("name: Someone\n", encoding="utf-8")
+    note = vault / "important-note.md"
+    note.write_text("do not lose this\n", encoding="utf-8")
+
+    result = _run_starter(vault)
+
+    assert result.returncode == 1
+    assert "real Dex folder" in result.stdout
+    assert note.read_text(encoding="utf-8") == "do not lose this\n"
+    assert sorted(p.name for p in vault.iterdir()) == ["System", "important-note.md"]
+
+
+def test_lab_starter_refuses_a_completed_vault(tmp_path: Path) -> None:
+    vault = tmp_path / "finished"
+    (vault / "System").mkdir(parents=True)
+    (vault / "System" / ".onboarding-complete").write_text(
+        '{"user_name": "Someone"}\n', encoding="utf-8"
+    )
+
+    result = _run_starter(vault)
+
+    assert result.returncode == 1
+    assert "real Dex folder" in result.stdout
+    assert (vault / "System" / ".onboarding-complete").exists()
+
+
+def test_lab_starter_refuses_any_folder_with_content(tmp_path: Path) -> None:
+    folder = tmp_path / "documents"
+    folder.mkdir()
+    keep = folder / "photo-list.txt"
+    keep.write_text("holiday photos\n", encoding="utf-8")
+
+    result = _run_starter(folder)
+
+    assert result.returncode == 1
+    assert "already has things in it" in result.stdout
+    assert keep.read_text(encoding="utf-8") == "holiday photos\n"
+    assert [p.name for p in folder.iterdir()] == ["photo-list.txt"]
+
+
+def test_lab_starter_offers_a_fresh_download_for_testers() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "--from-github" in text
+    assert "archive/refs/heads" in text
+    assert "guard_target" in text
+    # The destructive flag may only apply to a practice copy the starter made.
+    assert 'delete_flag="--delete"' in text
+    assert "is_practice_copy" in text
+    assert "--exclude 'node_modules'" in text
+
+
 def test_setup_lab_leads_with_a_welcome() -> None:
     skill = SKILL.read_text(encoding="utf-8")
     hour = HOUR.read_text(encoding="utf-8")
