@@ -813,6 +813,12 @@ def analyze_granola_extent(user_email_domain: str, extended: bool = False) -> di
         Dictionary with extent analysis or None if no data
     """
     from datetime import datetime
+
+    def _parse_meeting_date(value):
+        cleaned = (value or "").strip().replace("Z", "+00:00").replace(" +0000", "+00:00")
+        if len(cleaned) == 10 and cleaned[4] == "-" and cleaned[7] == "-":
+            return datetime.strptime(cleaned, "%Y-%m-%d")
+        return datetime.fromisoformat(cleaned)
     
     # Default to 6 months for speed, optionally extend to 2 years
     days_to_fetch = 365 * 2 if extended else 180
@@ -836,8 +842,8 @@ def analyze_granola_extent(user_email_domain: str, extended: bool = False) -> di
     newest = max(dates)
     
     # Calculate days back
-    oldest_dt = datetime.fromisoformat(oldest)
-    newest_dt = datetime.fromisoformat(newest)
+    oldest_dt = _parse_meeting_date(oldest)
+    newest_dt = _parse_meeting_date(newest)
     days_back = (newest_dt - oldest_dt).days + 1  # +1 to include both days
     
     # Extract unique people and companies
@@ -873,12 +879,17 @@ def analyze_granola_extent(user_email_domain: str, extended: bool = False) -> di
     
     # Calculate meetings in different time ranges for estimation
     now = datetime.now()
-    meetings_7d = sum(1 for m in meetings if m.get('date') and 
-                      (now - datetime.fromisoformat(m['date'])).days <= 7)
-    meetings_30d = sum(1 for m in meetings if m.get('date') and 
-                       (now - datetime.fromisoformat(m['date'])).days <= 30)
-    meetings_90d = sum(1 for m in meetings if m.get('date') and 
-                       (now - datetime.fromisoformat(m['date'])).days <= 90)
+    def _age_days(raw):
+        if not raw:
+            return None
+        try:
+            return (now - _parse_meeting_date(raw)).days
+        except ValueError:
+            return None
+
+    meetings_7d = sum(1 for m in meetings if (age := _age_days(m.get('date'))) is not None and age <= 7)
+    meetings_30d = sum(1 for m in meetings if (age := _age_days(m.get('date'))) is not None and age <= 30)
+    meetings_90d = sum(1 for m in meetings if (age := _age_days(m.get('date'))) is not None and age <= 90)
     
     # Check if there might be more data beyond what we fetched
     has_more = False

@@ -45,6 +45,7 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 from core.utils.feature_status import feature_status
+from core.utils.flexible_datetime import parse_flexible_datetime
 
 # ============================================================================
 # CONFIGURATION
@@ -58,7 +59,8 @@ VAULT_PATH = Path(os.environ.get("VAULT_PATH", Path.cwd()))
 
 # Friendly message shown when no API key is configured (shared convention).
 NOT_CONNECTED_MESSAGE = (
-    "Granola not connected — run /connect granola to add your Granola API key."
+    "Granola not connected — run /granola-setup to add your Granola API key "
+    "(requires a Granola Business plan)."
 )
 
 # Set up logging
@@ -921,8 +923,8 @@ async def handle_call_tool(
         newest = max(dates)
 
         # Calculate days back.
-        oldest_dt = datetime.fromisoformat(oldest)
-        newest_dt = datetime.fromisoformat(newest)
+        oldest_dt = parse_flexible_datetime(oldest)
+        newest_dt = parse_flexible_datetime(newest)
         days_back = (newest_dt - oldest_dt).days + 1
 
         # Extract unique people and companies.
@@ -957,12 +959,27 @@ async def handle_call_tool(
 
         # Calculate meetings in different time ranges.
         now = datetime.now()
-        meetings_7d = sum(1 for m in meetings if m.get("date") and
-                          (now - datetime.fromisoformat(m["date"])).days <= 7)
-        meetings_30d = sum(1 for m in meetings if m.get("date") and
-                           (now - datetime.fromisoformat(m["date"])).days <= 30)
-        meetings_90d = sum(1 for m in meetings if m.get("date") and
-                           (now - datetime.fromisoformat(m["date"])).days <= 90)
+        def _age_days(raw: object) -> Optional[int]:
+            if not isinstance(raw, str) or not raw:
+                return None
+            try:
+                return (now - parse_flexible_datetime(raw)).days
+            except ValueError:
+                return None
+
+        meetings_7d = 0
+        meetings_30d = 0
+        meetings_90d = 0
+        for meeting in meetings:
+            age = _age_days(meeting.get("date"))
+            if age is None:
+                continue
+            if age <= 7:
+                meetings_7d += 1
+            if age <= 30:
+                meetings_30d += 1
+            if age <= 90:
+                meetings_90d += 1
 
         # Check if there might be more data beyond what we fetched.
         has_more = False

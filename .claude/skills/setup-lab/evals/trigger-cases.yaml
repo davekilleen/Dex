@@ -1,0 +1,36 @@
+# Trigger evals for /setup-lab.
+
+skill: setup-lab
+
+positive:
+  - utterance: "Run the lab onboarding preview."
+    expect: fire
+  - utterance: "I want to try the new first hour."
+    expect: fire
+  - utterance: "Start /setup-lab for this practice folder."
+    expect: fire
+
+negative:
+  - utterance: "Set up Dex for the first time."
+    expect: no-fire
+    route_to: setup
+    why: shipped first setup, not the preview hour.
+  - utterance: "Give me the post-setup tour."
+    expect: no-fire
+    route_to: getting-started
+    why: tour after a completed vault, not first-hour preview.
+
+ambiguous:
+  - utterance: "Help me get started."
+    expect: ask
+    why: could be shipped /setup, /setup-lab, or /getting-started.
+
+missing_prerequisite:
+  - utterance: "Run /setup-lab"  # helpers not wired yet
+    expect: degrade
+    why: one friendly line — practice folder is not ready, close chat, run the starter, type /setup-lab. Do not install from inside the chat. Do not invent a side path.
+
+failure-recovery:
+  - utterance: "Finalize crashed, just edit the files."
+    expect: honest-failure
+    why: never edit Dex source in the vault; three-beat failure and stop.

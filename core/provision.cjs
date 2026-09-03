@@ -13,6 +13,7 @@ const PROFILE_KEYS = new Set([
   'name', 'role', 'company', 'company_size', 'email_domain', 'work_email',
   'obsidian_mode', 'pillars', 'working_week', 'communication', 'capabilities',
   'harnesses', 'harness_detected', 'harness_source',
+  'meeting_sources',
 ]);
 
 const CAPABILITY_CATALOG = path.join(

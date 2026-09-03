@@ -644,8 +644,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "02110d2093e22aeb472ed3ef05ae97e2e4773ce18ccac6aa6f1888daf0ce88b9",
-        "byte_size": 17660
+        "sha256": "b8ec647997166e52eb59aadb0ad23dbf4688d5f37d588ee2af3560a2a9b3d657",
+        "byte_size": 17955
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": [
@@ -5436,8 +5436,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/feedback/SKILL.md",
-        "sha256": "3b91b60876c626ed7794970d07a904750a0b4a460d5ce6bd99b78d631aa8fe81",
-        "byte_size": 9490
+        "sha256": "92f334837d900c653da6018e1814f18afe1dbb90df310e91d1d9d09fee593ccf",
+        "byte_size": 9577
       },
       "value": "Report a Dex bug to the Dex team with zero homework.",
       "jobs_served": [
@@ -5498,8 +5498,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/getting-started/SKILL.md",
-        "sha256": "6017eac2700e9f4f73bf9819abb6d583b45e2cc423c6abd3117313c9ce4571c8",
-        "byte_size": 28582
+        "sha256": "3872db45ec75f449ff736259e9d645ad9ff0bea95f9c83f05482dcef8fdabda7",
+        "byte_size": 28970
       },
       "value": "Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`.",
       "jobs_served": [
@@ -6248,8 +6248,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/setup/SKILL.md",
-        "sha256": "d18889c5cc43bac018a3ece071cafee5e2ddefc88a11e009e31a864555de37a4",
-        "byte_size": 1576
+        "sha256": "c16d5fe74a1da8bd46f7dbe257d851ec0298c85eeab3ccd207a50a9e8c4dffd8",
+        "byte_size": 1625
       },
       "value": "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs.",
       "jobs_served": [
@@ -6300,6 +6300,68 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.20.1",
+      "changed_in": []
+    },
+    {
+      "id": "setup-lab",
+      "capability_class": "active-skill",
+      "impact_tier": "core",
+      "availability": "active",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/setup-lab/SKILL.md",
+        "sha256": "03763b31cf2e813beb06813d3ef3a27989f5f0ae18e79cfaf55080efefb3104c",
+        "byte_size": 7227
+      },
+      "value": "Run the fifteen-minute Dex preview onboarding: confirm who you are from work email, organise this week, and make one shortcut live.",
+      "jobs_served": [
+        "evolve-the-system-itself"
+      ],
+      "foundation_capabilities": [
+        "safe-change-recovery",
+        "compounding-correctability"
+      ],
+      "prerequisites": [
+        "An installed Dex release with its skills directory available."
+      ],
+      "trade_offs": [
+        "Results depend on the current local data and permissions the skill can inspect.",
+        "The workflow can guide and verify a bounded action, but cannot guarantee the underlying system is healthy."
+      ],
+      "evidence": [
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/setup/SKILL.md",
+          "summary": "The shipped Setup skill defines the workflow Lens is cataloguing."
+        }
+      ],
+      "brief": {
+        "goal": "Run the fifteen-minute Dex preview onboarding: confirm who you are from work email, organise this week, and make one shortcut live.",
+        "method_outline": [
+          "Start a lab onboarding session and sweep only signed-in app names.",
+          "Confirm identity, record the real calendar and meeting source, then create the workspace.",
+          "Show this week's meetings and run one shortcut on real work."
+        ],
+        "verification_checklist": [
+          "The workflow reports what it found or changed.",
+          "The person keeps control over any consequential action."
+        ],
+        "rollback_advice": "Disable or remove the skill if it is not useful; reverse any external configuration through the same provider-controlled setup path."
+      },
+      "compatibility": {
+        "host_requirements": [
+          "skills-directory"
+        ],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": [
+          "macos",
+          "linux",
+          "windows"
+        ]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.97.3",
       "changed_in": []
     },
     {

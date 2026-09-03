@@ -117,18 +117,21 @@ events cannot identify the meeting safely.
 the meeting; the invite already holds the title and the attendee list, and asking them to retype
 it is both friction and a source of duplicate person pages from misspelt names.
 
-When the calendar integration is available, search every calendar visible to
-Apple Calendar by default:
+Read `System/user-profile.yaml` → `calendar`. Use the calendar tools this session actually has.
 
-```
-mcp__calendar-mcp__calendar_get_events_with_attendees(calendar_name="all", start_date="YYYY-MM-DD", end_date="YYYY-MM-DD")
-```
+- `provider: apple` — search calendars visible to Calendar.app:
+  `mcp__calendar-mcp__calendar_get_events_with_attendees(calendar_name="all", start_date="YYYY-MM-DD", end_date="YYYY-MM-DD")`
+  `calendar_name="all"` means calendars currently visible to the local Apple
+  Calendar integration. It cannot see an account that is not synced into
+  Calendar.app. On hosts that do not support `all`, say which single calendar
+  was searched.
+- `provider: google` — use this host's signed-in Google Calendar tools for
+  `calendar.account`. Do not call calendar-mcp for events. Google Workspace
+  setup is email, not calendar.
+- `provider: none` or missing — ask the user. Do not invent the meeting.
 
-`calendar_name="all"` means all calendars currently visible to the local Apple
-Calendar integration. It cannot see a calendar account that is not synced into
-Apple Calendar, and on hosts that do not support the `all` selector you must say
-which single calendar was searched. Never describe a no-match from one calendar
-as proof that the meeting is absent from every calendar.
+Never describe a no-match from one calendar as proof that the meeting is absent
+from every calendar.
 
 **The end date is exclusive.** For a single day, pass the following day as `end_date`. Passing
 the same date twice returns zero events with no error, which is indistinguishable from an empty
@@ -456,7 +459,7 @@ This only fires if the user has opted into analytics. No action needed if it ret
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Calendar | calendar-mcp | `calendar_get_events_with_attendees` (optional: resolves the meeting and its attendees; the skill asks the user when it is unavailable) |
+| Calendar | the tools this session actually has | host Google Calendar tools when `calendar.provider` is google; otherwise calendar-mcp `calendar_get_events_with_attendees` |
 
 ---
 

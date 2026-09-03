@@ -1,6 +1,6 @@
 ---
 name: setup
-description: "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `System/.onboarding-complete` is absent or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`."
+description: "Run first-time Dex onboarding: build the vault structure, capture the user profile and configure MCPs. Use when `System/.onboarding-complete` is absent or the user says 'set up Dex', 'start onboarding'. Not for the post-onboarding tour; use `getting-started`. Not for a mid-life role change; use `reset`. Not for the preview first hour; use `setup-lab`."
 ---
 
 # Set Up Dex

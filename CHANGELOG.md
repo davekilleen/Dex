@@ -9,6 +9,33 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased — next public version is 1.97.7
 
+### 🗓️ A preview first hour you can try before it replaces setup
+
+A new preview of the first hour with Dex is available as `/setup-lab`, for
+trying and refining before it becomes everyone's first setup. Your usual
+`/setup` is unchanged.
+
+* **The preview hour is a conversation, not a form.** Dex asks you to talk —
+  hold the microphone if that is easier — and to share last year's review, your
+  job spec, or a LinkedIn extract if you have it. It looks at three weeks of
+  meetings, not one, so it can spot regular 1:1s and people you keep close. It
+  reads those meetings itself instead of sending someone off and going quiet.
+  It never fills the gap with "one moment." Your next working morning is a real
+  date, and if you're out of office it skips ahead to the day you're actually
+  back. A new preview does not pick up yesterday's half-finished hour.
+* **The practice first hour starts with a hello.** The starter finishes a fresh
+  Dex copy before you open the folder — including the folders people and
+  company pages need — so you are not asked to restart after a wall of setup
+  talk.
+* **Meeting notes are connected in that first sitting.** Dex asks what you use —
+  Granola, Fireflies, Zoom, Teams, a folder of notes, or nowhere — and walks
+  you through it then.
+* **People and company pages are an explicit yes.** After those meetings, Dex
+  names everyone who showed up in the last few weeks and, if you say yes, files
+  all of those pages — then keeps filing new ones.
+* **The getting-started tour no longer dies on a Mac with the built-in Python.**
+  Date-only meeting dates are read instead of crashing.
+
 The last goal in your quarterly plan could pick up checkboxes that belonged to
 the next section — carried work, a divider, a later heading. Dex then treated
 that unrelated list as milestones for the goal, so progress looked further

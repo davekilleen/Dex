@@ -21,6 +21,7 @@ LEARNINGS_DIR="$CLAUDE_DIR/06-Resources/Learnings"
 MISTAKES_FILE="$LEARNINGS_DIR/Mistake_Patterns.md"
 PREFERENCES_FILE="$LEARNINGS_DIR/Working_Preferences.md"
 ONBOARDING_MARKER="$CLAUDE_DIR/System/.onboarding-complete"
+LAB_MARKER="$CLAUDE_DIR/System/.onboarding-lab"
 
 # Resolve one portable Python command for every stock hook path. Native Windows
 # installs expose either a venv python.exe or the Python launcher (`py -3`),
@@ -70,11 +71,15 @@ fi
 # onboarding flow explicit at session start so even a first message of "hi"
 # cannot bypass it. A completed vault stays silent and continues normally.
 if [[ ! -f "$ONBOARDING_MARKER" ]]; then
-    echo "🚨 FIRST-TIME SETUP REQUIRED — THIS VAULT HAS NEVER BEEN SET UP"
-    if [[ -f "$CLAUDE_DIR/System/.onboarding-session.json" ]]; then
-        echo "Onboarding was started earlier but never finished. Whatever the user's first message says — even just 'hi' — resume setup NOW: call start_onboarding_session() from onboarding-mcp (it restores their progress) and continue the flow in .claude/flows/onboarding.md."
+    if [[ -f "$LAB_MARKER" ]]; then
+        echo "This is a practice first hour. Wait for /setup-lab. The first words she hears are a hello. Do not follow .claude/flows/onboarding.md. Do not open a stack of question cards. After she answers, read three weeks of meetings yourself — do not send a meetings helper and wait on it."
     else
-        echo "Whatever the user's first message says — even just 'hi' — begin onboarding NOW: call start_onboarding_session() from onboarding-mcp and follow the flow in .claude/flows/onboarding.md. Do not ask what they are working on; setup comes first."
+        echo "🚨 FIRST-TIME SETUP REQUIRED — THIS VAULT HAS NEVER BEEN SET UP"
+        if [[ -f "$CLAUDE_DIR/System/.onboarding-session.json" ]]; then
+            echo "Onboarding was started earlier but never finished. Whatever the user's first message says — even just 'hi' — resume setup NOW: call start_onboarding_session() from onboarding-mcp (it restores their progress) and continue the flow in .claude/flows/onboarding.md."
+        else
+            echo "Whatever the user's first message says — even just 'hi' — begin onboarding NOW: call start_onboarding_session() from onboarding-mcp and follow the flow in .claude/flows/onboarding.md. Do not ask what they are working on; setup comes first."
+        fi
     fi
     echo "(Background checks stay disabled until setup completes.)"
     echo ""

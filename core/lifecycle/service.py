@@ -594,8 +594,15 @@ def _confirmed_onboarding_context(
         if set(calendar_source) != {"provider"}:
             raise PlanRejected("an absent calendar source cannot include calendar details")
         return context, {"provider": "none"}
+    if provider == "google":
+        if set(calendar_source) != {"provider", "account"}:
+            raise PlanRejected("a Google calendar source needs an account email")
+        account = calendar_source.get("account")
+        if not isinstance(account, str) or "@" not in account.strip():
+            raise PlanRejected("Google Calendar needs the signed-in work email")
+        return context, {"provider": "google", "account": account.strip().lower()}
     if provider != "apple" or set(calendar_source) != {"provider", "work_calendar"}:
-        raise PlanRejected("calendar source must be Apple Calendar or no calendar")
+        raise PlanRejected("calendar source must be Apple Calendar, Google Calendar, or no calendar")
     calendar_name = calendar_source.get("work_calendar")
     if not isinstance(calendar_name, str) or not calendar_name.strip():
         raise PlanRejected("Apple Calendar needs a selected calendar name")
@@ -695,6 +702,58 @@ def execute_approved_onboarding_context(
         purpose="onboarding-context",
         operation="onboarding-context",
         approved_token=str(transaction["approval_token"]),
+    )
+    return _envelope(receipt=executed["receipt"])
+
+
+_ONBOARDING_LAB_MARKER_RELATIVE = "System/.onboarding-lab"
+
+
+def write_onboarding_lab_marker(vault_root: str | Path) -> dict[str, object]:
+    """Mark a preview / lab vault so analytics and feedback can separate beta signal."""
+    root = Path(vault_root)
+    marker = root / _ONBOARDING_LAB_MARKER_RELATIVE
+    if marker.is_symlink():
+        raise PlanRejected("onboarding lab marker must be a regular file")
+    payload = json.dumps(
+        {
+            "lab": True,
+            "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        },
+        indent=2,
+        sort_keys=True,
+    ).encode("utf-8") + b"\n"
+    if marker.is_file():
+        original = marker.read_bytes()
+        plan = [
+            PlanEntry(
+                _ONBOARDING_LAB_MARKER_RELATIVE,
+                payload,
+                mode=marker.stat().st_mode & 0o777,
+                expected_current_sha256=hashlib.sha256(original).hexdigest(),
+            )
+        ]
+    else:
+        plan = [
+            PlanEntry(
+                _ONBOARDING_LAB_MARKER_RELATIVE,
+                payload,
+                mode=0o644,
+                expected_absent=True,
+            )
+        ]
+    preview = _preview_transaction(
+        root,
+        plan,
+        purpose="onboarding-lab",
+        operation="onboarding-provision",
+    )
+    executed = _execute_approved_transaction(
+        root,
+        plan,
+        purpose="onboarding-lab",
+        operation="onboarding-provision",
+        approved_token=str(preview["approval_token"]),
     )
     return _envelope(receipt=executed["receipt"])
 

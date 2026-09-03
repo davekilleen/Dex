@@ -56,6 +56,7 @@ def _configure_vault(
     *,
     companies: bool = False,
     finalized: bool = True,
+    lab: bool = False,
 ) -> None:
     system = vault / "System"
     system.mkdir(parents=True)
@@ -66,6 +67,8 @@ def _configure_vault(
     marker = system / ".onboarding-complete"
     if finalized:
         marker.write_text("{}\n", encoding="utf-8")
+    if lab:
+        (system / ".onboarding-lab").write_text('{"lab": true}\n', encoding="utf-8")
     monkeypatch.setattr(onboarding_server, "BASE_DIR", vault)
     monkeypatch.setattr(onboarding_server, "MARKER_FILE", marker)
 
@@ -76,8 +79,9 @@ def _prepare(
     meetings: list[dict],
     *,
     companies: bool = False,
+    lab: bool = False,
 ) -> dict:
-    _configure_vault(vault, monkeypatch, companies=companies)
+    _configure_vault(vault, monkeypatch, companies=companies, lab=lab)
     monkeypatch.setattr(
         onboarding_server,
         "_collect_entity_offer_meetings",
@@ -105,6 +109,42 @@ def test_entity_offer_tools_are_registered() -> None:
     assert tools["respond_to_entity_page_offer"].inputSchema["properties"]["action"][
         "enum"
     ] == ["yes", "no", "never"]
+    assert (
+        tools["respond_to_entity_page_offer"].inputSchema["properties"][
+            "suggestion_ids"
+        ]["maxItems"]
+        == onboarding_server.LAB_ENTITY_PAGE_OFFER_LIMIT
+    )
+
+
+def test_lab_vault_reads_the_full_lookback_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    granola_limits: list[int] = []
+
+    def fake_granola(*, days: int, limit: int) -> list[dict]:
+        granola_limits.append(limit)
+        return []
+
+    _configure_vault(tmp_path, monkeypatch, lab=True)
+    monkeypatch.setattr(
+        onboarding_server,
+        "get_calendar_events_for_entity_offer",
+        lambda days_back=28: [],
+    )
+    monkeypatch.setattr(
+        onboarding_server,
+        "get_recent_granola_meetings_for_entity_offer",
+        fake_granola,
+    )
+    monkeypatch.setattr(onboarding_server, "_load_first_week_profile", lambda: _profile())
+
+    assert onboarding_server._entity_page_offer_limit() == (
+        onboarding_server.LAB_ENTITY_PAGE_OFFER_LIMIT
+    )
+    onboarding_server._collect_entity_offer_meetings()
+    assert granola_limits == [onboarding_server.LAB_ENTITY_OFFER_GRANOLA_LIMIT]
 
 
 def test_offer_is_refused_until_finalize_onboarding(
@@ -265,6 +305,48 @@ def test_yes_treats_an_existing_identity_as_success(
     assert accepted["created"] is False
     assert accepted["existing"] is True
     assert list((tmp_path / "05-Areas/People").rglob("*.md")) == [existing_page]
+
+
+def _window_people(count: int) -> list[dict]:
+    return [
+        {
+            "name": f"Person {index}",
+            "email": f"person{index}@acme.com",
+            "location": "external",
+        }
+        for index in range(count)
+    ]
+
+
+def test_shipped_offer_still_names_five_and_lab_files_the_whole_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attendees = _window_people(6)
+    meetings = [
+        _meeting("window-1", "2026-07-13", attendees=attendees),
+        _meeting("window-2", "2026-07-20", attendees=attendees),
+    ]
+
+    shipped = _prepare(tmp_path / "shipped", monkeypatch, meetings)
+    lab = _prepare(tmp_path / "lab", monkeypatch, meetings, lab=True)
+
+    shipped_people = [
+        item for item in shipped["suggestions"] if item["kind"] == "person"
+    ]
+    lab_people = [item for item in lab["suggestions"] if item["kind"] == "person"]
+
+    assert len(shipped_people) == 5
+    assert len(lab_people) == 6
+
+    accepted = onboarding_server.respond_to_entity_page_offer(
+        "yes",
+        [item["id"] for item in lab_people],
+    )
+    assert accepted["action"] == "yes"
+    assert len(accepted["results"]) == 6
+    assert all(item["status"] == "accepted" for item in accepted["results"])
+    assert len(list((tmp_path / "lab/05-Areas/People").rglob("*.md"))) == 6
 
 
 def test_company_suggestions_respect_the_room_setting(

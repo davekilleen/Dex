@@ -12,6 +12,7 @@ Features:
 - Automatic MCP configuration
 - PARA folder structure creation
 """
+from __future__ import annotations
 
 import hashlib
 import json
@@ -24,7 +25,7 @@ import sys
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import mcp.server.stdio
 import mcp.types as types
@@ -54,6 +55,7 @@ from core.mcp.analytics_receipts import (
     unavailable_analytics_delivery,
 )
 from core.paths import (
+    LAB_MARKER_FILE,
     MARKER_FILE,
     MCP_CONFIG_EXAMPLE,
     SESSION_FILE,
@@ -84,6 +86,7 @@ try:
     from core.utils.working_week import (
         DEFAULT_WORKING_DAYS,
         first_working_day_of_week,
+        next_working_day_from_events,
         normalize_working_days,
         working_day_names,
     )
@@ -98,6 +101,17 @@ except ImportError:
 
     def working_day_names():
         return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+    def next_working_day_from_events(today, events=None):
+        candidate = today + timedelta(days=1)
+        while candidate.weekday() >= 5:
+            candidate += timedelta(days=1)
+        return {
+            "date": candidate.isoformat(),
+            "spoken": f"{candidate.strftime('%A')} {candidate.day} {candidate.strftime('%B')}",
+            "skipped_out_of_office": False,
+            "out_until": None,
+        }
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
 ONBOARDING_STEPS = 8
@@ -163,6 +177,14 @@ ROLE_AREAS = {
 }
 
 COMPANY_SIZES = ["startup", "scaling", "enterprise", "large_enterprise"]
+MEETING_SOURCE_PRIMARIES = (
+    "granola",
+    "zoom",
+    "teams",
+    "exported-folder",
+    "wispr",
+    "none",
+)
 FORMALITY_LEVELS = ["formal", "professional_casual", "casual"]
 DIRECTNESS_LEVELS = ["very_direct", "balanced", "supportive"]
 CAREER_LEVELS = ["junior", "mid", "senior", "leadership", "c_suite"]
@@ -261,8 +283,13 @@ def create_new_session() -> Dict:
         "last_updated": datetime.now().isoformat(),
         "completed_steps": [],
         "current_step": 1,
-        "data": {}
+        "data": {},
+        "lab": False,
     }
+
+
+def _is_lab_session(session: Dict[str, Any]) -> bool:
+    return session.get("lab") is True
 
 
 def _harness_profile_payload(profile: object) -> Dict[str, Any]:
@@ -342,7 +369,7 @@ def _harness_selection_confirmed(session: Dict[str, Any]) -> bool:
 def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
     """Exclude context that requires a separate explicit lifecycle approval."""
     data = dict(session["data"])
-    for field in ("calendar", "calendar_source", "work_email", "working_context"):
+    for field in ("calendar", "calendar_source", "working_context"):
         data.pop(field, None)
     harness_setup = session.get("harness_setup", {})
     if isinstance(harness_setup, dict) and harness_setup.get("confirmed") is True:
@@ -356,7 +383,130 @@ def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
                 if harness_setup.get("confirmed") is True
                 else "detected"
             )
+    meeting_sources = data.get("meeting_sources")
+    if isinstance(meeting_sources, Mapping):
+        primary = meeting_sources.get("primary", "none")
+        notes_folder = meeting_sources.get("notes_folder", "")
+        if primary not in MEETING_SOURCE_PRIMARIES:
+            data.pop("meeting_sources", None)
+        else:
+            data["meeting_sources"] = {
+                "primary": primary,
+                "notes_folder": notes_folder if isinstance(notes_folder, str) else "",
+            }
+    work_email = data.get("work_email")
+    if not _is_lab_session(session) or not (
+        isinstance(work_email, str) and "@" in work_email.strip()
+    ):
+        data.pop("work_email", None)
     return data
+
+
+def _mark_step_complete(session: Dict[str, Any], step_number: int) -> None:
+    if step_number not in session["completed_steps"]:
+        session["completed_steps"].append(step_number)
+
+
+def save_identity_confirm(
+    session: Dict[str, Any],
+    *,
+    name: str,
+    company: str,
+    company_size: str,
+    email_domain: str,
+    no_company_domain: bool,
+    work_email: str,
+) -> Dict[str, Any]:
+    """Save name, company, size, and domain in one confirm for the lab hour."""
+    cleaned_name = name.strip()
+    if not cleaned_name:
+        return create_error_response("Name is required", field="name", suggestion="Keep the surname")
+    if company_size not in COMPANY_SIZES:
+        return create_error_response(
+            f"Invalid company_size: {company_size}",
+            field="company_size",
+            suggestion=f"Must be one of: {', '.join(COMPANY_SIZES)}",
+        )
+    if not email_domain.strip() and no_company_domain:
+        valid, error_msg, normalized_domain = True, None, ""
+    else:
+        valid, error_msg, normalized_domain = validate_email_domain(email_domain)
+    if not valid:
+        return create_error_response(
+            error_msg,
+            field="email_domain",
+            suggestion="Provide a domain (e.g., 'pendo.io'). If none, set no_company_domain to true.",
+        )
+    session["data"]["name"] = cleaned_name
+    session["data"]["company"] = company.strip()
+    session["data"]["company_size"] = company_size
+    session["data"]["email_domain"] = normalized_domain
+    cleaned_email = work_email.strip()
+    if cleaned_email:
+        if "@" not in cleaned_email:
+            return create_error_response(
+                "work_email must be an email address",
+                field="work_email",
+            )
+        session["data"]["work_email"] = cleaned_email
+    for step_number in (1, 3, 4):
+        _mark_step_complete(session, step_number)
+    session["current_step"] = 2 if 2 not in session["completed_steps"] else session.get("current_step", 5)
+    save_session(session)
+    return create_success_response(
+        {
+            "completed_steps": [1, 3, 4],
+            "name": cleaned_name,
+            "company": session["data"]["company"],
+            "company_size": company_size,
+            "email_domain": normalized_domain,
+            "work_email": session["data"].get("work_email", ""),
+        },
+        "Identity confirmed",
+    )
+
+
+def save_meeting_source(
+    session: Dict[str, Any],
+    *,
+    primary: str,
+    notes_folder: str,
+) -> Dict[str, Any]:
+    """Record the meeting source on the session until finalize persists it."""
+    if primary not in MEETING_SOURCE_PRIMARIES:
+        return create_error_response(
+            f"Invalid meeting source: {primary}",
+            field="primary",
+            suggestion=f"Must be one of: {', '.join(MEETING_SOURCE_PRIMARIES)}",
+        )
+    session["data"]["meeting_sources"] = {
+        "primary": primary,
+        "notes_folder": notes_folder.strip(),
+    }
+    save_session(session)
+    return create_success_response(
+        session["data"]["meeting_sources"],
+        "Meeting source recorded for finalize",
+    )
+
+
+def save_entity_creation_preference(
+    session: Dict[str, Any],
+    *,
+    automatic: bool,
+) -> Dict[str, Any]:
+    """Record the people/company auto-file answer until after finalize."""
+    if not isinstance(automatic, bool):
+        return create_error_response(
+            "automatic must be true or false",
+            field="automatic",
+        )
+    session["data"]["entity_creation_automatic"] = automatic
+    save_session(session)
+    return create_success_response(
+        {"automatic": automatic},
+        "People and company page default recorded",
+    )
 
 
 def _next_required_step_before(
@@ -564,6 +714,41 @@ def _capability_states(
     return states
 
 
+def _parse_provisioner_receipt(
+    stdout: str,
+    stderr: str,
+    *,
+    lab: bool,
+) -> Dict[str, Any]:
+    """Read the provisioner's JSON even if Node printed noise around it."""
+    text = (stdout or "").strip()
+    candidates = [text] if text else []
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(text[start : end + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    detail = (stderr or "").strip() or text[:300]
+    if "Cannot find module" in detail or "js-yaml" in detail:
+        if lab:
+            raise RuntimeError(
+                "This practice folder is missing a helper. Close this chat, "
+                "run the starter in Terminal again, then type /setup-lab. "
+                "Your answers are saved."
+            )
+        raise RuntimeError(
+            "Dex couldn't finish building your workspace. Close this chat, "
+            "run ./install.sh in this folder, then type /setup again."
+        )
+    raise RuntimeError(detail or "the builder printed nothing")
+
+
 def _run_onboarding_provisioner(
     session: Dict,
     *,
@@ -617,10 +802,11 @@ def _run_onboarding_provisioner(
             check=False,
             env={**os.environ, "DEX_LIFECYCLE_PYTHON": sys.executable},
         )
-        try:
-            receipt = json.loads(completed.stdout)
-        except json.JSONDecodeError as error:
-            raise RuntimeError("Provisioner returned an invalid receipt") from error
+        receipt = _parse_provisioner_receipt(
+            completed.stdout,
+            completed.stderr,
+            lab=_is_lab_session(session),
+        )
         if completed.returncode != 0 or receipt.get("ok") is not True:
             detail = "; ".join(receipt.get("errors", [])) or completed.stderr.strip()
             raise RuntimeError(detail or "Provisioner refused onboarding")
@@ -1154,6 +1340,114 @@ Based on your calendar and pillars, here are suggested priorities:
     
     return content
 
+MEETING_CADENCE_DAYS = 21
+
+
+def _normalize_meeting_title(title: str) -> str:
+    """Collapse a meeting title so the same series can be counted."""
+    return re.sub(r"\s+", " ", (title or "").strip().casefold())
+
+
+def _is_one_on_one(event: Dict) -> bool:
+    """Treat titled 1:1s and two-person meetings as one-on-ones."""
+    title = (event.get("title") or "").casefold()
+    if any(
+        marker in title
+        for marker in ("1:1", "1-1", "one on one", "one-on-one", "1 / 1")
+    ):
+        return True
+    return len(_meeting_attendees(event)) == 2
+
+
+def _event_day(event: Dict) -> Optional[date]:
+    start = _calendar_event_datetime(event.get("start"))
+    if start is None:
+        return None
+    return start.date()
+
+
+def _events_in_current_week(events: List[Dict]) -> List[Dict]:
+    """Keep only timed meetings in the current working week."""
+    today = datetime.now().date()
+    week_start = first_working_day_of_week(today)
+    week_end = week_start + timedelta(days=6)
+    this_week = []
+    for event in _timed_calendar_events(events):
+        day = _event_day(event)
+        if day is None:
+            continue
+        if week_start <= day <= week_end:
+            this_week.append(event)
+    return this_week
+
+
+def summarize_meeting_cadence(events: List[Dict]) -> Dict[str, Any]:
+    """Find recurring series and regular people across the lookback window."""
+    timed_events = _timed_calendar_events(events)
+    by_title: Dict[str, Dict[str, Any]] = {}
+    people: Dict[str, Dict[str, Any]] = {}
+
+    for event in timed_events:
+        title = (event.get("title") or "Untitled meeting").strip()
+        key = _normalize_meeting_title(title)
+        bucket = by_title.setdefault(key, {"title": title, "count": 0})
+        bucket["count"] += 1
+
+        one_on_one = _is_one_on_one(event)
+        for attendee in _meeting_attendees(event):
+            if attendee.get("is_current_user") is True:
+                continue
+            email = (attendee.get("email") or "").strip()
+            name = (attendee.get("name") or email).strip()
+            if not name:
+                continue
+            person_key = email or name.casefold()
+            person = people.setdefault(
+                person_key,
+                {
+                    "name": name,
+                    "email": email,
+                    "meeting_count": 0,
+                    "one_on_one_count": 0,
+                },
+            )
+            person["meeting_count"] += 1
+            if one_on_one:
+                person["one_on_one_count"] += 1
+
+    recurring = [
+        {"title": item["title"], "count": item["count"]}
+        for item in sorted(by_title.values(), key=lambda item: item["count"], reverse=True)
+        if item["count"] >= 2
+    ][:8]
+    regular_people = [
+        person
+        for person in people.values()
+        if person["one_on_one_count"] >= 2 or person["meeting_count"] >= 3
+    ]
+    regular_people.sort(
+        key=lambda person: (person["one_on_one_count"], person["meeting_count"]),
+        reverse=True,
+    )
+    likely_manager = None
+    if regular_people and regular_people[0]["one_on_one_count"] >= 2:
+        top = regular_people[0]
+        likely_manager = {
+            "name": top["name"],
+            "email": top["email"],
+            "one_on_one_count": top["one_on_one_count"],
+            "guess": "regular 1:1 — ask, do not assume they are the manager",
+        }
+
+    return {
+        "window_days": MEETING_CADENCE_DAYS,
+        "meeting_count": len(timed_events),
+        "recurring": recurring,
+        "regular_people": regular_people[:8],
+        "likely_manager": likely_manager,
+    }
+
+
 def get_frequent_attendees(events: List[Dict], limit: int = 3) -> List[Dict]:
     """Get most frequent meeting attendees"""
     attendee_data = {}
@@ -1285,13 +1579,13 @@ def _entity_offer_attendees(
 ) -> List[Dict[str, str]]:
     """Normalize attendees to the entity engine's name/email/location shape."""
     internal_domains = _profile_email_domains(profile)
+    calendar = profile.get('calendar') if isinstance(profile.get('calendar'), dict) else {}
     current_user_emails = {
         str(value).strip().lower()
         for value in (
             profile.get('work_email'),
-            profile.get('calendar', {}).get('work_calendar')
-            if isinstance(profile.get('calendar'), dict)
-            else None,
+            calendar.get('account'),
+            calendar.get('work_calendar'),
         )
         if isinstance(value, str) and '@' in value
     }
@@ -1396,13 +1690,38 @@ def _entity_offer_dedupe_key(meeting: Dict[str, Any]) -> tuple[str, tuple[str, .
     return date_key, attendee_keys
 
 
+SHIPPED_ENTITY_PAGE_OFFER_LIMIT = 5
+LAB_ENTITY_PAGE_OFFER_LIMIT = 100
+SHIPPED_ENTITY_OFFER_GRANOLA_LIMIT = 20
+LAB_ENTITY_OFFER_GRANOLA_LIMIT = 80
+
+
+def _lab_preview_vault() -> bool:
+    """True when this vault is a /setup-lab preview, not shipped /setup."""
+    return (Path(BASE_DIR) / "System" / ".onboarding-lab").is_file()
+
+
+def _entity_page_offer_limit() -> int:
+    if _lab_preview_vault():
+        return LAB_ENTITY_PAGE_OFFER_LIMIT
+    return SHIPPED_ENTITY_PAGE_OFFER_LIMIT
+
+
 def _collect_entity_offer_meetings() -> List[Dict[str, Any]]:
     """Collect bounded history, preferring transcript-backed Granola duplicates."""
     profile = _load_first_week_profile()
     normalized: Dict[tuple[str, tuple[str, ...]], Dict[str, Any]] = {}
+    granola_limit = (
+        LAB_ENTITY_OFFER_GRANOLA_LIMIT
+        if _lab_preview_vault()
+        else SHIPPED_ENTITY_OFFER_GRANOLA_LIMIT
+    )
     sources = (
         ('calendar', get_calendar_events_for_entity_offer(days_back=28)),
-        ('granola', get_recent_granola_meetings_for_entity_offer(days=28, limit=20)),
+        ('granola', get_recent_granola_meetings_for_entity_offer(
+            days=28,
+            limit=granola_limit,
+        )),
     )
     for source, meetings in sources:
         for meeting in meetings:
@@ -1501,6 +1820,7 @@ def prepare_entity_page_offer() -> Dict[str, Any]:
         'prepare',
         meetings=_collect_entity_offer_meetings(),
         profile=profile,
+        limit=_entity_page_offer_limit(),
     )
     suggestions = result.get('suggestions', [])
     return {
@@ -1520,6 +1840,7 @@ def respond_to_entity_page_offer(
         'respond',
         action=action,
         suggestion_ids=suggestion_ids,
+        limit=_entity_page_offer_limit(),
     )
     return {
         'action': result['action'],
@@ -1649,21 +1970,31 @@ def set_entity_creation_default(automatic: bool) -> Dict[str, Any]:
     }
 
 
-def run_first_week_analysis() -> Dict[str, Any]:
+def run_first_week_analysis(events: Optional[List[Dict]] = None) -> Dict[str, Any]:
     """Build the honest, structured first-week reveal used after finalization."""
     try:
-        events = get_calendar_events_for_week()
+        loaded_events = events if events is not None else get_calendar_events_for_week()
     except Exception as e:
         return {
             "available": False,
             "reason": str(e) or "Calendar data could not be read.",
         }
+    if not isinstance(loaded_events, list):
+        return {
+            "available": False,
+            "reason": "Calendar events must be a list the host already fetched.",
+        }
+    events = loaded_events
 
-    timed_events = _timed_calendar_events(events)
-    calendar_analysis = analyze_calendar_events(timed_events)
-    top_contacts = get_frequent_attendees(timed_events)
-    recent_meetings = get_recent_granola_meetings(days=7)
-    combined_meetings = [*timed_events, *recent_meetings]
+    lookback_events = _timed_calendar_events(events)
+    this_week_events = _events_in_current_week(events)
+    # Hosts that only fetched this week still get a this-week reveal.
+    week_events = this_week_events or lookback_events
+    calendar_analysis = analyze_calendar_events(week_events)
+    top_contacts = get_frequent_attendees(lookback_events, limit=8)
+    cadence = summarize_meeting_cadence(lookback_events)
+    recent_meetings = get_recent_granola_meetings(days=MEETING_CADENCE_DAYS)
+    combined_meetings = [*lookback_events, *recent_meetings]
 
     profile = _load_first_week_profile()
     pillars = [
@@ -1696,14 +2027,16 @@ def run_first_week_analysis() -> Dict[str, Any]:
         ),
         "recent_meeting_count": len(recent_meetings),
         "pillar_evidence": build_pillar_evidence(
-            timed_events,
+            week_events,
             profile.get('email_domain', ''),
         ),
         "draft_weekly_plan": generate_weekly_plan(
-            timed_events,
+            week_events,
             pillars,
             profile.get('role', ''),
         ),
+        "cadence": cadence,
+        "next_working_day": next_working_day_from_events(date.today(), events),
     }
 
 
@@ -1780,6 +2113,11 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "boolean",
                         "description": "Force create a new session even if one exists",
                         "default": False
+                    },
+                    "lab": {
+                        "type": "boolean",
+                        "description": "Preview /setup-lab hour: name can come before calendar",
+                        "default": False
                     }
                 }
             }
@@ -1849,24 +2187,93 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
-            name="save_calendar_selection",
+            name="save_identity_confirm",
             description=(
-                "Validate a proposed Apple Calendar selection for later explicit "
-                "profile approval, or choose no calendar."
+                "Save name, company, email domain, and company size in one confirm. "
+                "Used by /setup-lab. Email domain is still validated."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "name": {"type": "string"},
+                    "company": {"type": "string", "default": ""},
+                    "company_size": {
+                        "type": "string",
+                        "enum": COMPANY_SIZES,
+                    },
+                    "email_domain": {"type": "string", "default": ""},
+                    "no_company_domain": {"type": "boolean", "default": False},
+                    "work_email": {
+                        "type": "string",
+                        "default": "",
+                        "description": "Confirmed work email; persisted at finalize for self-page exclusion",
+                    },
+                },
+                "required": ["name", "company_size"],
+            },
+        ),
+        types.Tool(
+            name="save_meeting_source",
+            description=(
+                "Record the meeting source on the onboarding session. "
+                "finalize_onboarding writes meeting_sources to the profile."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "primary": {
+                        "type": "string",
+                        "enum": list(MEETING_SOURCE_PRIMARIES),
+                    },
+                    "notes_folder": {"type": "string", "default": ""},
+                },
+                "required": ["primary"],
+            },
+        ),
+        types.Tool(
+            name="save_entity_creation_preference",
+            description=(
+                "Record whether the user wants people and company pages "
+                "created automatically. Call set_entity_creation_default "
+                "with the same answer after finalize_onboarding."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "automatic": {"type": "boolean"},
+                },
+                "required": ["automatic"],
+            },
+        ),
+        types.Tool(
+            name="save_calendar_selection",
+            description=(
+                "Validate a proposed calendar selection for later explicit "
+                "profile approval: Apple Calendar, already-signed-in Google, or none."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["apple", "google", "none"],
+                        "description": "Calendar provider. Omit with work_calendar for Apple.",
+                    },
                     "work_calendar": {
                         "type": "string",
                         "description": "Exact work calendar name returned by Calendar.app",
+                        "default": ""
+                    },
+                    "account": {
+                        "type": "string",
+                        "description": "Signed-in Google work email when provider=google",
                         "default": ""
                     },
                     "work_email": {
                         "type": "string",
                         "description": (
                             "Transient identity hint when the calendar name is an "
-                            "email address; never stored in the onboarding session"
+                            "email address; never stored from this tool"
                         ),
                         "default": ""
                     },
@@ -1887,7 +2294,7 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="preview_confirmed_onboarding_context",
             description=(
-                "Preview the reviewed working context and Apple Calendar source after "
+                "Preview the reviewed working context and calendar source after "
                 "onboarding is complete. This does not write anything."
             ),
             inputSchema={
@@ -1899,7 +2306,10 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "calendar_source": {
                         "type": "object",
-                        "description": "Apple Calendar selection or provider=none; Google is not supported here.",
+                        "description": (
+                            "Apple {provider, work_calendar}, Google {provider, account}, "
+                            "or {provider: none}."
+                        ),
                     },
                 },
                 "required": ["working_context", "calendar_source"],
@@ -1938,10 +2348,22 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="run_first_week_analysis",
-            description="Analyze this week's timed calendar meetings and return an honest, structured onboarding reveal.",
+            description=(
+                "Analyze this week's timed calendar meetings and a three-week "
+                "cadence lookback. Also names the next working morning, skipping "
+                "out-of-office. Pass events the host already fetched "
+                "when the calendar is Google (this server cannot call host Google tools). "
+                "For the lab hour, pass this week, the last 21 days, and the next 21 days."
+            ),
             inputSchema={
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "events": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Host-fetched calendar events. Omit to read Calendar.app.",
+                    }
+                }
             }
         ),
         types.Tool(
@@ -1954,7 +2376,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="prepare_entity_page_offer",
-            description="After finalization, stage only entity-engine-qualified person/company suggestions for the concrete onboarding offer.",
+            description="After finalization, stage only entity-engine-qualified person/company suggestions for the concrete onboarding offer. A lab preview returns the full last-few-weeks window; shipped setup still stages five.",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -1974,7 +2396,7 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "minItems": 1,
-                        "maxItems": 5,
+                        "maxItems": LAB_ENTITY_PAGE_OFFER_LIMIT,
                     },
                 },
                 "required": ["action", "suggestion_ids"],
@@ -2172,10 +2594,12 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
+            lab = arguments.get('lab') is True
             
             session = load_session()
             
             if session and not force_new:
+                session_changed = False
                 if "harness_setup" not in session:
                     inspected = inspect_harnesses()
                     session["harness_setup"] = {
@@ -2184,6 +2608,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         "confirmed": False,
                     }
                     session["harness_capabilities"] = inspected["profiles"]
+                    session_changed = True
+                if lab:
+                    session["lab"] = True
+                    session_changed = True
+                if session_changed:
                     save_session(session)
                 result = create_success_response(
                     session,
@@ -2201,12 +2630,55 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                     "confirmed": False,
                 }
                 session["harness_capabilities"] = inspected["profiles"]
+                session["lab"] = lab
                 save_session(session)
                 result = create_success_response(
                     session,
                     "New onboarding session created"
                 )
             
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_identity_confirm":
+            session = load_session()
+            if not session:
+                result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            if not _calendar_addressed(session) and not _is_lab_session(session):
+                result = create_error_response(CALENDAR_REQUIRED_ERROR)
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = save_identity_confirm(
+                session,
+                name=str(arguments.get("name") or ""),
+                company=str(arguments.get("company") or ""),
+                company_size=str(arguments.get("company_size") or ""),
+                email_domain=str(arguments.get("email_domain") or ""),
+                no_company_domain=arguments.get("no_company_domain") is True,
+                work_email=str(arguments.get("work_email") or ""),
+            )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_meeting_source":
+            session = load_session()
+            if not session:
+                result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = save_meeting_source(
+                session,
+                primary=str(arguments.get("primary") or ""),
+                notes_folder=str(arguments.get("notes_folder") or ""),
+            )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_entity_creation_preference":
+            session = load_session()
+            if not session:
+                result = create_error_response("No active session", suggestion="Call start_onboarding_session first")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = save_entity_creation_preference(
+                session,
+                automatic=arguments.get("automatic"),
+            )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
         elif name == "validate_and_save_step":
@@ -2232,7 +2704,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
-            if step_number == 1 and not _calendar_addressed(session):
+            if (
+                step_number == 1
+                and not _calendar_addressed(session)
+                and not _is_lab_session(session)
+            ):
                 result = create_error_response(CALENDAR_REQUIRED_ERROR)
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -2521,7 +2997,9 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "save_calendar_selection":
             skipped = arguments.get('skipped', False)
+            provider = (arguments.get('provider') or '').strip().lower()
             work_calendar = (arguments.get('work_calendar') or '').strip()
+            account = (arguments.get('account') or arguments.get('work_email') or '').strip()
             work_email = (arguments.get('work_email') or '').strip()
 
             session = load_session()
@@ -2532,7 +3010,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
-            if skipped:
+            if skipped or provider == "none":
                 session["calendar_addressed"] = True
                 for field in ("calendar", "calendar_source", "work_email"):
                     session["data"].pop(field, None)
@@ -2543,6 +3021,33 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                         "working_week_suggestion": default_working_week_suggestion(),
                     },
                     "Calendar setup skipped for now. /dex-doctor will pick this up later."
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+            if provider == "google":
+                if "@" not in account:
+                    result = create_error_response(
+                        "Google Calendar needs the signed-in work email",
+                        field="account",
+                        suggestion="Pass account as the signed-in Google work email",
+                    )
+                    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+                calendar_source = {
+                    "provider": "google",
+                    "account": account.lower(),
+                }
+                session["calendar_addressed"] = True
+                for field in ("calendar", "calendar_source", "work_email"):
+                    session["data"].pop(field, None)
+                save_session(session)
+                result = create_success_response(
+                    {
+                        "work_email": account,
+                        "calendar_source": calendar_source,
+                        "derived_identity": derive_identity_from_email(account),
+                        "working_week_suggestion": default_working_week_suggestion(),
+                    },
+                    "Google calendar validated for later approval.",
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -2679,7 +3184,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "run_first_week_analysis":
-            result = create_success_response(run_first_week_analysis())
+            host_events = arguments.get("events")
+            result = create_success_response(
+                run_first_week_analysis(host_events if isinstance(host_events, list) else None)
+            )
             return [types.TextContent(
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),
@@ -2856,6 +3364,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             try:
                 logger.info("Routing onboarding finalization through the provision contract")
                 summary = _finalize_through_provisioner(session)
+                if _is_lab_session(session):
+                    lab_marker = lifecycle_service.write_onboarding_lab_marker(BASE_DIR)
+                    summary["lab"] = True
+                    summary["lab_marker"] = str(LAB_MARKER_FILE)
+                    summary["lab_receipt"] = lab_marker.get("receipt")
 
                 result = create_success_response(
                     summary,
@@ -2869,9 +3382,14 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 
             except Exception as e:
                 logger.error(f"Error during finalization: {e}")
+                suggestion = (
+                    "Close this chat, run the starter in Terminal again, then type /setup-lab. Your answers are saved."
+                    if _is_lab_session(session)
+                    else "Close this chat, run ./install.sh in this folder, then type /setup again."
+                )
                 result = create_error_response(
-                    f"Finalization failed: {e}",
-                    suggestion="Check logs and retry"
+                    str(e),
+                    suggestion=suggestion,
                 )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]

@@ -528,6 +528,7 @@ def test_automation_ownership_operation_only_authorizes_its_sidecar() -> None:
         "System/user-profile.yaml",
         "System/pillars.yaml",
         "System/.onboarding-complete",
+        "System/.onboarding-lab",
         "System/.onboarding-session.json",
         "System/.dex/harness-profile.json",
         "CLAUDE.md",

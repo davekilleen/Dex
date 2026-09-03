@@ -20,7 +20,15 @@ const {
   '.scripts/meeting-intel/lib/suggestion-actions.cjs',
 ));
 
-const MAX_ONBOARDING_SUGGESTIONS = 5;
+const SHIPPED_ONBOARDING_SUGGESTIONS = 5;
+
+function offerLimit(payload) {
+  const raw = payload && payload.limit;
+  if (Number.isInteger(raw) && raw >= 1) {
+    return raw;
+  }
+  return SHIPPED_ONBOARDING_SUGGESTIONS;
+}
 
 function failure(code, message) {
   return { ok: false, error: { code, message } };
@@ -54,7 +62,7 @@ function prepare(payload) {
       const rightMeetings = Number.parseInt(right.reason.match(/\d+/)?.[0] || '0', 10);
       return rightMeetings - leftMeetings || left.name.localeCompare(right.name);
     })
-    .slice(0, MAX_ONBOARDING_SUGGESTIONS);
+    .slice(0, offerLimit(payload));
   return { ok: true, suggestions };
 }
 
@@ -67,10 +75,11 @@ function respond(payload) {
     (Array.isArray(payload.suggestion_ids) ? payload.suggestion_ids : [])
       .filter(id => typeof id === 'string' && id),
   )];
-  if (ids.length === 0 || ids.length > MAX_ONBOARDING_SUGGESTIONS) {
+  const maxIds = offerLimit(payload);
+  if (ids.length === 0 || ids.length > maxIds) {
     return failure(
       'invalid_suggestion_ids',
-      `suggestion_ids must contain between 1 and ${MAX_ONBOARDING_SUGGESTIONS} ids`,
+      `suggestion_ids must contain between 1 and ${maxIds} ids`,
     );
   }
 

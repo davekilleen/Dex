@@ -423,6 +423,16 @@ async def handle_list_tools() -> list[types.Tool]:
                     "location": {
                         "type": "string",
                         "description": "Optional event location"
+                    },
+                    "all_day": {
+                        "type": "boolean",
+                        "description": "Create an all-day event. start_datetime may be YYYY-MM-DD.",
+                        "default": False
+                    },
+                    "busy": {
+                        "type": "boolean",
+                        "description": "If false, mark the event free / available. Default true keeps timed events busy.",
+                        "default": True
                     }
                 },
                 "required": ["title", "start_datetime"]
@@ -747,14 +757,20 @@ async def _handle_call_tool_inner(
         duration = arguments.get("duration_minutes", 30)
         description = arguments.get("description", "")
         location = arguments.get("location", "")
+        all_day = arguments.get("all_day") is True
+        busy = arguments.get("busy", True) is not False
         
         # Validate datetime format
         try:
-            datetime.strptime(start_str, "%Y-%m-%d %H:%M")
+            if all_day and len(start_str.strip()) == 10:
+                datetime.strptime(start_str.strip(), "%Y-%m-%d")
+            else:
+                datetime.strptime(start_str, "%Y-%m-%d %H:%M")
         except ValueError:
+            expected = "YYYY-MM-DD" if all_day else "YYYY-MM-DD HH:MM"
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Invalid datetime format. Use 'YYYY-MM-DD HH:MM', got: {start_str}"
+                "error": f"Invalid datetime format. Use '{expected}', got: {start_str}"
             }, indent=2))]
         
         # Use shell script
@@ -765,7 +781,9 @@ async def _handle_call_tool_inner(
             start_str,
             str(duration),
             description,
-            location
+            location,
+            "true" if all_day else "false",
+            "true" if busy else "false",
         )
         
         if success:

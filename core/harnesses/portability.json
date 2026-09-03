@@ -454,6 +454,10 @@
       "classification": "claude-only",
       "reason": "contains a Claude-only body command"
     },
+    "setup-lab": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
     "skill-score": {
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"

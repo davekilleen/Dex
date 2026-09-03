@@ -134,6 +134,23 @@ test('a never-onboarded vault begins canonical onboarding on its first session',
   assert.doesNotMatch(stdout, /resume setup NOW/);
 });
 
+test('a practice lab folder points at /setup-lab instead of the shipped form', (t) => {
+  const sandbox = createSandbox(t);
+  const marker = path.join(sandbox.vault, 'System', '.onboarding-lab');
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, '{"lab": true}\n');
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(stdout, /Wait for \/setup-lab/);
+  assert.match(stdout, /first words she hears are a hello/);
+  assert.match(stdout, /three weeks of meetings/);
+  assert.match(stdout, /Do not follow \.claude\/flows\/onboarding\.md/);
+  assert.doesNotMatch(stdout, /FIRST-TIME SETUP REQUIRED/);
+  assert.doesNotMatch(stdout, /begin onboarding NOW/);
+  assert.doesNotMatch(stdout, /follow the flow in \.claude\/flows\/onboarding\.md/);
+});
+
 test('an interrupted onboarding resumes through the canonical flow', (t) => {
   const sandbox = createSandbox(t);
   const sessionFile = path.join(
