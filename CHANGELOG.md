@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.7] — (2026-09-03)
+## [1.97.7] — Changing jobs keeps everything, and tasks get a home under each goal (2026-09-03)
 
 The last goal in your quarterly plan could pick up checkboxes that belonged to
 the next section — carried work, a divider, a later heading. Dex then treated
