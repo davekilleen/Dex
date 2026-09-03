@@ -10,7 +10,7 @@ const contract = require('./provision-contract.json');
 const portableContract = require('../packages/dex-contracts/dist/portable-vault.contract.json');
 
 const PROFILE_KEYS = new Set([
-  'name', 'role', 'company', 'company_size', 'email_domain', 'work_email',
+  'name', 'role', 'role_group', 'company', 'company_size', 'email_domain', 'work_email',
   'obsidian_mode', 'pillars', 'working_week', 'communication', 'capabilities',
   'harnesses', 'harness_detected', 'harness_source',
 ]);
@@ -432,8 +432,7 @@ function loadHarnessReceiptOverlay(profilePath) {
   return overlay;
 }
 
-function buildFreshProfile(template, overlay) {
-  const profile = structuredClone(template || {});
+function applyProfileOverlay(profile, overlay) {
   for (const [key, value] of Object.entries(overlay)) {
     if (['harnesses', 'harness_detected', 'harness_source'].includes(key)) continue;
     if (key === 'communication') {
@@ -448,16 +447,36 @@ function buildFreshProfile(template, overlay) {
       }
     } else profile[key] = value;
   }
-  // Setup offers concrete, qualified pages before asking whether future
-  // creation should be automatic. Until that explicit answer, suggest is the
-  // safe fresh-vault default.
-  profile.entity_creation = { mode: 'suggest' };
   for (const [room, definition] of Object.entries(portableContract.capabilities || {})) {
     const explicit = overlay.capabilities?.[room]?.enabled;
     if (typeof explicit === 'boolean' && typeof definition.config === 'string') {
       profile[definition.config] = { ...(profile[definition.config] || {}), enabled: explicit };
     }
   }
+  return profile;
+}
+
+function buildFreshProfile(template, overlay) {
+  const profile = applyProfileOverlay(structuredClone(template || {}), overlay);
+  // Setup offers concrete, qualified pages before asking whether future
+  // creation should be automatic. Until that explicit answer, suggest is the
+  // safe fresh-vault default.
+  profile.entity_creation = { mode: 'suggest' };
+  return profile;
+}
+
+function carryForwardProfile(existing, template, overlay) {
+  // Re-answered keys win, every other key carries forward from the existing
+  // profile (including keys the template never mentions, like calendar and
+  // working_context), and the template fills only what neither has.
+  const profile = applyProfileOverlay(structuredClone(existing || {}), overlay);
+  const gapDefaults = structuredClone(template || {});
+  // A completed vault that never chose an entity_creation mode keeps the
+  // engine's suggest default rather than gaining the key, and its working
+  // week is never overwritten from the template (mirrors the adopt path).
+  delete gapDefaults.entity_creation;
+  delete gapDefaults.working_week;
+  deepFillMissing(profile, gapDefaults);
   return profile;
 }
 
@@ -848,12 +867,28 @@ function pillarId(name) {
 }
 
 function tasksContent(pillars) {
-  let content = '# Tasks\n\n## Instructions\n- Tasks are organized by pillar and priority\n'
-    + '- Use task IDs (^task-YYYYMMDD-XXX) for cross-file sync\n'
-    + '- Priorities: P0 (urgent), P1 (important), P2 (normal), P3 (low)\n\n---\n\n';
-  for (const pillar of pillars || []) {
-    const name = pillarName(pillar);
-    if (name) content += `## ${name} #${name.toLowerCase().replace(/ /g, '-')}\n\n`;
+  // Mirrors the shipped seed 03-Tasks/Tasks.md: priority-sectioned so the
+  // Work MCP can derive priority from headings and file tasks by priority.
+  let content = '# Tasks\n\nYour task backlog organized by priority.\n\n'
+    + '## This Week\n\n<!-- Tasks promoted to this week\'s focus -->\n\n'
+    + '## P0 - Urgent (max 3)\n\n<!-- Critical items that must be done today/tomorrow -->\n\n'
+    + '## P1 - Important (max 5)\n\n<!-- Important items for this week -->\n\n'
+    + '## P2 - Normal (max 10)\n\n<!-- Standard priority items -->\n\n'
+    + '## P3 - Backlog\n\n<!-- Lower priority items, someday/maybe -->\n\n'
+    + '---\n\n## Task Format\n\n```\n'
+    + '- [ ] **Task title** ^task-YYYYMMDD-XXX\n'
+    + '\t- Context or notes\n'
+    + '\t- Pillar: Pillar Name | Priority: P2 | Due: 2026-01-31\n'
+    + '- [/] Started task\n'
+    + '- [b] Blocked task (note blocker)\n'
+    + '- [x] Completed task\n'
+    + '```\n\n## Pillars\n\n';
+  const names = (pillars || []).map(pillarName).filter(Boolean);
+  if (names.length) {
+    content += 'Tasks should align to your strategic pillars:\n\n';
+    for (const name of names) content += `- ${name}\n`;
+  } else {
+    content += 'Tasks should align to your strategic pillars (configured during `/setup`).\n';
   }
   return content;
 }
@@ -1312,7 +1347,10 @@ function provision(options) {
     const template = yaml.load(fs.readFileSync(templatePath, 'utf8')) || {};
     const freshProfile = buildFreshProfile(template, overlay);
     const profilePath = path.join(vaultRoot, 'System', 'user-profile.yaml');
+    const markerPath = path.join(vaultRoot, 'System', '.onboarding-complete');
+    const onboardingCompleted = fs.existsSync(markerPath);
     let profile = freshProfile;
+    let profileMode = 'create';
     provisionTransaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
 
     if (fs.existsSync(profilePath)) {
@@ -1327,7 +1365,13 @@ function provision(options) {
         }
       }
       if (options.onboard) {
-        profile = freshProfile;
+        // Only a vault that completed onboarding gets the carry-forward merge;
+        // a crashed half-onboarding keeps the replace-from-answers behavior so
+        // a broken first run cannot fossilize junk into the profile.
+        profileMode = onboardingCompleted ? 'merge' : 'replace';
+        profile = onboardingCompleted
+          ? carryForwardProfile(profile, template, overlay)
+          : freshProfile;
         writeIfChanged(
           profilePath,
           yaml.dump(profile, { sortKeys: false, lineWidth: -1 }),
@@ -1371,6 +1415,12 @@ function provision(options) {
         provisionTransaction,
       );
     }
+    if (options.onboard) {
+      reporter.summary.profile_plan = {
+        mode: profileMode,
+        profile: structuredClone(profile),
+      };
+    }
 
     reconcileCapabilities(
       vaultRoot,
@@ -1403,8 +1453,40 @@ function provision(options) {
       const name = pillarName(pillar);
       return { id: pillarId(name), name, description: pillarDescription(pillar) };
     }).filter(pillar => pillar.name);
-    const pillarsContent = yaml.dump({ pillars }, { sortKeys: false, lineWidth: -1 });
+    const pillarsDocument = { pillars };
+    if (options.onboard && onboardingCompleted && fs.existsSync(pillarsPath)) {
+      // A kept pillar keeps its curated metadata; a rewrite that dropped
+      // keywords would kill pillar inference until they were hand-restored.
+      let existingPillarsDocument = {};
+      try {
+        const parsed = yaml.load(fs.readFileSync(pillarsPath, 'utf8'));
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          existingPillarsDocument = parsed;
+        }
+      } catch (_) { /* unreadable file contributes nothing */ }
+      const priorByName = new Map();
+      for (const prior of Array.isArray(existingPillarsDocument.pillars)
+        ? existingPillarsDocument.pillars
+        : []) {
+        if (prior && typeof prior === 'object' && prior.name) {
+          priorByName.set(String(prior.name).toLowerCase(), prior);
+        }
+      }
+      for (const pillar of pillars) {
+        const prior = priorByName.get(pillar.name.toLowerCase());
+        if (!prior) continue;
+        if (prior.keywords !== undefined) pillar.keywords = structuredClone(prior.keywords);
+        if (!pillar.description && typeof prior.description === 'string' && prior.description) {
+          pillar.description = prior.description;
+        }
+      }
+      if (existingPillarsDocument.priority_limits !== undefined) {
+        pillarsDocument.priority_limits = structuredClone(existingPillarsDocument.priority_limits);
+      }
+    }
+    const pillarsContent = yaml.dump(pillarsDocument, { sortKeys: false, lineWidth: -1 });
     if (options.onboard) {
+      reporter.summary.pillars_plan = structuredClone(pillarsDocument);
       writeIfChanged(
         pillarsPath,
         pillarsContent,
@@ -1457,7 +1539,6 @@ function provision(options) {
       provisionTransaction,
     );
 
-    const markerPath = path.join(vaultRoot, 'System', '.onboarding-complete');
     const harnessReceiptContent = options.onboard ? buildHarnessReceipt(overlay) : null;
     if (harnessReceiptContent !== null) {
       writeIfChanged(
@@ -1471,27 +1552,66 @@ function provision(options) {
     const packagePath = path.join(vaultRoot, 'package.json');
     let version = null;
     try { version = JSON.parse(fs.readFileSync(packagePath, 'utf8')).version || null; } catch (_) { /* optional */ }
-    writeIfMissing(
-      markerPath,
-      `${JSON.stringify({
-        completed: true,
-        completed_at: new Date().toISOString(),
-        provisioned_by: 'core/provision.cjs',
-        adopted: options.adopt === true,
+    if (options.onboard && onboardingCompleted) {
+      // Re-finalizing over a completed vault refreshes the marker's identity
+      // fields while retaining the original completed_at, so vault age stays
+      // anchored to the first onboarding. Skipped when nothing changed, so
+      // repeated finalization converges.
+      let existingMarker = {};
+      try {
+        const parsed = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          existingMarker = parsed;
+        }
+      } catch (_) { /* rebuilt from current answers below */ }
+      const identity = {
+        user_name: profile.name || '',
+        role: profile.role || '',
+        email_domain: profile.email_domain || '',
+        has_pillars: pillars.length > 0,
         version,
-        ...(options.onboard ? {
-          user_name: profile.name || '',
-          role: profile.role || '',
-          email_domain: profile.email_domain || '',
-          has_pillars: pillars.length > 0,
-          phase2_completed: false,
-          pre_analysis_deferred: true,
-        } : {}),
-      }, null, 2)}\n`,
-      reporter,
-      options.dryRun,
-      provisionTransaction,
-    );
+      };
+      const identityChanged = Object.entries(identity)
+        .some(([key, value]) => existingMarker[key] !== value);
+      if (identityChanged) {
+        writeIfChanged(
+          markerPath,
+          `${JSON.stringify({
+            ...existingMarker,
+            completed: true,
+            completed_at: existingMarker.completed_at || new Date().toISOString(),
+            provisioned_by: 'core/provision.cjs',
+            ...identity,
+            last_reconfigured_at: new Date().toISOString(),
+          }, null, 2)}\n`,
+          reporter,
+          options.dryRun,
+          provisionTransaction,
+        );
+      } else reporter.skipped(markerPath);
+    } else {
+      writeIfMissing(
+        markerPath,
+        `${JSON.stringify({
+          completed: true,
+          completed_at: new Date().toISOString(),
+          provisioned_by: 'core/provision.cjs',
+          adopted: options.adopt === true,
+          version,
+          ...(options.onboard ? {
+            user_name: profile.name || '',
+            role: profile.role || '',
+            email_domain: profile.email_domain || '',
+            has_pillars: pillars.length > 0,
+            phase2_completed: false,
+            pre_analysis_deferred: true,
+          } : {}),
+        }, null, 2)}\n`,
+        reporter,
+        options.dryRun,
+        provisionTransaction,
+      );
+    }
 
     if (options.sessionFile) {
       const sessionPath = path.resolve(options.sessionFile);

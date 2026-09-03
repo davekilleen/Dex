@@ -363,6 +363,15 @@ STATUS_CODES = {
     'd': 'done'
 }
 
+# Checkbox glyphs on disk. Started uses the common in-progress convention
+# `- [/]`; legacy `- [s]` lines are still read as started but never written.
+STATUS_CHECKBOXES = {
+    'n': '- [ ]',
+    's': '- [/]',
+    'b': '- [b]',
+    'd': '- [x]',
+}
+
 # Deduplication configuration
 DEDUP_CONFIG = {
     "similarity_threshold": 0.6,
@@ -443,6 +452,14 @@ def priority_from_section(section: Optional[str]) -> Optional[str]:
     if section_upper.startswith('P3') or 'BACKLOG' in section_upper:
         return 'P3'
 
+    return None
+
+def default_section_for_priority(priority: str, tasks_content: str) -> Optional[str]:
+    """Find an existing Tasks.md section heading that carries this priority."""
+    for match in re.finditer(r'(?m)^##\s+(.+?)\s*$', tasks_content):
+        heading = match.group(1).strip()
+        if priority_from_section(heading) == priority:
+            return heading
     return None
 
 def active_tasks_for_priority_limits(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -591,7 +608,7 @@ def _parse_task_metadata(child_lines: List[str], title: str) -> Dict[str, Any]:
 
 def _task_title_from_line(line: str) -> str:
     """Extract task text while accepting both completion timestamp layouts."""
-    title = re.sub(r'^\s*-\s*\[[ bBxX]\]\s*', '', line, count=1)
+    title = re.sub(r'^\s*-\s*\[[ bBsSxX/]\]\s*', '', line, count=1)
     title = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', title)
     title = re.sub(r'\s*\^task-\d{8}-\d{3,}\b', '', title)
     title = title.strip()
@@ -650,7 +667,7 @@ def stamp_task_source_line(source: str, source_line: str,
         for index, raw_line in enumerate(lines):
             line = raw_line.rstrip('\r\n')
             stripped = line.strip()
-            if not re.match(r'^-\s*\[[ xX]\]', stripped):
+            if not re.match(r'^-\s*\[[ bBsSxX/]\]', stripped):
                 continue
             if stripped == target:
                 exact_matches.append(index)
@@ -709,7 +726,7 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
 
             for i, line in enumerate(lines):
                 if anchored.search(line) and re.match(
-                    r'^\s*-\s*\[[ bBxX]\]', line
+                    r'^\s*-\s*\[[ bBsSxX/]\]', line
                 ):
                     # Extract task title
                     title = _task_title_from_line(line).split('|', 1)[0].strip()
@@ -742,7 +759,7 @@ def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
             line.strip()
             for line in source_path.read_text().splitlines()
             if line.strip() == target
-            and re.match(r'^-\s*\[[ xX]\]', line.strip())
+            and re.match(r'^-\s*\[[ bBsSxX/]\]', line.strip())
         ]
     except Exception:
         return None
@@ -799,7 +816,7 @@ def update_task_status_everywhere(
             # Update checkbox and normalize completion metadata around the anchor.
             if completed:
                 new_line = re.sub(
-                    r'^(\s*)-\s*\[[ bBxX]\]', r'\1- [x]', old_line, count=1
+                    r'^(\s*)-\s*\[[ bBsSxX/]\]', r'\1- [x]', old_line, count=1
                 )
                 new_line = re.sub(r'\s*✅\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', '', new_line)
                 task_id_match = re.search(r'\^' + re.escape(task_id) + r'(?!\d)', new_line)
@@ -809,12 +826,10 @@ def update_task_status_everywhere(
                     ).rstrip()
                     new_line = f'{without_anchor} ✅ {completion_timestamp} ^{task_id}'
             else:
-                # Non-completed statuses carry no completion timestamp. Blocked
-                # remains distinct; not-started and started retain the legacy
-                # open-checkbox representation.
-                target_checkbox = '- [b]' if status_code == 'b' else '- [ ]'
+                # Non-completed statuses carry no completion timestamp.
+                target_checkbox = STATUS_CHECKBOXES.get(status_code, '- [ ]')
                 new_line = re.sub(
-                    r'^(\s*)-\s*\[[ bBxX]\]',
+                    r'^(\s*)-\s*\[[ bBsSxX/]\]',
                     lambda match: f'{match.group(1)}{target_checkbox}',
                     old_line,
                     count=1,
@@ -991,8 +1006,8 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
             continue
         
         # Check if this is a task line
-        if line.strip().startswith('- [ ]') or line.strip().startswith('- [x]'):
-            completed = line.strip().startswith('- [x]')
+        if re.match(r'^-\s*\[[ bBsSxX/]\]', line.strip()):
+            completed = bool(re.match(r'^-\s*\[[xX]\]', line.strip()))
             
             # Check if this task references the page
             file_refs = extract_file_refs_from_task(line)
@@ -1104,7 +1119,7 @@ def propagate_task_status_to_refs(task_title: str, completed: bool) -> List[str]
     
     # Find the task line
     for line in content.split('\n'):
-        if task_title.lower() in line.lower() and ('- [ ]' in line or '- [x]' in line):
+        if task_title.lower() in line.lower() and re.match(r'^\s*-\s*\[[ bBsSxX/]\]', line):
             file_refs = extract_file_refs_from_task(line)
             for ref in file_refs:
                 result = sync_task_refs_for_page(ref)
@@ -2315,11 +2330,83 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                 'line_number': i + 1,
                 'career_goal_id': career_goal_id,
                 'skills_developed': skills_developed,
-                'impact_level': impact_level
+                'impact_level': impact_level,
+                'provisional': False,
             })
-        
+
         i += 1
-    
+
+    if goals:
+        return goals
+
+    # Lenient fallback: a freeform numbered/bulleted goal list is recovered as
+    # provisional goals rather than silently parsing to nothing.
+    return _recover_freeform_goals(lines, quarter_info)
+
+def _recover_freeform_goals(
+    lines: List[str], quarter_info: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Recover a freeform goal list as provisional goals with generated IDs.
+
+    Provisional goal IDs exist nowhere on disk, so consumers must never
+    auto-link or write against them - they exist only so the goals can be
+    surfaced for one-time structuring.
+    """
+    numbered_items: List[tuple[int, str]] = []
+    bulleted_items: List[tuple[int, str]] = []
+    in_code_fence = False
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            continue
+
+        numbered_match = re.match(r'^\d+\.\s+(.+)$', stripped)
+        bullet_match = re.match(r'^-\s+(?!\[[^\]]?\])(.+)$', stripped)
+        text = None
+        target = None
+        if numbered_match:
+            text = numbered_match.group(1)
+            target = numbered_items
+        elif bullet_match:
+            text = bullet_match.group(1)
+            target = bulleted_items
+        if text is None:
+            continue
+
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text).strip()
+        if len(text) < 4 or not re.search(r'[A-Za-z]', text):
+            continue
+        target.append((index, text))
+
+    # Numbered lists are the stronger goal signal; bullets only count when no
+    # numbered list exists at all.
+    recovered_items = numbered_items or bulleted_items
+    if not recovered_items:
+        return []
+
+    quarter = str(quarter_info.get('quarter') or '').strip() or get_quarter_info()['quarter']
+    goals: List[Dict[str, Any]] = []
+    for goal_num, (line_index, title) in enumerate(recovered_items, start=1):
+        goals.append({
+            'goal_id': generate_goal_id(quarter, goals),
+            'goal_num': goal_num,
+            'title': title,
+            'pillar': '',
+            'success_criteria': '',
+            'milestones': [],
+            'progress': 0,
+            'last_updated': None,
+            'quarter': quarter_info.get('quarter', ''),
+            'line_number': line_index + 1,
+            'career_goal_id': None,
+            'skills_developed': [],
+            'impact_level': None,
+            'provisional': True,
+        })
     return goals
 
 def get_goal_by_id(goal_id: str) -> Optional[Dict[str, Any]]:
@@ -2722,6 +2809,21 @@ def infer_goal_link(priority_title: str, priority_pillar: str,
         goal_title = goal.get('title', '')
         goal_pillar = goal.get('pillar', '')
 
+        # Provisional goals were recovered from freeform text and their IDs
+        # exist nowhere on disk; never auto-link against them. They surface as
+        # confidence-none candidates so callers can offer structuring instead.
+        if goal.get('provisional'):
+            candidates.append({
+                'goal_id': goal_id,
+                'goal_title': goal_title,
+                'goal_pillar': goal_pillar,
+                'score': 0,
+                'confidence': 'none',
+                'provisional': True,
+                'reasons': ['provisional_goal_needs_structuring'],
+            })
+            continue
+
         # --- Pillar match ---
         # Normalize pillar names: the goal stores display name like "deal_support",
         # the priority pillar may be the key or the display name
@@ -2809,7 +2911,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             continue
         
         # Parse task lines
-        checkbox_match = re.match(r'^-\s*\[([ bBxX])\]', line.strip())
+        checkbox_match = re.match(r'^-\s*\[([ bBsSxX/])\]', line.strip())
         if checkbox_match:
             task_counter += 1
             checkbox_status = checkbox_match.group(1).lower()
@@ -2829,7 +2931,14 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 continue
             
             # Determine status
-            status = 'd' if completed else ('b' if checkbox_status == 'b' else 'n')
+            if completed:
+                status = 'd'
+            elif checkbox_status == 'b':
+                status = 'b'
+            elif checkbox_status in ('s', '/'):
+                status = 's'
+            else:
+                status = 'n'
             
             metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
 
@@ -3950,7 +4059,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Strategic pillar ID or unique display name ({pillar_description})"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
-                    "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to", "default": "Next Week"},
+                    "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to. When omitted, the task lands under the existing section matching its priority (e.g. P1 - Important), falling back to 'Next Week'."},
                     "weekly_priority_id": {"type": "string", "description": "Link to weekly priority (e.g., 'week-2026-W05-p1') - task contributes to this priority"},
                     "due": {"type": "string", "description": "Optional due date in YYYY-MM-DD format"},
                     "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
@@ -4055,7 +4164,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_blocked_tasks",
-            description="List all tasks that are currently blocked",
+            description="List all tasks that are currently blocked (marked - [b], plus title-keyword matches)",
             inputSchema={"type": "object", "properties": {}}
         ),
         types.Tool(
@@ -4680,7 +4789,7 @@ async def _handle_call_tool_inner(
         pillar = resolve_pillar_id(pillar_input)
         priority = arguments.get('priority', 'P2')
         context = arguments.get('context', '')
-        section = arguments.get('section', 'Next Week')
+        section = arguments.get('section') or ''
         weekly_priority_id = arguments.get('weekly_priority_id', '')
         due = arguments.get('due', '')
         project = arguments.get('project', '')
@@ -4729,6 +4838,15 @@ async def _handle_call_tool_inner(
                 "success": False,
                 "error": "Invalid on_duplicate value. Must be one of: ['fail', 'force']"
             }, indent=2))]
+
+        if not section:
+            existing_content = (
+                get_tasks_file().read_text() if get_tasks_file().exists() else ''
+            )
+            section = (
+                default_section_for_priority(priority, existing_content)
+                or 'Next Week'
+            )
 
         if weekly_priority_id:
             weekly_priorities = parse_weekly_priorities(get_week_priorities_file())
@@ -4787,21 +4905,35 @@ async def _handle_call_tool_inner(
 
         if goal:
             quarterly_goals = parse_quarterly_goals(QUARTER_GOALS_FILE)
+            # Provisional goals carry generated IDs that exist nowhere on disk,
+            # so a task may not link to them until they are structured.
             available_goal_ids = [
                 quarterly_goal.get('goal_id')
                 for quarterly_goal in quarterly_goals
                 if quarterly_goal.get('goal_id')
+                and not quarterly_goal.get('provisional')
             ]
             if goal not in available_goal_ids:
                 available_text = ', '.join(available_goal_ids) or 'none'
-                return [types.TextContent(type="text", text=json.dumps({
+                error_payload = {
                     "success": False,
                     "error": (
                         f"Unknown quarterly goal '{goal}'. "
                         f"Available goal ids: {available_text}"
                     ),
                     "available_goal_ids": available_goal_ids,
-                }, indent=2))]
+                }
+                provisional_count = sum(
+                    1 for quarterly_goal in quarterly_goals
+                    if quarterly_goal.get('provisional')
+                )
+                if provisional_count:
+                    error_payload["note"] = (
+                        f"{provisional_count} goals were recovered from freeform "
+                        "text and need structuring (e.g. via /quarter-plan) "
+                        "before tasks can link to them."
+                    )
+                return [types.TextContent(type="text", text=json.dumps(error_payload, indent=2))]
             goal_link = {
                 'goal_id': goal,
                 'how': 'explicit',
@@ -5072,7 +5204,7 @@ async def _handle_call_tool_inner(
             (
                 index
                 for index, line in enumerate(lines)
-                if line.strip().startswith(("- [ ]", "- [x]")) and task_anchor.search(line)
+                if re.match(r"^-\s*\[[ bBsSxX/]\]", line.strip()) and task_anchor.search(line)
             ),
             None,
         )
@@ -5259,10 +5391,13 @@ async def _handle_call_tool_inner(
                 old_line = lines[line_idx]
                 
                 # Update checkbox based on status
-                if new_status == 'd':
-                    new_line = re.sub(r'^(\s*)- \[ \]', r'\1- [x]', old_line, count=1)
-                else:
-                    new_line = re.sub(r'^(\s*)- \[x\]', r'\1- [ ]', old_line, count=1)
+                target_checkbox = STATUS_CHECKBOXES.get(new_status, '- [ ]')
+                new_line = re.sub(
+                    r'^(\s*)-\s*\[[ bBsSxX/]\]',
+                    lambda match: f'{match.group(1)}{target_checkbox}',
+                    old_line,
+                    count=1,
+                )
                 
                 lines[line_idx] = new_line
                 with filepath.open('w', encoding='utf-8', newline='') as file:
@@ -5458,18 +5593,32 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_blocked_tasks":
-        # In this system, blocked tasks would be marked somehow
-        # For now, we look for keywords indicating blocked status
+        # Primary signal: the real `- [b]` blocked status. Title keywords stay
+        # as a secondary heuristic for tasks never explicitly marked blocked.
         all_tasks = get_all_tasks()
         blocked = []
-        
+        seen = set()
+
+        def _add(task, signal):
+            key = (task.get('source_file'), task.get('line_number'))
+            if key in seen:
+                return
+            seen.add(key)
+            blocked.append({**task, 'blocked_signal': signal})
+
+        for task in all_tasks:
+            if task.get('completed'):
+                continue
+            if task.get('status') == 'b':
+                _add(task, 'status')
+
         for task in all_tasks:
             if task.get('completed'):
                 continue
             title_lower = task['title'].lower()
             if any(word in title_lower for word in ['waiting', 'blocked', 'pending', 'waiting on']):
-                blocked.append(task)
-        
+                _add(task, 'title_keyword')
+
         result = {
             "blocked_tasks": blocked,
             "count": len(blocked)
@@ -5641,8 +5790,20 @@ async def _handle_call_tool_inner(
             "goals": filtered_goals,
             "count": len(filtered_goals)
         }
+        provisional_count = sum(
+            1 for filtered_goal in filtered_goals if filtered_goal.get('provisional')
+        )
+        if provisional_count:
+            result["provisional_count"] = provisional_count
+            result["provisional_note"] = (
+                f"{provisional_count} goals were recovered from a freeform list "
+                "and are provisional: their IDs are generated, nothing links to "
+                "them automatically, and they parse fully once structured "
+                "(### N. Title — **Pillar** ^Qn-YYYY-goal-N). Offer once to "
+                "structure them; don't nag."
+            )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
-    
+
     elif name == "get_goal_status":
         goal_id = arguments['goal_id']
         
@@ -6018,9 +6179,23 @@ async def _handle_call_tool_inner(
         all_tasks = get_all_tasks()
         active_tasks = [t for t in all_tasks if not t.get('completed')]
         
-        # Find orphaned work
+        # Find orphaned work: open canonical tasks with neither a quarterly-goal
+        # link nor a weekly-priority link.
         priorities_with_no_goal = [p for p in priorities if not p.get('linked_goal_id')]
-        tasks_with_no_priority = []  # Simplified for now
+        tasks_with_no_priority = [
+            {
+                'task_id': t.get('task_id'),
+                'title': t.get('title'),
+                'priority': t.get('priority'),
+                'pillar': t.get('pillar'),
+                'section': t.get('section'),
+                'line_number': t.get('line_number'),
+            }
+            for t in active_tasks
+            if t.get('source', 'tasks') == 'tasks'
+            and not t.get('goal')
+            and not t.get('weekly_priority_id')
+        ]
         goals_with_no_priorities = []
         
         for goal in goals:
@@ -6047,7 +6222,14 @@ async def _handle_call_tool_inner(
         
         if len(priorities_with_no_goal) > 0:
             result['recommendations'].append(f"Consider linking {len(priorities_with_no_goal)} priorities to quarterly goals or mark as operational")
-        
+
+        if len(tasks_with_no_priority) > 0:
+            result['recommendations'].append(
+                f"{len(tasks_with_no_priority)} open tasks are linked to neither a "
+                "quarterly goal nor a weekly priority - link them or consciously "
+                "leave them operational"
+            )
+
         if len(goals_with_no_priorities) > 0:
             result['recommendations'].append(f"{len(goals_with_no_priorities)} goals have no weekly priorities - create priorities to advance them")
         

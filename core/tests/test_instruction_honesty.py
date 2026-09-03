@@ -424,6 +424,20 @@ def test_reset_uses_the_canonical_onboarding_route_without_moving_user_content()
     assert "A reset does not rename, merge\n  or move your content." in reset
     assert "Never create folders, move files, or edit `CLAUDE.md` or `System/user-profile.yaml`\nby hand" in reset
 
+    # The carry-forward guarantee: a completed vault keeps every setting the
+    # user does not re-answer, and the skill must both promise it and teach
+    # the honest preview that proves it.
+    assert "**Carried forward:**" in reset
+    assert "profile_changes" in reset
+    assert "Rooms the user disabled stay disabled" in reset
+    assert "`priority_limits` survives" in reset
+    assert "original setup date" in reset
+
+    # force_new re-arms the calendar and harness gates; the skill must warn
+    # that finalize refuses until both are replayed.
+    assert "clears the calendar answer and\n   the harness confirmation" in reset
+    assert "refuses to run" in reset
+
     for retired_promise in (
         "Create new folder structure",
         "Move existing content",

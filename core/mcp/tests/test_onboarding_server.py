@@ -1586,6 +1586,45 @@ class TestCapabilityStep:
             "quarter_goals": {"enabled": True},
         }
 
+    def test_unanswered_rooms_keep_the_completed_profile_state(
+        self, tmp_path, monkeypatch
+    ):
+        """A room disabled via /manage-capabilities must survive a reset."""
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "capabilities:\n  career:\n    enabled: false\n",
+            encoding="utf-8",
+        )
+        marker = system / ".onboarding-complete"
+        marker.write_text('{"completed": true}\n', encoding="utf-8")
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(onboarding_server, "MARKER_FILE", marker)
+
+        states = onboarding_server._capability_states({})
+
+        assert states["career"] is False
+        # An explicit re-answer still wins over the recorded state.
+        assert onboarding_server._capability_states({"career": True})["career"] is True
+
+    def test_unanswered_rooms_use_contract_defaults_without_a_completion_marker(
+        self, tmp_path, monkeypatch
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "capabilities:\n  career:\n    enabled: false\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(
+            onboarding_server, "MARKER_FILE", system / ".onboarding-complete"
+        )
+
+        states = onboarding_server._capability_states({})
+
+        assert states["career"] is True
+
     def test_onboarding_step_8_asks_nothing_now_that_every_room_is_on(self):
         """All three rooms default on, so step 8 has no question left to ask.
 
@@ -1759,3 +1798,133 @@ class TestCapabilityStep:
         assert preview["provision_receipt"]["created"] == payload["data"]["receipt"][
             "created"
         ]
+
+
+class TestResetFinalizeOverCompletedVault:
+    """A re-finalize over a completed vault previews and applies a merge."""
+
+    def _seed_completed_vault(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _prepare_finalize_vault(tmp_path, monkeypatch)
+        shutil.copytree(
+            REPO_ROOT / ".claude/skills/_available/capabilities",
+            tmp_path / ".claude/skills/_available/capabilities",
+        )
+        (tmp_path / "System/user-profile.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "name": "Dana",
+                    "role": "Fractional CPO",
+                    "email_domain": "oldco.com",
+                    "work_email": "dana@oldco.com",
+                    "journaling": {"morning": True},
+                    "entity_creation": {"mode": "auto"},
+                    "capabilities": {
+                        "career": {"enabled": False},
+                        "companies": {"enabled": True},
+                        "quarter_goals": {"enabled": True},
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "System/pillars.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "pillars": [
+                        {
+                            "id": "build",
+                            "name": "Build",
+                            "description": "Ship the engine",
+                            "keywords": ["ship", "roadmap"],
+                        }
+                    ],
+                    "priority_limits": {"P0": 2},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "System/.onboarding-complete").write_text(
+            json.dumps(
+                {
+                    "completed": True,
+                    "completed_at": "2026-01-15T10:00:00.000Z",
+                    "role": "Fractional CPO",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+        session["data"] = {
+            "calendar": {"permissions_pending": True},
+            "name": "Dana",
+            "role": "Chief Product Officer",
+            "role_group": "product",
+            "company_size": "scaling",
+            "email_domain": "newco.com",
+            "pillars": ["Build", "Team"],
+            "communication": {},
+            "working_week": {"days": ["monday", "tuesday"]},
+        }
+        onboarding_server.save_session(session)
+
+    def test_dry_run_previews_the_merge_and_the_real_run_reports_replacements(
+        self, tmp_path, monkeypatch
+    ):
+        self._seed_completed_vault(tmp_path, monkeypatch)
+
+        preview_payload = _call_tool("finalize_onboarding", {"dry_run": True})
+
+        assert preview_payload["success"] is True, preview_payload
+        preview = preview_payload["data"]
+        assert preview["profile_write_mode"] == "merge"
+        changed = {change["key"]: change for change in preview["profile_changes"]}
+        assert changed["role"]["old"] == "Fractional CPO"
+        assert changed["role"]["new"] == "Chief Product Officer"
+        assert changed["email_domain"]["new"] == "newco.com"
+        # Carried-forward keys never appear as changes.
+        assert "work_email" not in changed
+        assert "journaling.morning" not in changed
+        assert "entity_creation.mode" not in changed
+        assert preview["preview_user_profile"]["work_email"] == "dana@oldco.com"
+        assert preview["preview_user_profile"]["entity_creation"] == {"mode": "auto"}
+        assert "would_create_marker" not in preview
+        assert preview["would_update_marker"]["completed_at"] == (
+            "2026-01-15T10:00:00.000Z"
+        )
+        assert preview["would_update_marker"]["role"] == "Chief Product Officer"
+        kept_pillar = preview["preview_pillars"][0]
+        assert kept_pillar["keywords"] == ["ship", "roadmap"]
+
+        payload = _call_tool("finalize_onboarding", {})
+
+        assert payload["success"] is True, payload
+        summary = payload["data"]
+        assert "System/user-profile.yaml" in summary["files_replaced"]
+        assert "System/pillars.yaml" in summary["files_replaced"]
+        assert "System/user-profile.yaml" not in summary["files_created"]
+        assert "System/pillars.yaml" not in summary["files_created"]
+        profile = yaml.safe_load(
+            (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
+        )
+        assert profile["role"] == "Chief Product Officer"
+        assert profile["work_email"] == "dana@oldco.com"
+        assert profile["entity_creation"] == {"mode": "auto"}
+        # The disabled room stays disabled and its assets are not re-copied.
+        assert profile["capabilities"]["career"] == {"enabled": False}
+        assert not (tmp_path / "05-Areas/Career").exists()
+        pillars = yaml.safe_load(
+            (tmp_path / "System/pillars.yaml").read_text(encoding="utf-8")
+        )
+        assert pillars["priority_limits"] == {"P0": 2}
+        marker = json.loads(
+            (tmp_path / "System/.onboarding-complete").read_text(encoding="utf-8")
+        )
+        assert marker["completed_at"] == "2026-01-15T10:00:00.000Z"
+        assert marker["role"] == "Chief Product Officer"
+        assert marker["last_reconfigured_at"]

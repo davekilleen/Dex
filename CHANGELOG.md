@@ -33,6 +33,34 @@ along than it was.
   named by ID in Success criteria.** Progress stayed “not started” unless that
   task also had a separate weekly-priority backlink. Only exact task IDs count;
   close names are still ignored.
+* **Changing roles no longer quietly wipes your settings.** Re-running setup
+  after a job or role change used to reset everything you didn't re-answer —
+  calendar connection, journaling, meeting sources, a non-standard fiscal
+  year, and more — and switched back on features you had turned off. Now every
+  setting you don't re-answer carries forward unchanged, features you disabled
+  stay off, and before anything is written Dex shows you the exact list of
+  settings that will change, old value to new. Your original setup date is
+  kept, with the reconfiguration recorded alongside it. Thanks to the beta
+  user whose role change surfaced this.
+* **Quarter goals written in your own words now count.** If you wrote your
+  quarterly goals as a simple list instead of the structured layout, Dex
+  silently treated the page as empty — no goal links, no goal progress,
+  anywhere. Dex now recognizes a plain goal list, tells you what it found, and
+  offers once to structure it so tasks and weekly priorities can link to it.
+  The starter page now shows a worked example in the shape Dex reads.
+* **Asking for blocked tasks now shows the tasks you marked blocked.** The
+  blocked-task list only looked for words like “waiting” in the title and
+  ignored the actual blocked marker. It now returns everything marked blocked,
+  and a task marked “started” finally keeps that state instead of reverting to
+  not-started.
+* **New tasks land in the right place.** A task created without saying where
+  now files under its own priority's section in your task list instead of a
+  catch-all "Next Week" heading, and the guide no longer teaches a task format
+  Dex couldn't actually read — following the old examples silently dropped the
+  goal and week links they promised.
+* **Dex can now tell you which tasks serve no goal.** The alignment check
+  used to always report zero orphaned tasks; it now genuinely lists open tasks
+  linked to neither a quarterly goal nor a weekly priority.
 
 Public Latest remains 1.97.6 until the next numbered release.
 

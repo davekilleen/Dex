@@ -70,6 +70,8 @@ For each goal, get:
 - Goals with no activity in 2+ weeks (stalled)
 - Goals behind expected pace
 
+If the response flags goals as `provisional` (recovered from a freeform list), offer once — "Want me to structure these into trackable goals?" — and move on without nagging if declined.
+
 ### 2.3 Open Tasks and Projects
 
 ```

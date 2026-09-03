@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "bcda1a3712f9c91335bd9f373dd3177c289cb7c355655dd069592683a0d9e795",
-        "byte_size": 13904
+        "sha256": "0293cb191adb476dfb05c818098a110949255f192705d4a97ae2b8c41bc2e286",
+        "byte_size": 14095
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -6061,8 +6061,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/reset/SKILL.md",
-        "sha256": "ffd03be604ce72e454f0826f82444aee6a8490957c50a13b604bf9f67161e185",
-        "byte_size": 2983
+        "sha256": "e52089add29013a2b212c5ea6bb311878eb54bf76294bfb5e7055cf7603b5d86",
+        "byte_size": 4233
       },
       "value": "Restructure an existing Dex vault for a new role or changed preferences, without losing data.",
       "jobs_served": [

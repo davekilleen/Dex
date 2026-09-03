@@ -550,14 +550,43 @@ def check_granola() -> Dict[str, Any]:
         "setup": "/granola-setup",
     }
 
+def _completed_profile_capability_states() -> Dict[str, bool]:
+    """Room choices already recorded by a vault that completed onboarding."""
+    if not MARKER_FILE.exists():
+        return {}
+    profile_path = BASE_DIR / "System" / "user-profile.yaml"
+    if not profile_path.exists():
+        return {}
+    try:
+        import yaml
+        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    rooms = profile.get("capabilities") if isinstance(profile, dict) else None
+    if not isinstance(rooms, dict):
+        return {}
+    return {
+        room: state["enabled"]
+        for room, state in rooms.items()
+        if isinstance(state, dict) and isinstance(state.get("enabled"), bool)
+    }
+
+
 def _capability_states(
     selected: Dict[str, bool] | None = None,
 ) -> Dict[str, bool]:
     selected = selected or {}
+    # A room the user did not re-answer keeps its current state on a completed
+    # vault (a /manage-capabilities choice must survive a reset); the contract
+    # default applies only when neither an answer nor a recorded state exists.
+    current = _completed_profile_capability_states()
     states: Dict[str, bool] = {}
     for room in capability_rooms.room_ids():
         if room in selected:
             states[room] = selected[room] is True
+            continue
+        if room in current:
+            states[room] = current[room]
             continue
         default = capability_rooms.surfaces_for(room).get("default_enabled", False)
         states[room] = default if isinstance(default, bool) else False
@@ -696,23 +725,98 @@ def _run_harness_receipt_provisioner(
             profile_path.unlink(missing_ok=True)
 
 
+# Config files the onboard provisioner rewrites in place when they already
+# exist; everything else it touches is only ever created when missing.
+_REWRITTEN_CONFIG_PATHS = (
+    "System/user-profile.yaml",
+    "System/pillars.yaml",
+    "System/.onboarding-complete",
+    "System/.dex/harness-profile.json",
+    "CLAUDE.md",
+    ".mcp.json",
+    "core/paths.json",
+)
+
+
 def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
     """Collect onboarding inputs and let the sanctioned provisioner mutate."""
+    preexisting = {
+        relative
+        for relative in _REWRITTEN_CONFIG_PATHS
+        if (BASE_DIR / relative).exists()
+    }
     receipt = _run_onboarding_provisioner(session, dry_run=False)
     created = receipt.get("created", [])
     folders = [relative for relative in created if (BASE_DIR / relative).is_dir()]
-    files = [relative for relative in created if (BASE_DIR / relative).is_file()]
+    files = [
+        relative
+        for relative in created
+        if (BASE_DIR / relative).is_file() and relative not in preexisting
+    ]
+    configs_updated = [
+        relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
+    ]
+    # A rewritten pre-existing file was replaced, not created; reporting it
+    # honestly matters most for the profile and pillars on a reset.
+    replaced = [
+        relative
+        for relative in created
+        if relative in preexisting and relative not in configs_updated
+    ]
     return {
         "executor": "core/provision.cjs",
         "lifecycle_executor": receipt.get("lifecycle_executor"),
         "folders_created": folders,
         "files_created": files,
-        "configs_updated": [
-            relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
-        ],
+        "files_replaced": replaced,
+        "configs_updated": configs_updated,
         "errors": [],
         "receipt": receipt,
     }
+
+
+def _flatten_profile(value: Any, prefix: str = "") -> Dict[str, Any]:
+    """Flatten nested mappings to dotted keys; lists and scalars are leaves."""
+    if isinstance(value, dict) and value:
+        flat: Dict[str, Any] = {}
+        for key, child in value.items():
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            flat.update(_flatten_profile(child, child_prefix))
+        return flat
+    return {prefix: value} if prefix else {}
+
+
+_ABSENT = object()
+
+
+def _profile_changes(planned: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Every profile key the planned write changes, with old and new values."""
+    existing: Dict[str, Any] = {}
+    profile_path = BASE_DIR / "System" / "user-profile.yaml"
+    if profile_path.exists():
+        try:
+            import yaml
+            loaded = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except Exception:
+            existing = {}
+    old_flat = _flatten_profile(existing)
+    new_flat = _flatten_profile(planned)
+    changes: List[Dict[str, Any]] = []
+    for key in sorted(set(old_flat) | set(new_flat)):
+        old = old_flat.get(key, _ABSENT)
+        new = new_flat.get(key, _ABSENT)
+        if old is not _ABSENT and new is not _ABSENT and old == new:
+            continue
+        changes.append(
+            {
+                "key": key,
+                "old": None if old is _ABSENT else old,
+                "new": None if new is _ABSENT else new,
+            }
+        )
+    return changes
 
 
 def _preview_through_provisioner(session: Dict) -> Dict[str, Any]:
@@ -738,7 +842,21 @@ def _preview_through_provisioner(session: Dict) -> Dict[str, Any]:
     would_update_files = [
         relative for relative in created_files if (BASE_DIR / relative).is_file()
     ]
+    profile_plan = receipt.get("profile_plan")
+    planned_profile = (
+        profile_plan.get("profile") if isinstance(profile_plan, dict) else None
+    )
     return {
+        # "merge" carries every non-re-answered key forward from the existing
+        # profile; "replace" rebuilds it from the answers alone.
+        "profile_write_mode": (
+            profile_plan.get("mode") if isinstance(profile_plan, dict) else None
+        ),
+        "profile_changes": (
+            _profile_changes(planned_profile)
+            if isinstance(planned_profile, dict)
+            else []
+        ),
         "would_create_folders": created_folders,
         "already_exist_folders": [
             relative for relative in skipped if (BASE_DIR / relative).is_dir()
@@ -2782,65 +2900,113 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
                 provision_preview = _preview_through_provisioner(session)
 
-                # Build preview of user-profile.yaml content
+                # Build preview of user-profile.yaml content — the provisioner's
+                # own plan when available, so a merge previews the merged result
+                # rather than a template rebuild.
                 data = _approved_profile_session_data(session)
-                profile_preview = {
-                    'name': data.get('name', ''),
-                    'role': data.get('role', ''),
-                    'role_group': data.get('role_group', ''),
-                    'company': data.get('company', ''),
-                    'company_size': data.get('company_size', ''),
-                    'email_domain': data.get('email_domain', ''),
-                    'obsidian_mode': data.get('obsidian_mode', False),
-                    # 'suggest', not 'auto': onboarding now asks whether page
-                    # creation should be automatic and writes the answer, so a
-                    # completed setup never leaves someone on a default they
-                    # were never told about.
-                    'entity_creation': {'mode': 'suggest'},
-                    'working_week': data.get('working_week', {}),
-                    'communication': data.get('communication', {}),
-                    'capabilities': {
-                        room: {'enabled': selected_capabilities[room]}
-                        for room in capability_rooms.room_ids()
-                    },
-                }
+                receipt_preview = provision_preview.get('provision_receipt') or {}
+                profile_plan = receipt_preview.get('profile_plan') or {}
+                profile_preview = profile_plan.get('profile')
+                if not isinstance(profile_preview, dict):
+                    profile_preview = {
+                        'name': data.get('name', ''),
+                        'role': data.get('role', ''),
+                        'role_group': data.get('role_group', ''),
+                        'company': data.get('company', ''),
+                        'company_size': data.get('company_size', ''),
+                        'email_domain': data.get('email_domain', ''),
+                        'obsidian_mode': data.get('obsidian_mode', False),
+                        # 'suggest', not 'auto': onboarding now asks whether page
+                        # creation should be automatic and writes the answer, so a
+                        # completed setup never leaves someone on a default they
+                        # were never told about.
+                        'entity_creation': {'mode': 'suggest'},
+                        'working_week': data.get('working_week', {}),
+                        'communication': data.get('communication', {}),
+                        'capabilities': {
+                            room: {'enabled': selected_capabilities[room]}
+                            for room in capability_rooms.room_ids()
+                        },
+                    }
                 # Build preview of pillars.yaml content
-                pillars_preview = []
-                for pillar in data.get('pillars', []):
-                    pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
-                    pillars_preview.append({'id': pillar_id, 'name': pillar})
+                pillars_plan = receipt_preview.get('pillars_plan')
+                if isinstance(pillars_plan, dict):
+                    pillars_preview = pillars_plan.get('pillars', [])
+                else:
+                    pillars_preview = []
+                    for pillar in data.get('pillars', []):
+                        pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
+                        pillars_preview.append({'id': pillar_id, 'name': pillar})
 
-                # Completion marker preview
-                marker_preview = {
-                    'completed': True,
-                    'completed_at': '(timestamp)',
-                    'provisioned_by': 'core/provision.cjs',
-                    'adopted': False,
-                    'version': _onboarding_package_version(),
-                    'user_name': data.get('name', ''),
-                    'role': data.get('role', ''),
-                    'email_domain': data.get('email_domain', ''),
-                    'has_pillars': len(data.get('pillars', [])) > 0,
-                    'phase2_completed': False,
-                    'pre_analysis_deferred': True
-                }
+                # Completion marker preview: an existing marker is updated in
+                # place and keeps its original completed_at.
+                marker_key = 'would_create_marker'
+                if MARKER_FILE.exists():
+                    marker_key = 'would_update_marker'
+                    existing_marker: Dict[str, Any] = {}
+                    try:
+                        loaded_marker = json.loads(MARKER_FILE.read_text())
+                        if isinstance(loaded_marker, dict):
+                            existing_marker = loaded_marker
+                    except Exception:
+                        existing_marker = {}
+                    marker_preview = {
+                        **existing_marker,
+                        'completed': True,
+                        'provisioned_by': 'core/provision.cjs',
+                        'version': _onboarding_package_version(),
+                        'user_name': data.get('name', ''),
+                        'role': data.get('role', ''),
+                        'email_domain': data.get('email_domain', ''),
+                        'has_pillars': len(data.get('pillars', [])) > 0,
+                        'last_reconfigured_at': '(timestamp)',
+                    }
+                else:
+                    marker_preview = {
+                        'completed': True,
+                        'completed_at': '(timestamp)',
+                        'provisioned_by': 'core/provision.cjs',
+                        'adopted': False,
+                        'version': _onboarding_package_version(),
+                        'user_name': data.get('name', ''),
+                        'role': data.get('role', ''),
+                        'email_domain': data.get('email_domain', ''),
+                        'has_pillars': len(data.get('pillars', [])) > 0,
+                        'phase2_completed': False,
+                        'pre_analysis_deferred': True
+                    }
 
                 dry_run_summary = {
                     'dry_run': True,
                     'validation_passed': True,
                     **provision_preview,
-                    'would_create_marker': marker_preview,
+                    marker_key: marker_preview,
                     'preview_user_profile': profile_preview,
                     'preview_pillars': pillars_preview,
                     'session_data_snapshot': data
                 }
 
+                profile_changes = provision_preview.get('profile_changes', [])
+                profile_mode = provision_preview.get('profile_write_mode')
+                if profile_mode == 'merge':
+                    profile_line = (
+                        f" Profile: {len(profile_changes)} settings change "
+                        "(see profile_changes); everything else carries forward."
+                    )
+                elif profile_mode == 'replace':
+                    profile_line = (
+                        " Profile: replaced from these answers "
+                        f"({len(profile_changes)} settings change, see profile_changes)."
+                    )
+                else:
+                    profile_line = ""
                 result = create_success_response(
                     dry_run_summary,
                     "DRY RUN: Would create "
                     f"{len(provision_preview['would_create_folders'])} folders, "
                     f"{len(provision_preview['would_create_files'])} files, update "
-                    f"{len(provision_preview['would_update_configs'])} configs. No changes made."
+                    f"{len(provision_preview['would_update_configs'])} configs."
+                    f"{profile_line} No changes made."
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
@@ -2857,10 +3023,19 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 logger.info("Routing onboarding finalization through the provision contract")
                 summary = _finalize_through_provisioner(session)
 
-                result = create_success_response(
-                    summary,
-                    f"Onboarding complete! Created {len(summary['folders_created'])} folders, {len(summary['files_created'])} files"
+                completion_message = (
+                    "Onboarding complete! Created "
+                    f"{len(summary['folders_created'])} folders, "
+                    f"{len(summary['files_created'])} files"
                 )
+                replaced = summary.get('files_replaced', [])
+                if replaced:
+                    completion_message += (
+                        f", replaced {len(replaced)} existing config "
+                        f"file{'s' if len(replaced) != 1 else ''} "
+                        f"({', '.join(replaced)})"
+                    )
+                result = create_success_response(summary, completion_message)
                 surface_analytics_attempt(
                     result,
                     _fire_analytics_event,

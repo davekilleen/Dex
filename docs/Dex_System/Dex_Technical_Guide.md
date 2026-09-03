@@ -673,29 +673,45 @@ Tasks (03-Tasks/)
 - 2pm: Test signup flow end-to-end
 
 **Tasks:**
-- `- [ ] Review onboarding mockups ^task-20260128-001 #product [Q1-1] [Week-3]`
-- `- [ ] Implement OAuth with Google ^task-20260128-002 #product [Q1-1] [Week-3]`
+
+```markdown
+- [ ] **Review onboarding mockups** ^task-20260128-001
+	- Pillar: Product | Priority: P1
+	- Goal: Q1-2026-goal-1
+	- Weekly priority: [week-2026-W05-p1]
+- [ ] **Implement OAuth with Google** ^task-20260128-002
+	- Pillar: Product | Priority: P1 | Due: 2026-02-06
+	- Goal: Q1-2026-goal-1
+```
 
 **Why this works:**
 
 1. **Tasks are contextualized:** You know *why* you're doing them (goal linkage)
 2. **Priority is clear:** Week priorities = top 3 things advancing quarterly goals
-3. **Reviews are meaningful:** "Did I advance Q1-1 this week?" (measurable)
+3. **Reviews are meaningful:** "Did I advance Q1-2026-goal-1 this week?" (measurable)
 4. **System learns:** Patterns emerge (e.g., "onboarding always takes 2x estimate")
 
-### Tags as Metadata
+### Metadata as Child Bullets
 
-Tasks use three tag types:
+Each task line ends with a caret ID (`^task-YYYYMMDD-XXX`) so Dex can sync its
+status everywhere it appears. Everything else lives in indented child bullets
+directly under the task:
 
-- **Pillar tags:** `#product`, `#growth`, `#operations`
-- **Goal tags:** `[Q1-1]`, `[Q1-2]` (quarter-goal linkage)
-- **Week tags:** `[Week-3]` (which week to focus on)
+- **Pillar:** `- Pillar: Product` (a pillar name from `System/pillars.yaml`)
+- **Priority:** `- Priority: P1` (P0–P3; when absent, Dex falls back to the section heading, e.g. `## P1 - Important`)
+- **Due date:** `- Due: 2026-02-06` (YYYY-MM-DD)
+- **Goal link:** `- Goal: Q1-2026-goal-1` (the `^Qn-YYYY-goal-N` ID from your quarter goals; a trailing `(?)` marks a tentative link awaiting confirmation)
+- **Weekly priority link:** `- Weekly priority: [week-2026-W05-p1]`
+- **Project link:** `- Project: 04-Projects/Mobile_App.md`
 
-**Why tags not folders?**
+Several fields can share one bullet separated by `|`, exactly as Dex writes them
+when it creates a task for you.
+
+**Why child bullets not folders?**
 
 - Tasks can relate to multiple contexts (folder = one location)
-- Tags are grepable (`grep "#product" 03-Tasks/Tasks.md`)
-- Tags are flexible (add new ones without restructuring)
+- Bullets are grepable (`grep "Goal: Q1-2026-goal-1" 03-Tasks/Tasks.md`)
+- Malformed fields are ignored safely rather than misread
 
 ---
 
