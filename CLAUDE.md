@@ -263,6 +263,19 @@ Dex can sync tasks two ways with Todoist, Things 3, and Trello — but most user
 
 Route by app: Todoist → `/todoist-setup` (any platform), Things 3 → `/things-setup` (macOS only), Trello → `/trello-setup`.
 
+### Changing Jobs or Roles (Natural Language Triggers)
+
+When the user says their own work situation changed — any of these:
+- "I changed jobs", "I'm changing jobs", "I got a new job"
+- "new role", "new job", "I'm starting at [company]"
+- "went full-time", "I'm now [role] at [company]"
+- "gone from fractional to full-time", "my company changed", "new employer"
+
+**Action:**
+1. Congratulate briefly, then offer the guided transition — run `/change-job` if they say yes. It re-asks the setup questions (every setting they don't re-answer carries forward and is checked afterwards), re-sorts people for the new work email domain, archives old-role goals, priorities and projects (never deletes), and re-points open tasks — every pass skippable.
+2. If it's a lighter change — same job, just different preferences, pillars or setup answers — point at `/reset` instead; it is the smaller lever and `/change-job`'s extra passes would be noise.
+3. If they decline, drop it — don't raise it again this session. Someone *else* changing jobs ("Sarah's at Acme now") updates that person's page, never the user's own setup.
+
 ### Something in Dex Is Broken (Natural Language Triggers)
 
 Nobody says "file a bug report." They say what happened, in their own words, in the middle
@@ -559,6 +572,8 @@ Skills extend Dex capabilities and are invoked with `/skill-name`. Common skills
 - `/week-plan`, `/week-review` - Weekly workflow
 - `/quarter-plan`, `/quarter-review` - Quarterly planning
 - `/triage`, `/meeting-prep`, `/process-meetings` - Meetings and inbox
+- `/goal-backlog` - Groom open tasks goal by goal: confirm links, retire stale work, set what's picked up first
+- `/change-job` - Guided role transition: setup questions with carry-forward, people re-sorted, old-role planning archived, tasks re-pointed
 - `/project-health`, `/product-brief` - Projects
 - `/career-coach`, `/resume-builder` - Career development
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery

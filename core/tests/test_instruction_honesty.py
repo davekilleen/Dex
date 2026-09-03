@@ -717,3 +717,56 @@ def test_planning_skills_pull_from_the_groomed_backlog_not_prose() -> None:
     assert "get_goal_backlog(goal_id)" in triage
     assert "set_task_next_up" in triage
     assert "If the goal has no next-up order, say nothing" in triage
+
+
+def test_change_job_relays_verification_stops_on_failure_and_never_deletes() -> None:
+    """The guided transition's ratified promises, pinned against drift."""
+    transition = _read(".claude/skills/change-job/SKILL.md")
+
+    # Carry-forward is promised up front and the verification is relayed, not
+    # invented: the skill delegates to reset's canonical route and repeats the
+    # honest preview and after-check summary word for word.
+    assert "Every setting you don't re-answer carries forward unchanged" in transition
+    assert "follow its steps 2–5 exactly" in transition
+    assert "`profile_changes`" in transition
+    assert "`transition_verification` summary word for word" in transition
+    assert "Carried forward: N settings. Lost: none." in transition
+
+    # A failed after-check stops everything; later passes never run on top of
+    # a suspect profile, and the snapshot restore is offered, preview first.
+    assert "**If verification fails, stop the whole transition.**" in transition
+    assert "Do not run any later pass." in transition
+    assert "restore_transition_capsule" in transition
+    assert "preview first (it defaults to a dry run)" in transition
+    assert "`dry_run=false` only if they confirm" in transition
+
+    # Archive, never delete — and the archive pass previews every move.
+    assert "**Nothing is deleted, and nothing moves without a yes.**" in transition
+    assert "Nothing was deleted at any step." in transition
+    assert "show the exact source → destination for each file first" in transition
+    assert "stop on that conflict and keep both versions — never overwrite" in transition
+    assert "**Deleting anything, ever.**" in transition
+
+    # Projects are walked one at a time, each with its own confirmation.
+    assert "one at a time" in transition
+    assert "never as a batch" in transition
+    assert "Every project gets its own answer" in transition
+    assert "never apply one blanket yes" in transition
+
+    # Old-employer connections are listed for review, never auto-removed.
+    assert "I never remove a connection myself" in transition
+    assert "**Removing an integration or connection automatically.**" in transition
+    assert "only ever removed by the user" in transition
+
+    # The question script stays single-sourced; profile files stay tool-owned.
+    assert ".claude/flows/onboarding.md" in transition
+    assert "this skill never restates it" in transition
+    assert "written only by the onboarding tools, never by hand from here" in transition
+
+    # Degradation is honest when the people re-sort tool is unavailable.
+    assert "say the people re-sort could not be run" in transition
+    assert "never move person pages by hand" in transition
+
+    # And the reset skill routes the big transition here instead of absorbing it.
+    reset = _read(".claude/skills/reset/SKILL.md")
+    assert "use `change-job` instead" in reset

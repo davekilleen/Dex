@@ -12,6 +12,7 @@ SAFE_ANALYTICS_EVENT_NAMES = frozenset(
         "career_coverage_analyzed",
         "career_evidence_scanned",
         "career_setup_completed",
+        "change_job_completed",
         "commitments_reviewed",
         "custom_skill_created",
         "daily_plan_completed",

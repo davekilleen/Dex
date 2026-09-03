@@ -1,0 +1,39 @@
+# Trigger evals for /change-job.
+# Canonical shape (see .claude/skills/skill-score/evals/trigger-cases.yaml):
+#   3 positive, 2 negative/collision, 1 ambiguous, 1 missing-prerequisite,
+#   1 failure-recovery.
+
+skill: change-job
+
+positive:
+  - utterance: "I changed jobs — I'm now CPO at Meridian, full-time."
+    expect: fire
+  - utterance: "Big news: new role starting Monday. Dex needs to catch up."
+    expect: fire
+  - utterance: "I went full-time at the startup I was advising. Everything here is set up for the fractional gig."
+    expect: fire
+
+negative:
+  - utterance: "My pillars feel wrong lately — can we redo my setup answers?"
+    expect: no-fire
+    route_to: reset
+    why: same job, changed preferences — the lighter reset lever is enough; the people, archive and task passes would be noise.
+  - utterance: "Sarah changed jobs, she's at Acme now."
+    expect: no-fire
+    route_to: none
+    why: someone else's role change updates that person's page, never the user's own setup.
+
+ambiguous:
+  - utterance: "Things are changing at work, I might need to redo Dex."
+    expect: ask
+    why: could be a new role (change-job), a reorg with the same job (reset), or nothing yet — ask what actually changed before running anything.
+
+missing_prerequisite:
+  - utterance: "I changed jobs"  # vault never completed onboarding; no profile to carry forward
+    expect: degrade
+    why: with no completed setup there is no old role to transition from — route to setup for a first-time run instead of replaying a reset over nothing.
+
+failure_recovery:
+  - utterance: "Go ahead with the whole transition"  # the after-check reports a lost setting
+    expect: honest-failure
+    why: relay the verification summary word for word, stop before any later pass, and offer the snapshot restore — never continue on a suspect profile.

@@ -1,11 +1,18 @@
 ---
 name: reset
-description: "Restructure an existing Dex vault for a new role or changed preferences, without losing data. Use when the user says 'I changed jobs', 'restructure my Dex', 'my role is different now'. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`."
+description: "Re-run the setup questions over an existing Dex vault when preferences or setup answers changed, without losing data. Use when the user says 'restructure my Dex', 'redo my setup', 'my pillars are wrong now'. Not for a job or role change; use `change-job` — it runs this same reset plus the people, archive and task passes. Not for first-time setup; use `setup`. Not for just toggling one feature; use `manage-capabilities`."
 ---
 
-# Reset Dex for a new role
+# Reset Dex for changed answers
 
 If `04-Projects/` does not exist, this vault was never set up. Use `setup` instead.
+
+If the user actually changed jobs or roles — new employer, new email domain, an
+old identity to archive — use `change-job` instead: it runs this same reset and
+then guides the passes a reset alone never touches (re-sorting people for the
+new domain, archiving old-role goals, priorities and projects, re-pointing open
+tasks). A reset by itself is the right lever only for changed preferences or
+answers within the same working life.
 
 To turn a single room on or off, use `manage-capabilities` — it is a much smaller
 change than a full reset and never touches the rest of the profile.
