@@ -4156,7 +4156,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "status": {"type": "string", "description": "Filter by status (n, s, b, d)"},
                     "source": {"type": "string", "description": "Filter by source (tasks, week_priorities)"},
                     "goal": {"type": "string", "description": "Filter by quarterly goal ID (e.g., Q3-2026-goal-2). Special values: 'none' = tasks with no goal link, 'tentative' = tasks whose goal link is still tentative (?)"},
-                    "project": {"type": "string", "description": "Filter by vault-relative project path (e.g., 04-Projects/Foo.md; trailing .md optional)"},
+                    "project": {"type": "string", "description": f"Filter by vault-relative project path (e.g., {PROJECTS_DIR.name}/Foo.md; trailing .md optional)"},
                     "weekly_priority": {"type": "string", "description": "Filter by linked weekly priority ID (e.g., week-2026-W05-p1)"},
                     "include_done": {"type": "boolean", "description": "Include completed tasks", "default": False}
                 }
@@ -4172,7 +4172,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Strategic pillar ID or unique display name ({pillar_description})"},
                     "priority": {"type": "string", "enum": ["P0", "P1", "P2", "P3"], "default": "P2"},
                     "context": {"type": "string", "description": "Additional context or sub-tasks"},
-                    "section": {"type": "string", "description": "Which section in 03-Tasks/Tasks.md to add to. When omitted, the task lands under the existing section matching its priority (e.g. P1 - Important), falling back to 'Next Week'."},
+                    "section": {"type": "string", "description": f"Which section in {TASKS_FILE.parent.name}/{TASKS_FILE.name} to add to. When omitted, the task lands under the existing section matching its priority (e.g. P1 - Important), falling back to 'Next Week'."},
                     "weekly_priority_id": {"type": "string", "description": "Link to weekly priority (e.g., 'week-2026-W05-p1') - task contributes to this priority"},
                     "due": {"type": "string", "description": "Optional due date in YYYY-MM-DD format"},
                     "project": {"type": "string", "description": f"Optional existing vault-relative project path under {PROJECTS_DIR.name}/"},
@@ -4222,7 +4222,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="set_task_next_up",
-            description="Add, update, or clear the 'Next up' order on a canonical task in 03-Tasks/Tasks.md. Pass next_up=null (or omit it) to clear. The order is read per goal (or per pillar for goal-less work) by get_goal_backlog; values need not be unique.",
+            description=f"Add, update, or clear the 'Next up' order on a canonical task in {TASKS_FILE.parent.name}/{TASKS_FILE.name}. Pass next_up=null (or omit it) to clear. The order is read per goal (or per pillar for goal-less work) by get_goal_backlog; values need not be unique.",
             inputSchema={
                 "type": "object",
                 "properties": {
