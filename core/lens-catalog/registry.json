@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "0293cb191adb476dfb05c818098a110949255f192705d4a97ae2b8c41bc2e286",
-        "byte_size": 14095
+        "sha256": "02235fc9462e52666feb0c940d585124acdcbbd36229ec7072e6bd6613f16fb9",
+        "byte_size": 15133
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -952,8 +952,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/triage/SKILL.md",
-        "sha256": "472605767b79c8af009ad4e265fc70c441618f446b3690d0e05a49f086093cb6",
-        "byte_size": 14395
+        "sha256": "6f606ebb2d4fde3bff162eb9cead43ac3faf116ac8c894add042a3296c159c96",
+        "byte_size": 14950
       },
       "value": "Clears the pile-up: loose files and stray unticked boxes get routed to the project, person or goal they belong to, weighted by what the person said matters this week.",
       "jobs_served": [
@@ -6061,8 +6061,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/reset/SKILL.md",
-        "sha256": "1631d25c499a2173bc8371415187be66b52baf81d9125622dfbad7dc6da4f7e9",
-        "byte_size": 5489
+        "sha256": "f63b05ec5a06b7a844663b2d68c2388c0dc325802836b2de29c2079102f0fa43",
+        "byte_size": 6072
       },
       "value": "Restructure an existing Dex vault for a new role or changed preferences, without losing data.",
       "jobs_served": [
@@ -6614,6 +6614,167 @@
       },
       "docs_url": "https://github.com/davekilleen/Dex",
       "since_release": "1.20.1",
+      "changed_in": []
+    },
+    {
+      "id": "change-job",
+      "capability_class": "active-skill",
+      "impact_tier": "high",
+      "availability": "active",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/change-job/SKILL.md",
+        "sha256": "8b83358d63bbc95aa73fc5ed097a95e33042c95a1c068dcff5746e6dac097349",
+        "byte_size": 11489
+      },
+      "value": "Moves a whole Dex from one job to the next without losing anything: setup answers carried forward and checked against a snapshot, people re-sorted for the new work email, the old role's planning archived rather than deleted, and open tasks re-pointed at the new pillars.",
+      "jobs_served": [
+        "evolve-the-system-itself"
+      ],
+      "foundation_capabilities": [
+        "safe-change-recovery",
+        "scoped-agency-human-control",
+        "durable-memory-provenance"
+      ],
+      "prerequisites": [
+        "A vault that completed first-time setup.",
+        "The new role's work email domain, so people can be re-sorted."
+      ],
+      "trade_offs": [
+        "The setup questions are asked again in full, even when only a few answers changed.",
+        "People with no recorded email are left where they are rather than guessed, so a few pages may still need moving by hand."
+      ],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_instruction_honesty.py",
+          "summary": "Pins the transition's load-bearing promises: the settings after-check is relayed word for word, a failed check stops every later pass, nothing is deleted, each project is its own question, and connections are listed for review, never removed. The tests read the shipped instructions."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_transition_capsule.py",
+          "summary": "Covers the snapshot-and-verify lane the transition relies on: the pre-change capture, the after-check that names lost or unexpected changes, and the exact restore of the two settings files."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/change-job/SKILL.md",
+          "summary": "The shipped skill defines the five passes, the rule that every pass is previewed, confirmed and skippable, and the closing ledger naming what changed and how to undo each step."
+        }
+      ],
+      "brief": {
+        "goal": "Guide a job or role transition where every pass is previewed, confirmed, skippable, and undoable, and the settings that were not re-answered provably carry forward.",
+        "method_outline": [
+          "Lay out the five passes in plain words and get a yes before starting.",
+          "Re-run setup with carry-forward; relay the after-check and stop everything if it fails.",
+          "Re-sort people from their recorded emails, plan shown first, never guessing.",
+          "Archive the old role's planning whole and walk projects one at a time.",
+          "Re-point open tasks at the new pillars and hand grooming to the backlog skill."
+        ],
+        "verification_checklist": [
+          "A failed settings check stops the transition before any later pass runs.",
+          "Nothing is deleted; every exit is archive, park, or leave alone.",
+          "The closing ledger names each pass done or skipped and how to undo it."
+        ],
+        "rollback_advice": "The settings snapshot restores the two configuration files exactly as captured; archived pages move back from the dated role-transition folder; the people re-sort reverses by running it against the old domain."
+      },
+      "compatibility": {
+        "host_requirements": [
+          "skills-directory",
+          "durable-goals-or-tasks",
+          "task-or-note-store"
+        ],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": [
+          "macos",
+          "linux",
+          "windows"
+        ]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.97.7",
+      "changed_in": []
+    },
+    {
+      "id": "goal-backlog",
+      "capability_class": "active-skill",
+      "impact_tier": "high",
+      "availability": "active",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/goal-backlog/SKILL.md",
+        "sha256": "a50bf61cefae19f3e5285550b5ed7863b826c9a2389466ed610dee1b1640916e",
+        "byte_size": 7160
+      },
+      "value": "Turns a flat, overgrown task list back into a groomed pool: open work shown goal by goal, doubtful links confirmed, stale items retired only with approval, and a picked-up-first order that weekly planning actually uses.",
+      "jobs_served": [
+        "manage-tasks-reliably"
+      ],
+      "foundation_capabilities": [
+        "context-orientation",
+        "scoped-agency-human-control",
+        "durable-memory-provenance"
+      ],
+      "prerequisites": [
+        "Quarterly goals in the structured page shape, so tasks can link to them.",
+        "An open task backlog in the standard tasks file."
+      ],
+      "trade_offs": [
+        "Staleness is measured from when a task was created, not from real activity, so a task advanced elsewhere can look idle.",
+        "Every retirement is confirmed item by item, which costs attention on a large backlog."
+      ],
+      "evidence": [
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_instruction_honesty.py",
+          "summary": "Pins the load-bearing promises: no task is deleted or moved silently, deletions are previewed line by line and approved per task, parking preserves content, and the offer to structure freeform goals is made once. The tests read the shipped instructions."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_work_server_task_goal_readers.py",
+          "summary": "Covers the grouped backlog reader the skill drives: grouping by goal, the pick-up-first ordering, staleness counts, and the handling of provisional goals recovered from freeform text."
+        },
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/goal-backlog/SKILL.md",
+          "summary": "The shipped skill defines the one-goal-at-a-time pass, the four honest exits for stale work, and the rule that nothing leaves the backlog without a yes."
+        }
+      ],
+      "brief": {
+        "goal": "Create a grooming pass that shows open work under each quarter goal and records the user's own decisions about what stays, what goes, and what gets picked up first.",
+        "method_outline": [
+          "Load the grouped backlog and present the largest and stalest groups first.",
+          "Confirm or clear each doubtful goal link before anything else.",
+          "Offer four exits for stale work - done, parked, deleted with per-task approval, or kept.",
+          "Record the pick-up-first order weekly planning will pull from."
+        ],
+        "verification_checklist": [
+          "Nothing is deleted or moved without the exact lines shown and a yes for that task.",
+          "The offer to structure freeform goals is made once, never repeated after a no.",
+          "An empty backlog is reported as empty, not padded with invented work."
+        ],
+        "rollback_advice": "Move a parked task's lines back from the Someday file to the tasks file to revive it; ask to clear a pick-up-first order to undo it. Deletions are the one permanent exit, which is why each requires its own yes."
+      },
+      "compatibility": {
+        "host_requirements": [
+          "skills-directory",
+          "durable-goals-or-tasks",
+          "task-or-note-store"
+        ],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": [
+          "macos",
+          "linux",
+          "windows"
+        ]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.97.7",
       "changed_in": []
     }
   ]

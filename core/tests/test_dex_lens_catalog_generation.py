@@ -676,7 +676,7 @@ def test_enriched_preview_validates_all_four_classes_against_released_schema(tmp
     assert envelope["metadata"]["produced_at"] == "2026-08-25T12:00:00Z"
     classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: classes.count(item) for item in set(classes)} == {
-        "active-skill": 94,
+        "active-skill": 96,
         "mcp-server": 11,
         "scheduled-automation": 5,
         "system-engine": 5,
@@ -723,7 +723,7 @@ def test_signed_enriched_release_path_emits_catalogue_version_six(
     )
     classes = [entry["capability_class"] for entry in envelope["catalogue"]["capabilities"]]
     assert {item: classes.count(item) for item in set(classes)} == {
-        "active-skill": 94,
+        "active-skill": 96,
         "mcp-server": 11,
         "scheduled-automation": 5,
         "system-engine": 5,
