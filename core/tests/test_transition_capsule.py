@@ -23,8 +23,8 @@ from core.customization_migration.transition import (
 PROFILE = {
     "name": "Dana",
     "role": "Fractional CPO",
-    "email_domain": "oldco.com",
-    "work_email": "dana@oldco.com",
+    "email_domain": "example.org",
+    "work_email": "dana@example.org",
     "entity_creation": {"mode": "auto"},
     "journaling": {"morning": True, "evening": False},
     "capabilities": {
@@ -114,7 +114,7 @@ def test_verify_passes_when_only_allowed_keys_change(tmp_path: Path) -> None:
 
     profile = dict(PROFILE)
     profile["role"] = "Chief Product Officer"
-    profile["email_domain"] = "newco.com"
+    profile["email_domain"] = "example.com"
     profile["capabilities"] = {
         **PROFILE["capabilities"],
         "career": {"enabled": True},
@@ -155,7 +155,7 @@ def test_verify_fails_on_a_mutation_outside_the_manifest(tmp_path: Path) -> None
     capsule_id = _capture(vault, ("profile.role",))
 
     profile = dict(PROFILE)
-    profile["work_email"] = "someone@else.com"
+    profile["work_email"] = "someone@example.com"
     profile["entity_creation"] = {"mode": "suggest"}
     _write_profile(vault, profile)
 
@@ -163,8 +163,8 @@ def test_verify_fails_on_a_mutation_outside_the_manifest(tmp_path: Path) -> None
 
     assert report["verified"] is False
     mutated = {item["key"]: item for item in report["unexpected"]}
-    assert mutated["profile.work_email"]["old"] == "dana@oldco.com"
-    assert mutated["profile.work_email"]["new"] == "someone@else.com"
+    assert mutated["profile.work_email"]["old"] == "dana@example.org"
+    assert mutated["profile.work_email"]["new"] == "someone@example.com"
     assert mutated["profile.entity_creation.mode"]["old"] == "auto"
     assert "Changed outside your answers: entity_creation.mode, work_email." in (
         report["summary"]

@@ -334,8 +334,8 @@ test('onboard over a completed vault carries forward what was not re-answered', 
       [
         'name: Dana',
         'role: Fractional CPO',
-        'email_domain: oldco.com',
-        'work_email: dana@oldco.com',
+        'email_domain: example.org',
+        'work_email: dana@example.org',
         'calendar:',
         '  provider: apple',
         '  work_calendar: Work',
@@ -372,7 +372,7 @@ test('onboard over a completed vault carries forward what was not re-answered', 
     fs.writeFileSync(profilePath, JSON.stringify({
       name: 'Dana',
       role: 'Chief Product Officer',
-      email_domain: 'newco.com',
+      email_domain: 'example.com',
       pillars: [{ name: 'Build', description: '' }, { name: 'Team' }],
     }));
 
@@ -382,8 +382,8 @@ test('onboard over a completed vault carries forward what was not re-answered', 
     assert.equal(result.summary.profile_plan.mode, 'merge');
     const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
     assert.equal(profile.role, 'Chief Product Officer');
-    assert.equal(profile.email_domain, 'newco.com');
-    assert.equal(profile.work_email, 'dana@oldco.com');
+    assert.equal(profile.email_domain, 'example.com');
+    assert.equal(profile.work_email, 'dana@example.org');
     assert.deepEqual(profile.calendar, { provider: 'apple', work_calendar: 'Work' });
     assert.equal(profile.journaling.morning, true);
     assert.equal(profile.vault.auto_commit, true);

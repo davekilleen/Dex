@@ -20,8 +20,8 @@ NOW = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
 PROFILE = {
     "name": "Dana",
     "role": "Fractional CPO",
-    "email_domain": "oldco.com",
-    "work_email": "dana@oldco.com",
+    "email_domain": "example.org",
+    "work_email": "dana@example.org",
     "entity_creation": {"mode": "auto"},
     "capabilities": {
         "career": {"enabled": False},

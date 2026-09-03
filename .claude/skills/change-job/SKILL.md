@@ -46,7 +46,7 @@ Call `reroute_people()` from the Work MCP — it defaults to a dry run and to th
 Show the returned plan in plain language before anything moves:
 
 > "I re-checked [scanned] person pages against [domain]:
-> - [count] move to Internal — new colleagues, e.g. Priya Shah (priya@newco.com matches the new domain)
+> - [count] move to Internal — new colleagues, e.g. Priya Shah (priya@example.com matches the new domain)
 > - [count] move to External — people from the old company
 > - [count] are already where they belong
 > - [count] have no email recorded, so I won't guess — they stay put: [names]

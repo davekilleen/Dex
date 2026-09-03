@@ -1813,8 +1813,8 @@ def _seed_completed_reset_vault(
             {
                 "name": "Dana",
                 "role": "Fractional CPO",
-                "email_domain": "oldco.com",
-                "work_email": "dana@oldco.com",
+                "email_domain": "example.org",
+                "work_email": "dana@example.org",
                 "journaling": {"morning": True},
                 "entity_creation": {"mode": "auto"},
                 "capabilities": {
@@ -1863,7 +1863,7 @@ def _seed_completed_reset_vault(
         "role": "Chief Product Officer",
         "role_group": "product",
         "company_size": "scaling",
-        "email_domain": "newco.com",
+        "email_domain": "example.com",
         "pillars": ["Build", "Team"],
         "communication": {},
         "working_week": {"days": ["monday", "tuesday"]},
@@ -1887,12 +1887,12 @@ class TestResetFinalizeOverCompletedVault:
         changed = {change["key"]: change for change in preview["profile_changes"]}
         assert changed["role"]["old"] == "Fractional CPO"
         assert changed["role"]["new"] == "Chief Product Officer"
-        assert changed["email_domain"]["new"] == "newco.com"
+        assert changed["email_domain"]["new"] == "example.com"
         # Carried-forward keys never appear as changes.
         assert "work_email" not in changed
         assert "journaling.morning" not in changed
         assert "entity_creation.mode" not in changed
-        assert preview["preview_user_profile"]["work_email"] == "dana@oldco.com"
+        assert preview["preview_user_profile"]["work_email"] == "dana@example.org"
         assert preview["preview_user_profile"]["entity_creation"] == {"mode": "auto"}
         assert "would_create_marker" not in preview
         assert preview["would_update_marker"]["completed_at"] == (
@@ -1914,7 +1914,7 @@ class TestResetFinalizeOverCompletedVault:
             (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
         )
         assert profile["role"] == "Chief Product Officer"
-        assert profile["work_email"] == "dana@oldco.com"
+        assert profile["work_email"] == "dana@example.org"
         assert profile["entity_creation"] == {"mode": "auto"}
         # The disabled room stays disabled and its assets are not re-copied.
         assert profile["capabilities"]["career"] == {"enabled": False}
@@ -1999,7 +1999,7 @@ class TestTransitionCapsuleOnReset:
 
         profile_path = tmp_path / "System/user-profile.yaml"
         profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-        profile["work_email"] = "someone@else.com"
+        profile["work_email"] = "someone@example.com"
         profile_path.write_text(
             yaml.safe_dump(profile, sort_keys=False), encoding="utf-8"
         )

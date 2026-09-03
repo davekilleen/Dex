@@ -29,8 +29,8 @@ POPULATED_PROFILE = {
     "role_group": "product",
     "company": "OldCo",
     "company_size": "startup",
-    "email_domain": "oldco.com",
-    "work_email": "dana@oldco.com",
+    "email_domain": "example.org",
+    "work_email": "dana@example.org",
     "timezone": "Europe/Dublin",
     "working_style": "focused",
     "working_context": {
@@ -82,7 +82,7 @@ COMPLETED_MARKER = {
     "version": "1.90.0",
     "user_name": "Dana",
     "role": "Fractional CPO",
-    "email_domain": "oldco.com",
+    "email_domain": "example.org",
     "has_pillars": True,
     "phase2_completed": True,
     "pre_analysis_deferred": True,
@@ -96,7 +96,7 @@ RESET_OVERLAY = {
     "role_group": "product",
     "company": "NewCo",
     "company_size": "scaling",
-    "email_domain": "newco.com",
+    "email_domain": "example.com",
     "pillars": [
         {"name": "Product Strategy", "description": ""},
         {"name": "Team", "description": "Grow the org"},
@@ -145,7 +145,7 @@ def test_reset_over_completed_vault_merges_instead_of_replacing(
     assert profile["role_group"] == "product"
     assert profile["company"] == "NewCo"
     assert profile["company_size"] == "scaling"
-    assert profile["email_domain"] == "newco.com"
+    assert profile["email_domain"] == "example.com"
     assert profile["communication"]["formality"] == "casual"
     assert profile["working_week"] == {
         "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
@@ -153,7 +153,7 @@ def test_reset_over_completed_vault_merges_instead_of_replacing(
 
     # Every key the user did not re-answer carries forward — including keys
     # the template never mentions.
-    assert profile["work_email"] == "dana@oldco.com"
+    assert profile["work_email"] == "dana@example.org"
     assert profile["calendar"] == {"provider": "apple", "work_calendar": "Work"}
     assert profile["working_context"] == {
         "role_focus": "Product strategy for early customers",
@@ -220,7 +220,7 @@ def test_reset_over_completed_vault_updates_marker_but_keeps_original_date(
     assert marker["completed"] is True
     assert marker["completed_at"] == ORIGINAL_COMPLETED_AT
     assert marker["role"] == "Chief Product Officer"
-    assert marker["email_domain"] == "newco.com"
+    assert marker["email_domain"] == "example.com"
     assert marker["has_pillars"] is True
     assert marker["phase2_completed"] is True
     assert marker["last_reconfigured_at"] > ORIGINAL_COMPLETED_AT
@@ -257,7 +257,7 @@ def test_reset_dry_run_reports_the_merge_plan_without_writing(
     assert summary["profile_plan"]["mode"] == "merge"
     planned = summary["profile_plan"]["profile"]
     assert planned["role"] == "Chief Product Officer"
-    assert planned["work_email"] == "dana@oldco.com"
+    assert planned["work_email"] == "dana@example.org"
     assert planned["entity_creation"] == {"mode": "auto"}
     assert (vault / "System/user-profile.yaml").read_bytes() == profile_before
 

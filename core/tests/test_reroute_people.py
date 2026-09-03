@@ -6,7 +6,7 @@ from core.mcp import work_server
 from core.utils.entity_pages import render_person_page
 
 
-def _setup(tmp_path, monkeypatch, domains="newco.test"):
+def _setup(tmp_path, monkeypatch, domains="example.com"):
     people_dir = tmp_path / "People"
     index_file = tmp_path / "System" / "People_Index.json"
     profile = tmp_path / "System" / "user-profile.yaml"
@@ -46,20 +46,20 @@ def _frontmatter(path):
 def _fixture_vault(people_dir):
     """A vault mid job-change: profile already carries the new domain."""
     _write_person(people_dir, "Internal", "Olivia_Oldco.md", "Olivia Oldco",
-                  emails=["olivia@oldco.test"], location="internal")
+                  emails=["olivia@example.org"], location="internal")
     _write_person(people_dir, "External", "Nina_Newco.md", "Nina Newco",
-                  emails=["nina@newco.test"], location="external")
+                  emails=["nina@example.com"], location="external")
     _write_person(people_dir, "Internal", "Ian_Stay.md", "Ian Stay",
-                  emails=["ian@newco.test"], location="internal")
+                  emails=["ian@example.com"], location="internal")
     _write_person(people_dir, "Internal", "Una_Unknown.md", "Una Unknown")
     _write_person(people_dir, "Internal", "Colin_Collide.md", "Colin Collide",
-                  emails=["colin@oldco.test"], location="internal")
+                  emails=["colin@example.org"], location="internal")
     _write_person(people_dir, "External", "Colin_Collide.md", "Other Colin",
-                  emails=["colin@vendor.test"], location="external")
+                  emails=["fixture-colin@invalid.test"], location="external")
     _write_person(people_dir, "External", "Rita_Relabel.md", "Rita Relabel",
-                  emails=["rita@vendor.test"], location="unknown")
+                  emails=["fixture-rita@invalid.test"], location="unknown")
     _write_person(people_dir, "CPO_Network", "Cleo_Network.md", "Cleo Network",
-                  emails=["cleo@oldco.test"], location="external")
+                  emails=["cleo@example.org"], location="external")
 
 
 def test_dry_run_returns_full_plan_and_mutates_nothing(tmp_path, monkeypatch):
@@ -71,13 +71,13 @@ def test_dry_run_returns_full_plan_and_mutates_nothing(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["dry_run"] is True
-    assert result["internal_domains"] == ["newco.test"]
+    assert result["internal_domains"] == ["example.com"]
     moves = {entry["path"]: entry for entry in result["moves"]}
     assert moves["People/Internal/Olivia_Oldco.md"]["target_path"] == "People/External/Olivia_Oldco.md"
     assert moves["People/Internal/Olivia_Oldco.md"]["recomputed_location"] == "external"
-    assert moves["People/Internal/Olivia_Oldco.md"]["deciding_email"] == "olivia@oldco.test"
+    assert moves["People/Internal/Olivia_Oldco.md"]["deciding_email"] == "olivia@example.org"
     assert moves["People/External/Nina_Newco.md"]["target_path"] == "People/Internal/Nina_Newco.md"
-    assert moves["People/External/Nina_Newco.md"]["deciding_email"] == "nina@newco.test"
+    assert moves["People/External/Nina_Newco.md"]["deciding_email"] == "nina@example.com"
     assert len(moves) == 2
     # Ian Stay plus the External Colin page are already routed correctly.
     assert result["already_correct"] == 2
@@ -140,7 +140,7 @@ def test_apply_moves_pages_rewrites_frontmatter_and_rebuilds_index(tmp_path, mon
 def test_refuses_without_configured_email_domain(tmp_path, monkeypatch):
     people_dir, _ = _setup(tmp_path, monkeypatch, domains=None)
     _write_person(people_dir, "Internal", "Olivia_Oldco.md", "Olivia Oldco",
-                  emails=["olivia@oldco.test"], location="internal")
+                  emails=["olivia@example.org"], location="internal")
 
     result = work_server.reroute_people_data(dry_run=False)
 
@@ -150,16 +150,16 @@ def test_refuses_without_configured_email_domain(tmp_path, monkeypatch):
 
 
 def test_explicit_domains_override_profile(tmp_path, monkeypatch):
-    people_dir, _ = _setup(tmp_path, monkeypatch, domains="oldco.test")
+    people_dir, _ = _setup(tmp_path, monkeypatch, domains="example.org")
     _write_person(people_dir, "Internal", "Olivia_Oldco.md", "Olivia Oldco",
-                  emails=["olivia@oldco.test"], location="internal")
+                  emails=["olivia@example.org"], location="internal")
 
     profile_plan = work_server.reroute_people_data()
-    override_plan = work_server.reroute_people_data(domains=["@newco.test"])
+    override_plan = work_server.reroute_people_data(domains=["@example.com"])
     empty_override = work_server.reroute_people_data(domains=["  "])
 
     assert profile_plan["moves"] == [] and profile_plan["already_correct"] == 1
-    assert override_plan["internal_domains"] == ["newco.test"]
+    assert override_plan["internal_domains"] == ["example.com"]
     assert [entry["path"] for entry in override_plan["moves"]] == ["People/Internal/Olivia_Oldco.md"]
     assert empty_override["success"] is False
 
@@ -167,15 +167,15 @@ def test_explicit_domains_override_profile(tmp_path, monkeypatch):
 def test_falls_back_to_last_written_mirror_emails(tmp_path, monkeypatch):
     people_dir, _ = _setup(tmp_path, monkeypatch)
     page = _write_person(people_dir, "Internal", "Mia_Mirror.md", "Mia Mirror",
-                         emails=["mia@oldco.test"], location="internal")
+                         emails=["mia@example.org"], location="internal")
     # User deleted the top-level emails line; the engine mirror still records it.
-    page.write_text(page.read_text().replace('\nemails: ["mia@oldco.test"]\n', "\nemails: []\n", 1))
+    page.write_text(page.read_text().replace('\nemails: ["mia@example.org"]\n', "\nemails: []\n", 1))
 
     plan = work_server.reroute_people_data()
 
     entry = plan["moves"][0]
     assert entry["path"] == "People/Internal/Mia_Mirror.md"
-    assert entry["deciding_email"] == "mia@oldco.test"
+    assert entry["deciding_email"] == "mia@example.org"
     assert entry["email_source"] == "dex_last_written"
 
 
@@ -196,12 +196,12 @@ def test_unreadable_page_is_ambiguous_and_untouched(tmp_path, monkeypatch):
 def test_user_owned_location_is_skipped_not_half_migrated(tmp_path, monkeypatch):
     people_dir, _ = _setup(tmp_path, monkeypatch)
     pinned = _write_person(people_dir, "Internal", "Pia_Pinned.md", "Pia Pinned",
-                           emails=["pia@oldco.test"], location="internal")
+                           emails=["pia@example.org"], location="internal")
     pinned.write_text(pinned.read_text().replace(
         "dex_pinned: {}", "dex_pinned:\n  location: user"
     ))
     drifted = _write_person(people_dir, "Internal", "Dana_Drift.md", "Dana Drift",
-                            emails=["dana@oldco.test"], location="internal")
+                            emails=["dana@example.org"], location="internal")
     drifted.write_text(drifted.read_text().replace(
         "\nlocation: internal\n", "\nlocation: unknown\n", 1
     ))
@@ -221,7 +221,7 @@ def test_user_owned_location_is_skipped_not_half_migrated(tmp_path, monkeypatch)
 def test_obsidian_filename_links_survive_the_move(tmp_path, monkeypatch):
     people_dir, _ = _setup(tmp_path, monkeypatch)
     _write_person(people_dir, "Internal", "Olivia_Oldco.md", "Olivia Oldco",
-                  emails=["olivia@oldco.test"], location="internal")
+                  emails=["olivia@example.org"], location="internal")
     note = tmp_path / "00-Inbox" / "Meetings" / "note.md"
     note.parent.mkdir(parents=True)
     note.write_text("Spoke with [[Olivia_Oldco]] about the handover.\n")
