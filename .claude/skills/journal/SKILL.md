@@ -173,7 +173,25 @@ Perfect. Your morning journal is saved. Ready to build your daily plan around th
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark journaling as used.
+This skill has two distinct modes and the usage log has a separate line for each, so
+**which one you record depends on the mode you just ran**:
+
+| Mode | Record |
+|------|--------|
+| `/journal on`, `/journal off` | Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `Journaling setup` |
+| `/journal`, `/journal morning`, `/journal evening`, `/journal week` | Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `Journaling` |
+
+Record exactly one, for the mode that actually ran. Turning journaling on is not the same as
+writing an entry, and a single unconditional call would mean `Journaling setup` could never
+be ticked by the only command that performs it.
+
+Both are named by **label** rather than by `/journal`, because that command appears against
+both lines and the tool refuses to guess between them; passing `/journal` returns `ambiguous`
+and records nothing.
+
+This ticks the feature's box in `System/usage_log.md`, which is what `/dex-level-up` reads to
+recommend features that have not been tried. It writes locally and sends nothing, so it runs
+whether or not analytics is enabled.
 
 **Analytics (Silent):**
 

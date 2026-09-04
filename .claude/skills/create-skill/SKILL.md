@@ -128,6 +128,6 @@ A good run leaves behind a skill that **fires on the user's real phrasing, route
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark custom skill creation as used.
+Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `create-skill`. This ticks the feature's box in `System/usage_log.md`, which is what `/dex-level-up` reads to recommend features that have not been tried. It writes locally and sends nothing, so it runs whether or not analytics is enabled.
 
 **Analytics (Silent):** Call `track_event` with event_name `custom_skill_created` and no properties (never include skill names). Fires only if the user opted into analytics; no action if it returns "analytics_disabled".

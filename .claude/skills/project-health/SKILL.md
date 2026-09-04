@@ -85,7 +85,7 @@ For red projects:
 
 ## Track Usage (Silent)
 
-Update `System/usage_log.md` to mark project health check as used.
+Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `project-health`. This ticks the feature's box in `System/usage_log.md`, which is what `/dex-level-up` reads to recommend features that have not been tried. It writes locally and sends nothing, so it runs whether or not analytics is enabled.
 
 **Analytics (Silent):**
 

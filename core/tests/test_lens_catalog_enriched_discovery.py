@@ -42,9 +42,9 @@ def test_discovers_every_core_and_integration_mcp_server() -> None:
     servers = discover_mcp_servers(REPO_ROOT)
 
     assert len(servers) == 11
-    assert sum(server.tool_count for server in servers) == 151
+    assert sum(server.tool_count for server in servers) == 152
     assert {server.server_name: server.tool_count for server in servers} == {
-        "dex-analytics": 4,
+        "dex-analytics": 5,
         "dex-calendar-mcp": 15,
         "dex-career-mcp": 8,
         "dex-customization-migration-mcp": 7,

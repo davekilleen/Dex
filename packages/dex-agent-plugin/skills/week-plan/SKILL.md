@@ -390,7 +390,7 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 ## Step 7: Track Usage (Silent)
 
-Update `System/usage_log.md`.
+Call the `mark_feature_used` tool on the `dex-analytics` MCP server with `week-plan`. This ticks the feature's box in `System/usage_log.md`, which is what `/dex-level-up` reads to recommend features that have not been tried. It writes locally and sends nothing, so it runs whether or not analytics is enabled.
 
 **Analytics (Silent):**
 

@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "5768ed132995aee9ffef08fe7a3c497d4d7922b8468961c3cba6e9457ddd33a4",
-        "byte_size": 33572
+        "sha256": "ac8781eb866c0122706926588a498a505fc6519ece6f075b6883316bc0736b1c",
+        "byte_size": 33822
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "bcda1a3712f9c91335bd9f373dd3177c289cb7c355655dd069592683a0d9e795",
-        "byte_size": 13904
+        "sha256": "10a4f743d4bf7429266f45eb6e9ce478a1db1d12570c8e2cd0a71fad14cce0c9",
+        "byte_size": 14184
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "23fc59af24aa10eea9c67a98f2a206c7cac1743fbc9c6d5dd44d5345545d8eac",
-        "byte_size": 21731
+        "sha256": "7e1e02aee505a4c19f878ae47b52e9078da2d60692478bc6c424fb74e30fecd4",
+        "byte_size": 21983
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [
@@ -411,8 +411,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/save-insight/SKILL.md",
-        "sha256": "1fdb8303f5b56ff4f2b95f69fb430ac0821eccd15027bd55476973dce61ce9d1",
-        "byte_size": 2658
+        "sha256": "02d1add8316d61e1c456ad5d3f65bbd10a00046dc551ee0da344a386a2881294",
+        "byte_size": 2908
       },
       "value": "Turns a learning from completed work into durable context future agents can reuse instead of rediscovering it.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "bdaa24a66374f77568bcab0ba35c1e78dd163bc97bae53bc49cf7290c0854c0b",
-        "byte_size": 19259
+        "sha256": "9666c89683ae9ca58721ef71e642443cdfe9cca7c8f61466ff9dc0aa768fd5dd",
+        "byte_size": 19513
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "79e9ee08d47e060e1ab10a37aa39764ce3249557b074b01a96ee1eac4410a820",
-        "byte_size": 19385
+        "sha256": "4761c4e68c323635ad8c5b1347aa518a03020820500635bd559bc10afdeaed2e",
+        "byte_size": 19637
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
@@ -644,8 +644,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "02110d2093e22aeb472ed3ef05ae97e2e4773ce18ccac6aa6f1888daf0ce88b9",
-        "byte_size": 17660
+        "sha256": "445c10656270721b2878db7c46081ba1a6cbb548567830e9d6cda5a99f82a2e3",
+        "byte_size": 17914
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": [
@@ -952,8 +952,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/triage/SKILL.md",
-        "sha256": "472605767b79c8af009ad4e265fc70c441618f446b3690d0e05a49f086093cb6",
-        "byte_size": 14395
+        "sha256": "c10e76a72aa3a1e45313d32cc059dd86b90f5d99af3cd9535ae2b48c50ec41fc",
+        "byte_size": 14643
       },
       "value": "Clears the pile-up: loose files and stray unticked boxes get routed to the project, person or goal they belong to, weighted by what the person said matters this week.",
       "jobs_served": [
@@ -1020,8 +1020,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/project-health/SKILL.md",
-        "sha256": "9196c6be1f953775212c6992f0c099d0c80c67cbb47e0a22b20392d168e937ca",
-        "byte_size": 2605
+        "sha256": "60d48c8c1b79b6c1cae82b2059ccdfeee28d6a75fd10644873f7a39979978dc7",
+        "byte_size": 2853
       },
       "value": "Answers “what’s stuck?” across every active project in one pass: how long since anything moved, what is blocked, and whether the next step is actually clear.",
       "jobs_served": [
@@ -1234,8 +1234,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/product-brief/SKILL.md",
-        "sha256": "745a0899a364299b0b1b119044e7bdcc0819c8fd8aa4bc64fe276378c8bc14ac",
-        "byte_size": 16845
+        "sha256": "d2d8cdc5a1d39631bf19d8f82f3b7be4775b651a2ef8e7c0403170734d5d3f82",
+        "byte_size": 17099
       },
       "value": "Draws a half-formed product idea out through questions and leaves a written brief a team could actually build from, instead of an idea that only made sense in one head.",
       "jobs_served": [
@@ -1576,8 +1576,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/xray/SKILL.md",
-        "sha256": "4ac35ac8c17b738e53210200694e027988f7a92dbda04d28a1285a4b1fd27631",
-        "byte_size": 25061
+        "sha256": "f3c3a2814cb46fee020241d06ffb5ced5ef0e0a7e65f36cc01084f4c5e63e596",
+        "byte_size": 25294
       },
       "value": "Explains what the system just did and why — which files it read, which tools ran, what was loaded before the conversation even started — so the person learns their own setup instead of trusting it blindly.",
       "jobs_served": [
@@ -4380,8 +4380,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/create-mcp/SKILL.md",
-        "sha256": "a1601373fd9d85c2508368262319752b303a644ebf4c42fedc17846bbb85a103",
-        "byte_size": 23862
+        "sha256": "712135e68650b9876debb8870fe8b6e6eaf1ebc94f6ceeb68bc9944a4eeb36f8",
+        "byte_size": 24114
       },
       "value": "Build a brand-new MCP integration from scratch with a guided wizard.",
       "jobs_served": [
@@ -4443,8 +4443,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/create-skill/SKILL.md",
-        "sha256": "0a5a30e105ab6dac24db145bc4b56250bdc0862c6f866cdb3f9d2ffa23991152",
-        "byte_size": 9435
+        "sha256": "499576c53627a57b887bda60138b1002c83f7d5ca0c984352f72f3790e1bb6d2",
+        "byte_size": 9680
       },
       "value": "Author a new Dex skill.",
       "jobs_served": [
@@ -4505,8 +4505,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-add-mcp/SKILL.md",
-        "sha256": "db30f97c73498c47bdd33c8f7df345a94294a1b6180b602da587f949989aa71b",
-        "byte_size": 1960
+        "sha256": "dd20d3d2c3f550d36d4e79fce0195eacfcfaff29743d2c0bfcecc5b41f92bc4d",
+        "byte_size": 2213
       },
       "value": "Add a known MCP server to config using Dex-safe user scope.",
       "jobs_served": [
@@ -4568,8 +4568,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-backlog/SKILL.md",
-        "sha256": "542c7c3fb588ac54819fc58bad1226fb65a123c67715630a9e76ed76fd171141",
-        "byte_size": 17838
+        "sha256": "7c372f7f810c103a7fbc02f3f1bdf767748b22ec7288470c7cf2736446dc3799",
+        "byte_size": 18089
       },
       "value": "Show the AI-ranked backlog of Dex system-improvement ideas.",
       "jobs_served": [
@@ -4630,8 +4630,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-improve/SKILL.md",
-        "sha256": "e0ed05b5170335a701efa7c71eccde23ad5eec13c5de359a3733982266620a8a",
-        "byte_size": 11049
+        "sha256": "af56b1ecc9fcd9b7f65e319959ca8ef09ab7d2672bd9bfe14795ab21697f5394",
+        "byte_size": 11294
       },
       "value": "Workshop one improvement idea into an implementation plan.",
       "jobs_served": [
@@ -4692,8 +4692,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-level-up/SKILL.md",
-        "sha256": "7802c1abbe4d394cecfbb9782252b7725cff402ee804165b994c86c5327997e0",
-        "byte_size": 18888
+        "sha256": "1c8d0102e351c7ddc26eef8335aa68dd0bec88d8097cb3deff83304b72dff0ec",
+        "byte_size": 19733
       },
       "value": "Surface Dex features the user isn't using yet, based on their usage patterns.",
       "jobs_served": [
@@ -4754,8 +4754,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-obsidian-setup/SKILL.md",
-        "sha256": "016dca02867849895e3e74e08e462a0fdd847f70a8fbe9d0cc6d6dab1e17a30f",
-        "byte_size": 4473
+        "sha256": "b8bdcdb4213facfc4caa8f952c59f9aa0f7e635a41e89e3bd1334cf5b1dfc7d6",
+        "byte_size": 4731
       },
       "value": "Turn on Obsidian mode and migrate the vault to wiki links.",
       "jobs_served": [
@@ -5002,8 +5002,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-whats-new/SKILL.md",
-        "sha256": "02f5ff10ddce85180a395335b93a05ec83f8e365383fa4bbf3f88c71281e2b80",
-        "byte_size": 11905
+        "sha256": "b131d4bca07ae7e63505e826ce7ca115f99cc7ce0e538814f15fc0079a218e2b",
+        "byte_size": 12156
       },
       "value": "Show recent system improvements.",
       "jobs_served": [
@@ -5498,8 +5498,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/getting-started/SKILL.md",
-        "sha256": "6017eac2700e9f4f73bf9819abb6d583b45e2cc423c6abd3117313c9ce4571c8",
-        "byte_size": 28582
+        "sha256": "8365bf2eccc891849e34d2370d13db15529a4ed6a7dc7e60432b3ab650a0945a",
+        "byte_size": 28836
       },
       "value": "Interactive post-onboarding tour that adapts to whatever data exists (calendar, Granola, or none). Use right after onboarding, or when the user says 'show me around', 'how do I start'. Also use proactively when the vault is < 7 days old. Not for the initial setup itself; use `setup`.",
       "jobs_served": [
@@ -5686,8 +5686,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/integrate-mcp/SKILL.md",
-        "sha256": "df44aa49e4037a1860d65af8d4e6d6c698e67359f8d2021346f4d1b06a0aa6d7",
-        "byte_size": 8379
+        "sha256": "3cbcf7ef01acfa3ba8ec5ad7c2dc389d08a0fba5dbecced773022528e8814486",
+        "byte_size": 8631
       },
       "value": "Install and wire up an existing MCP server from Smithery.ai or a GitHub repo.",
       "jobs_served": [
@@ -5749,8 +5749,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/journal/SKILL.md",
-        "sha256": "9adf6ff39b74f43a4152813c857d0dc704a2e06a1dfea51bf67b7515b47065e4",
-        "byte_size": 6075
+        "sha256": "664c1c0a1c38964a97bd1f9664fe011cf007f6eec04395244cee667f38f443f6",
+        "byte_size": 7154
       },
       "value": "Toggle journaling or start a morning/evening/weekly journal entry.",
       "jobs_served": [
@@ -5999,8 +5999,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/prompt-improver/SKILL.md",
-        "sha256": "1811a11470bbfe16897b0eecfc3dc160eec788d04fdfba36262ec0525403414a",
-        "byte_size": 7081
+        "sha256": "e69cd7704eb553cccfd8092a7eaca528df1de47793f5c26986ad6948cf89833d",
+        "byte_size": 7332
       },
       "value": "Rewrite a vague prompt into a rich, structured one, with automatic fallback.",
       "jobs_served": [
@@ -6061,8 +6061,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/reset/SKILL.md",
-        "sha256": "ffd03be604ce72e454f0826f82444aee6a8490957c50a13b604bf9f67161e185",
-        "byte_size": 2983
+        "sha256": "52972387653b0799060a2efb57bcf8c30bcd6993a04ee0676b0f2350c50aaeb3",
+        "byte_size": 3231
       },
       "value": "Restructure an existing Dex vault for a new role or changed preferences, without losing data.",
       "jobs_served": [
