@@ -2741,7 +2741,7 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
         return []
     
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
     priorities = []
     
     lines = content.split('\n')
@@ -2792,7 +2792,7 @@ def _task_ids_named_in_priority_success_criteria(priority_id: str) -> set[str]:
     if not priorities_file.exists():
         return set()
 
-    lines = priorities_file.read_text().split('\n')
+    lines = priorities_file.read_text(encoding="utf-8").split('\n')
     priority_index = next(
         (
             index
@@ -2833,7 +2833,7 @@ def find_linked_tasks(priority_id: str) -> List[Dict[str, Any]]:
     if not tasks_file.exists():
         return []
     
-    content = tasks_file.read_text()
+    content = tasks_file.read_text(encoding="utf-8")
     lines = content.split('\n')
     
     referenced_task_ids = _task_ids_named_in_priority_success_criteria(priority_id)
@@ -3005,7 +3005,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
         return tasks
     
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
     lines = content.split('\n')
     
     current_section = None

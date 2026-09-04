@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## Unreleased — next public version is 1.97.8
+
+On Windows, Dex could refuse to read a perfectly valid weekly planning file
+because the notes emoji is not ASCII. Week progress, task lists, summaries,
+scheduling, and new tasks all failed instead of returning results.
+
+**What this fixes for you:**
+
+* **Work planning tools on Windows now read your weekly file as UTF-8.** A
+  notes emoji in that file no longer blocks week progress, task lists,
+  summaries, scheduling suggestions, or creating a task.
+
+Public Latest remains 1.97.7 until the next numbered release.
+
 ## [1.97.7] — Changing jobs keeps everything, and tasks get a home under each goal (2026-09-03)
 
 The last goal in your quarterly plan could pick up checkboxes that belonged to
