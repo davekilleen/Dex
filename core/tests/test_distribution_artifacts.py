@@ -3,7 +3,9 @@
 The subprocess timeouts in this module are hang-guards, not performance
 assertions: under pytest-xdist the release builds here run while other workers
 keep every core busy, so the guards carry several multiples of headroom over
-the serial runtime. Tightening them re-introduces load flakes.
+the serial runtime. Tightening them re-introduces load flakes. Vault-bundle
+hang-guards start a new process group and kill it on timeout so a descendant
+such as npm cannot hold captured pipes after bash is gone.
 """
 
 from __future__ import annotations
@@ -14,9 +16,11 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -118,6 +122,130 @@ RELEASE_BUILD_ABSENT = (
     "System/integrations/slack.yaml",
 )
 
+_VAULT_BUNDLE_TIMEOUT_SECONDS = 240
+_PROCESS_GROUP_DRAIN_SECONDS = 5
+
+
+def _kill_process_group(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+            return
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            # macOS CI can deny killpg with EPERM while the child is still
+            # ours to kill. Fall back to the process handle so a timeout
+            # stays a timeout instead of hanging on captured pipes.
+            pass
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return
+
+
+def _run_captured_timed(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    timeout: int = _VAULT_BUNDLE_TIMEOUT_SECONDS,
+    check: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a hang-guarded command; kill the whole process group on timeout.
+
+    ``subprocess.run(..., capture_output=True, timeout=...)`` SIGKILLs only
+    the parent. ``communicate()`` can then wait forever while a descendant
+    still holds the captured stdout/stderr pipes, so the hang-guard never
+    flushes. A new session plus ``killpg`` lets those pipes drain.
+    """
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        start_new_session=(os.name == "posix"),
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        _kill_process_group(process)
+        try:
+            stdout, stderr = process.communicate(timeout=_PROCESS_GROUP_DRAIN_SECONDS)
+        except subprocess.TimeoutExpired as drain_exc:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            stdout = drain_exc.stdout
+            stderr = drain_exc.stderr
+        raise subprocess.TimeoutExpired(
+            cmd=command,
+            timeout=timeout,
+            output=stdout,
+            stderr=stderr,
+        ) from exc
+    completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    if check:
+        completed.check_returncode()
+    return completed
+
+
+def _run_vault_bundle(
+    clone: Path,
+    output: Path,
+    *,
+    env: dict[str, str] | None = None,
+    check: bool = False,
+    timeout: int = _VAULT_BUNDLE_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    merged = dict(env) if env is not None else os.environ.copy()
+    merged["DEX_VAULT_BUNDLE_PHASE_TIMING"] = "1"
+    try:
+        return _run_captured_timed(
+            ["bash", "scripts/build-vault-bundle.sh", str(output)],
+            cwd=clone,
+            env=merged,
+            timeout=timeout,
+            check=check,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(
+            "build-vault-bundle timed out after "
+            f"{timeout}s; last phases:\n"
+            f"stdout:\n{exc.stdout}\nstderr:\n{exc.stderr}"
+        ) from exc
+
+
+def test_captured_timeout_kills_pipe_holding_descendant(tmp_path: Path) -> None:
+    """A grandchild holding captured pipes must not stall the hang-guard."""
+
+    script = tmp_path / "hold-pipes.sh"
+    script.write_text(
+        "#!/bin/bash\n"
+        "python3 -c "
+        "'import sys, time; sys.stderr.write(\"child-start\\n\"); "
+        "sys.stderr.flush(); time.sleep(30)' &\n"
+        "wait\n",
+        encoding="utf-8",
+    )
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        _run_captured_timed(["bash", str(script)], cwd=tmp_path, timeout=1)
+    elapsed = time.monotonic() - started
+    assert elapsed < 8, elapsed
+    assert "child-start" in (caught.value.stderr or "")
+
 
 def _load_tau_checker() -> ModuleType:
     path = REPO_ROOT / "scripts/check-tau-removal.py"
@@ -126,6 +254,7 @@ def _load_tau_checker() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
 
 def _archive_members() -> set[str]:
     """Return paths from the archive users receive from the current checkout."""
@@ -807,14 +936,7 @@ def test_raw_vault_bundle_has_package_profile_manifest_agreement(tmp_path: Path)
         json.dumps({"profile": "legacy-v1", "release_version": "0.0.1", "schema_version": 1}, indent=2) + "\n"
     )
     output = tmp_path / "bundle-output"
-    subprocess.run(
-        ["bash", "scripts/build-vault-bundle.sh", str(output)],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=240,
-    )
+    _run_vault_bundle(clone, output, check=True)
     archive_path = next(output.glob("dex-vault-bundle-v*.tar.gz"))
     with tarfile.open(archive_path, "r:gz") as archive:
         package = json.load(archive.extractfile("./package.json"))
@@ -855,23 +977,7 @@ def test_raw_vault_bundle_publishes_standalone_verified_bridge(tmp_path: Path) -
     clone = _clone_repo(tmp_path, "raw-vault-bundle-bridge-asset")
     _commit_release_inputs_if_changed(clone)
     output = tmp_path / "bridge-asset-output"
-    env = os.environ.copy()
-    env["DEX_VAULT_BUNDLE_PHASE_TIMING"] = "1"
-    try:
-        subprocess.run(
-            ["bash", "scripts/build-vault-bundle.sh", str(output)],
-            cwd=clone,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=240,
-            env=env,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise AssertionError(
-            "build-vault-bundle timed out after 240s; last phases:\n"
-            f"stdout:\n{exc.stdout}\nstderr:\n{exc.stderr}"
-        ) from exc
+    _run_vault_bundle(clone, output, check=True)
 
     version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
     bridge = output / f"dex-update-bridge-v{version}.py"
@@ -914,13 +1020,8 @@ def test_raw_vault_bundle_rejects_dirty_protocol_inputs_not_in_source_commit(
     environment = os.environ.copy()
     environment["PATH"] = f"{spy_dir}{os.pathsep}{environment['PATH']}"
 
-    result = subprocess.run(
-        ["bash", "scripts/build-vault-bundle.sh", str(tmp_path / "blocked-bundle")],
-        cwd=clone,
-        capture_output=True,
-        text=True,
-        timeout=240,
-        env=environment,
+    result = _run_vault_bundle(
+        clone, tmp_path / "blocked-bundle", env=environment
     )
 
     assert result.returncode == 1
@@ -1785,14 +1886,7 @@ def test_vault_bundle_tree_manifest_and_archive_contain_no_tau(tmp_path: Path) -
     output_dir = tmp_path / "bundle-output"
     environment = os.environ.copy()
     environment["npm_config_offline"] = "true"
-    build_result = subprocess.run(
-        ["bash", "scripts/build-vault-bundle.sh", str(output_dir)],
-        cwd=clone,
-        capture_output=True,
-        text=True,
-        timeout=240,
-        env=environment,
-    )
+    build_result = _run_vault_bundle(clone, output_dir, env=environment)
     assert build_result.returncode == 0, build_result.stdout + build_result.stderr
 
     archive_path = next(output_dir.glob("dex-vault-bundle-v*.tar.gz"))
@@ -2223,14 +2317,7 @@ def test_vault_build_rejects_tau_before_build_package_or_archive_commands(
     environment["PATH"] = f"{spy_dir}{os.pathsep}{environment['PATH']}"
     output_dir = tmp_path / "blocked-output"
 
-    result = subprocess.run(
-        ["bash", "scripts/build-vault-bundle.sh", str(output_dir)],
-        cwd=clone,
-        capture_output=True,
-        text=True,
-        timeout=240,
-        env=environment,
-    )
+    result = _run_vault_bundle(clone, output_dir, env=environment)
     assert result.returncode == 1
     assert "Tau Mirror npx loader" in result.stdout
     assert not sentinel.exists()
