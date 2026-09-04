@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from core import paths
 from core.integrations import post_update_check
 from core.integrations.google import setup as google_setup
 from core.integrations.notion import setup as notion_setup
@@ -647,3 +648,32 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     assert "first-class Calendar surfaces" in skill
     assert "Do not promise that a Mac permission dialog will appear" in skill
     assert "Do not send them to a standalone terminal as the only path" in skill
+
+
+# --- briefing skills must refresh the meeting record before they read it ---
+
+_MEETINGS_FOLDER = str(paths.MEETINGS_DIR.relative_to(paths.VAULT_ROOT))
+
+# Skills whose whole job is to brief someone on something imminent. For these,
+# a stale read is indistinguishable from an empty one in the output, so the
+# refresh has to happen before the read rather than being left to chance.
+_BRIEFING_SKILLS = ("daily-plan", "daily-review", "meeting-prep")
+
+
+@pytest.mark.parametrize("skill", _BRIEFING_SKILLS)
+def test_briefing_skills_refresh_the_meeting_record_before_reading_it(skill: str) -> None:
+    body = (REPO_ROOT / ".claude" / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+
+    read_at = body.find(_MEETINGS_FOLDER)
+    assert read_at != -1, f"{skill} no longer reads the meeting record; retire this case"
+
+    refresh_at = body.find("/process-meetings")
+    assert refresh_at != -1, (
+        f"{skill} reads the meeting record but never processes it first. Anything captured "
+        "locally since the last processing run is invisible, and the brief looks complete "
+        "rather than stale."
+    )
+    assert refresh_at < read_at, (
+        f"{skill} refreshes the meeting record only after reading it, which is too late to "
+        "affect the brief."
+    )
