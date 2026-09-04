@@ -1,0 +1,1614 @@
+{
+  "registry_version": 1,
+  "capability_aliases": [
+    {
+      "alias": "calendar",
+      "capability_id": "dex-calendar-mcp"
+    },
+    {
+      "alias": "career",
+      "capability_id": "dex-career-mcp"
+    },
+    {
+      "alias": "granola",
+      "capability_id": "dex-granola-mcp"
+    },
+    {
+      "alias": "resume",
+      "capability_id": "dex-resume-mcp"
+    },
+    {
+      "alias": "work",
+      "capability_id": "dex-work-mcp"
+    },
+    {
+      "alias": "work-mcp",
+      "capability_id": "dex-work-mcp"
+    },
+    {
+      "alias": "career-mcp",
+      "capability_id": "dex-career-mcp"
+    },
+    {
+      "alias": "resume-mcp",
+      "capability_id": "dex-resume-mcp"
+    },
+    {
+      "alias": "session-memory",
+      "capability_id": "dex-session-memory"
+    },
+    {
+      "alias": "pipedrive-mcp",
+      "capability_id": "dex-pipedrive-mcp"
+    },
+    {
+      "alias": "doctor",
+      "capability_id": "dex-doctor"
+    }
+  ],
+  "families": [
+    {
+      "family_id": "meeting-follow-through",
+      "title": "Meetings become visible next steps",
+      "outcome": "Meeting material can become context, decisions and reviewable follow-up while the original source stays within the approved local boundary.",
+      "jobs": [
+        "capture-without-friction",
+        "track-people-and-relationships"
+      ],
+      "aliases": [
+        "meeting-loop"
+      ],
+      "member_capability_ids": [
+        "process-meetings",
+        "meeting-prep",
+        "meeting-closeout",
+        "granola-setup",
+        "apple-mail-setup",
+        "dex-granola-mcp",
+        "dex-calendar-mcp",
+        "dex-meeting-intel",
+        "dex-work-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "process-meetings"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "meeting-prep"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "meeting-closeout"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "granola-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "apple-mail-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-granola-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-calendar-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-meeting-intel"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-work-mcp"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_create_event"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_delete_event"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_get_events"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_get_events_with_attendees"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_get_next_event"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_get_today"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_list_calendars"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "calendar_search_events"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_clear_completed"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_complete_item"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_create_item"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_ensure_lists"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_find_and_complete"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_list_completed"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-calendar-mcp",
+          "tool_name": "reminders_list_items"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-granola-mcp",
+          "tool_name": "granola_check_available"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-granola-mcp",
+          "tool_name": "granola_get_extent"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-granola-mcp",
+          "tool_name": "granola_get_meeting_details"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-granola-mcp",
+          "tool_name": "granola_get_recent_meetings"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-granola-mcp",
+          "tool_name": "granola_get_today_meetings"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-granola-mcp",
+          "tool_name": "granola_search_meetings"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_meeting_context"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "match_capture_to_calendar"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "process_inbox_with_dedup"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "query_meeting_cache"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "rebuild_meeting_cache"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "meeting-processing"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "mcp"
+      }
+    },
+    {
+      "family_id": "living-people-company-context",
+      "title": "People and company context stays alive",
+      "outcome": "People, companies, relationships and open threads can be refreshed over time so important conversations start with current context.",
+      "jobs": [
+        "track-people-and-relationships"
+      ],
+      "aliases": [
+        "relationship-context"
+      ],
+      "member_capability_ids": [
+        "relationship-radar",
+        "ms-teams-setup",
+        "pipedrive-setup",
+        "entity-temperature-engine",
+        "dex-work-mcp",
+        "dex-calendar-mcp",
+        "dex-granola-mcp",
+        "dex-pipedrive-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "relationship-radar"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "ms-teams-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "pipedrive-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "entity-temperature-engine"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-pipedrive-mcp"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "build_company_index"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "build_people_index"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "confirm_relationship"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "create_company"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "create_person"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "dismiss_relationship"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_person_context"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "list_companies"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "lookup_person"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "refresh_company"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "people-company-context"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "mcp"
+      }
+    },
+    {
+      "family_id": "durable-task-continuity",
+      "title": "Tasks keep their thread",
+      "outcome": "Promises and tasks can be captured, linked, scheduled and completed without losing their owner, source or place in the wider work.",
+      "jobs": [
+        "manage-tasks-reliably",
+        "keep-projects-on-track"
+      ],
+      "aliases": [
+        "task-thread"
+      ],
+      "member_capability_ids": [
+        "commitments",
+        "delegate-check",
+        "triage",
+        "things-setup",
+        "todoist-setup",
+        "trello-setup",
+        "proactive-promise-engine",
+        "dex-work-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "commitments"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "delegate-check"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "triage"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "things-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "todoist-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "trello-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "proactive-promise-engine"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "analyze_calendar_capacity"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "capture_skill_rating"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "classify_task_effort"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "create_task"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "detect_soft_commitments"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_blocked_tasks"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_commitments_due"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "list_tasks"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "record_external_task_mapping"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "suggest_task_scheduling"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "sync_task_refs"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "update_task_status"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "work-task-continuity"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "mcp"
+      }
+    },
+    {
+      "family_id": "external-task-interoperability",
+      "title": "External task tools stay reviewable",
+      "outcome": "Todoist, Things and Trello can exchange task updates on request, with explicit review rather than a claim of invisible background polling.",
+      "jobs": [
+        "manage-tasks-reliably"
+      ],
+      "aliases": [
+        "task-connectors"
+      ],
+      "member_capability_ids": [
+        "things-setup",
+        "todoist-setup",
+        "trello-setup",
+        "dex-work-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "sync_external_tasks"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "external-task-sync"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "mcp"
+      }
+    },
+    {
+      "family_id": "connected-work-context",
+      "title": "Connected work context is understandable",
+      "outcome": "Calendar, mail, meetings and collaboration services can inform local work when explicitly connected. A directory of hundreds of connector definitions makes more tools discoverable, but only connectors Dex has explicitly supported and security-vetted are treated as ready to use; held connection routes remain groundwork.",
+      "jobs": [
+        "capture-without-friction",
+        "start-each-day-focused",
+        "keep-projects-on-track"
+      ],
+      "aliases": [
+        "work-context"
+      ],
+      "member_capability_ids": [
+        "google-workspace-setup",
+        "calendar-setup",
+        "atlassian-setup",
+        "ms-teams-setup",
+        "zoom-setup",
+        "apple-mail-setup",
+        "granola-setup",
+        "connection-manager-engine",
+        "dex-calendar-mcp",
+        "dex-granola-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "google-workspace-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "calendar-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "atlassian-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "zoom-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "connection-manager-engine"
+        },
+        {
+          "component_type": "nango-provider",
+          "provider_id": "google",
+          "source_package": "@nangohq/providers",
+          "source_version": "0.70.5",
+          "dex_support": "supported",
+          "security_vetted": true
+        },
+        {
+          "component_type": "nango-provider",
+          "provider_id": "linear",
+          "source_package": "@nangohq/providers",
+          "source_version": "0.70.5",
+          "dex_support": "supported",
+          "security_vetted": true
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "connection-manager-catalog"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "provider"
+      }
+    },
+    {
+      "family_id": "pipedrive-pipeline-continuity",
+      "title": "Pipeline context reaches local work",
+      "outcome": "Pipedrive deal and organisation facts can inform local planning, while external writes stay previewed and confirmation-gated.",
+      "jobs": [
+        "keep-projects-on-track",
+        "track-people-and-relationships"
+      ],
+      "aliases": [
+        "pipeline-loop"
+      ],
+      "member_capability_ids": [
+        "pipeline-sync",
+        "pipedrive-setup",
+        "dex-pipedrive-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "pipeline-sync"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_add_deal_activity"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_add_deal_note"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_create_deal"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_create_org"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_find_deal"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_find_org"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_get_deal"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_get_mapping"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_get_pipeline_snapshot"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_list_deals"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_list_stages"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_list_users"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_save_mapping"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-pipedrive-mcp",
+          "tool_name": "pipedrive_update_deal"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "pipedrive-pipeline"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "mcp"
+      }
+    },
+    {
+      "family_id": "daily-weekly-operating-rhythm",
+      "title": "Daily and weekly rhythm compounds",
+      "outcome": "Daily planning, weekly priorities, review and reflection form one repeatable cadence instead of a set of disconnected prompts.",
+      "jobs": [
+        "start-each-day-focused",
+        "reflect-and-improve-continuously"
+      ],
+      "aliases": [
+        "operating-rhythm"
+      ],
+      "member_capability_ids": [
+        "daily-plan",
+        "week-plan",
+        "daily-review",
+        "week-review",
+        "weekly-reflection",
+        "journal",
+        "getting-started",
+        "dex-learning-review",
+        "dex-work-mcp",
+        "dex-calendar-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "daily-plan"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "week-plan"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "daily-review"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "week-review"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "weekly-reflection"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "journal"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "getting-started"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-learning-review"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "boot_today"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "check_goal_alignment"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "check_priority_limits"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "complete_weekly_priority"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "confirm_goal_link"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "create_quarterly_goal"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "create_weekly_priority"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_goal_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_pillar_summary"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_quarter_velocity"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_quarterly_goals"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_skill_ratings"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_system_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_week_priorities"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_week_progress"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_weekly_planning_context"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "get_work_summary"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "migrate_quarterly_goals"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "migrate_weekly_priorities"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "suggest_focus"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "update_goal_progress"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "daily-planning"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "scheduled-automation"
+      }
+    },
+    {
+      "family_id": "durable-work-memory",
+      "title": "Work memory survives the session",
+      "outcome": "Decisions, observations, useful context and patterns remain searchable and sourced across sessions without pretending stale memory is current truth.",
+      "jobs": [
+        "reflect-and-improve-continuously",
+        "keep-projects-on-track"
+      ],
+      "aliases": [
+        "work-memory"
+      ],
+      "member_capability_ids": [
+        "save-insight",
+        "decision-log",
+        "identity-snapshot",
+        "enable-semantic-search",
+        "xray",
+        "dex-session-memory",
+        "dex-improvements-mcp",
+        "journal",
+        "industry-truths",
+        "initiative-kickoff",
+        "product-brief"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "save-insight"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "decision-log"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "identity-snapshot"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "enable-semantic-search"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "xray"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-session-memory"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-improvements-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "industry-truths"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "initiative-kickoff"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "product-brief"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "get_entity_timeline"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "get_observation_timeline"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "get_recent_decisions"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "get_recent_tool_usage"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "get_session_context"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "get_session_summary"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "search_observations"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-session-memory",
+          "tool_name": "search_sessions"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "session-memory"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "filesystem"
+      }
+    },
+    {
+      "family_id": "proactive-health-and-recovery",
+      "title": "Dex can explain its own health",
+      "outcome": "Health checks distinguish working, off, broken and unknown paths, then point to bounded recovery evidence instead of treating a started process as proof.",
+      "jobs": [
+        "evolve-the-system-itself",
+        "reflect-and-improve-continuously"
+      ],
+      "aliases": [
+        "health-loop"
+      ],
+      "member_capability_ids": [
+        "dex-doctor",
+        "project-health",
+        "dex-improve",
+        "dex-level-up",
+        "dex-improvements-mcp",
+        "dex-smoke-nightly",
+        "dex-changelog-checker",
+        "entity-temperature-engine",
+        "proactive-promise-engine",
+        "session-hook-orchestration",
+        "dex-work-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "dex-doctor"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "project-health"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-improve"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-level-up"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-smoke-nightly"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-changelog-checker"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "session-hook-orchestration"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-work-mcp",
+          "tool_name": "check_safety_gate"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "capture_idea"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "enrich_idea"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "get_backlog_stats"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "get_idea_details"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "list_ideas"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "mark_implemented"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "synthesize_changelog"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "synthesize_learnings"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-improvements-mcp",
+          "tool_name": "validate_backlog"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "doctor-health"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "health"
+      }
+    },
+    {
+      "family_id": "backup-and-restore-confidence",
+      "title": "Backups can be restored with confidence",
+      "outcome": "A person can create a recovery copy and rehearse restoring it with fingerprints and boundaries checked before trusting it.",
+      "jobs": [
+        "evolve-the-system-itself"
+      ],
+      "aliases": [
+        "recovery-copy"
+      ],
+      "member_capability_ids": [
+        "backup-setup",
+        "backup-now",
+        "backup-restore",
+        "dex-vault-backup"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "backup-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "backup-now"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "backup-restore"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-vault-backup"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "vault-backup"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "filesystem"
+      }
+    },
+    {
+      "family_id": "safe-change-and-rewind",
+      "title": "Changes stay reviewable and rewindable",
+      "outcome": "Supported updates and local configuration changes pass through preview, backup, verification and receipt-backed rewind rather than editing the live system blindly.",
+      "jobs": [
+        "evolve-the-system-itself"
+      ],
+      "aliases": [
+        "safe-rewind"
+      ],
+      "member_capability_ids": [
+        "dex-update",
+        "dex-rollback",
+        "reset",
+        "manage-capabilities"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "dex-update"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-rollback"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "reset"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "manage-capabilities"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "lifecycle-safe-rewind"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "filesystem"
+      }
+    },
+    {
+      "family_id": "capability-discovery-and-adoption",
+      "title": "Useful capability is discoverable and adoptable",
+      "outcome": "A person can inspect, create, review and adopt methods through explicit lifecycle boundaries without copying somebody else's private system. Customization migration is surfaced here only for assessment and capsule evidence; activation and rewind remain held.",
+      "jobs": [
+        "evolve-the-system-itself",
+        "reflect-and-improve-continuously"
+      ],
+      "aliases": [
+        "capability-adoption"
+      ],
+      "member_capability_ids": [
+        "create-mcp",
+        "create-skill",
+        "dex-add-mcp",
+        "integrate-mcp",
+        "dex-orient",
+        "dex-whats-new",
+        "setup",
+        "skill-score",
+        "feedback",
+        "dex-onboarding-mcp",
+        "dex-customization-migration-mcp",
+        "diff-adopt",
+        "diff-adopt-profile",
+        "diff-generate",
+        "diff-list",
+        "diff-profile",
+        "diff-remove"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "create-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "create-skill"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-add-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "integrate-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-orient"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-whats-new"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "skill-score"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "feedback"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-onboarding-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "diff-adopt"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "diff-adopt-profile"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "diff-generate"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "diff-list"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "diff-profile"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "diff-remove"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "apply_confirmed_onboarding_context"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "check_onboarding_complete"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "cleanup_qa_session"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "finalize_onboarding"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "generate_nudge_calendar"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "get_onboarding_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "inspect_harnesses"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "prepare_entity_page_offer"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "preview_confirmed_onboarding_context"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "respond_to_entity_page_offer"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "run_first_week_analysis"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "save_calendar_selection"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "save_harness_selection"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "set_entity_creation_default"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "start_onboarding_session"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "validate_and_save_step"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-onboarding-mcp",
+          "tool_name": "verify_dependencies"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "assess_customizations"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "preview_customization_capsule"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_activation_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_customization_capsule_blob"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_customization_capsule_section"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_customization_migration_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-customization-migration-mcp",
+          "tool_name": "read_staging_status"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "capability-adoption"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      }
+    },
+    {
+      "family_id": "privacy-safe-feedback-loop",
+      "title": "Feedback can improve Dex without exporting private work",
+      "outcome": "A problem or improvement can be reduced to a minimal, reviewable signal and returned as a bounded answer without turning private vault content into a report.",
+      "jobs": [
+        "reflect-and-improve-continuously",
+        "evolve-the-system-itself"
+      ],
+      "aliases": [
+        "private-feedback"
+      ],
+      "member_capability_ids": [
+        "feedback",
+        "prompt-improver",
+        "review",
+        "scrape",
+        "dex-analytics"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "prompt-improver"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "review"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "scrape"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-analytics"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-analytics",
+          "tool_name": "check_analytics_status"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-analytics",
+          "tool_name": "identify_user"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-analytics",
+          "tool_name": "test_connection"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-analytics",
+          "tool_name": "track_event"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "privacy-feedback"
+        }
+      ],
+      "assessment": {
+        "mode": "manual-only",
+        "reason": "A person must decide what can be shared; a detector cannot infer consent from source text."
+      }
+    },
+    {
+      "family_id": "career-growth-evidence",
+      "title": "Career growth stays evidence-based",
+      "outcome": "Career and resume workflows turn consented evidence into truthful development and application support without inventing claims.",
+      "jobs": [
+        "track-career-growth"
+      ],
+      "aliases": [
+        "career-evidence"
+      ],
+      "member_capability_ids": [
+        "career-setup",
+        "career-coach",
+        "resume-builder",
+        "quarter-plan",
+        "quarter-review",
+        "dex-career-mcp",
+        "dex-resume-mcp"
+      ],
+      "components": [
+        {
+          "component_type": "capability",
+          "capability_id": "career-setup"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "career-coach"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "resume-builder"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "quarter-plan"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "quarter-review"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-career-mcp"
+        },
+        {
+          "component_type": "capability",
+          "capability_id": "dex-resume-mcp"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "analyze_coverage"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "generate_evidence_from_work"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "parse_ladder"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "promotion_readiness_score"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "scan_evidence"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "scan_work_for_evidence"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "skills_gap_analysis"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-career-mcp",
+          "tool_name": "timeline_analysis"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "add_role"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "compile_resume"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "export_resume"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "extract_achievements"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "generate_linkedin"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "generate_role_writeup"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "list_sessions"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "load_session"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "pull_career_evidence"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "save_session"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "start_session"
+        },
+        {
+          "component_type": "mcp-tool",
+          "server_id": "dex-resume-mcp",
+          "tool_name": "validate_metrics"
+        },
+        {
+          "component_type": "source-component",
+          "component_id": "career-evidence"
+        }
+      ],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "mcp"
+      }
+    }
+  ],
+  "coverage_exceptions": []
+}

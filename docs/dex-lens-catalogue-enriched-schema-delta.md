@@ -1,12 +1,14 @@
 # Dex Lens catalogue v2 enriched schema delta
 
-**Purpose:** This is the exact cross-repository contract Dex Lens must implement before Dex Core may sign or publish a four-class catalogue.
+**Purpose:** This records the released four-class catalogue contract and the exact unreleased extension Dex Lens must implement before Core may publish outcome-focused capability families.
 
-**Minimum compatible Lens release:** [`v0.1.9`](https://github.com/davekilleen/dex-lens/releases/tag/v0.1.9) (released 26 August 2026)
+**Released four-class floor:** [`v0.1.9`](https://github.com/davekilleen/dex-lens/releases/tag/v0.1.9) (released 26 August 2026)
 
-**Lens release gate:** Satisfied. Lens `v0.1.9` tag commit `5815bcc8a26d2c4d615119703e15f132dc64ce79` exports the complete five-branch transition schema. The producer schema SHA-256 is `5bddeeca587ce50b22bd96b42ee4d45f12d039be0d9d233aa025e0ce904d42c7`; its released verifier accepts both the live legacy catalogue and Core's 114-entry enriched catalogue. The earlier `v0.1.8` boundary remains useful history: it produced 190 validation errors because `availability` and the class-specific shapes did not exist in that release.
+**Proposed significant-family floor:** Lens `v0.1.16` or later. No such release is claimed here.
 
-**Core promotion status:** Core vendors the exact released producer schema at [the canonical Lens schema path](../core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json). The production generator used its separate `--enriched` path for the live signed catalogue version 5. Current source prepares the corrected 115-entry catalogue version 6 candidate; it is not published by this change. The checked-in [four-class preview catalogue](examples/dex-lens-catalog-enriched-preview.json) deliberately keeps its invalid sentinel signature and can never become a release asset.
+**Lens release gate:** Satisfied for the four-class contract only. Lens `v0.1.9` introduced the five closed entry branches and its verifier accepts the enriched envelopes Core publishes today. The current Lens release, `v0.1.15`, does not export or verify `capability_families`. The proposed Lens schema adds that complete contract, carries `x-dex-lens-contract-status: "unreleased-significant-family-preview"`, requires Lens `v0.1.16`, and has SHA-256 `b15af8bccecc5cfb3a5e33fc1e44679e34c5539d0fb79d565ed67b56deee2e3b`.
+
+**Core promotion status:** The live signed catalogue is version 6 from Core `v1.97.2`; it contains 115 classed entries but no capability-family contract. Current source reserves catalogue version 7 for an unsigned preview containing the same 115 entries, all 151 discovered MCP tools, and 14 outcome-focused families. The checked-in [preview catalogue](examples/dex-lens-catalog-enriched-preview.json) deliberately keeps its invalid sentinel signature and can never become a release asset. Core must not sign or publish version 7 until Lens releases the exact compatible family contract and Core vendors those released bytes.
 
 ## 1. New closed enums
 
@@ -175,10 +177,11 @@ schemas/dex-lens-catalogue-v2-dialect.schema.json
 
 Do not hand-edit the generated schema. Regenerate it from `SignedCatalogueEnvelopeV2.model_json_schema(...)` through `build_catalogue_schema()`.
 
-The exported producer schema must:
+The proposed significant-family producer schema must:
 
 - retain the required Lens dialect and `x-dex-lens-unique-by` vocabulary;
-- add root annotation `x-dex-lens-minimum-version: "0.1.9"` so Core's preview guard can verify the compatible Lens floor;
+- retain `0.1.9` as the historical floor for the released five-branch entry union, while declaring root annotation `x-dex-lens-minimum-version: "0.1.16"` for the new family contract;
+- declare `x-dex-lens-contract-status: "unreleased-significant-family-preview"` so Core cannot confuse proposal bytes with a released producer schema;
 - define the five closed entry branches described above;
 - preserve `signature` as required and non-empty for a published envelope;
 - preserve all metadata, job taxonomy, expiry, unique-ID, and cross-reference rules.
@@ -241,7 +244,8 @@ Use the Lens repository's own virtual environment and command names if they diff
 4. **Complete in the Core promotion change:** The exact released producer schema replaces the old Lens schema and the proposal fixture is removed.
 5. **Complete in the Core promotion change:** The legacy Phase 1 generator validates against the transition schema.
 6. **Complete in the Core promotion change:** The enriched generator validates against the same schema and a test-signed 114-entry envelope verifies through the released Lens wheel.
-7. **Publication boundary:** The stable Core release workflow invokes `--enriched --sign` and writes the normal versioned/`latest` artifacts. It produced the live catalogue version 5 from Core v1.97.1; current source would produce the corrected version 6 candidate. The production signing key remains only in the protected release environment.
-8. **Current unpublished correction:** Core now discovers the optional Pipedrive server through the same canonical inventory, removes the held `/connect` skill from the active set, and represents the underlying connection manager as parked. The resulting version 6 candidate has 115 entries and 146 tools.
+7. **Complete after the original promotion:** The stable Core release workflow published signed catalogue version 6 from Core `v1.97.2`. That live envelope has 115 classed entries and remains valid against released Lens, but it deliberately carries no significant-family fields.
+8. **Current unpublished correction:** Core discovers the optional Pipedrive server through the canonical inventory, removes the held `/connect` skill from the active set, represents the underlying connection manager as parked, and describes 14 significant capability families. The guarded preview is catalogue version 7 with 115 entries and 151 MCP tools.
+9. **Current hold:** Lens must merge and release the complete family schema and verifier as `v0.1.16` or later. Core can then vendor that exact tag, rerun both paths, and only separately promote/sign catalogue version 7 through the protected release workflow.
 
 `--enriched-preview` still refuses `--sign` and writes only `dex-lens-catalog-enriched-preview.json`. Production signing uses the distinct `--enriched` path, so an obviously labelled preview can never be uploaded accidentally.

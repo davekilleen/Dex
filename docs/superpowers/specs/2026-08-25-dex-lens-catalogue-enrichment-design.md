@@ -1,6 +1,6 @@
 # Dex Lens Catalogue Enrichment Design
 
-**Status:** Lens `v0.1.9` released the compatible schema and verifier. Core's signed catalogue-v5 promotion is implemented; live publication follows the protected Core release path.
+**Status:** The released four-class path is live through signed catalogue v6. The guarded significant-family implementation is complete as unsigned catalogue-v7 preview code, but publication is held until Lens releases the exact compatible family schema and verifier as `v0.1.16` or later.
 
 **Decision:** Phase 1 shipped the active-skill correction through the legacy-compatible
 v2 shape. Phase 2 keeps the historical preview non-publishable and adds a distinct

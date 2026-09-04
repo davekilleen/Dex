@@ -144,6 +144,60 @@
       "title": "ActiveSkillCapabilityEntryV2",
       "type": "object"
     },
+    "AutomaticAssessmentV2": {
+      "additionalProperties": false,
+      "description": "A closed reference to one built-in read-only detector profile.",
+      "properties": {
+        "mode": {
+          "const": "automatic",
+          "title": "Mode",
+          "type": "string"
+        },
+        "profile": {
+          "enum": [
+            "catalogue",
+            "mcp",
+            "mcp-tool",
+            "filesystem",
+            "source-component",
+            "provider",
+            "scheduled-automation",
+            "health",
+            "doctor"
+          ],
+          "title": "Profile",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "profile"
+      ],
+      "title": "AutomaticAssessmentV2",
+      "type": "object"
+    },
+    "CapabilityAliasV2": {
+      "additionalProperties": false,
+      "description": "One human-friendly alias for a canonical signed capability id.",
+      "properties": {
+        "alias": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Alias",
+          "type": "string"
+        },
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alias",
+        "capability_id"
+      ],
+      "title": "CapabilityAliasV2",
+      "type": "object"
+    },
     "CapabilityCompatibilityV2": {
       "additionalProperties": false,
       "properties": {
@@ -169,7 +223,7 @@
         },
         "host_adapters": {
           "items": {
-            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "pattern": "^[a-z][a-z0-9-]{1,80}$",
             "type": "string"
           },
           "maxItems": 20,
@@ -280,6 +334,124 @@
       "title": "CapabilityEvidenceV2",
       "type": "object"
     },
+    "CapabilityFamilyV2": {
+      "additionalProperties": false,
+      "description": "A signed outcome family whose state is derived from its leaf members.\n\nAvailability is deliberately absent.  The only trustworthy status is\ncalculated by :mod:`capability_exchange.diagnosis.families` from the\nmember entries' existing ``capability_is_active`` result.",
+      "properties": {
+        "aliases": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Aliases",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "assessment": {
+          "discriminator": {
+            "mapping": {
+              "automatic": "#/$defs/AutomaticAssessmentV2",
+              "manual-only": "#/$defs/ManualOnlyAssessmentV2"
+            },
+            "propertyName": "mode"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AutomaticAssessmentV2"
+            },
+            {
+              "$ref": "#/$defs/ManualOnlyAssessmentV2"
+            }
+          ],
+          "title": "Assessment"
+        },
+        "components": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "capability": "#/$defs/CapabilityReferenceV2",
+                "mcp-tool": "#/$defs/McpToolReferenceV2",
+                "nango-provider": "#/$defs/NangoProviderReferenceV2",
+                "source-component": "#/$defs/SourceComponentReferenceV2"
+              },
+              "propertyName": "component_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/CapabilityReferenceV2"
+              },
+              {
+                "$ref": "#/$defs/McpToolReferenceV2"
+              },
+              {
+                "$ref": "#/$defs/NangoProviderReferenceV2"
+              },
+              {
+                "$ref": "#/$defs/SourceComponentReferenceV2"
+              }
+            ]
+          },
+          "maxItems": 120,
+          "minItems": 1,
+          "title": "Components",
+          "type": "array",
+          "uniqueItems": true,
+          "x-dex-lens-unique-component-identity": true
+        },
+        "family_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Family Id",
+          "type": "string"
+        },
+        "jobs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Jobs",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "member_capability_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{2,80}$",
+            "type": "string"
+          },
+          "maxItems": 80,
+          "minItems": 1,
+          "title": "Member Capability Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "outcome": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Outcome",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 140,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "family_id",
+        "title",
+        "outcome",
+        "jobs",
+        "aliases",
+        "member_capability_ids",
+        "components",
+        "assessment"
+      ],
+      "title": "CapabilityFamilyV2",
+      "type": "object"
+    },
     "CapabilityPortableBriefV2": {
       "additionalProperties": false,
       "properties": {
@@ -331,6 +503,28 @@
         "safety_notes"
       ],
       "title": "CapabilityPortableBriefV2",
+      "type": "object"
+    },
+    "CapabilityReferenceV2": {
+      "additionalProperties": false,
+      "description": "A component that points to one signed catalogue capability.",
+      "properties": {
+        "capability_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "component_type": {
+          "const": "capability",
+          "title": "Component Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_type",
+        "capability_id"
+      ],
+      "title": "CapabilityReferenceV2",
       "type": "object"
     },
     "CatalogueCapabilityEntryV2": {
@@ -420,6 +614,28 @@
           "type": "array",
           "uniqueItems": true,
           "x-dex-lens-unique-by": "capability_id"
+        },
+        "capability_aliases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CapabilityAliasV2"
+          },
+          "maxItems": 300,
+          "title": "Capability Aliases",
+          "type": "array",
+          "uniqueItems": true,
+          "x-dex-lens-unique-by": "alias"
+        },
+        "capability_families": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CapabilityFamilyV2"
+          },
+          "maxItems": 80,
+          "title": "Capability Families",
+          "type": "array",
+          "uniqueItems": true,
+          "x-dex-lens-unique-by": "family_id"
         },
         "jobs_taxonomy": {
           "items": {
@@ -600,6 +816,29 @@
       "title": "LegacySkillCapabilityEntryV2",
       "type": "object"
     },
+    "ManualOnlyAssessmentV2": {
+      "additionalProperties": false,
+      "description": "A family that intentionally needs a human review rather than a detector.",
+      "properties": {
+        "mode": {
+          "const": "manual-only",
+          "title": "Mode",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "reason"
+      ],
+      "title": "ManualOnlyAssessmentV2",
+      "type": "object"
+    },
     "McpServerCapabilityEntryV2": {
       "additionalProperties": false,
       "description": "An MCP server Dex runs: adopted by running Dex, never rebuilt from a page.\n\nThe catalogue id stays kebab-case; the server's own name is preserved\nseparately as ``server_name``. No skill-only field is permitted here.",
@@ -709,6 +948,26 @@
           "title": "Tool Count",
           "type": "integer"
         },
+        "tool_inventory": {
+          "default": "sampled",
+          "enum": [
+            "sampled",
+            "complete"
+          ],
+          "title": "Tool Inventory",
+          "type": "string"
+        },
+        "tools": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "maxItems": 500,
+          "title": "Tools",
+          "type": "array",
+          "uniqueItems": true
+        },
         "trade_offs": {
           "items": {
             "type": "string"
@@ -744,6 +1003,83 @@
         "source_paths"
       ],
       "title": "McpServerCapabilityEntryV2",
+      "type": "object",
+      "x-dex-lens-mcp-tool-inventory": true
+    },
+    "McpToolReferenceV2": {
+      "additionalProperties": false,
+      "description": "A component that names one exact tool on one MCP server.",
+      "properties": {
+        "component_type": {
+          "const": "mcp-tool",
+          "title": "Component Type",
+          "type": "string"
+        },
+        "server_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Server Id",
+          "type": "string"
+        },
+        "tool_name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_type",
+        "server_id",
+        "tool_name"
+      ],
+      "title": "McpToolReferenceV2",
+      "type": "object"
+    },
+    "NangoProviderReferenceV2": {
+      "additionalProperties": false,
+      "description": "A safe provider *type* identity from the pinned Nango data package.",
+      "properties": {
+        "component_type": {
+          "const": "nango-provider",
+          "title": "Component Type",
+          "type": "string"
+        },
+        "dex_support": {
+          "enum": [
+            "supported",
+            "unsupported"
+          ],
+          "title": "Dex Support",
+          "type": "string"
+        },
+        "provider_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "security_vetted": {
+          "title": "Security Vetted",
+          "type": "boolean"
+        },
+        "source_package": {
+          "const": "@nangohq/providers",
+          "title": "Source Package",
+          "type": "string"
+        },
+        "source_version": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Source Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_type",
+        "provider_id",
+        "source_package",
+        "source_version",
+        "dex_support",
+        "security_vetted"
+      ],
+      "title": "NangoProviderReferenceV2",
       "type": "object"
     },
     "PortableBriefContractV2": {
@@ -929,6 +1265,28 @@
       "title": "ScheduledAutomationCapabilityEntryV2",
       "type": "object"
     },
+    "SourceComponentReferenceV2": {
+      "additionalProperties": false,
+      "description": "A reviewed Lens-side source component identity (never a path).",
+      "properties": {
+        "component_id": {
+          "pattern": "^[a-z][a-z0-9-]{2,80}$",
+          "title": "Component Id",
+          "type": "string"
+        },
+        "component_type": {
+          "const": "source-component",
+          "title": "Component Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_type",
+        "component_id"
+      ],
+      "title": "SourceComponentReferenceV2",
+      "type": "object"
+    },
     "SystemEngineCapabilityEntryV2": {
       "additionalProperties": false,
       "description": "A multi-component engine inside Dex itself.\n\n``parked`` exists for engines that ship but are not currently offered\n(e.g. ``ritual-intelligence-engine``); a parked entry validates but must\nnever be ranked as an available recommendation. No skill-only field is\npermitted here.",
@@ -1098,6 +1456,7 @@
   ],
   "title": "SignedCatalogueEnvelopeV2",
   "type": "object",
-  "x-dex-lens-minimum-version": "0.1.9",
+  "x-dex-lens-contract-status": "unreleased-significant-family-preview",
+  "x-dex-lens-minimum-version": "0.1.16",
   "x-dex-lens-reference-validator": "capability_exchange.catalogue.schema_contract.iter_catalogue_schema_errors"
 }

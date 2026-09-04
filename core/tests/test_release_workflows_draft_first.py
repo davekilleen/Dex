@@ -274,28 +274,28 @@ def test_lens_catalog_release_environment_has_a_pr_dry_run() -> None:
     release_step = steps["Dry-run the Lens catalogue release environment"]
     assert release_step["if"] == "steps.changes.outputs.should_run == 'true'"
     run = release_step["run"]
-    assert "python3 -m venv .lens-venv" in run
-    assert ".lens-venv/bin/python -m pip install --quiet 'cryptography>=42' jsonschema" in run
-    assert ".lens-venv/bin/python scripts/generate-dex-lens-catalog.py" in run
+    assert "npm ci --ignore-scripts" in run
+    assert "python3 scripts/generate-dex-lens-catalog.py" in run
     assert "--release-root \"$PWD\"" in run
-    assert "--output-dir \"$OUTPUT_DIR\"" in run
-    assert "--enriched" in run
+    assert "--validate-release-coverage" in run
     assert "--sign" not in run
-    assert "dex-lens-catalog-latest.json" in run
+    assert "dex-lens-catalog-latest.json" not in run
 
 
-def test_stable_release_signs_the_enriched_catalogue_path() -> None:
+def test_stable_release_validates_coverage_without_signing_the_held_contract() -> None:
     workflow = _load(CI_WORKFLOW)
     steps = {
         step["name"]: step
         for step in workflow["jobs"]["build-release"]["steps"]
         if "name" in step
     }
-    run = steps["Generate signed Dex Lens catalog"]["run"]
+    run = steps["Validate held Dex Lens catalogue coverage"]["run"]
 
-    assert "--enriched" in run
-    assert "--sign" in run
-    assert "--key-id dex-core-lens-1" in run
+    assert "--validate-release-coverage" in run
+    assert "--enriched" not in run
+    assert "--sign" not in run
+    assert "Generate signed Dex Lens catalog" not in steps
+    assert "Upload Dex Lens catalog for Pages" not in steps
 
 
 def test_lens_catalog_is_generated_before_the_immutable_release_tag_is_pushed() -> None:
@@ -309,7 +309,7 @@ def test_lens_catalog_is_generated_before_the_immutable_release_tag_is_pushed() 
     assert steps.index("Build self-contained vault bundle") < steps.index(
         "Push release branch and immutable tag"
     )
-    assert steps.index("Generate signed Dex Lens catalog") < steps.index(
+    assert steps.index("Validate held Dex Lens catalogue coverage") < steps.index(
         "Push release branch and immutable tag"
     )
     assert steps.index("Push release branch and immutable tag") < steps.index(

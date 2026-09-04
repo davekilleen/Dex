@@ -255,7 +255,18 @@ def discover_mcp_server_source(release_root: Path, path: Path) -> McpServerCandi
         raise LensDiscoveryError(f"MCP server {relative} does not use a dex- server name")
     if not has_list_tools:
         raise LensDiscoveryError(f"MCP server {relative} has no list-tools handler")
-    tools = tuple(sorted(registered_tools | dispatched_tools))
+    advertised_only = sorted(registered_tools - dispatched_tools)
+    dispatched_only = sorted(dispatched_tools - registered_tools)
+    if advertised_only or dispatched_only:
+        mismatches: list[str] = []
+        if advertised_only:
+            mismatches.append("advertised but not dispatchable: " + ", ".join(advertised_only))
+        if dispatched_only:
+            mismatches.append("dispatchable but not advertised: " + ", ".join(dispatched_only))
+        raise LensDiscoveryError(
+            f"MCP server {relative} tool contract mismatch; " + "; ".join(mismatches)
+        )
+    tools = tuple(sorted(registered_tools))
     if not tools:
         raise LensDiscoveryError(f"MCP server {relative} exposes no literal tools")
     return McpServerCandidate(

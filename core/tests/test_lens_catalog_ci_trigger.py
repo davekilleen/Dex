@@ -39,7 +39,9 @@ def _decide(tmp_path: Path, event: str, *paths: str) -> subprocess.CompletedProc
         "scripts/lens-catalog-release-path.py",
         "core/lens_catalog_discovery.py",
         "core/lens_catalog_sources.py",
+        "core/lens_significant_capabilities.py",
         "core/lens-catalog/registry.json",
+        "core/lens-catalog/significant-capabilities.json",
         "core/lifecycle/catalog/official-capabilities.json",
         "core/portable_contract.py",
         "core/capabilities.py",
@@ -47,6 +49,7 @@ def _decide(tmp_path: Path, event: str, *paths: str) -> subprocess.CompletedProc
         ".claude/skills/daily-plan/SKILL.md",
         ".claude/skills/_available/sales/account-plan/SKILL.md",
         "package.json",
+        "package-lock.json",
         "CHANGELOG.md",
     ),
 )
