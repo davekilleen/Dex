@@ -7,7 +7,41 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.8] — (2026-09-04)
+## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
+
+A sharp-eyed beta tester stopped an update one step before it quietly erased a
+month of instructions she had written directly into Dex's main instructions
+page. That page is rebuilt during every update from the release's wording plus
+your protected personal block — anything typed elsewhere on it was silently
+dropped, and the preview showed only a small size change. She caught it. Dex
+should have.
+
+**What this fixes for you:**
+
+* **An update now refuses to write over words that exist only on your
+  instructions page.** If it finds lines you typed there directly, it leaves
+  that page exactly as it was and lists each line, with an offer to move them
+  into your protected block so the next update goes through cleanly. Nothing
+  is moved or removed without your yes.
+* **You see the lines, not a number.** Where the preview used to report a
+  size change, the update now names the exact lines that would have been
+  lost — the difference between "tidied up" and "a month of your edits gone"
+  is finally visible before anything happens.
+* **The between-updates refresh got the same protection.** Dex keeps the
+  instructions page in step with your protected block as you customise it;
+  that background refresh now also declines to replace any line you typed
+  directly, instead of quietly overwriting it.
+* **The health checkup warns you early.** Ask Dex for a checkup and it now
+  spots lines living only on the live page, names them, and offers to move
+  them into your protected block — never automatically.
+* **Your pillars finally show up.** The instructions page filled in your name,
+  role and company from setup but left Pillars on "Not yet configured" even
+  when you had configured them, because it looked in the wrong place. It now
+  reads them from where they actually live.
+
+All of it from the same beta tester whose feedback shaped the last release —
+she checked the update's work herself and stopped in time. This release makes
+Dex do that checking for everyone.
 
 ## [1.97.7] — Changing jobs keeps everything, and tasks get a home under each goal (2026-09-03)
 
