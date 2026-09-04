@@ -7,44 +7,115 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
+## [1.97.8] — Changing jobs keeps everything, and tasks get a home under each goal (2026-09-04)
 
-A sharp-eyed beta tester stopped an update one step before it quietly erased a
-month of instructions she had written directly into Dex's main instructions
-page. That page is rebuilt during every update from the release's wording plus
-your protected personal block — anything typed elsewhere on it was silently
-dropped, and the preview showed only a small size change. She caught it. Dex
-should have.
+The last goal in your quarterly plan could pick up checkboxes that belonged to
+the next section — carried work, a divider, a later heading. Dex then treated
+that unrelated list as milestones for the goal, so progress looked further
+along than it was.
 
 **What this fixes for you:**
 
-* **An update now refuses to write over words that exist only on your
-  instructions page.** If it finds lines you typed there directly, it leaves
-  that page exactly as it was and lists each line, with an offer to move them
-  into your protected block so the next update goes through cleanly. Nothing
-  is moved or removed without your yes.
-* **You see the lines, not a number.** Where the preview used to report a
-  size change, the update now names the exact lines that would have been
-  lost — the difference between "tidied up" and "a month of your edits gone"
-  is finally visible before anything happens.
-* **The between-updates refresh got the same protection.** Dex keeps the
-  instructions page in step with your protected block as you customise it;
-  that background refresh now also declines to replace any line you typed
-  directly, instead of quietly overwriting it.
-* **The health checkup warns you early.** Ask Dex for a checkup and it now
-  spots lines living only on the live page, names them, and offers to move
-  them into your protected block — never automatically.
-* **Your pillars finally show up.** The instructions page filled in your name,
-  role and company from setup but left Pillars on "Not yet configured" even
-  when you had configured them, because it looked in the wrong place. It now
-  reads them from where they actually live.
-* **Work planning tools on Windows now read your weekly file correctly.** A
-  notes emoji in that file no longer blocks week progress, task lists,
-  summaries, scheduling suggestions, or creating a task.
+* **A new heading or a divider ends the goal.** Checkboxes below that line stay
+  out of the goal's milestones. Real milestones above the line are unchanged.
+* **The daily plan no longer treats every unread email as the headline backlog.**
+  Promotions and other folders could make the plan say hundreds when only a few
+  messages were in Primary or Inbox. The headline now counts that attention
+  inbox, and omits the number if the source cannot scope it reliably.
+* **Creating a task no longer refuses a company Dex already has, just because
+  the page filename is the short name and the display name is longer.** A
+  filename-only match is enough. Close-but-not-exact names still get a list of
+  suggestions instead of a guess.
+* **Blocked tasks no longer stay behind after Dex says their status changed.**
+  The task tool now recognizes the blocked marker in the main list and other
+  copies, can mark a task blocked, and completes every matching copy together.
+* **Weekly progress no longer ignores a completed task the priority already
+  named by ID in Success criteria.** Progress stayed “not started” unless that
+  task also had a separate weekly-priority backlink. Only exact task IDs count;
+  close names are still ignored.
+* **Calendar no longer attaches a meeting attendee to the wrong person just
+  because another person page mentioned that email in its notes.** Dex now
+  matches attendee emails only against recorded person email fields. The
+  correct structured-email page still resolves.
+* **Changing roles no longer quietly wipes your settings.** Re-running setup
+  after a job or role change used to reset everything you didn't re-answer —
+  calendar connection, journaling, meeting sources, a non-standard fiscal
+  year, and more — and switched back on features you had turned off. Now every
+  setting you don't re-answer carries forward unchanged, features you disabled
+  stay off, and before anything is written Dex shows you the exact list of
+  settings that will change, old value to new. Your original setup date is
+  kept, with the reconfiguration recorded alongside it. Thanks to the beta
+  user whose role change surfaced this.
+* **Quarter goals written in your own words now count.** If you wrote your
+  quarterly goals as a simple list instead of the structured layout, Dex
+  silently treated the page as empty — no goal links, no goal progress,
+  anywhere. Dex now recognizes a plain goal list, tells you what it found, and
+  offers once to structure it so tasks and weekly priorities can link to it.
+  The starter page now shows a worked example in the shape Dex reads.
+* **Asking for blocked tasks now shows the tasks you marked blocked.** The
+  blocked-task list only looked for words like “waiting” in the title and
+  ignored the actual blocked marker. It now returns everything marked blocked,
+  and a task marked “started” finally keeps that state instead of reverting to
+  not-started.
+* **New tasks land in the right place.** A task created without saying where
+  now files under its own priority's section in your task list instead of a
+  catch-all "Next Week" heading, and the guide no longer teaches a task format
+  Dex couldn't actually read — following the old examples silently dropped the
+  goal and week links they promised.
+* **Dex can now tell you which tasks serve no goal.** The alignment check
+  used to always report zero orphaned tasks; it now genuinely lists open tasks
+  linked to neither a quarterly goal nor a weekly priority.
+* **Your task list finally has a middle layer between quarter goals and the
+  week.** Everything used to land in one flat list, and the running backlog
+  under each goal lived nowhere. Ask Dex "what's under this goal" and it now
+  shows the open work grouped by the goal it serves, flags what has sat
+  untouched for three weeks or more, and lets you mark what gets picked up
+  first when that goal earns week-time. Weekly planning then suggests those
+  chosen items by name instead of guessing. Thanks to the beta user whose
+  forty-task swamp shaped this.
+* **A new `/goal-backlog` command grooms the swamp with you.** One goal at a
+  time: confirm the doubtful links, retire what's dead — finished, parked to a
+  Someday list, or deleted only after you've seen the exact lines and said yes
+  for that task — and set the pick-up order for the survivors. Nothing is ever
+  removed silently.
+* **Changing roles is now snapshot-protected.** Before a role change rewrites
+  your settings, Dex saves an exact copy of them, and afterwards it checks the
+  result against what you actually re-answered and tells you plainly:
+  "Changed (you chose): role, company. Carried forward: 31 settings.
+  Lost: none." If anything was lost or changed that you didn't ask for, the
+  transition stops, says so, and can put your settings back exactly as they
+  were. The health checkup also watches the latest snapshot and flags drift.
+* **Changing jobs is now a guided transition, not a weekend of manual
+  reshaping.** Tell Dex "I changed jobs" and the new `/change-job` command
+  walks the whole move: the setup questions again with every unanswered
+  setting carried forward, your people re-sorted for the new work email,
+  the old role's goals, priorities and projects archived — never deleted,
+  each project your call to carry, close or park — and open tasks re-pointed
+  at the new pillars. It ends with a plain record of what changed and how to
+  undo any single step. Built from a beta user's report of redoing a role
+  restructure by hand.
+* **A new company email domain no longer leaves your people filed wrong.**
+  After a role change, ex-colleagues used to stay filed as Internal forever
+  and new colleagues landed as External. Dex can now re-check every person
+  against your current company domain and move them to the right side —
+  showing you the full plan first, never guessing when a page has no email
+  recorded, and never overwriting anything.
 
-Most of it from the same beta tester whose feedback shaped the last release —
-she checked the update's work herself and stopped in time. This release makes
-Dex do that checking for everyone.
+**Also in this release:**
+
+* **An update can no longer overwrite instructions you typed directly into
+  Dex's main page.** Dex now refuses, shows you the exact lines at risk, and
+  offers to move them into your protected block — nothing happens without your
+  yes. The between-updates refresh and the health checkup got the same
+  protection.
+* **Your pillars finally show up** on the instructions page — it was reading
+  the wrong place.
+* **Work planning tools on Windows** now read your weekly file correctly when
+  it contains a notes emoji.
+
+From the same beta tester whose feedback shaped this release — she caught the
+instructions-page issue one step before an update would have erased a month of
+her edits. This release makes Dex do that checking for everyone.
 
 ## [1.97.7] — Changing jobs keeps everything, and tasks get a home under each goal (2026-09-03)
 
