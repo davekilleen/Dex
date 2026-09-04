@@ -62,10 +62,28 @@
     # compare modification times only. Deliberately imprecise: a touch with no
     # content change trips it, and the only cost is one recompose that finds
     # the bytes already correct and writes nothing.
+    SNAPSHOT_FILE="$CLAUDE_DIR/System/.dex/claude-composed-baseline.md"
     if [ -f "$CLAUDE_FILE" ]; then
-        CUSTOM_MTIME=$(stat -f %m "$CUSTOM_FILE" 2>/dev/null || stat -c %Y "$CUSTOM_FILE" 2>/dev/null) || exit 0
-        CLAUDE_MTIME=$(stat -f %m "$CLAUDE_FILE" 2>/dev/null || stat -c %Y "$CLAUDE_FILE" 2>/dev/null) || exit 0
-        [ "$CUSTOM_MTIME" -gt "$CLAUDE_MTIME" ] 2>/dev/null || exit 0
+        # GNU stat first: on Linux, `stat -f %m` SUCCEEDS with filesystem
+        # info (BSD -f means mtime, GNU -f means file system), so trying the
+        # BSD form first silently broke this gate on every Linux vault.
+        CUSTOM_MTIME=$(stat -c %Y "$CUSTOM_FILE" 2>/dev/null || stat -f %m "$CUSTOM_FILE" 2>/dev/null) || exit 0
+        CLAUDE_MTIME=$(stat -c %Y "$CLAUDE_FILE" 2>/dev/null || stat -f %m "$CLAUDE_FILE" 2>/dev/null) || exit 0
+        if ! [ "$CUSTOM_MTIME" -gt "$CLAUDE_MTIME" ] 2>/dev/null; then
+            # Quiet tick. The direct-edit guard needs a record of what the
+            # composer last wrote, and the one safe moment to create it
+            # retroactively is while the live file still matches its expected
+            # composition — so when that record is missing, start Python once
+            # to write it. One extra stat on every later tick; the Python
+            # start happens at most once per vault.
+            [ -f "$SNAPSHOT_FILE" ] && exit 0
+            (cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -c '
+from pathlib import Path
+from core.utils.claude_composition import _bootstrap_snapshot
+_bootstrap_snapshot(Path("."))
+' >/dev/null 2>&1) || true
+            exit 0
+        fi
     fi
 
     # Expensive path, reached only when the custom block has actually moved.

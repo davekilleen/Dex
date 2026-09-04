@@ -802,3 +802,58 @@ def test_direct_edit_outside_the_block_still_refuses_after_a_custom_edit(tmp_pat
     assert result.startswith("unavailable:")
     assert "1 line" in result
     assert b"A line she wrote at the bottom." in (root / "CLAUDE.md").read_bytes()
+
+
+def _run_refresh_hook(root: Path) -> str:
+    """Run the real bash hook the way the harness does, against a fixture vault."""
+    import sys
+
+    env = dict(os.environ)
+    env.update({
+        "CLAUDE_PROJECT_DIR": str(root),
+        "DEX_PYTHON": sys.executable,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+    })
+    hook = Path(__file__).resolve().parents[2] / ".claude/hooks/claude-composition-refresh.sh"
+    done = subprocess.run(
+        ["bash", str(hook)], capture_output=True, text=True, timeout=60, env=env,
+    )
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def test_the_bash_hook_bootstraps_the_snapshot_on_a_quiet_tick(tmp_path):
+    """The production path: the bash gate exits before Python on quiet ticks,
+    so the bootstrap must be reachable from the hook itself, not only from the
+    Python no-op branch tests call directly (review-bot round 3)."""
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    # Make the tick quiet: CLAUDE.md newer than the custom block.
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    _run_refresh_hook(root)
+
+    assert (root / SNAPSHOT_RELATIVE).exists()
+
+    # And the flow the wedge broke now works through the real hook: reword a
+    # custom line, the hook recomposes, the old line is gone.
+    os.utime(root / "CLAUDE.md", (past, past))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+    out = _run_refresh_hook(root)
+    assert "applied" in out
+    assert b"Do the new thing." in (root / "CLAUDE.md").read_bytes()
+
+
+def test_the_bash_hook_stays_quiet_once_the_snapshot_exists(tmp_path):
+    """The everyday path must not start Python: with the snapshot present and
+    nothing newer, the hook is stats-only and prints nothing."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    assert _run_refresh_hook(root) == ""
