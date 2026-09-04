@@ -38,8 +38,11 @@ should have.
   role and company from setup but left Pillars on "Not yet configured" even
   when you had configured them, because it looked in the wrong place. It now
   reads them from where they actually live.
+* **Work planning tools on Windows now read your weekly file correctly.** A
+  notes emoji in that file no longer blocks week progress, task lists,
+  summaries, scheduling suggestions, or creating a task.
 
-All of it from the same beta tester whose feedback shaped the last release —
+Most of it from the same beta tester whose feedback shaped the last release —
 she checked the update's work herself and stopped in time. This release makes
 Dex do that checking for everyone.
 
