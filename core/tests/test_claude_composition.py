@@ -22,9 +22,11 @@ from core.utils import doctor
 from core.utils.claude_composition import (
     RecomposeUnavailable,
     compose_current,
+    detect_user_edits,
     installed_release_tag,
     needs_recompose,
     recompose_if_needed,
+    user_authored_lines,
 )
 
 TEMPLATE = (
@@ -35,6 +37,12 @@ TEMPLATE = (
 )
 VERSION = "9.9.9"
 TAG = f"dist/release/v{VERSION}-abc1234"
+
+# Stale-but-explained: every line here appears in the expected composition, so
+# the direct-edit guard lets the refresh overwrite it. Content that is NOT
+# explained is user data now, and overwriting it is refused — those cases are
+# covered under "direct edits" below.
+STALE_EXPLAINED = b"# Dex\n\nPreamble that the release owns.\n"
 
 
 def _vault(tmp_path: Path, *, custom: bytes | None = b"\n## Mine\n\nDo the thing.\n") -> Path:
@@ -72,7 +80,7 @@ def test_composes_the_custom_block_into_claude(tmp_path):
 
 def test_recompose_writes_when_custom_is_newer(tmp_path):
     root = _vault(tmp_path)
-    (root / "CLAUDE.md").write_bytes(b"stale\n")
+    (root / "CLAUDE.md").write_bytes(STALE_EXPLAINED)
     os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
 
     assert needs_recompose(root) is True
@@ -201,7 +209,7 @@ def test_the_tier2_advice_names_a_route_that_actually_repairs(tmp_path):
     this walks both routes and checks which one actually ends in OK.
     """
     root = _vault(tmp_path)
-    (root / "CLAUDE.md").write_bytes(b"stale, missing the custom block\n")
+    (root / "CLAUDE.md").write_bytes(STALE_EXPLAINED)
     context = _context(root)
 
     advice = doctor._probe_claude_composition(context).heal.action
@@ -229,7 +237,7 @@ def test_mtime_gate_does_not_repair_stale_claude_written_after_custom(tmp_path):
 def test_force_recomposes_when_content_has_drifted_but_custom_is_not_newer(tmp_path):
     """The force/bytes path must write the case the mtime gate cannot see."""
     root = _vault(tmp_path)
-    (root / "CLAUDE.md").write_bytes(b"stale, missing the custom block\n")
+    (root / "CLAUDE.md").write_bytes(STALE_EXPLAINED)
 
     assert recompose_if_needed(root, force=True) == "recomposed"
     assert b"Do the thing." in (root / "CLAUDE.md").read_bytes()
@@ -239,7 +247,7 @@ def test_force_recomposes_when_content_has_drifted_but_custom_is_not_newer(tmp_p
 def test_doctor_heal_repairs_content_drift_when_custom_is_not_newer(tmp_path):
     """The prescribed heal must actually write, not point at a no-op path."""
     root = _vault(tmp_path)
-    (root / "CLAUDE.md").write_bytes(b"stale, missing the custom block\n")
+    (root / "CLAUDE.md").write_bytes(STALE_EXPLAINED)
     context = _context(root)
 
     assert doctor._probe_claude_composition(context).verdict == "BROKEN"
@@ -254,7 +262,7 @@ def test_doctor_heal_repairs_content_drift_when_custom_is_not_newer(tmp_path):
 def test_refuses_to_write_when_mutation_lock_is_held(tmp_path):
     """A hook must not compose from a stale tag over an in-flight update."""
     root = _vault(tmp_path)
-    stale = b"stale, must not be overwritten during an update\n"
+    stale = STALE_EXPLAINED
     (root / "CLAUDE.md").write_bytes(stale)
     os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
     assert needs_recompose(root) is True
@@ -339,3 +347,638 @@ def test_probe_reports_unknown_when_it_cannot_check(tmp_path):
 
     assert result.verdict == "UNKNOWN"
     assert "Could not check" in result.detail
+
+
+# --- Direct edits to CLAUDE.md ------------------------------------------------
+#
+# CLAUDE.md is composed from the release template plus CLAUDE-custom.md; the
+# live file is never an input. These tests pin the rule that a line typed
+# straight into CLAUDE.md is never silently destroyed — not by the update
+# composer, and not by the between-update refresh, force included.
+
+from core.update import apply_update  # noqa: E402
+
+
+def test_detector_flags_only_lines_the_baseline_does_not_explain():
+    baseline = b"# Dex\n\nShipped line.\nAnother shipped line.\n"
+    live = (
+        b"# Dex\n"
+        b"\n"
+        b"   \n"  # whitespace-only: never counted
+        b"Shipped line.\n"
+        b"My own rule.\n"
+        b"My own rule.\n"  # duplicate: collapsed
+        b"## USER_EXTENSIONS_START\n"  # scaffolding: never counted
+        b"## USER_EXTENSIONS_END\n"
+        b"Another personal rule.\n"
+    )
+
+    assert user_authored_lines(live, baseline) == (
+        "My own rule.",
+        "Another personal rule.",
+    )
+    assert user_authored_lines(baseline, baseline) == ()
+
+
+def test_detect_user_edits_fails_closed_when_baseline_is_unavailable(tmp_path):
+    """No baseline means UNKNOWN, never "no edits"."""
+    root = _vault(tmp_path)
+    (root / "CLAUDE.md").write_bytes(b"a month of direct edits\n")
+    shutil.rmtree(root / ".dex/brain.git")
+
+    with pytest.raises(RecomposeUnavailable):
+        detect_user_edits(root)
+
+
+def test_detect_user_edits_sees_a_populated_marker_block_as_user_authored(tmp_path):
+    """Words typed inside the live markers are the clearest direct-edit case."""
+    root = _vault(tmp_path, custom=None)
+    (root / "CLAUDE.md").write_bytes(
+        b"# Dex\n\nPreamble that the release owns.\n\n"
+        b"## USER_EXTENSIONS_START\n"
+        b"Typed straight into the live file.\n"
+        b"## USER_EXTENSIONS_END\n\n"
+        b"## Trailing release section\n"
+    )
+
+    assert detect_user_edits(root) == ("Typed straight into the live file.",)
+
+
+def test_clean_vault_composes_unchanged_and_without_refusal(tmp_path):
+    """A live file that byte-matches the composition must simply pass."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+
+    composed = apply_update._compose_claude(TEMPLATE, root)
+
+    assert composed == (root / "CLAUDE.md").read_bytes()
+    assert detect_user_edits(root) == ()
+
+
+def test_composer_refuses_and_lists_direct_edits_outside_markers(tmp_path):
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    live = (root / "CLAUDE.md").read_bytes() + (
+        b"\nRemember: check the fleet dashboard before standup.\n"
+        b"Never touch the pricing sheet on Fridays.\n"
+    )
+    (root / "CLAUDE.md").write_bytes(live)
+
+    with pytest.raises(CompositionError) as refusal:
+        apply_update._compose_claude(TEMPLATE, root)
+
+    message = str(refusal.value)
+    assert "2 lines" in message
+    assert "Remember: check the fleet dashboard before standup." in message
+    assert "Never touch the pricing sheet on Fridays." in message
+    assert "move these lines into CLAUDE-custom.md (your protected block)" in message
+    assert "Dex can do this for you" in message
+    assert (root / "CLAUDE.md").read_bytes() == live, "refusal must not write"
+
+
+def test_composer_listing_is_bounded_to_forty_lines(tmp_path):
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    edits = b"".join(b"Edit number %d.\n" % index for index in range(45))
+    (root / "CLAUDE.md").write_bytes((root / "CLAUDE.md").read_bytes() + edits)
+
+    with pytest.raises(CompositionError) as refusal:
+        apply_update._compose_claude(TEMPLATE, root)
+
+    message = str(refusal.value)
+    assert "45 lines" in message
+    assert "Edit number 39." in message
+    assert "Edit number 40." not in message
+    assert "...and 5 more" in message
+
+
+def test_composer_refuses_the_reporters_shape(tmp_path):
+    """Markers deleted, a month of direct edits, stale CLAUDE-custom.md."""
+    root = _vault(tmp_path)
+    (root / "CLAUDE.md").write_bytes(
+        b"# Dex\n\nPreamble that the release owns.\n\n"
+        b"Rule added by hand in week one.\n"
+        b"Rule added by hand in week three.\n\n"
+        b"## Trailing release section\n"
+    )
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    # The update path refuses rather than composing over her edits.
+    with pytest.raises(CompositionError, match="2 lines"):
+        apply_update._compose_claude(TEMPLATE, root)
+
+    # The everyday hook path does not fire (custom is older)...
+    assert recompose_if_needed(root) == "current"
+    # ...and the force path refuses instead of overwriting.
+    forced = recompose_if_needed(root, force=True)
+    assert forced.startswith("unavailable:")
+    assert "2 lines were edited directly" in forced
+    assert b"week one" in (root / "CLAUDE.md").read_bytes()
+
+
+def test_recompose_refuses_direct_edits_even_when_custom_is_newer(tmp_path):
+    """The normal (mtime-gated) path must refuse too, not just force."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    live = (root / "CLAUDE.md").read_bytes() + b"\nA rule that lives only here.\n"
+    (root / "CLAUDE.md").write_bytes(live)
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").touch()
+
+    assert needs_recompose(root) is True
+    result = recompose_if_needed(root)
+
+    assert result.startswith("unavailable:")
+    assert "1 line was edited directly" in result
+    assert (root / "CLAUDE.md").read_bytes() == live
+
+
+def test_composer_fails_closed_without_a_baseline(tmp_path):
+    """No provable baseline: refuse when live lines are absent from the new
+    output, say plainly the baseline could not be proved, and never write."""
+    root = _vault(tmp_path)
+    (root / "System/.dex/lifecycle/activation.json").unlink()
+    (root / "CLAUDE.md").write_bytes(b"A line composition would destroy.\n")
+
+    with pytest.raises(CompositionError) as refusal:
+        apply_update._compose_claude(TEMPLATE, root)
+
+    message = str(refusal.value)
+    assert "could not be proved" in message
+    assert "A line composition would destroy." in message
+
+
+def test_composer_passes_without_a_baseline_when_nothing_would_be_lost(tmp_path):
+    """Unprovable baseline + a live file the new output fully explains: no
+    refusal — every live line survives the rewrite."""
+    root = _vault(tmp_path)
+    (root / "System/.dex/lifecycle/activation.json").unlink()
+    expected = apply_update._compose_claude(TEMPLATE, root, check_live=False)
+
+    # Byte-identical live file: passes outright.
+    (root / "CLAUDE.md").write_bytes(expected)
+    assert apply_update._compose_claude(TEMPLATE, root) == expected
+
+    # Differs, but every line is explained by the new output.
+    (root / "CLAUDE.md").write_bytes(b"# Dex\n\nDo the thing.\n")
+    assert apply_update._compose_claude(TEMPLATE, root) == expected
+
+
+def test_compose_current_falls_back_to_the_installed_pin(tmp_path):
+    """A missing activation record must not blind the baseline when the brain
+    still pins the installed release at refs/dex/installed."""
+    root = _vault(tmp_path)
+    baseline = compose_current(root)
+    (root / "System/.dex/lifecycle/activation.json").unlink()
+    env = {"PATH": "/usr/bin:/bin:/usr/local/bin"}
+    commit = subprocess.run(
+        ["git", f"--git-dir={root / '.dex/brain.git'}", "rev-parse", f"{TAG}^{{commit}}"],
+        capture_output=True, text=True, check=True, env=env,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", f"--git-dir={root / '.dex/brain.git'}", "update-ref", "refs/dex/installed", commit],
+        check=True, env=env,
+    )
+
+    assert compose_current(root) == baseline
+
+
+# --- The direct-edits Doctor probe -------------------------------------------
+
+
+def test_direct_edits_probe_is_ok_when_composition_matches(tmp_path):
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+
+    result = doctor._probe_claude_direct_edits(_context(root))
+
+    assert result.verdict == "OK"
+    assert "matches its expected composition" in result.detail
+
+
+def test_direct_edits_probe_is_ok_when_drift_is_recoverable(tmp_path):
+    """Stale-but-explained content loses nothing; the refresh handles it."""
+    root = _vault(tmp_path)
+    (root / "CLAUDE.md").write_bytes(STALE_EXPLAINED)
+
+    result = doctor._probe_claude_direct_edits(_context(root))
+
+    assert result.verdict == "OK"
+    assert "no direct edits" in result.detail
+
+
+def test_direct_edits_probe_warns_on_the_reporters_shape(tmp_path):
+    """Direct edits with a stale custom file: warn, name the cost, never fix."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / "CLAUDE.md").write_bytes(
+        (root / "CLAUDE.md").read_bytes() + b"\nOnly written here.\n"
+    )
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    result = doctor._probe_claude_direct_edits(_context(root))
+
+    assert result.verdict == "BROKEN"
+    assert "1 line lives only in CLAUDE.md" in result.detail
+    assert "CLAUDE-custom.md is older than CLAUDE.md" in result.detail
+    assert "leave CLAUDE.md untouched" in result.detail
+    assert "Dex can move them" in result.detail
+    assert result.heal is not None
+    assert result.heal.applied is False
+    assert result.heal.tier != 1, "moving someone's words is never auto-applied"
+
+
+def test_direct_edits_probe_is_unknown_when_baseline_is_unavailable(tmp_path):
+    root = _vault(tmp_path)
+    (root / "CLAUDE.md").write_bytes(b"anything\n")
+    shutil.rmtree(root / ".dex/brain.git")
+
+    result = doctor._probe_claude_direct_edits(_context(root))
+
+    assert result.verdict == "UNKNOWN"
+    assert "could not be checked" in result.detail
+
+
+def test_direct_edits_probe_is_ok_when_no_claude_exists(tmp_path):
+    root = _vault(tmp_path)
+
+    result = doctor._probe_claude_direct_edits(_context(root))
+
+    assert result.verdict == "OK"
+    assert "no direct edits to lose" in result.detail
+
+
+def test_composition_probe_stops_prescribing_the_refresh_over_direct_edits(tmp_path):
+    """The deep drift probe must not point at a heal that refuses to run."""
+    root = _vault(tmp_path)
+    (root / "CLAUDE.md").write_bytes(b"stale, missing the custom block\n")
+    context = _context(root)
+
+    result = doctor._probe_claude_composition(context)
+
+    assert result.verdict == "BROKEN"
+    assert "not being loaded" in result.detail
+    assert "would be lost" in result.detail
+    assert "/dex-doctor" not in result.heal.action
+    assert "protected block" in result.heal.action
+
+    # And the heal it no longer prescribes really does refuse.
+    assert doctor._heal_claude_composition(context) is None
+    assert (root / "CLAUDE.md").read_bytes() == b"stale, missing the custom block\n"
+
+
+# --- Shipped wording is never a "user edit" (review-bot finding) -------------
+#
+# The baseline is composed with the CURRENT code against the INSTALLED
+# template, so a behavior change in the composer itself (this release's
+# pillars overlay) makes previously composed output differ from the baseline.
+# Those lines came from a shipped template, not the user's editor — treating
+# them as edits wedged every configured vault behind a false refusal.
+
+
+def _add_release_tag(root: Path, tag: str, template: bytes, tmp_path: Path) -> None:
+    work = tmp_path / f"work-{tag.rsplit('-', 1)[-1]}"
+    work.mkdir()
+    (work / "CLAUDE.md").write_bytes(template)
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin:/usr/local/bin"}
+    subprocess.run(["git", "init", "-q"], cwd=work, check=True, env=env)
+    subprocess.run(["git", "add", "-A"], cwd=work, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "old release"], cwd=work, check=True, env=env)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=work, check=True, env=env,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    brain = root / ".dex/brain.git"
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "fetch", "-q", str(work),
+         f"{commit}:refs/heads/old-release"],
+        check=True, env=env,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "tag", tag, "refs/heads/old-release"],
+        check=True, env=env,
+    )
+
+
+OLD_TEMPLATE = (
+    b"# Dex\n\nPreamble that the release owns.\n\n"
+    b"Old wording an earlier release shipped.\n\n"
+    b"## USER_EXTENSIONS_START\n"
+    b"## USER_EXTENSIONS_END\n\n"
+    b"## Trailing release section\n"
+)
+
+
+def test_true_user_edits_excuses_lines_from_any_shipped_template(tmp_path):
+    from core.utils.claude_composition import true_user_edits
+
+    root = _vault(tmp_path)
+    _add_release_tag(root, "dist/release/v9.9.8-0ld1234", OLD_TEMPLATE, tmp_path)
+    expected = compose_current(root)
+    live = expected + b"Old wording an earlier release shipped.\nA line she wrote.\n"
+
+    edits = true_user_edits(live, expected, root)
+
+    assert edits == ("A line she wrote.",), (
+        "shipped wording must be excused; the user's own line must not be"
+    )
+
+
+def test_recompose_overwrites_stale_shipped_wording(tmp_path):
+    """A live file that lags a composer behavior change is not hand-edited.
+
+    The refresh must bring it forward instead of refusing — the review-bot
+    scenario where every configured vault would have been stuck.
+    """
+    root = _vault(tmp_path)
+    _add_release_tag(root, "dist/release/v9.9.8-0ld1234", OLD_TEMPLATE, tmp_path)
+    (root / "CLAUDE.md").write_bytes(
+        b"# Dex\n\nPreamble that the release owns.\n\n"
+        b"Old wording an earlier release shipped.\n"
+    )
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+
+    assert recompose_if_needed(root) == "recomposed"
+    out = (root / "CLAUDE.md").read_bytes()
+    assert b"Old wording an earlier release shipped." not in out
+    assert b"Do the thing." in out
+
+
+def test_recompose_still_refuses_a_real_user_line(tmp_path):
+    """The shipped-wording excuse must not weaken protection of real edits."""
+    root = _vault(tmp_path)
+    _add_release_tag(root, "dist/release/v9.9.8-0ld1234", OLD_TEMPLATE, tmp_path)
+    (root / "CLAUDE.md").write_bytes(
+        b"# Dex\n\nOld wording an earlier release shipped.\nA line she wrote.\n"
+    )
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+
+    result = recompose_if_needed(root)
+
+    assert result.startswith("unavailable:")
+    assert "1 line" in result
+    assert (
+        b"A line she wrote." in (root / "CLAUDE.md").read_bytes()
+    ), "the refused file must be untouched"
+
+
+# --- The everyday custom-edit flow must not wedge (review-bot round 2) --------
+#
+# Lines a PREVIOUS composition wrote — from an older custom block or an older
+# profile — are absent from the new expected composition, but their home of
+# record is the user's own source file, and editing that file is the consent
+# for the projection to change. Treating them as direct edits froze CLAUDE.md
+# on old wording after any normal customisation change.
+
+
+def test_editing_the_custom_block_still_refreshes(tmp_path):
+    """Reword a custom line; the refresh must apply it, not refuse."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+
+    assert recompose_if_needed(root) == "recomposed"
+    out = (root / "CLAUDE.md").read_bytes()
+    assert b"Do the new thing." in out
+    assert b"Do the thing." not in out
+
+
+def test_without_history_the_old_custom_line_stays_protected(tmp_path):
+    """No recorded history means fail closed: the line might be a direct edit.
+
+    The bootstrap records history on the first quiet tick of a healthy vault,
+    so this window is one custom edit made before any session tick — rare, and
+    the refusal carries the rescue rather than losing anything.
+    """
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+
+    assert recompose_if_needed(root).startswith("unavailable:")
+
+
+def test_quiet_tick_bootstraps_the_history_for_a_healthy_vault(tmp_path):
+    """A matching live file records its snapshot on an ordinary no-op tick.
+
+    This is how vaults updated before any custom edit get their history: the
+    hook's cheap path notices the missing snapshot exactly once.
+    """
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+
+    # An ordinary tick with nothing to do (custom not newer than CLAUDE.md).
+    assert recompose_if_needed(root) == "current"
+    assert (root / SNAPSHOT_RELATIVE).exists()
+
+    # And the everyday flow now works: reword a custom line, refresh applies.
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+    assert recompose_if_needed(root) == "recomposed"
+    assert b"Do the new thing." in (root / "CLAUDE.md").read_bytes()
+
+
+def test_direct_edit_outside_the_block_still_refuses_after_a_custom_edit(tmp_path):
+    """Consent to change the block is not consent to lose out-of-block words."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    live = (root / "CLAUDE.md").read_bytes()
+    (root / "CLAUDE.md").write_bytes(live + b"A line she wrote at the bottom.\n")
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+
+    result = recompose_if_needed(root)
+
+    assert result.startswith("unavailable:")
+    assert "1 line" in result
+    assert b"A line she wrote at the bottom." in (root / "CLAUDE.md").read_bytes()
+
+
+def _run_refresh_hook(root: Path) -> str:
+    """Run the real bash hook the way the harness does, against a fixture vault."""
+    import sys
+
+    env = dict(os.environ)
+    env.update({
+        "CLAUDE_PROJECT_DIR": str(root),
+        "DEX_PYTHON": sys.executable,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+    })
+    hook = Path(__file__).resolve().parents[2] / ".claude/hooks/claude-composition-refresh.sh"
+    done = subprocess.run(
+        ["bash", str(hook)], capture_output=True, text=True, timeout=60, env=env,
+    )
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def test_the_bash_hook_bootstraps_the_snapshot_on_a_quiet_tick(tmp_path):
+    """The production path: the bash gate exits before Python on quiet ticks,
+    so the bootstrap must be reachable from the hook itself, not only from the
+    Python no-op branch tests call directly (review-bot round 3)."""
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    # Make the tick quiet: CLAUDE.md newer than the custom block.
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    _run_refresh_hook(root)
+
+    assert (root / SNAPSHOT_RELATIVE).exists()
+
+    # And the flow the wedge broke now works through the real hook: reword a
+    # custom line, the hook recomposes, the old line is gone.
+    os.utime(root / "CLAUDE.md", (past, past))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+    out = _run_refresh_hook(root)
+    assert "applied" in out
+    assert b"Do the new thing." in (root / "CLAUDE.md").read_bytes()
+
+
+def test_the_bash_hook_stays_quiet_once_the_snapshot_exists(tmp_path):
+    """The everyday path must not start Python: with the snapshot present and
+    nothing newer, the hook is stats-only and prints nothing."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    assert _run_refresh_hook(root) == ""
+
+
+def test_a_drifted_vault_bootstraps_at_most_once_per_claude_change(tmp_path):
+    """Review-bot round 4: a vault the bootstrap can never satisfy must not pay
+    an interpreter start on every prompt. The attempt marker bounds retries to
+    one per change of CLAUDE.md."""
+    import sys
+
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    # Drift the vault so the bootstrap can never record a snapshot.
+    live = (root / "CLAUDE.md").read_bytes()
+    (root / "CLAUDE.md").write_bytes(live + b"A line she wrote at the bottom.\n")
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+
+    # Count Python starts through a wrapper the hook discovers via DEX_PYTHON.
+    counter = tmp_path / "starts"
+    wrapper = tmp_path / "python-counter.sh"
+    wrapper.write_text(
+        f'#!/bin/bash\necho x >> "{counter}"\nexec "{sys.executable}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    env = dict(os.environ)
+    env.update({
+        "CLAUDE_PROJECT_DIR": str(root),
+        "DEX_PYTHON": str(wrapper),
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+    })
+    hook = Path(__file__).resolve().parents[2] / ".claude/hooks/claude-composition-refresh.sh"
+
+    def tick() -> None:
+        done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                              timeout=60, env=env)
+        assert done.returncode == 0
+
+    def starts() -> int:
+        return len(counter.read_text().splitlines()) if counter.exists() else 0
+
+    tick()
+    assert starts() == 1, "first quiet tick attempts the bootstrap"
+    assert not (root / SNAPSHOT_RELATIVE).exists(), "drifted vault records nothing"
+    tick()
+    tick()
+    assert starts() == 1, "later quiet ticks are stats-only"
+
+    # CLAUDE.md changing (an update healing it) earns exactly one new attempt.
+    time.sleep(1.1)
+    (root / "CLAUDE.md").write_bytes(live)
+    tick()
+    assert starts() == 2
+    assert (root / SNAPSHOT_RELATIVE).exists(), "healed file records on the fresh attempt"
+    tick()
+    assert starts() == 2, "and the snapshot gate holds from then on"
+
+
+def test_a_transient_bootstrap_failure_retries_on_the_slow_clock(tmp_path):
+    """Review-bot round 5: a repair that never touches CLAUDE.md — a brain
+    store that was briefly unreadable, a heal elsewhere — must still get a
+    fresh bootstrap attempt. The marker earns a retry after six hours, so a
+    transient failure is not mistaken for lasting drift."""
+    import sys
+
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    # A genuinely QUIET tick: the custom block is older than CLAUDE.md, so the
+    # hook's cheap gate does not trip and only the quiet-branch bootstrap —
+    # where the clock condition lives — can start Python. CLAUDE.md and the
+    # marker share a timestamp, so the changed-file condition can never fire
+    # here: the retry below proves the clock condition alone.
+    stale = time.time() - 7 * 3600
+    os.utime(root / "CLAUDE-custom.md", (stale - 3600, stale - 3600))
+    os.utime(root / "CLAUDE.md", (stale, stale))
+    marker = root / (SNAPSHOT_RELATIVE + ".attempted")
+    marker.write_bytes(b"attempted\n")
+    os.utime(marker, (stale, stale))
+
+    counter = tmp_path / "starts"
+    wrapper = tmp_path / "python-counter.sh"
+    wrapper.write_text(
+        f'#!/bin/bash\necho x >> "{counter}"\nexec "{sys.executable}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    env = dict(os.environ)
+    env.update({
+        "CLAUDE_PROJECT_DIR": str(root),
+        "DEX_PYTHON": str(wrapper),
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+    })
+    hook = Path(__file__).resolve().parents[2] / ".claude/hooks/claude-composition-refresh.sh"
+    done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                          timeout=60, env=env)
+    assert done.returncode == 0
+
+    assert counter.exists() and len(counter.read_text().splitlines()) == 1, (
+        "a stale attempt marker earns one fresh try on the clock alone"
+    )
+    assert (root / SNAPSHOT_RELATIVE).exists(), (
+        "the healthy vault records on that retry"
+    )
+
+    # The successful attempt refreshed the marker, so with the snapshot gone
+    # again and CLAUDE.md untouched, neither condition admits a retry.
+    (root / SNAPSHOT_RELATIVE).unlink()
+    done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                          timeout=60, env=env)
+    assert done.returncode == 0
+    assert len(counter.read_text().splitlines()) == 1, (
+        "a fresh marker with an unchanged CLAUDE.md gates the quiet path"
+    )
+
+    # Aging the marker past the window re-admits exactly one attempt, again
+    # with CLAUDE.md untouched — the clock condition, isolated.
+    os.utime(marker, (stale, stale))
+    done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                          timeout=60, env=env)
+    assert done.returncode == 0
+    assert len(counter.read_text().splitlines()) == 2
+    assert (root / SNAPSHOT_RELATIVE).exists()

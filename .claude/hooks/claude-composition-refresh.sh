@@ -62,10 +62,44 @@
     # compare modification times only. Deliberately imprecise: a touch with no
     # content change trips it, and the only cost is one recompose that finds
     # the bytes already correct and writes nothing.
+    SNAPSHOT_FILE="$CLAUDE_DIR/System/.dex/claude-composed-baseline.md"
     if [ -f "$CLAUDE_FILE" ]; then
-        CUSTOM_MTIME=$(stat -f %m "$CUSTOM_FILE" 2>/dev/null || stat -c %Y "$CUSTOM_FILE" 2>/dev/null) || exit 0
-        CLAUDE_MTIME=$(stat -f %m "$CLAUDE_FILE" 2>/dev/null || stat -c %Y "$CLAUDE_FILE" 2>/dev/null) || exit 0
-        [ "$CUSTOM_MTIME" -gt "$CLAUDE_MTIME" ] 2>/dev/null || exit 0
+        # GNU stat first: on Linux, `stat -f %m` SUCCEEDS with filesystem
+        # info (BSD -f means mtime, GNU -f means file system), so trying the
+        # BSD form first silently broke this gate on every Linux vault.
+        CUSTOM_MTIME=$(stat -c %Y "$CUSTOM_FILE" 2>/dev/null || stat -f %m "$CUSTOM_FILE" 2>/dev/null) || exit 0
+        CLAUDE_MTIME=$(stat -c %Y "$CLAUDE_FILE" 2>/dev/null || stat -f %m "$CLAUDE_FILE" 2>/dev/null) || exit 0
+        if ! [ "$CUSTOM_MTIME" -gt "$CLAUDE_MTIME" ] 2>/dev/null; then
+            # Quiet tick. The direct-edit guard needs a record of what the
+            # composer last wrote, and the one safe moment to create it
+            # retroactively is while the live file still matches its expected
+            # composition — so when that record is missing, start Python to
+            # write it. A drifted vault can never produce the record, so the
+            # attempt marker bounds retries: Python starts again only when
+            # CLAUDE.md has changed since the last attempt (an update healing
+            # the file gets exactly one fresh attempt), never once per prompt.
+            [ -f "$SNAPSHOT_FILE" ] && exit 0
+            ATTEMPT_FILE="$SNAPSHOT_FILE.attempted"
+            if [ -f "$ATTEMPT_FILE" ]; then
+                ATTEMPT_MTIME=$(stat -c %Y "$ATTEMPT_FILE" 2>/dev/null || stat -f %m "$ATTEMPT_FILE" 2>/dev/null) || exit 0
+                # Retry when CLAUDE.md changed since the last attempt, or on a
+                # slow clock (every six hours) so a transient failure — a brain
+                # store briefly unreadable, a mid-update race, a heal that
+                # never touched CLAUDE.md — is not mistaken for lasting drift.
+                # A genuinely drifted vault pays at most four starts a day.
+                NOW_EPOCH=$(date +%s 2>/dev/null) || exit 0
+                if ! [ "$CLAUDE_MTIME" -gt "$ATTEMPT_MTIME" ] 2>/dev/null \
+                    && ! [ $((NOW_EPOCH - ATTEMPT_MTIME)) -gt 21600 ] 2>/dev/null; then
+                    exit 0
+                fi
+            fi
+            (cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -c '
+from pathlib import Path
+from core.utils.claude_composition import _bootstrap_snapshot
+_bootstrap_snapshot(Path("."))
+' >/dev/null 2>&1) || true
+            exit 0
+        fi
     fi
 
     # Expensive path, reached only when the custom block has actually moved.

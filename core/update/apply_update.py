@@ -166,7 +166,47 @@ def _read_user_profile(vault_root: Path) -> dict[str, Any] | None:
     return parsed
 
 
-def _profile_from_yaml(profile: dict[str, Any]) -> dict[str, object] | None:
+def _read_pillar_names(vault_root: Path) -> tuple[str, ...]:
+    """Pillar names from ``System/pillars.yaml``, where configured pillars live.
+
+    ``user-profile.yaml`` holds identity fields; the pillars a user actually
+    configured are written to ``System/pillars.yaml`` by onboarding. A missing
+    or empty file means no pillars. A present file that cannot be proved as a
+    regular UTF-8 YAML object fails closed, mirroring ``_read_user_profile``,
+    so composition cannot replace configured pillars with placeholders.
+    """
+    path = vault_root / "System" / "pillars.yaml"
+    if not path.exists() and not path.is_symlink():
+        return ()
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise CompositionError("System/pillars.yaml is not a regular file")
+        raw = path.read_bytes()
+    except OSError as error:
+        raise CompositionError("System/pillars.yaml is unreadable") from error
+    if not raw.strip():
+        return ()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("System/pillars.yaml is not UTF-8") from error
+    import yaml  # lazy: gitignore composition must import this module without PyYAML
+
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise CompositionError("System/pillars.yaml is not valid YAML") from error
+    if parsed is None:
+        return ()
+    if not isinstance(parsed, dict):
+        raise CompositionError("System/pillars.yaml is not an object")
+    return _pillar_names(parsed.get("pillars"))
+
+
+def _profile_from_yaml(
+    profile: dict[str, Any],
+    fallback_pillars: tuple[str, ...] = (),
+) -> dict[str, object] | None:
     """Collect identity fields only when onboarding has actually written them."""
     name = _configured_profile_text(profile.get("name"))
     role = _configured_profile_text(profile.get("role"))
@@ -176,7 +216,7 @@ def _profile_from_yaml(profile: dict[str, Any]) -> dict[str, object] | None:
     formality = None
     if isinstance(communication, dict):
         formality = _configured_profile_text(communication.get("formality"))
-    pillars = _pillar_names(profile.get("pillars"))
+    pillars = _pillar_names(profile.get("pillars")) or fallback_pillars
     if not any((name, role, company_size, working_style, pillars)):
         return None
     return {
@@ -213,9 +253,7 @@ def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
     existing splice can still run.
     """
     profile = _read_user_profile(vault_root)
-    if profile is None:
-        return template
-    overlay = _profile_from_yaml(profile)
+    overlay = _profile_from_yaml(profile or {}, _read_pillar_names(vault_root))
     if overlay is None:
         return template
     try:
@@ -235,21 +273,109 @@ def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
     ).encode("utf-8")
 
 
-def _compose_claude(release_blob: bytes, vault_root: Path) -> bytes:
+DIRECT_EDIT_LISTING_LIMIT = 40
+_DIRECT_EDIT_LINE_WIDTH = 160
+DIRECT_EDIT_RESCUE = (
+    "move these lines into CLAUDE-custom.md (your protected block) and run "
+    "the update again — Dex can do this for you"
+)
+
+
+def _listed_direct_edits(lines: tuple[str, ...]) -> str:
+    shown = [
+        line
+        if len(line) <= _DIRECT_EDIT_LINE_WIDTH
+        else line[: _DIRECT_EDIT_LINE_WIDTH - 1] + "…"
+        for line in lines[:DIRECT_EDIT_LISTING_LIMIT]
+    ]
+    listing = "\n".join(f"  {line}" for line in shown)
+    remaining = len(lines) - len(shown)
+    if remaining:
+        listing += f"\n  ...and {remaining} more"
+    return listing
+
+
+def _refuse_dropping_direct_edits(
+    composed: bytes,
+    vault_root: Path,
+    release_blob: bytes,
+) -> None:
+    """Refuse a CLAUDE.md composition that would drop lines edited into it.
+
+    CLAUDE.md is composed from the release template plus CLAUDE-custom.md; the
+    live file is never an input, so a line typed straight into CLAUDE.md would
+    be silently destroyed by the bytes this module is about to hand back. The
+    installed release's expected composition (``compose_current``) is the
+    baseline for which live lines are the user's own: a live file that merely
+    lags the custom block is fully explained by that baseline and passes, while
+    a line explained by neither the baseline nor the new output exists nowhere
+    but the user's editor — writing over it is exactly the data loss
+    CompositionError promises to prevent.
+    """
+    live_path = vault_root / "CLAUDE.md"
+    if not live_path.is_file():
+        return
+    try:
+        live = live_path.read_bytes()
+    except OSError as error:
+        raise CompositionError("the current CLAUDE.md is unreadable") from error
+    if live == composed:
+        return
+
+    # Late import: claude_composition imports this module at load time.
+    from core.utils.claude_composition import (
+        RecomposeUnavailable,
+        compose_current,
+        true_user_edits,
+    )
+
+    baseline_note = ""
+    try:
+        baseline = compose_current(vault_root)
+    except (RecomposeUnavailable, CompositionError) as error:
+        # Fail closed without over-firing: with no provable baseline, a live
+        # line only counts as lost when the new output does not carry it.
+        baseline = b""
+        baseline_note = (
+            " (what the installed release's CLAUDE.md should contain could "
+            f"not be proved: {error})"
+        )
+    # A line is lost only when nothing shipped explains it: not the baseline,
+    # not the new output, not the incoming raw template (placeholders live
+    # there), and not any release template the brain store knows — otherwise
+    # a composer behavior change would make old composed output look
+    # hand-edited and wedge the update behind a false refusal.
+    lost = true_user_edits(
+        live, baseline + b"\n" + composed + b"\n" + release_blob, vault_root
+    )
+    if not lost:
+        return
+    count = len(lost)
+    noun = "line" if count == 1 else "lines"
+    raise CompositionError(
+        f"rewriting CLAUDE.md would lose {count} {noun} edited directly into "
+        f"it{baseline_note}:\n{_listed_direct_edits(lost)}\n"
+        f"Rescue: {DIRECT_EDIT_RESCUE}."
+    )
+
+
+def _compose_claude(release_blob: bytes, vault_root: Path, *, check_live: bool = True) -> bytes:
     _extension_block(release_blob)
     templated = _apply_user_profile(release_blob, vault_root)
     custom_path = vault_root / "CLAUDE-custom.md"
-    if not custom_path.exists() and not custom_path.is_symlink():
-        return templated
-    try:
-        if custom_path.is_symlink() or not custom_path.is_file():
-            raise CompositionError("CLAUDE-custom.md is not a regular file")
-        custom_content = custom_path.read_bytes()
-    except OSError as error:
-        raise CompositionError("CLAUDE-custom.md is unreadable") from error
-    if not custom_content:
-        return templated
-    return _regenerate_claude(templated, custom_content)
+    composed = templated
+    if custom_path.exists() or custom_path.is_symlink():
+        try:
+            if custom_path.is_symlink() or not custom_path.is_file():
+                raise CompositionError("CLAUDE-custom.md is not a regular file")
+            custom_content = custom_path.read_bytes()
+        except OSError as error:
+            raise CompositionError("CLAUDE-custom.md is unreadable") from error
+        if custom_content:
+            composed = _regenerate_claude(templated, custom_content)
+    if check_live:
+        _refuse_dropping_direct_edits(composed, vault_root, release_blob)
+    return composed
 
 
 GITIGNORE_SECTION_BEGIN = "# >>> dex-vault-mode (managed by Dex updates) >>>"
