@@ -211,6 +211,15 @@ def _run_vault_bundle(
 ) -> subprocess.CompletedProcess[str]:
     merged = dict(env) if env is not None else os.environ.copy()
     merged["DEX_VAULT_BUNDLE_PHASE_TIMING"] = "1"
+    # Covering Mac CI hung for 240s in the staged
+    # `npm ci --omit=dev --ignore-scripts` after one deprecation warning,
+    # never reaching after-npm-ci. The job already ran npm ci for this
+    # checkout, so the cache is warm. Stay offline and skip audit/fund
+    # so a miss fails fast instead of waiting on the registry under xdist.
+    merged.setdefault("npm_config_offline", "true")
+    merged.setdefault("npm_config_audit", "false")
+    merged.setdefault("npm_config_fund", "false")
+    merged.setdefault("npm_config_progress", "false")
     try:
         return _run_captured_timed(
             ["bash", "scripts/build-vault-bundle.sh", str(output)],
