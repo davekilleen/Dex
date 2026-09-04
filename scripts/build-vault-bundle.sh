@@ -6,6 +6,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="${1:-$REPO_ROOT/dist}"
+
+_phase() {
+  if [ "${DEX_VAULT_BUNDLE_PHASE_TIMING:-}" = "1" ]; then
+    printf 'vault-bundle phase %s at %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >&2
+  fi
+}
+_phase start
 DISTIGNORE="$REPO_ROOT/.distignore"
 PRODUCT_AGENTS_TEMPLATE="$REPO_ROOT/core/harnesses/templates/product-AGENTS.md"
 
@@ -25,7 +32,9 @@ if [ "$PRODUCT_AGENTS_TEMPLATE_SIZE" -eq 0 ] || [ "$PRODUCT_AGENTS_TEMPLATE_SIZE
 fi
 
 # Reject unsafe source inputs before staging or running npm.
+_phase before-tau-source-check
 python3 "$REPO_ROOT/scripts/check-tau-removal.py" --source-root "$REPO_ROOT"
+_phase after-tau-source-check
 
 VERSION="$(node -p "require('$REPO_ROOT/package.json').version")"
 mkdir -p "$OUTPUT_DIR"
@@ -62,6 +71,7 @@ if ! git diff --quiet "$SOURCE_COMMIT" -- "${PROTOCOL_SOURCE_PATHS[@]}"; then
 fi
 
 # The bundle must carry the protocol for these exact committed source artifacts.
+_phase before-protocol-generate
 python3 "$REPO_ROOT/scripts/generate-update-journey-protocol.py" \
   --output "$JOURNEY_PROTOCOL_CHECK"
 if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" "$REPO_ROOT/core/update/journey-protocol-v1.json"; then
@@ -69,6 +79,7 @@ if ! cmp -s "$JOURNEY_PROTOCOL_CHECK" "$REPO_ROOT/core/update/journey-protocol-v
   echo "Run python3 scripts/generate-update-journey-protocol.py and commit the result." >&2
   exit 1
 fi
+_phase after-protocol-check
 
 # Match build-release.sh's .distignore removals without copying ignored local
 # files such as .env. Include untracked, non-ignored files so the script is
@@ -80,7 +91,9 @@ done | LC_ALL=C sort -u > "$ALL_FILES"
 sh "$REPO_ROOT/scripts/resolve-distignore-files.sh" \
   "$DISTIGNORE" "$ALL_FILES" "$EXCLUDED_FILES" "$INCLUDED_FILES"
 
+_phase before-rsync-staging
 rsync -a --files-from="$INCLUDED_FILES" ./ "$STAGING_DIR/"
+_phase after-rsync-staging
 
 # The contributor AGENTS.md is intentionally excluded by .distignore. Install
 # the product bootstrap from the canonical template before building the
@@ -145,12 +158,15 @@ python3 "$REPO_ROOT/scripts/check-catalog-coverage.py" --release-root "$STAGING_
 
 # The staged tree is the release input. Check it before npm can execute or
 # access a registry.
+_phase before-tau-tree-check
 python3 "$REPO_ROOT/scripts/check-tau-removal.py" --tree "$STAGING_DIR"
 
+_phase before-npm-ci
 (
   cd "$STAGING_DIR"
   npm ci --omit=dev --ignore-scripts
 )
+_phase after-npm-ci
 # npm creates command shims as symlinks. Dex does not execute dependency CLIs
 # from the vault bundle, so remove them rather than weakening the no-symlink
 # distribution contract.
@@ -165,6 +181,7 @@ rm -f "$TARBALL" "$CHECKSUM" "$BRIDGE_ASSET" "$BRIDGE_CHECKSUM"
   # belt-and-braces for any stray on-disk macOS metadata, matching the manifest.
   COPYFILE_DISABLE=1 tar --exclude='._*' --exclude='.DS_Store' -czf "$TARBALL" .
 )
+_phase after-tarball
 python3 "$REPO_ROOT/scripts/check-tau-removal.py" --archive "$TARBALL"
 (
   cd "$OUTPUT_DIR"
@@ -189,3 +206,4 @@ echo "Built $TARBALL"
 echo "Checksum $CHECKSUM"
 echo "Bridge $BRIDGE_ASSET"
 echo "Bridge checksum $BRIDGE_CHECKSUM"
+_phase done
