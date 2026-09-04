@@ -50,7 +50,7 @@ def test_doctor_report_is_normalized_across_the_complete_registry():
     # and backup freshness. This literal is a deliberate tripwire: adding a
     # probe must update the complete reporter contract rather than silently
     # changing its result set.
-    assert len(envelope.results) == 39
+    assert len(envelope.results) == 40
     assert [result.id for result in envelope.results] == [
         f"doctor.core/{definition.id}"
         for definition in (*doctor.QUICK_CHECKS, *doctor.DEEP_CHECKS)

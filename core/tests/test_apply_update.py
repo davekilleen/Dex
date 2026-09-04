@@ -2239,3 +2239,62 @@ def test_vault_section_supports_nested_custom_skill_namespaces() -> None:
         assert child_ignore in section
         assert custom in section
         assert section.index(parent) < section.index(child_ignore) < section.index(custom)
+
+
+def test_update_keeps_claude_when_the_live_file_carries_direct_edits(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """Lines typed straight into CLAUDE.md are never composed away.
+
+    The reporter's shape: no custom file worth speaking of, a live CLAUDE.md
+    edited by hand. The update must complete, keep the file exactly as it
+    was, and say which lines are at stake and how to rescue them.
+    """
+    vault = split_release_fixture["vault"]
+    current = (vault / "CLAUDE.md").read_bytes() + (
+        b"\nAlways loop in the platform team before schema work.\n"
+    )
+    _write(vault, "CLAUDE.md", current)
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert result["committed"] is True
+    assert (vault / "CLAUDE.md").read_bytes() == current
+    assert "CLAUDE.md" in result["kept"]
+    reason = result["kept_reasons"]["CLAUDE.md"]
+    assert "1 line" in reason
+    assert "Always loop in the platform team before schema work." in reason
+    assert "move these lines into CLAUDE-custom.md (your protected block)" in reason
+    assert "Dex can do this for you" in reason
+
+
+def test_update_still_recomposes_a_stale_claude_the_baseline_explains(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """The guard must not jam ordinary updates: the fixture's live CLAUDE.md is
+    the previous release's composition (explained via refs/dex/installed, the
+    activation record being absent here), so the rewrite proceeds."""
+    vault = split_release_fixture["vault"]
+    _write(vault, "CLAUDE-custom.md", b"Keep this personal line.\n")
+
+    result = apply_update.apply_verified_release(vault, _verified(split_release_fixture))
+
+    assert result["committed"] is True
+    assert "CLAUDE.md" not in result["kept"]
+    composed = (vault / "CLAUDE.md").read_bytes()
+    assert b"# New instructions" in composed
+    assert b"Keep this personal line." in composed
+
+
+def test_compose_claude_passes_when_live_file_matches_composition(
+    split_release_fixture: dict[str, object],
+) -> None:
+    """Byte-identical live file: no refusal and no baseline lookup needed."""
+    vault = split_release_fixture["vault"]
+    release = _verified(split_release_fixture)
+    release_entry = next(entry for entry in release.entries if entry.path == "CLAUDE.md")
+    release_blob = apply_update._blob(vault, release.brain_git, release_entry.object_id)
+    expected = apply_update._compose_claude(release_blob, vault, check_live=False)
+    _write(vault, "CLAUDE.md", expected)
+
+    assert apply_update._compose_claude(release_blob, vault) == expected

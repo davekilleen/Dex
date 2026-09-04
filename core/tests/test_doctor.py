@@ -66,6 +66,7 @@ QUICK_IDS = [
     "customizations.skills",
     "customizations.mcp",
     "customizations.transition",
+    "config.claude_direct_edits",
     "core.drift",
     "doctor.self",
 ]

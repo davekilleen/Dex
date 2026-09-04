@@ -650,6 +650,11 @@ QUICK_CHECKS = (
         "Role-transition snapshots",
         "_probe_transition_capsules",
     ),
+    CheckDefinition(
+        "config.claude_direct_edits",
+        "CLAUDE.md direct edits",
+        "_probe_claude_direct_edits",
+    ),
     CheckDefinition("core.drift", "Shipped-file drift", "_probe_core_drift"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
@@ -5052,6 +5057,7 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
         CUSTOM,
         RecomposeUnavailable,
         compose_current,
+        user_authored_lines,
     )
 
     custom_path = context.vault_root / CUSTOM
@@ -5088,6 +5094,28 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     if live == expected:
         return ProbeResult("OK", "Your CLAUDE.md customisations are live")
 
+    edited = user_authored_lines(live, expected)
+    if edited:
+        # The force refresh refuses this shape on purpose, so pointing at
+        # /dex-doctor here would be advice that cannot work. The only safe
+        # repair moves the lines into the protected block first.
+        count = len(edited)
+        noun = "line" if count == 1 else "lines"
+        return ProbeResult(
+            "BROKEN",
+            f"{CLAUDE} does not match {CUSTOM}, so some of your personal instructions are "
+            f"not being loaded — and {count} {noun} edited directly into {CLAUDE} would be "
+            "lost by a refresh, so Dex will not refresh over them",
+            Heal(
+                tier=3,
+                action=(
+                    f"Ask Dex to move the directly edited lines into {CUSTOM} "
+                    "(your protected block). Nothing is moved automatically."
+                ),
+                applied=False,
+            ),
+        )
+
     return ProbeResult(
         "BROKEN",
         f"{CLAUDE} does not match {CUSTOM}, so some of your personal instructions are "
@@ -5097,6 +5125,84 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
         # the user is left following advice that cannot work. Name the one that
         # forces on bytes.
         Heal(tier=2, action="Run /dex-doctor to put your customisations back in force.", applied=False),
+    )
+
+
+def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
+    """Spot lines edited directly into CLAUDE.md before an update would drop them.
+
+    CLAUDE.md is composed from the release template plus CLAUDE-custom.md; the
+    live file is never an input. A line typed straight into CLAUDE.md therefore
+    exists nowhere else, and the composer now refuses to write over it — so
+    this probe is the early warning, surfacing the problem during a checkup
+    instead of mid-update. Never auto-fixed: moving someone's words is theirs
+    to approve.
+    """
+    from core.update.apply_update import CompositionError
+    from core.utils.claude_composition import (
+        CLAUDE,
+        CUSTOM,
+        RecomposeUnavailable,
+        compose_current,
+        user_authored_lines,
+    )
+
+    claude_path = context.vault_root / CLAUDE
+    if not claude_path.is_file():
+        return ProbeResult(
+            "OK",
+            f"No {CLAUDE} exists yet, so there are no direct edits to lose",
+        )
+    try:
+        live = claude_path.read_bytes()
+    except OSError as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"{CLAUDE} could not be read ({_one_line(error)}), so direct edits "
+            "could not be checked",
+        )
+    try:
+        expected = compose_current(context.vault_root)
+    except (RecomposeUnavailable, CompositionError) as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"Could not work out what {CLAUDE} should contain "
+            f"({_one_line(error)}), so direct edits could not be checked",
+        )
+    if live == expected:
+        return ProbeResult("OK", f"{CLAUDE} matches its expected composition")
+    edited = user_authored_lines(live, expected)
+    if not edited:
+        return ProbeResult(
+            "OK",
+            f"{CLAUDE} is out of step with {CUSTOM} but carries no direct "
+            "edits; the everyday refresh brings it back without losing anything",
+        )
+    custom_path = context.vault_root / CUSTOM
+    staleness = ""
+    try:
+        if not custom_path.is_file():
+            staleness = f" and there is no {CUSTOM} to hold them"
+        elif custom_path.stat().st_mtime < claude_path.stat().st_mtime:
+            staleness = f" and {CUSTOM} is older than {CLAUDE}"
+    except OSError:
+        staleness = ""
+    count = len(edited)
+    noun = "line lives" if count == 1 else "lines live"
+    return ProbeResult(
+        "BROKEN",
+        f"{count} {noun} only in {CLAUDE}{staleness}; the next update will "
+        f"leave {CLAUDE} untouched rather than lose them, so it stays on the "
+        f"old release wording until they move into {CUSTOM} — Dex can move "
+        "them for you",
+        Heal(
+            tier=3,
+            action=(
+                f"Ask Dex to move the directly edited lines into {CUSTOM} "
+                "(your protected block). Nothing is moved automatically."
+            ),
+            applied=False,
+        ),
     )
 
 
