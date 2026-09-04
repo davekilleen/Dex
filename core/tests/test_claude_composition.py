@@ -627,3 +627,99 @@ def test_composition_probe_stops_prescribing_the_refresh_over_direct_edits(tmp_p
     # And the heal it no longer prescribes really does refuse.
     assert doctor._heal_claude_composition(context) is None
     assert (root / "CLAUDE.md").read_bytes() == b"stale, missing the custom block\n"
+
+
+# --- Shipped wording is never a "user edit" (review-bot finding) -------------
+#
+# The baseline is composed with the CURRENT code against the INSTALLED
+# template, so a behavior change in the composer itself (this release's
+# pillars overlay) makes previously composed output differ from the baseline.
+# Those lines came from a shipped template, not the user's editor — treating
+# them as edits wedged every configured vault behind a false refusal.
+
+
+def _add_release_tag(root: Path, tag: str, template: bytes, tmp_path: Path) -> None:
+    work = tmp_path / f"work-{tag.rsplit('-', 1)[-1]}"
+    work.mkdir()
+    (work / "CLAUDE.md").write_bytes(template)
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin:/usr/local/bin"}
+    subprocess.run(["git", "init", "-q"], cwd=work, check=True, env=env)
+    subprocess.run(["git", "add", "-A"], cwd=work, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "old release"], cwd=work, check=True, env=env)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=work, check=True, env=env,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    brain = root / ".dex/brain.git"
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "fetch", "-q", str(work),
+         f"{commit}:refs/heads/old-release"],
+        check=True, env=env,
+    )
+    subprocess.run(
+        ["git", f"--git-dir={brain}", "tag", tag, "refs/heads/old-release"],
+        check=True, env=env,
+    )
+
+
+OLD_TEMPLATE = (
+    b"# Dex\n\nPreamble that the release owns.\n\n"
+    b"Old wording an earlier release shipped.\n\n"
+    b"## USER_EXTENSIONS_START\n"
+    b"## USER_EXTENSIONS_END\n\n"
+    b"## Trailing release section\n"
+)
+
+
+def test_true_user_edits_excuses_lines_from_any_shipped_template(tmp_path):
+    from core.utils.claude_composition import true_user_edits
+
+    root = _vault(tmp_path)
+    _add_release_tag(root, "dist/release/v9.9.8-0ld1234", OLD_TEMPLATE, tmp_path)
+    expected = compose_current(root)
+    live = expected + b"Old wording an earlier release shipped.\nA line she wrote.\n"
+
+    edits = true_user_edits(live, expected, root)
+
+    assert edits == ("A line she wrote.",), (
+        "shipped wording must be excused; the user's own line must not be"
+    )
+
+
+def test_recompose_overwrites_stale_shipped_wording(tmp_path):
+    """A live file that lags a composer behavior change is not hand-edited.
+
+    The refresh must bring it forward instead of refusing — the review-bot
+    scenario where every configured vault would have been stuck.
+    """
+    root = _vault(tmp_path)
+    _add_release_tag(root, "dist/release/v9.9.8-0ld1234", OLD_TEMPLATE, tmp_path)
+    (root / "CLAUDE.md").write_bytes(
+        b"# Dex\n\nPreamble that the release owns.\n\n"
+        b"Old wording an earlier release shipped.\n"
+    )
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+
+    assert recompose_if_needed(root) == "recomposed"
+    out = (root / "CLAUDE.md").read_bytes()
+    assert b"Old wording an earlier release shipped." not in out
+    assert b"Do the thing." in out
+
+
+def test_recompose_still_refuses_a_real_user_line(tmp_path):
+    """The shipped-wording excuse must not weaken protection of real edits."""
+    root = _vault(tmp_path)
+    _add_release_tag(root, "dist/release/v9.9.8-0ld1234", OLD_TEMPLATE, tmp_path)
+    (root / "CLAUDE.md").write_bytes(
+        b"# Dex\n\nOld wording an earlier release shipped.\nA line she wrote.\n"
+    )
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+
+    result = recompose_if_needed(root)
+
+    assert result.startswith("unavailable:")
+    assert "1 line" in result
+    assert (
+        b"A line she wrote." in (root / "CLAUDE.md").read_bytes()
+    ), "the refused file must be untouched"

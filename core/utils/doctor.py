@@ -5057,7 +5057,7 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
         CUSTOM,
         RecomposeUnavailable,
         compose_current,
-        user_authored_lines,
+        true_user_edits,
     )
 
     custom_path = context.vault_root / CUSTOM
@@ -5094,7 +5094,7 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     if live == expected:
         return ProbeResult("OK", "Your CLAUDE.md customisations are live")
 
-    edited = user_authored_lines(live, expected)
+    edited = true_user_edits(live, expected, context.vault_root)
     if edited:
         # The force refresh refuses this shape on purpose, so pointing at
         # /dex-doctor here would be advice that cannot work. The only safe
@@ -5144,7 +5144,7 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
         CUSTOM,
         RecomposeUnavailable,
         compose_current,
-        user_authored_lines,
+        true_user_edits,
     )
 
     claude_path = context.vault_root / CLAUDE
@@ -5171,7 +5171,7 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
         )
     if live == expected:
         return ProbeResult("OK", f"{CLAUDE} matches its expected composition")
-    edited = user_authored_lines(live, expected)
+    edited = true_user_edits(live, expected, context.vault_root)
     if not edited:
         return ProbeResult(
             "OK",

@@ -295,7 +295,11 @@ def _listed_direct_edits(lines: tuple[str, ...]) -> str:
     return listing
 
 
-def _refuse_dropping_direct_edits(composed: bytes, vault_root: Path) -> None:
+def _refuse_dropping_direct_edits(
+    composed: bytes,
+    vault_root: Path,
+    release_blob: bytes,
+) -> None:
     """Refuse a CLAUDE.md composition that would drop lines edited into it.
 
     CLAUDE.md is composed from the release template plus CLAUDE-custom.md; the
@@ -322,7 +326,7 @@ def _refuse_dropping_direct_edits(composed: bytes, vault_root: Path) -> None:
     from core.utils.claude_composition import (
         RecomposeUnavailable,
         compose_current,
-        user_authored_lines,
+        true_user_edits,
     )
 
     baseline_note = ""
@@ -336,8 +340,14 @@ def _refuse_dropping_direct_edits(composed: bytes, vault_root: Path) -> None:
             " (what the installed release's CLAUDE.md should contain could "
             f"not be proved: {error})"
         )
-    # A line is lost when neither the baseline nor the new output explains it.
-    lost = user_authored_lines(live, baseline + b"\n" + composed)
+    # A line is lost only when nothing shipped explains it: not the baseline,
+    # not the new output, not the incoming raw template (placeholders live
+    # there), and not any release template the brain store knows — otherwise
+    # a composer behavior change would make old composed output look
+    # hand-edited and wedge the update behind a false refusal.
+    lost = true_user_edits(
+        live, baseline + b"\n" + composed + b"\n" + release_blob, vault_root
+    )
     if not lost:
         return
     count = len(lost)
@@ -364,7 +374,7 @@ def _compose_claude(release_blob: bytes, vault_root: Path, *, check_live: bool =
         if custom_content:
             composed = _regenerate_claude(templated, custom_content)
     if check_live:
-        _refuse_dropping_direct_edits(composed, vault_root)
+        _refuse_dropping_direct_edits(composed, vault_root, release_blob)
     return composed
 
 

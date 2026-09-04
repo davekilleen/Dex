@@ -159,6 +159,55 @@ def user_authored_lines(live: bytes, baseline: bytes) -> tuple[str, ...]:
     return tuple(found)
 
 
+def shipped_template_lines(vault_root: Path) -> bytes:
+    """Every CLAUDE.md template line any release in the brain store shipped.
+
+    A line that appeared in any shipped template is release wording, not the
+    user's own words: composed placeholders from an earlier release (the
+    Pillars "Not yet configured" bullet) and prose a newer release reworded
+    both live here. Without this, a change to the composer itself — this
+    release adds a pillars overlay — makes previously composed output look
+    hand-edited and wedges every configured vault behind a false refusal.
+    Read failures contribute nothing rather than raising: a missing template
+    only leaves lines flagged, which fails toward protection.
+    """
+    brain = vault_root / BRAIN_GIT
+    try:
+        listed = subprocess.run(
+            ["git", f"--git-dir={brain}", "tag", "-l", "dist/release/*"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return b""
+    refs = [t for t in listed.stdout.split() if t] + ["refs/dex/installed"]
+    blobs: list[bytes] = []
+    for ref in refs:
+        try:
+            blobs.append(_template_at(vault_root, ref))
+        except RecomposeUnavailable:
+            continue
+    return b"\n".join(blobs)
+
+
+def true_user_edits(
+    live: bytes,
+    baseline: bytes,
+    vault_root: Path,
+) -> tuple[str, ...]:
+    """User-authored lines in ``live`` that no shipped wording explains.
+
+    Two phases so the everyday path stays two comparisons: the shipped
+    templates are only read when the cheap baseline leaves candidates.
+    """
+    candidates = user_authored_lines(live, baseline)
+    if not candidates:
+        return ()
+    shipped = shipped_template_lines(vault_root)
+    if not shipped:
+        return candidates
+    return user_authored_lines(live, baseline + b"\n" + shipped)
+
+
 def detect_user_edits(vault_root: Path) -> tuple[str, ...]:
     """Direct edits in the live CLAUDE.md, measured against `compose_current`.
 
@@ -173,7 +222,7 @@ def detect_user_edits(vault_root: Path) -> tuple[str, ...]:
         return ()
     except OSError as error:
         raise RecomposeUnavailable(f"{CLAUDE} could not be read: {error}") from error
-    return user_authored_lines(live, compose_current(vault_root))
+    return true_user_edits(live, compose_current(vault_root), vault_root)
 
 
 def needs_recompose(vault_root: Path) -> bool:
@@ -246,7 +295,7 @@ def recompose_if_needed(vault_root: Path, *, force: bool = False) -> str:
                 # The live file is never a composition input, so a line typed
                 # straight into CLAUDE.md exists nowhere else. Overwriting it
                 # — force included — would be silent data loss; refuse instead.
-                edited = user_authored_lines(live, expected)
+                edited = true_user_edits(live, expected, vault_root)
                 if edited:
                     count = len(edited)
                     noun = "line was" if count == 1 else "lines were"
