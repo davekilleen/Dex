@@ -88,6 +88,8 @@ _MAX_RETAINED_ANALYTICS_RECEIPT_BYTES = (
     portable_contract.ANALYTICS_ATTEMPT_RECEIPT_MAX_EXISTING_BYTES
 )
 _ANALYTICS_RECEIPT_APPEND_ATTEMPTS = 2
+_USAGE_LOG_RELATIVE = portable_contract.USAGE_LOG_RELATIVE
+_USAGE_LOG_REWRITE_ATTEMPTS = 3
 _ANALYTICS_RECEIPT_TIMESTAMP = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$"
 )
@@ -142,6 +144,8 @@ def _internal_transaction_read_limits(operation: str) -> dict[str, int]:
                 portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
             )
         }
+    if operation == "usage-log":
+        return {_USAGE_LOG_RELATIVE: portable_contract.USAGE_LOG_TRANSACTION_MAX_BYTES}
     if operation == "automation-ownership":
         return {
             automation_ownership.SIDECAR_RELATIVE: automation_ownership.SIDECAR_MAX_BYTES,
@@ -441,12 +445,12 @@ def _retain_newest_analytics_receipt_records(
     return retained
 
 
-def _is_stale_analytics_receipt_plan(error: PlanRejected) -> bool:
-    """Recognize only a stale precondition for this one local receipt file."""
+def _is_stale_runtime_file_plan(error: PlanRejected, relative: str) -> bool:
+    """Recognize only a stale precondition for one named runtime file."""
     message = str(error)
     if message == "transaction approval token does not match the current preview":
         return True
-    if _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE not in message:
+    if relative not in message:
         return False
     return any(
         marker in message
@@ -458,6 +462,93 @@ def _is_stale_analytics_receipt_plan(error: PlanRejected) -> bool:
             "appeared in the vault after authorization",
         )
     )
+
+
+def _is_stale_analytics_receipt_plan(error: PlanRejected) -> bool:
+    """Back-compat shim for the receipt caller."""
+    return _is_stale_runtime_file_plan(error, _ANALYTICS_ATTEMPT_RECEIPT_RELATIVE)
+
+
+def rewrite_usage_log(
+    vault_root: str | Path,
+    transform: Callable[[str], str | None],
+) -> dict[str, object]:
+    """Rewrite ``System/usage_log.md`` through the transaction core.
+
+    The adoption log has two mutators, feature ticks and consent decisions, and
+    both must come through here. Writing it directly is unsafe in three ways
+    this operation closes:
+
+    * a vault whose ``System`` directory is a symlink could put the write
+      outside the vault, so the whole route is validated before the file is
+      even read;
+    * a plain write plus rename takes the umask, silently loosening a log a
+      user has tightened, so the existing mode is read and re-planned;
+    * a fixed temporary sibling lets a feature tick and a consent update race
+      and lose one whole-file change, so the write is guarded by the current
+      digest and retried when it goes stale.
+
+    ``transform`` receives the current text and returns replacement text, or
+    ``None`` to make no change. It must be pure and cheap: it can be called
+    again on a retry.
+    """
+    root = Path(vault_root)
+    for attempt in range(_USAGE_LOG_REWRITE_ATTEMPTS):
+        unsafe_parent = unsafe_existing_parent(root, _USAGE_LOG_RELATIVE)
+        if unsafe_parent is not None:
+            raise PlanRejected(f"usage log: {unsafe_parent}")
+        target = root / _USAGE_LOG_RELATIVE
+        if target.is_symlink():
+            raise PlanRejected("usage log target must be a regular file")
+        if not target.exists():
+            raise PlanRejected("usage log does not exist")
+        if not target.is_file():
+            raise PlanRejected("usage log target must be a regular file")
+
+        existing = bounded_read(
+            root,
+            _USAGE_LOG_RELATIVE,
+            max_bytes=portable_contract.USAGE_LOG_TRANSACTION_MAX_BYTES,
+        )
+        try:
+            current = existing.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise PlanRejected(f"usage log is not valid UTF-8: {error}") from error
+
+        updated = transform(current)
+        if updated is None or updated == current:
+            return _envelope(status="unchanged", relative=_USAGE_LOG_RELATIVE)
+
+        # Preserve whatever the user has set. A write must never loosen it.
+        mode = target.stat().st_mode & 0o777
+
+        plan = [
+            PlanEntry(
+                _USAGE_LOG_RELATIVE,
+                updated.encode("utf-8"),
+                mode=mode,
+                expected_current_sha256=hashlib.sha256(existing).hexdigest(),
+            )
+        ]
+        preview = _preview_transaction(
+            root, plan, purpose="usage-log", operation="usage-log"
+        )
+        try:
+            result = _execute_approved_transaction(
+                root,
+                plan,
+                purpose="usage-log",
+                operation="usage-log",
+                approved_token=str(preview["approval_token"]),
+            )
+        except PlanRejected as error:
+            if attempt + 1 < _USAGE_LOG_REWRITE_ATTEMPTS and _is_stale_runtime_file_plan(
+                error, _USAGE_LOG_RELATIVE
+            ):
+                continue
+            raise
+        return _envelope(status="written", relative=_USAGE_LOG_RELATIVE, receipt=result)
+    raise PlanRejected("usage log changed repeatedly while being rewritten")
 
 
 def _append_analytics_attempt_receipt(

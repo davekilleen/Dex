@@ -43,6 +43,12 @@ SUPPORTED_CONTRACT_VERSIONS = (1, CONTRACT_VERSION)
 VAULT_SCHEMA_SUPPORTED = ">=1 <2"
 ANALYTICS_ATTEMPT_RECEIPT_RELATIVE = "System/.dex/analytics-attempts.jsonl"
 AUTOMATION_OWNERSHIP_RELATIVE = "System/.dex/automation-ownership.json"
+# The adoption log is a runtime file that two callers mutate: feature ticks and
+# consent decisions. Both go through one service operation so a concurrent pair
+# cannot lose a whole-file change. The cap is generous against a shipped starter
+# of a few kilobytes and still bounds the transaction read.
+USAGE_LOG_RELATIVE = "System/usage_log.md"
+USAGE_LOG_TRANSACTION_MAX_BYTES = 256 * 1024
 AUTOMATION_OWNERSHIP_TRANSACTION_MAX_BYTES = 64 * 1024
 # A receipt retains a bounded rolling history. A prior release could write one
 # safe record beyond the retained cap, so the transaction has exactly that
@@ -627,6 +633,7 @@ def update_write_verdict(
         "automation-ownership",
         "conflict-resolution",
         "adoption-rewind",
+        "usage-log",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -786,6 +793,43 @@ def update_write_verdict(
             candidate,
             False,
             "outside-automation-ownership",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
+    if operation == "usage-log":
+        # Deliberately as narrow as the receipt rule: this operation exists so
+        # feature ticks and consent decisions share one guarded writer, and it
+        # may touch exactly one path.
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(str(path), False, "outside-usage-log", None, None)
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if candidate == USAGE_LOG_RELATIVE:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-usage-log",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-usage-log",
             resolution.ownership if resolution is not None else None,
             resolution.rule_id if resolution is not None else None,
         )

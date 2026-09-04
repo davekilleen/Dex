@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: daf6a681729572ab6d6babee9de155e41540bf5df719e2f8711b6291daff5d03 -->
+<!-- Content SHA-256: c31a83f8e1d8b29d93f4ce3374a37a1806a4ef770f061f5026258c3f5701b350 -->
 
 # Architecture Inventory
 
@@ -12,7 +12,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 | Server | Source | Tool count | `feature_status` honesty contract | Exposed tools |
 | --- | --- | ---: | :---: | --- |
-| `dex-analytics` | `core/mcp/analytics_server.py` | 4 | yes | `check_analytics_status`, `identify_user`, `test_connection`, `track_event` |
+| `dex-analytics` | `core/mcp/analytics_server.py` | 5 | yes | `check_analytics_status`, `identify_user`, `mark_feature_used`, `test_connection`, `track_event` |
 | `dex-calendar-mcp` | `core/mcp/calendar_server.py` | 15 | yes | `calendar_create_event`, `calendar_delete_event`, `calendar_get_events`, `calendar_get_events_with_attendees`, `calendar_get_next_event`, `calendar_get_today`, `calendar_list_calendars`, `calendar_search_events`, `reminders_clear_completed`, `reminders_complete_item`, `reminders_create_item`, `reminders_ensure_lists`, `reminders_find_and_complete`, `reminders_list_completed`, `reminders_list_items` |
 | `dex-career-mcp` | `core/mcp/career_server.py` | 8 | yes | `analyze_coverage`, `generate_evidence_from_work`, `parse_ladder`, `promotion_readiness_score`, `scan_evidence`, `scan_work_for_evidence`, `skills_gap_analysis`, `timeline_analysis` |
 | `dex-customization-migration-mcp` | `core/mcp/customization_migration_server.py` | 7 | yes | `assess_customizations`, `preview_customization_capsule`, `read_activation_status`, `read_customization_capsule_blob`, `read_customization_capsule_section`, `read_customization_migration_status`, `read_staging_status` |
