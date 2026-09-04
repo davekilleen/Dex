@@ -928,14 +928,17 @@ def test_a_transient_bootstrap_failure_retries_on_the_slow_clock(tmp_path):
     root = _vault(tmp_path)
     assert recompose_if_needed(root) == "recomposed"
     (root / SNAPSHOT_RELATIVE).unlink()
-    past = time.time() - 3600
-    os.utime(root / "CLAUDE-custom.md", (past, past))
-    # A previous attempt that failed transiently, seven hours ago.
+    # A genuinely QUIET tick: the custom block is older than CLAUDE.md, so the
+    # hook's cheap gate does not trip and only the quiet-branch bootstrap —
+    # where the clock condition lives — can start Python. CLAUDE.md and the
+    # marker share a timestamp, so the changed-file condition can never fire
+    # here: the retry below proves the clock condition alone.
+    stale = time.time() - 7 * 3600
+    os.utime(root / "CLAUDE-custom.md", (stale - 3600, stale - 3600))
+    os.utime(root / "CLAUDE.md", (stale, stale))
     marker = root / (SNAPSHOT_RELATIVE + ".attempted")
     marker.write_bytes(b"attempted\n")
-    stale = time.time() - 7 * 3600
     os.utime(marker, (stale, stale))
-    os.utime(root / "CLAUDE.md", (stale, stale))
 
     counter = tmp_path / "starts"
     wrapper = tmp_path / "python-counter.sh"
@@ -955,23 +958,27 @@ def test_a_transient_bootstrap_failure_retries_on_the_slow_clock(tmp_path):
     assert done.returncode == 0
 
     assert counter.exists() and len(counter.read_text().splitlines()) == 1, (
-        "a stale attempt marker earns one fresh try"
+        "a stale attempt marker earns one fresh try on the clock alone"
     )
     assert (root / SNAPSHOT_RELATIVE).exists(), (
         "the healthy vault records on that retry"
     )
 
-    # And a FRESH marker still gates: no retry within the window.
+    # The successful attempt refreshed the marker, so with the snapshot gone
+    # again and CLAUDE.md untouched, neither condition admits a retry.
     (root / SNAPSHOT_RELATIVE).unlink()
     done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
                           timeout=60, env=env)
     assert done.returncode == 0
-    assert len(counter.read_text().splitlines()) == 2, (
-        "removing the snapshot with a stale marker retries once more"
+    assert len(counter.read_text().splitlines()) == 1, (
+        "a fresh marker with an unchanged CLAUDE.md gates the quiet path"
     )
+
+    # Aging the marker past the window re-admits exactly one attempt, again
+    # with CLAUDE.md untouched — the clock condition, isolated.
+    os.utime(marker, (stale, stale))
     done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
                           timeout=60, env=env)
     assert done.returncode == 0
-    assert len(counter.read_text().splitlines()) == 2, (
-        "the refreshed marker holds until the file changes or the clock passes"
-    )
+    assert len(counter.read_text().splitlines()) == 2
+    assert (root / SNAPSHOT_RELATIVE).exists()
