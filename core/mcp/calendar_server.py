@@ -44,6 +44,7 @@ from mcp.server.models import InitializationOptions
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from core.entity_engine.contract import parse_entity_page
 from core.paths import PEOPLE_DIR
 from core.paths import VAULT_ROOT as VAULT_PATH
 from core.utils.feature_status import feature_status
@@ -298,6 +299,7 @@ def normalize_name_for_filename(name: str) -> str:
 
 def find_person_page(name: str, email: str) -> Optional[Path]:
     """Find an existing person page by name or email."""
+    normalized_email = email.strip().casefold()
     # Try multiple name variations
     name_variations = [
         normalize_name_for_filename(name),
@@ -326,12 +328,15 @@ def find_person_page(name: str, email: str) -> Optional[Path]:
                         if name_parts[0] in file_stem_lower and name_parts[-1] in file_stem_lower:
                             return file
                 
-                # Check by email in file content
+                # Check only structured person fields, not incidental prose mentions.
                 try:
-                    content = file.read_text()
-                    if email.lower() in content.lower():
+                    person_emails = parse_entity_page(file).get("emails", [])
+                    if normalized_email and normalized_email in {
+                        str(person_email).strip().casefold()
+                        for person_email in person_emails
+                    }:
                         return file
-                except:
+                except (OSError, UnicodeError):
                     pass
     return None
 

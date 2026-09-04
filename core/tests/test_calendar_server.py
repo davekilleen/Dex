@@ -322,3 +322,60 @@ def test_calendar_read_empty_results_remain_healthy(
     assert "user_message" not in payload
     assert "warning" not in payload
     assert payload[empty_field] == ([] if empty_field == "events" else None)
+
+
+def test_attendee_resolution_ignores_email_mentions_outside_person_fields(
+    monkeypatch,
+    tmp_path,
+):
+    vault = tmp_path / "vault"
+    people = vault / "05-Areas" / "People"
+    incidental = people / "Internal" / "Incidental_Contact.md"
+    actual = people / "External" / "Actual_Attendee.md"
+    incidental.parent.mkdir(parents=True)
+    actual.parent.mkdir(parents=True)
+    incidental.write_text(
+        "---\nname: Incidental Contact\nemails: [incidental@example.com]\n---\n"
+        "Meeting note: follow up with actual.attendee@example.com next week.\n"
+    )
+    actual.write_text(
+        "---\nname: Actual Attendee\nemails: [actual.attendee@example.com]\n---\n"
+    )
+    events = [
+        {
+            "title": "Customer call",
+            "attendees": [
+                {
+                    "name": "Calendar Display Name",
+                    "email": "actual.attendee@example.com",
+                    "status": "accepted",
+                }
+            ],
+        }
+    ]
+    monkeypatch.setattr(calendar_server, "VAULT_PATH", vault)
+    monkeypatch.setattr(calendar_server, "PEOPLE_DIR", people)
+    monkeypatch.setattr(
+        calendar_server,
+        "run_shell_script",
+        lambda *args: (True, json.dumps(events)),
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server._handle_call_tool_inner(
+                "calendar_get_events_with_attendees",
+                {
+                    "calendar_name": "Work",
+                    "start_date": "2026-09-04",
+                    "end_date": "2026-09-05",
+                },
+            )
+        )
+    )
+
+    attendee = payload["events"][0]["attendees"][0]
+    assert attendee["has_person_page"] is True
+    assert attendee["person_page"] == (
+        "05-Areas/People/External/Actual_Attendee.md"
+    )
