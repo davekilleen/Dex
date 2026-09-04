@@ -166,7 +166,47 @@ def _read_user_profile(vault_root: Path) -> dict[str, Any] | None:
     return parsed
 
 
-def _profile_from_yaml(profile: dict[str, Any]) -> dict[str, object] | None:
+def _read_pillar_names(vault_root: Path) -> tuple[str, ...]:
+    """Pillar names from ``System/pillars.yaml``, where configured pillars live.
+
+    ``user-profile.yaml`` holds identity fields; the pillars a user actually
+    configured are written to ``System/pillars.yaml`` by onboarding. A missing
+    or empty file means no pillars. A present file that cannot be proved as a
+    regular UTF-8 YAML object fails closed, mirroring ``_read_user_profile``,
+    so composition cannot replace configured pillars with placeholders.
+    """
+    path = vault_root / "System" / "pillars.yaml"
+    if not path.exists() and not path.is_symlink():
+        return ()
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise CompositionError("System/pillars.yaml is not a regular file")
+        raw = path.read_bytes()
+    except OSError as error:
+        raise CompositionError("System/pillars.yaml is unreadable") from error
+    if not raw.strip():
+        return ()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise CompositionError("System/pillars.yaml is not UTF-8") from error
+    import yaml  # lazy: gitignore composition must import this module without PyYAML
+
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise CompositionError("System/pillars.yaml is not valid YAML") from error
+    if parsed is None:
+        return ()
+    if not isinstance(parsed, dict):
+        raise CompositionError("System/pillars.yaml is not an object")
+    return _pillar_names(parsed.get("pillars"))
+
+
+def _profile_from_yaml(
+    profile: dict[str, Any],
+    fallback_pillars: tuple[str, ...] = (),
+) -> dict[str, object] | None:
     """Collect identity fields only when onboarding has actually written them."""
     name = _configured_profile_text(profile.get("name"))
     role = _configured_profile_text(profile.get("role"))
@@ -176,7 +216,7 @@ def _profile_from_yaml(profile: dict[str, Any]) -> dict[str, object] | None:
     formality = None
     if isinstance(communication, dict):
         formality = _configured_profile_text(communication.get("formality"))
-    pillars = _pillar_names(profile.get("pillars"))
+    pillars = _pillar_names(profile.get("pillars")) or fallback_pillars
     if not any((name, role, company_size, working_style, pillars)):
         return None
     return {
@@ -213,9 +253,7 @@ def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
     existing splice can still run.
     """
     profile = _read_user_profile(vault_root)
-    if profile is None:
-        return template
-    overlay = _profile_from_yaml(profile)
+    overlay = _profile_from_yaml(profile or {}, _read_pillar_names(vault_root))
     if overlay is None:
         return template
     try:

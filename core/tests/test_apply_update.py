@@ -2298,3 +2298,83 @@ def test_compose_claude_passes_when_live_file_matches_composition(
     _write(vault, "CLAUDE.md", expected)
 
     assert apply_update._compose_claude(release_blob, vault) == expected
+
+
+def test_compose_claude_fills_pillars_from_pillars_yaml(tmp_path: Path) -> None:
+    """Configured pillars live in System/pillars.yaml; the overlay must read them."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write(
+        vault,
+        "System/user-profile.yaml",
+        b"name: Maya Chen\nrole: Head of Product\n",
+    )
+    _write(
+        vault,
+        "System/pillars.yaml",
+        b"pillars:\n"
+        b"  - id: revenue\n    name: Revenue\n    description: ''\n"
+        b"  - id: product\n    name: Product Craft\n    description: ''\n",
+    )
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert "**Name:** Maya Chen" in composed
+    assert "- Revenue\n- Product Craft\n" in composed
+    assert "- Not yet configured" not in composed
+
+
+def test_compose_claude_prefers_user_profile_pillars_over_pillars_yaml(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write_profile(vault, _POPULATED_PROFILE)
+    _write(
+        vault,
+        "System/pillars.yaml",
+        b"pillars:\n  - id: stale\n    name: Stale Pillar\n    description: ''\n",
+    )
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert "- Revenue\n- Product\n" in composed
+    assert "Stale Pillar" not in composed
+
+
+def test_compose_claude_fills_pillars_when_user_profile_is_absent(
+    tmp_path: Path,
+) -> None:
+    """pillars.yaml alone still fills the Pillars list; identity stays placeholder."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write(
+        vault,
+        "System/pillars.yaml",
+        b"pillars:\n  - id: revenue\n    name: Revenue\n    description: ''\n",
+    )
+
+    composed = apply_update._compose_claude(_PROFILE_TEMPLATE, vault).decode("utf-8")
+
+    assert "**Name:** Not yet configured" in composed
+    assert "- Revenue\n" in composed
+
+
+def test_compose_claude_keeps_placeholders_when_pillars_yaml_is_empty(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write(vault, "System/pillars.yaml", b"pillars: []\n")
+
+    assert apply_update._compose_claude(_PROFILE_TEMPLATE, vault) == _PROFILE_TEMPLATE
+
+
+def test_compose_claude_refuses_a_malformed_pillars_yaml(tmp_path: Path) -> None:
+    """A present but unprovable pillars.yaml fails closed like user-profile.yaml."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _write(vault, "System/pillars.yaml", b"pillars: [broken\n")
+
+    with pytest.raises(apply_update.CompositionError):
+        apply_update._compose_claude(_PROFILE_TEMPLATE, vault)
