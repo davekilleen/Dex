@@ -855,14 +855,23 @@ def test_raw_vault_bundle_publishes_standalone_verified_bridge(tmp_path: Path) -
     clone = _clone_repo(tmp_path, "raw-vault-bundle-bridge-asset")
     _commit_release_inputs_if_changed(clone)
     output = tmp_path / "bridge-asset-output"
-    subprocess.run(
-        ["bash", "scripts/build-vault-bundle.sh", str(output)],
-        cwd=clone,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=240,
-    )
+    env = os.environ.copy()
+    env["DEX_VAULT_BUNDLE_PHASE_TIMING"] = "1"
+    try:
+        subprocess.run(
+            ["bash", "scripts/build-vault-bundle.sh", str(output)],
+            cwd=clone,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=240,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(
+            "build-vault-bundle timed out after 240s; last phases:\n"
+            f"stdout:\n{exc.stdout}\nstderr:\n{exc.stderr}"
+        ) from exc
 
     version = json.loads((clone / "package.json").read_text(encoding="utf-8"))["version"]
     bridge = output / f"dex-update-bridge-v{version}.py"
