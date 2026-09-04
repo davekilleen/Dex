@@ -189,23 +189,85 @@ def shipped_template_lines(vault_root: Path) -> bytes:
     return b"\n".join(blobs)
 
 
+SNAPSHOT_RELATIVE = "System/.dex/claude-composed-baseline.md"
+
+
+def _record_composed(vault_root: Path, content: bytes) -> None:
+    """Remember the exact bytes the composer last wrote.
+
+    Lines the composer itself produced — from an earlier custom block or an
+    earlier profile — have their home of record in the user's own files, and
+    the user editing those files is the consent for the projection to change.
+    Recording the last-composed bytes lets the guard tell that history apart
+    from words that exist nowhere but the live file. Best-effort: a failed
+    write only means more candidates stay flagged, which fails toward
+    protection.
+    """
+    target = vault_root / SNAPSHOT_RELATIVE
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_bytes(content)
+        tmp.replace(target)
+    except OSError:
+        pass
+
+
+def _last_composed(vault_root: Path) -> bytes:
+    try:
+        return (vault_root / SNAPSHOT_RELATIVE).read_bytes()
+    except OSError:
+        return b""
+
+
+def _bootstrap_snapshot(vault_root: Path) -> None:
+    """Record the composed history once, on a quiet tick of a healthy vault.
+
+    The snapshot only ever holds bytes the composer provably produced, so the
+    one safe moment to create it retroactively is when the live file matches
+    its expected composition exactly. A vault that is already drifted gets no
+    snapshot — its unexplained lines stay protected. One stat per prompt once
+    the file exists; the compose runs at most once per vault.
+    """
+    if (vault_root / SNAPSHOT_RELATIVE).exists():
+        return
+    claude = vault_root / CLAUDE
+    try:
+        live = claude.read_bytes()
+    except OSError:
+        return
+    from core.update.apply_update import CompositionError
+
+    try:
+        expected = compose_current(vault_root)
+    except (RecomposeUnavailable, CompositionError):
+        return
+    if live == expected:
+        _record_composed(vault_root, expected)
+
+
 def true_user_edits(
     live: bytes,
     baseline: bytes,
     vault_root: Path,
 ) -> tuple[str, ...]:
-    """User-authored lines in ``live`` that no shipped wording explains.
+    """User-authored lines in ``live`` that nothing else explains.
 
-    Two phases so the everyday path stays two comparisons: the shipped
-    templates are only read when the cheap baseline leaves candidates.
+    A line is only the user's own words when it is absent from the baseline,
+    from every shipped release template the brain store knows, and from the
+    composer's own last-written bytes — lines a previous composition wrote
+    from an older custom block or profile have their home of record in the
+    user's own files, and editing those files is the consent for the
+    projection to change. Staged so the everyday path stays two comparisons:
+    the wider evidence is only read when the cheap baseline leaves candidates.
     """
     candidates = user_authored_lines(live, baseline)
     if not candidates:
         return ()
-    shipped = shipped_template_lines(vault_root)
-    if not shipped:
-        return candidates
-    return user_authored_lines(live, baseline + b"\n" + shipped)
+    combined = b"\n".join(
+        (baseline, shipped_template_lines(vault_root), _last_composed(vault_root))
+    )
+    return user_authored_lines(live, combined)
 
 
 def detect_user_edits(vault_root: Path) -> tuple[str, ...]:
@@ -263,6 +325,7 @@ def recompose_if_needed(vault_root: Path, *, force: bool = False) -> str:
     worse than a stale one.
     """
     if not force and not needs_recompose(vault_root):
+        _bootstrap_snapshot(vault_root)
         return "current"
 
     try:
@@ -288,6 +351,9 @@ def recompose_if_needed(vault_root: Path, *, force: bool = False) -> str:
             if live == expected:
                 # Content already correct; the mtime gate tripped on a touch.
                 # Nudge the timestamp so the everyday gate stops firing.
+                # Recording here too lets a CLAUDE.md written by an update
+                # transaction become the guard's history at the next tick.
+                _record_composed(vault_root, expected)
                 if not force:
                     claude.touch()
                 return "current"
@@ -310,6 +376,7 @@ def recompose_if_needed(vault_root: Path, *, force: bool = False) -> str:
             tmp.replace(claude)
         except OSError as error:
             return f"unavailable:could not write {CLAUDE}: {error}"
+        _record_composed(vault_root, expected)
         return "recomposed"
     finally:
         release()

@@ -723,3 +723,82 @@ def test_recompose_still_refuses_a_real_user_line(tmp_path):
     assert (
         b"A line she wrote." in (root / "CLAUDE.md").read_bytes()
     ), "the refused file must be untouched"
+
+
+# --- The everyday custom-edit flow must not wedge (review-bot round 2) --------
+#
+# Lines a PREVIOUS composition wrote — from an older custom block or an older
+# profile — are absent from the new expected composition, but their home of
+# record is the user's own source file, and editing that file is the consent
+# for the projection to change. Treating them as direct edits froze CLAUDE.md
+# on old wording after any normal customisation change.
+
+
+def test_editing_the_custom_block_still_refreshes(tmp_path):
+    """Reword a custom line; the refresh must apply it, not refuse."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+
+    assert recompose_if_needed(root) == "recomposed"
+    out = (root / "CLAUDE.md").read_bytes()
+    assert b"Do the new thing." in out
+    assert b"Do the thing." not in out
+
+
+def test_without_history_the_old_custom_line_stays_protected(tmp_path):
+    """No recorded history means fail closed: the line might be a direct edit.
+
+    The bootstrap records history on the first quiet tick of a healthy vault,
+    so this window is one custom edit made before any session tick — rare, and
+    the refusal carries the rescue rather than losing anything.
+    """
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+
+    assert recompose_if_needed(root).startswith("unavailable:")
+
+
+def test_quiet_tick_bootstraps_the_history_for_a_healthy_vault(tmp_path):
+    """A matching live file records its snapshot on an ordinary no-op tick.
+
+    This is how vaults updated before any custom edit get their history: the
+    hook's cheap path notices the missing snapshot exactly once.
+    """
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+
+    # An ordinary tick with nothing to do (custom not newer than CLAUDE.md).
+    assert recompose_if_needed(root) == "current"
+    assert (root / SNAPSHOT_RELATIVE).exists()
+
+    # And the everyday flow now works: reword a custom line, refresh applies.
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+    assert recompose_if_needed(root) == "recomposed"
+    assert b"Do the new thing." in (root / "CLAUDE.md").read_bytes()
+
+
+def test_direct_edit_outside_the_block_still_refuses_after_a_custom_edit(tmp_path):
+    """Consent to change the block is not consent to lose out-of-block words."""
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    live = (root / "CLAUDE.md").read_bytes()
+    (root / "CLAUDE.md").write_bytes(live + b"A line she wrote at the bottom.\n")
+    os.utime(root / "CLAUDE.md", (time.time() - 60, time.time() - 60))
+    (root / "CLAUDE-custom.md").write_bytes(b"\n## Mine\n\nDo the new thing.\n")
+
+    result = recompose_if_needed(root)
+
+    assert result.startswith("unavailable:")
+    assert "1 line" in result
+    assert b"A line she wrote at the bottom." in (root / "CLAUDE.md").read_bytes()
