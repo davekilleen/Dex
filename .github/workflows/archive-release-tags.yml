@@ -1,0 +1,63 @@
+# Temporary maintenance workflow — founder-authorized archive of the 8 oldest
+# dist/release tags (2026-09-04). Renames each tag to dist/archive/<same name>
+# (same tag object) and only deletes the dist/release name after verifying the
+# archive twin exists with a matching object id. The pinned foundation tag
+# dist/release/v1.81.16-281202d is explicitly refused. Removed after the run.
+name: Archive old release tags
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type archive-8 to confirm the founder-authorized archive"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Archive the 8 oldest dist/release tags
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "archive-8" ]; then
+            echo "Confirmation phrase mismatch; refusing to run."
+            exit 1
+          fi
+          TAGS="v1.80.2-0ed90e1 v1.80.3-be4f56d v1.80.4-294caed v1.80.5-9211053 v1.81.0-6bc490e v1.82.0-2f40bbd v1.83.0-12f2fa9 v1.84.0-e39ba83"
+          PINNED="v1.81.16-281202d"
+          for t in $TAGS; do
+            if [ "$t" = "$PINNED" ]; then
+              echo "Refusing: $t is the pinned foundation tag."
+              exit 1
+            fi
+          done
+          echo "== Fetch the release tag objects =="
+          for t in $TAGS; do
+            git fetch origin "refs/tags/dist/release/$t:refs/tags/dist/release/$t"
+          done
+          echo "== Create dist/archive twins (same tag objects) =="
+          for t in $TAGS; do
+            git push origin "refs/tags/dist/release/$t:refs/tags/dist/archive/$t"
+          done
+          echo "== Verify every archive twin exists with a matching object id =="
+          for t in $TAGS; do
+            rel="$(git ls-remote origin "refs/tags/dist/release/$t" | cut -f1)"
+            arc="$(git ls-remote origin "refs/tags/dist/archive/$t" | cut -f1)"
+            if [ -z "$arc" ] || [ "$rel" != "$arc" ]; then
+              echo "Verification failed for $t (release=$rel archive=$arc); stopping before any delete."
+              exit 1
+            fi
+            echo "verified $t -> $arc"
+          done
+          echo "== Delete the dist/release names (archive twins verified) =="
+          for t in $TAGS; do
+            git push origin ":refs/tags/dist/release/$t"
+          done
+          echo "== Final state =="
+          git ls-remote origin "refs/tags/dist/archive/*" | sed 's/^/archive: /'
+          git ls-remote origin "refs/tags/dist/release/*" | sed 's/^/release: /'
