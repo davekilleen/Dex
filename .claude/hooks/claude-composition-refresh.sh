@@ -73,10 +73,17 @@
             # Quiet tick. The direct-edit guard needs a record of what the
             # composer last wrote, and the one safe moment to create it
             # retroactively is while the live file still matches its expected
-            # composition — so when that record is missing, start Python once
-            # to write it. One extra stat on every later tick; the Python
-            # start happens at most once per vault.
+            # composition — so when that record is missing, start Python to
+            # write it. A drifted vault can never produce the record, so the
+            # attempt marker bounds retries: Python starts again only when
+            # CLAUDE.md has changed since the last attempt (an update healing
+            # the file gets exactly one fresh attempt), never once per prompt.
             [ -f "$SNAPSHOT_FILE" ] && exit 0
+            ATTEMPT_FILE="$SNAPSHOT_FILE.attempted"
+            if [ -f "$ATTEMPT_FILE" ]; then
+                ATTEMPT_MTIME=$(stat -c %Y "$ATTEMPT_FILE" 2>/dev/null || stat -f %m "$ATTEMPT_FILE" 2>/dev/null) || exit 0
+                [ "$CLAUDE_MTIME" -gt "$ATTEMPT_MTIME" ] 2>/dev/null || exit 0
+            fi
             (cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -c '
 from pathlib import Path
 from core.utils.claude_composition import _bootstrap_snapshot

@@ -231,6 +231,18 @@ def _bootstrap_snapshot(vault_root: Path) -> None:
     """
     if (vault_root / SNAPSHOT_RELATIVE).exists():
         return
+    # Leave an attempt marker whatever happens: the hook retries the
+    # bootstrap only when CLAUDE.md has changed since the last attempt, so a
+    # drifted vault pays one interpreter start per change to the file, not
+    # one per prompt forever.
+    marker = vault_root / (SNAPSHOT_RELATIVE + ".attempted")
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_bytes(
+            b"Bootstrap attempted; see claude-composed-baseline.md for the record.\n"
+        )
+    except OSError:
+        pass
     claude = vault_root / CLAUDE
     try:
         live = claude.read_bytes()
