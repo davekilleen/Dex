@@ -258,3 +258,4 @@ scripts/private/
 .codex-analytics-task.md
 .codex-*-task.md
 System/.doctor-last-run.json
+.claude/settings.local.json
