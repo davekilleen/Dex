@@ -551,7 +551,14 @@ def check_granola() -> Dict[str, Any]:
     }
 
 def _completed_profile_capability_states() -> Dict[str, bool]:
-    """Room choices already recorded by a vault that completed onboarding."""
+    """Room choices already recorded by a vault that completed onboarding.
+
+    Mirrors the read path of ``capabilities.enabled()``: the explicit
+    ``capabilities.<room>.enabled`` key wins, and when it is absent a room's
+    legacy config switch (e.g. ``quarterly_planning.enabled`` for
+    ``quarter_goals``) still counts as a recorded choice. Reading only the new
+    key would let a reset re-enable a room the user turned off the legacy way.
+    """
     if not MARKER_FILE.exists():
         return {}
     profile_path = BASE_DIR / "System" / "user-profile.yaml"
@@ -562,14 +569,22 @@ def _completed_profile_capability_states() -> Dict[str, bool]:
         profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    rooms = profile.get("capabilities") if isinstance(profile, dict) else None
-    if not isinstance(rooms, dict):
+    if not isinstance(profile, dict):
         return {}
-    return {
-        room: state["enabled"]
-        for room, state in rooms.items()
-        if isinstance(state, dict) and isinstance(state.get("enabled"), bool)
-    }
+    rooms = profile.get("capabilities")
+    rooms = rooms if isinstance(rooms, dict) else {}
+    states: Dict[str, bool] = {}
+    for room in capability_rooms.room_ids():
+        state = rooms.get(room)
+        if isinstance(state, dict) and isinstance(state.get("enabled"), bool):
+            states[room] = state["enabled"]
+            continue
+        legacy_config = capability_rooms.surfaces_for(room).get("config")
+        if isinstance(legacy_config, str):
+            legacy = profile.get(legacy_config)
+            if isinstance(legacy, dict) and isinstance(legacy.get("enabled"), bool):
+                states[room] = legacy["enabled"]
+    return states
 
 
 def _capability_states(

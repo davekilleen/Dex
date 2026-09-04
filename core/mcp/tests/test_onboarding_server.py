@@ -1607,6 +1607,38 @@ class TestCapabilityStep:
         # An explicit re-answer still wins over the recorded state.
         assert onboarding_server._capability_states({"career": True})["career"] is True
 
+    def test_unanswered_rooms_keep_a_legacy_config_disable(
+        self, tmp_path, monkeypatch
+    ):
+        """A room disabled only via its legacy config switch must survive a reset.
+
+        ``capabilities.enabled()`` honors ``quarterly_planning.enabled`` when
+        ``capabilities.quarter_goals`` is absent, so the carry-forward reader
+        must count that legacy value as a recorded choice — otherwise a reset
+        silently re-enables the room from the contract default.
+        """
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "quarterly_planning:\n  enabled: false\n",
+            encoding="utf-8",
+        )
+        marker = system / ".onboarding-complete"
+        marker.write_text('{"completed": true}\n', encoding="utf-8")
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(onboarding_server, "MARKER_FILE", marker)
+
+        states = onboarding_server._capability_states({})
+
+        assert states["quarter_goals"] is False
+        # The explicit new key still wins over the legacy switch.
+        (system / "user-profile.yaml").write_text(
+            "quarterly_planning:\n  enabled: false\n"
+            "capabilities:\n  quarter_goals:\n    enabled: true\n",
+            encoding="utf-8",
+        )
+        assert onboarding_server._capability_states({})["quarter_goals"] is True
+
     def test_unanswered_rooms_use_contract_defaults_without_a_completion_marker(
         self, tmp_path, monkeypatch
     ):
