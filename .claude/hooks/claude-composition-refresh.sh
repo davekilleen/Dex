@@ -82,7 +82,16 @@
             ATTEMPT_FILE="$SNAPSHOT_FILE.attempted"
             if [ -f "$ATTEMPT_FILE" ]; then
                 ATTEMPT_MTIME=$(stat -c %Y "$ATTEMPT_FILE" 2>/dev/null || stat -f %m "$ATTEMPT_FILE" 2>/dev/null) || exit 0
-                [ "$CLAUDE_MTIME" -gt "$ATTEMPT_MTIME" ] 2>/dev/null || exit 0
+                # Retry when CLAUDE.md changed since the last attempt, or on a
+                # slow clock (every six hours) so a transient failure — a brain
+                # store briefly unreadable, a mid-update race, a heal that
+                # never touched CLAUDE.md — is not mistaken for lasting drift.
+                # A genuinely drifted vault pays at most four starts a day.
+                NOW_EPOCH=$(date +%s 2>/dev/null) || exit 0
+                if ! [ "$CLAUDE_MTIME" -gt "$ATTEMPT_MTIME" ] 2>/dev/null \
+                    && ! [ $((NOW_EPOCH - ATTEMPT_MTIME)) -gt 21600 ] 2>/dev/null; then
+                    exit 0
+                fi
             fi
             (cd "$CLAUDE_DIR" && "${DEX_PYTHON_CMD[@]}" -c '
 from pathlib import Path

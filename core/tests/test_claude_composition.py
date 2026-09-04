@@ -914,3 +914,64 @@ def test_a_drifted_vault_bootstraps_at_most_once_per_claude_change(tmp_path):
     assert (root / SNAPSHOT_RELATIVE).exists(), "healed file records on the fresh attempt"
     tick()
     assert starts() == 2, "and the snapshot gate holds from then on"
+
+
+def test_a_transient_bootstrap_failure_retries_on_the_slow_clock(tmp_path):
+    """Review-bot round 5: a repair that never touches CLAUDE.md — a brain
+    store that was briefly unreadable, a heal elsewhere — must still get a
+    fresh bootstrap attempt. The marker earns a retry after six hours, so a
+    transient failure is not mistaken for lasting drift."""
+    import sys
+
+    from core.utils.claude_composition import SNAPSHOT_RELATIVE
+
+    root = _vault(tmp_path)
+    assert recompose_if_needed(root) == "recomposed"
+    (root / SNAPSHOT_RELATIVE).unlink()
+    past = time.time() - 3600
+    os.utime(root / "CLAUDE-custom.md", (past, past))
+    # A previous attempt that failed transiently, seven hours ago.
+    marker = root / (SNAPSHOT_RELATIVE + ".attempted")
+    marker.write_bytes(b"attempted\n")
+    stale = time.time() - 7 * 3600
+    os.utime(marker, (stale, stale))
+    os.utime(root / "CLAUDE.md", (stale, stale))
+
+    counter = tmp_path / "starts"
+    wrapper = tmp_path / "python-counter.sh"
+    wrapper.write_text(
+        f'#!/bin/bash\necho x >> "{counter}"\nexec "{sys.executable}" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    env = dict(os.environ)
+    env.update({
+        "CLAUDE_PROJECT_DIR": str(root),
+        "DEX_PYTHON": str(wrapper),
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+    })
+    hook = Path(__file__).resolve().parents[2] / ".claude/hooks/claude-composition-refresh.sh"
+    done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                          timeout=60, env=env)
+    assert done.returncode == 0
+
+    assert counter.exists() and len(counter.read_text().splitlines()) == 1, (
+        "a stale attempt marker earns one fresh try"
+    )
+    assert (root / SNAPSHOT_RELATIVE).exists(), (
+        "the healthy vault records on that retry"
+    )
+
+    # And a FRESH marker still gates: no retry within the window.
+    (root / SNAPSHOT_RELATIVE).unlink()
+    done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                          timeout=60, env=env)
+    assert done.returncode == 0
+    assert len(counter.read_text().splitlines()) == 2, (
+        "removing the snapshot with a stale marker retries once more"
+    )
+    done = subprocess.run(["bash", str(hook)], capture_output=True, text=True,
+                          timeout=60, env=env)
+    assert done.returncode == 0
+    assert len(counter.read_text().splitlines()) == 2, (
+        "the refreshed marker holds until the file changes or the clock passes"
+    )
