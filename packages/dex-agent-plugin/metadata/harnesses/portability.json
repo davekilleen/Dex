@@ -224,6 +224,10 @@
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"
     },
+    "change-job": {
+      "classification": "claude-only",
+      "reason": "contains a Claude-only body command"
+    },
     "commitments": {
       "classification": "portable",
       "reason": "no host-only body command or broken local reference"
@@ -349,6 +353,10 @@
       ],
       "classification": "portable",
       "reason": "host prompt and optional integration hook have a portable fallback"
+    },
+    "goal-backlog": {
+      "classification": "portable",
+      "reason": "no host-only body command or broken local reference"
     },
     "google-workspace-setup": {
       "classification": "portable",

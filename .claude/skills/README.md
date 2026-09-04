@@ -202,6 +202,7 @@ Built specifically for personal knowledge management and productivity workflows 
 **Weekly Workflow:**
 - `/week-plan` - Set weekly priorities
 - `/week-review` - Weekly synthesis
+- `/goal-backlog` - Groom the open task pool goal by goal (confirm links, retire stale work, set what's picked up first)
 
 **Quarterly Workflow:**
 - `/quarter-plan` - Set quarterly goals
@@ -241,6 +242,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/backup-restore` - Prove a backup restores, or restore one to a folder of your choosing
 
 **System Management:**
+- `/change-job` - Guided role transition: setup questions with carry-forward, people re-sorted for the new email domain, old-role planning archived (never deleted), open tasks re-pointed
 - `/dex-doctor` - Full system checkup: verifies every feature honestly, self-heals what's safe, guides you through the rest
 - `/enable-semantic-search` - Enable local AI-powered semantic search with smart collection discovery
 - `/xray` - AI education: understand what just happened under the hood, learn how context, MCPs, hooks work

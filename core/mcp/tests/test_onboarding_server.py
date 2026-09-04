@@ -1586,6 +1586,77 @@ class TestCapabilityStep:
             "quarter_goals": {"enabled": True},
         }
 
+    def test_unanswered_rooms_keep_the_completed_profile_state(
+        self, tmp_path, monkeypatch
+    ):
+        """A room disabled via /manage-capabilities must survive a reset."""
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "capabilities:\n  career:\n    enabled: false\n",
+            encoding="utf-8",
+        )
+        marker = system / ".onboarding-complete"
+        marker.write_text('{"completed": true}\n', encoding="utf-8")
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(onboarding_server, "MARKER_FILE", marker)
+
+        states = onboarding_server._capability_states({})
+
+        assert states["career"] is False
+        # An explicit re-answer still wins over the recorded state.
+        assert onboarding_server._capability_states({"career": True})["career"] is True
+
+    def test_unanswered_rooms_keep_a_legacy_config_disable(
+        self, tmp_path, monkeypatch
+    ):
+        """A room disabled only via its legacy config switch must survive a reset.
+
+        ``capabilities.enabled()`` honors ``quarterly_planning.enabled`` when
+        ``capabilities.quarter_goals`` is absent, so the carry-forward reader
+        must count that legacy value as a recorded choice — otherwise a reset
+        silently re-enables the room from the contract default.
+        """
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "quarterly_planning:\n  enabled: false\n",
+            encoding="utf-8",
+        )
+        marker = system / ".onboarding-complete"
+        marker.write_text('{"completed": true}\n', encoding="utf-8")
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(onboarding_server, "MARKER_FILE", marker)
+
+        states = onboarding_server._capability_states({})
+
+        assert states["quarter_goals"] is False
+        # The explicit new key still wins over the legacy switch.
+        (system / "user-profile.yaml").write_text(
+            "quarterly_planning:\n  enabled: false\n"
+            "capabilities:\n  quarter_goals:\n    enabled: true\n",
+            encoding="utf-8",
+        )
+        assert onboarding_server._capability_states({})["quarter_goals"] is True
+
+    def test_unanswered_rooms_use_contract_defaults_without_a_completion_marker(
+        self, tmp_path, monkeypatch
+    ):
+        system = tmp_path / "System"
+        system.mkdir()
+        (system / "user-profile.yaml").write_text(
+            "capabilities:\n  career:\n    enabled: false\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(
+            onboarding_server, "MARKER_FILE", system / ".onboarding-complete"
+        )
+
+        states = onboarding_server._capability_states({})
+
+        assert states["career"] is True
+
     def test_onboarding_step_8_asks_nothing_now_that_every_room_is_on(self):
         """All three rooms default on, so step 8 has no question left to ask.
 
@@ -1759,3 +1830,262 @@ class TestCapabilityStep:
         assert preview["provision_receipt"]["created"] == payload["data"]["receipt"][
             "created"
         ]
+
+
+def _seed_completed_reset_vault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prepare_finalize_vault(tmp_path, monkeypatch)
+    shutil.copytree(
+        REPO_ROOT / ".claude/skills/_available/capabilities",
+        tmp_path / ".claude/skills/_available/capabilities",
+    )
+    (tmp_path / "System/user-profile.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "Dana",
+                "role": "Fractional CPO",
+                "email_domain": "example.org",
+                "work_email": "dana@example.org",
+                "journaling": {"morning": True},
+                "entity_creation": {"mode": "auto"},
+                "capabilities": {
+                    "career": {"enabled": False},
+                    "companies": {"enabled": True},
+                    "quarter_goals": {"enabled": True},
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "System/pillars.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "pillars": [
+                    {
+                        "id": "build",
+                        "name": "Build",
+                        "description": "Ship the engine",
+                        "keywords": ["ship", "roadmap"],
+                    }
+                ],
+                "priority_limits": {"P0": 2},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "System/.onboarding-complete").write_text(
+        json.dumps(
+            {
+                "completed": True,
+                "completed_at": "2026-01-15T10:00:00.000Z",
+                "role": "Fractional CPO",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    session = onboarding_server.create_new_session()
+    session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7]
+    session["data"] = {
+        "calendar": {"permissions_pending": True},
+        "name": "Dana",
+        "role": "Chief Product Officer",
+        "role_group": "product",
+        "company_size": "scaling",
+        "email_domain": "example.com",
+        "pillars": ["Build", "Team"],
+        "communication": {},
+        "working_week": {"days": ["monday", "tuesday"]},
+    }
+    onboarding_server.save_session(session)
+
+
+class TestResetFinalizeOverCompletedVault:
+    """A re-finalize over a completed vault previews and applies a merge."""
+
+    def test_dry_run_previews_the_merge_and_the_real_run_reports_replacements(
+        self, tmp_path, monkeypatch
+    ):
+        _seed_completed_reset_vault(tmp_path, monkeypatch)
+
+        preview_payload = _call_tool("finalize_onboarding", {"dry_run": True})
+
+        assert preview_payload["success"] is True, preview_payload
+        preview = preview_payload["data"]
+        assert preview["profile_write_mode"] == "merge"
+        changed = {change["key"]: change for change in preview["profile_changes"]}
+        assert changed["role"]["old"] == "Fractional CPO"
+        assert changed["role"]["new"] == "Chief Product Officer"
+        assert changed["email_domain"]["new"] == "example.com"
+        # Carried-forward keys never appear as changes.
+        assert "work_email" not in changed
+        assert "journaling.morning" not in changed
+        assert "entity_creation.mode" not in changed
+        assert preview["preview_user_profile"]["work_email"] == "dana@example.org"
+        assert preview["preview_user_profile"]["entity_creation"] == {"mode": "auto"}
+        assert "would_create_marker" not in preview
+        assert preview["would_update_marker"]["completed_at"] == (
+            "2026-01-15T10:00:00.000Z"
+        )
+        assert preview["would_update_marker"]["role"] == "Chief Product Officer"
+        kept_pillar = preview["preview_pillars"][0]
+        assert kept_pillar["keywords"] == ["ship", "roadmap"]
+
+        payload = _call_tool("finalize_onboarding", {})
+
+        assert payload["success"] is True, payload
+        summary = payload["data"]
+        assert "System/user-profile.yaml" in summary["files_replaced"]
+        assert "System/pillars.yaml" in summary["files_replaced"]
+        assert "System/user-profile.yaml" not in summary["files_created"]
+        assert "System/pillars.yaml" not in summary["files_created"]
+        profile = yaml.safe_load(
+            (tmp_path / "System/user-profile.yaml").read_text(encoding="utf-8")
+        )
+        assert profile["role"] == "Chief Product Officer"
+        assert profile["work_email"] == "dana@example.org"
+        assert profile["entity_creation"] == {"mode": "auto"}
+        # The disabled room stays disabled and its assets are not re-copied.
+        assert profile["capabilities"]["career"] == {"enabled": False}
+        assert not (tmp_path / "05-Areas/Career").exists()
+        pillars = yaml.safe_load(
+            (tmp_path / "System/pillars.yaml").read_text(encoding="utf-8")
+        )
+        assert pillars["priority_limits"] == {"P0": 2}
+        marker = json.loads(
+            (tmp_path / "System/.onboarding-complete").read_text(encoding="utf-8")
+        )
+        assert marker["completed_at"] == "2026-01-15T10:00:00.000Z"
+        assert marker["role"] == "Chief Product Officer"
+        assert marker["last_reconfigured_at"]
+
+
+class TestTransitionCapsuleOnReset:
+    """Finalize over a completed vault snapshots first and verifies after."""
+
+    def test_reset_finalize_creates_a_capsule_and_reports_verification(
+        self, tmp_path, monkeypatch
+    ):
+        _seed_completed_reset_vault(tmp_path, monkeypatch)
+        profile_before = (tmp_path / "System/user-profile.yaml").read_bytes()
+        pillars_before = (tmp_path / "System/pillars.yaml").read_bytes()
+
+        preview_payload = _call_tool("finalize_onboarding", {"dry_run": True})
+
+        assert preview_payload["success"] is True, preview_payload
+        assert preview_payload["data"]["would_create_transition_capsule"] is True
+        assert not (tmp_path / "System/.dex/transition-capsules").exists()
+
+        payload = _call_tool("finalize_onboarding", {})
+
+        assert payload["success"] is True, payload
+        summary = payload["data"]
+        capsule = summary["transition_capsule"]
+        capsule_id = capsule["capsule_id"]
+        assert capsule["path"] == f"System/.dex/transition-capsules/{capsule_id}"
+        assert (tmp_path / capsule["path"] / "manifest.json").is_file()
+
+        from core.customization_migration.transition import read_transition_capsule
+
+        stored = read_transition_capsule(tmp_path, capsule_id)
+        # The capsule holds the pre-change bytes, exactly.
+        assert stored.files["System/user-profile.yaml"] == profile_before
+        assert stored.files["System/pillars.yaml"] == pillars_before
+        assert stored.rooms["career"] is False
+
+        verification = summary["transition_verification"]
+        assert verification["verified"] is True, verification
+        assert verification["lost"] == []
+        assert verification["unexpected"] == []
+        assert verification["carried_forward_count"] > 0
+        assert re.fullmatch(
+            r"Changed \(you chose\): .+\. Carried forward: \d+ settings\. "
+            r"Lost: none\.",
+            verification["summary"],
+        ), verification["summary"]
+        assert "role" in verification["summary"]
+        assert verification["summary"] in payload["message"]
+
+    def test_fresh_onboarding_does_not_create_a_capsule(self, tmp_path, monkeypatch):
+        _seed_completed_reset_vault(tmp_path, monkeypatch)
+        (tmp_path / "System/user-profile.yaml").unlink()
+        (tmp_path / "System/pillars.yaml").unlink()
+        (tmp_path / "System/.onboarding-complete").unlink()
+
+        payload = _call_tool("finalize_onboarding", {})
+
+        assert payload["success"] is True, payload
+        assert "transition_capsule" not in payload["data"]
+        assert "transition_verification" not in payload["data"]
+        assert not (tmp_path / "System/.dex/transition-capsules").exists()
+
+    def test_verify_transition_tool_flags_a_mutation_outside_the_manifest(
+        self, tmp_path, monkeypatch
+    ):
+        _seed_completed_reset_vault(tmp_path, monkeypatch)
+        payload = _call_tool("finalize_onboarding", {})
+        assert payload["success"] is True, payload
+
+        profile_path = tmp_path / "System/user-profile.yaml"
+        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+        profile["work_email"] = "someone@example.com"
+        profile_path.write_text(
+            yaml.safe_dump(profile, sort_keys=False), encoding="utf-8"
+        )
+
+        report_payload = _call_tool("verify_transition", {})
+
+        assert report_payload["success"] is True, report_payload
+        report = report_payload["data"]
+        assert report["verified"] is False
+        mutated = {item["key"] for item in report["unexpected"]}
+        assert "profile.work_email" in mutated
+        assert "Changed outside your answers: work_email." in report["summary"]
+        assert report["summary"] in report_payload["message"]
+
+    def test_restore_tool_previews_then_round_trips_the_two_files(
+        self, tmp_path, monkeypatch
+    ):
+        _seed_completed_reset_vault(tmp_path, monkeypatch)
+        profile_before = (tmp_path / "System/user-profile.yaml").read_bytes()
+        pillars_before = (tmp_path / "System/pillars.yaml").read_bytes()
+        payload = _call_tool("finalize_onboarding", {})
+        assert payload["success"] is True, payload
+        profile_after = (tmp_path / "System/user-profile.yaml").read_bytes()
+        assert profile_after != profile_before
+
+        preview_payload = _call_tool("restore_transition_capsule", {})
+
+        assert preview_payload["success"] is True, preview_payload
+        assert preview_payload["data"]["dry_run"] is True
+        assert preview_payload["data"]["restored"] is False
+        assert "nothing written" in preview_payload["message"]
+        assert (tmp_path / "System/user-profile.yaml").read_bytes() == profile_after
+
+        restored_payload = _call_tool(
+            "restore_transition_capsule", {"dry_run": False}
+        )
+
+        assert restored_payload["success"] is True, restored_payload
+        assert restored_payload["data"]["restored"] is True
+        assert (tmp_path / "System/user-profile.yaml").read_bytes() == profile_before
+        assert (tmp_path / "System/pillars.yaml").read_bytes() == pillars_before
+        # Nothing beyond the two config files moved back: the marker keeps the
+        # reset it recorded.
+        marker = json.loads(
+            (tmp_path / "System/.onboarding-complete").read_text(encoding="utf-8")
+        )
+        assert marker["role"] == "Chief Product Officer"
+
+    def test_verify_transition_reports_a_missing_capsule_plainly(
+        self, tmp_path, monkeypatch
+    ):
+        _seed_completed_reset_vault(tmp_path, monkeypatch)
+
+        report_payload = _call_tool("verify_transition", {})
+
+        assert report_payload["success"] is False
+        assert "no transition capsule exists" in report_payload["error"]

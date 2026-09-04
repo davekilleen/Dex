@@ -70,6 +70,8 @@ For each goal, get:
 - Goals with no activity in 2+ weeks (stalled)
 - Goals behind expected pace
 
+If the response flags goals as `provisional` (recovered from a freeform list), offer once — "Want me to structure these into trackable goals?" — and move on without nagging if declined.
+
 ### 2.3 Open Tasks and Projects
 
 ```
@@ -80,7 +82,18 @@ Get all open tasks and:
 - Classify by effort (deep_work / medium / quick)
 - Group by pillar alignment
 - Identify P0/P1 items
-- Find tasks that could advance stalled goals
+
+**Goal-advancing tasks — read the groomed backlog, don't guess:**
+
+```
+Use: get_weekly_planning_context()
+```
+
+Each goal in the response's `goal_health` carries `open_task_count` and `next_up_tasks` — the top items the user already marked "take these first" during grooming. Use them directly:
+
+- **Goal has `next_up_tasks`:** suggest those items by name — "Goal X's next-up items are A and B — they fit Wednesday's block."
+- **Stalled goal with open tasks but no groomed order:** call `get_goal_backlog(goal_id)` and pick candidates from the top of its ordering (priority, then oldest).
+- **Goal with a large `open_task_count` (10+) and no `next_up_tasks`:** mention `/goal-backlog` once — "Goal X has 14 open tasks and no groomed order — worth a `/goal-backlog` pass after planning?" Say it once for the whole plan, not per goal, and drop it if declined.
 
 ### 2.4 Calendar Shape Analysis (NEW)
 
@@ -193,7 +206,8 @@ Surface things you've committed to that are due this week.
 Based on the gathered context, generate 4-5 suggested priorities:
 
 **Goal-driven suggestions:**
-- "Goal X has no activity in 3 weeks. Suggested priority: {{specific work that advances it}}"
+- Prefer groomed next-up items when a goal has them: "Goal X's next-up items are A and B — they fit Wednesday's block."
+- "Goal X has no activity in 3 weeks. Suggested priority: {{specific work that advances it}}" — drawn from its backlog, not invented
 - "Goal Y is at 2 of 5 milestones with 6 weeks left. Suggested priority: Complete milestone 3"
 
 **Commitment-driven suggestions:**
@@ -428,5 +442,5 @@ After generating the file, provide a summary:
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
 | Calendar | calendar-mcp, or google-workspace-mcp when `calendar.provider` is `google` | Apple: `calendar_get_events_with_attendees`. Google: `list_calendars`, `get_events` |
-| Work | work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
+| Work | work-mcp | `list_tasks`, `get_quarterly_goals`, `get_goal_status`, `get_weekly_planning_context`, `get_goal_backlog`, `create_weekly_priority`, `analyze_calendar_capacity`, `classify_task_effort`, `suggest_task_scheduling`, `get_commitments_due` |
 | Granola | granola-mcp | `granola_get_today_meetings` (optional) |

@@ -121,7 +121,11 @@ test('fresh provision creates the full profile, seeds, MCP config, paths, and by
         assert.ok(fs.readdirSync(target).length > 0, `provision created empty directory ${directory}`);
       }
     }
-    assert.match(fs.readFileSync(path.join(vault, contract.seed_files.tasks), 'utf8'), /## Build #build/);
+    const tasksSeed = fs.readFileSync(path.join(vault, contract.seed_files.tasks), 'utf8');
+    assert.match(tasksSeed, /## P1 - Important \(max 5\)/);
+    assert.match(tasksSeed, /## P3 - Backlog/);
+    assert.match(tasksSeed, /^- Build$/m);
+    assert.match(tasksSeed, /^- Learn Fast$/m);
     assert.equal(fs.existsSync(path.join(vault, contract.seed_files.week_priorities)), true);
 
     const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
@@ -320,6 +324,81 @@ test('adopt preserves an existing entity_creation choice', () => {
     assert.equal(result.status, 0, result.stderr);
     const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
     assert.deepEqual(profile.entity_creation, { mode: 'off' });
+  });
+});
+
+test('onboard over a completed vault carries forward what was not re-answered', () => {
+  withVault(vault => {
+    fs.writeFileSync(
+      path.join(vault, 'System', 'user-profile.yaml'),
+      [
+        'name: Dana',
+        'role: Fractional CPO',
+        'email_domain: example.org',
+        'work_email: dana@example.org',
+        'calendar:',
+        '  provider: apple',
+        '  work_calendar: Work',
+        'journaling:',
+        '  morning: true',
+        'vault:',
+        '  auto_commit: true',
+        'entity_creation:',
+        '  mode: auto',
+        'capabilities:',
+        '  career:',
+        '    enabled: false',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(
+      path.join(vault, 'System', 'pillars.yaml'),
+      [
+        'pillars:',
+        '  - id: build',
+        '    name: Build',
+        '    description: Ship the engine',
+        '    keywords: [roadmap, strategy]',
+        'priority_limits:',
+        '  P0: 2',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(
+      path.join(vault, 'System', '.onboarding-complete'),
+      '{"completed":true,"completed_at":"2026-01-15T10:00:00.000Z","role":"Fractional CPO"}\n',
+    );
+    const profilePath = path.join(vault, 'reset-profile.json');
+    fs.writeFileSync(profilePath, JSON.stringify({
+      name: 'Dana',
+      role: 'Chief Product Officer',
+      email_domain: 'example.com',
+      pillars: [{ name: 'Build', description: '' }, { name: 'Team' }],
+    }));
+
+    const result = runProvision(vault, ['--onboard', '--profile', profilePath]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.summary.profile_plan.mode, 'merge');
+    const profile = yaml.load(fs.readFileSync(path.join(vault, 'System', 'user-profile.yaml'), 'utf8'));
+    assert.equal(profile.role, 'Chief Product Officer');
+    assert.equal(profile.email_domain, 'example.com');
+    assert.equal(profile.work_email, 'dana@example.org');
+    assert.deepEqual(profile.calendar, { provider: 'apple', work_calendar: 'Work' });
+    assert.equal(profile.journaling.morning, true);
+    assert.equal(profile.vault.auto_commit, true);
+    assert.deepEqual(profile.entity_creation, { mode: 'auto' });
+    assert.deepEqual(profile.capabilities.career, { enabled: false });
+    const pillars = yaml.load(fs.readFileSync(path.join(vault, 'System', 'pillars.yaml'), 'utf8'));
+    assert.deepEqual(pillars.priority_limits, { P0: 2 });
+    assert.deepEqual(pillars.pillars[0], {
+      id: 'build', name: 'Build', description: 'Ship the engine', keywords: ['roadmap', 'strategy'],
+    });
+    assert.deepEqual(pillars.pillars[1], { id: 'team', name: 'Team', description: '' });
+    const marker = JSON.parse(fs.readFileSync(path.join(vault, 'System', '.onboarding-complete'), 'utf8'));
+    assert.equal(marker.completed_at, '2026-01-15T10:00:00.000Z');
+    assert.equal(marker.role, 'Chief Product Officer');
+    assert.ok(marker.last_reconfigured_at);
   });
 });
 

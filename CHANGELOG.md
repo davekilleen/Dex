@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## Unreleased — next public version is 1.97.7
+## [1.97.7] — Changing jobs keeps everything, and tasks get a home under each goal (2026-09-03)
 
 The last goal in your quarterly plan could pick up checkboxes that belonged to
 the next section — carried work, a divider, a later heading. Dex then treated
@@ -37,8 +37,69 @@ along than it was.
   because another person page mentioned that email in its notes.** Dex now
   matches attendee emails only against recorded person email fields. The
   correct structured-email page still resolves.
-
-Public Latest remains 1.97.6 until the next numbered release.
+* **Changing roles no longer quietly wipes your settings.** Re-running setup
+  after a job or role change used to reset everything you didn't re-answer —
+  calendar connection, journaling, meeting sources, a non-standard fiscal
+  year, and more — and switched back on features you had turned off. Now every
+  setting you don't re-answer carries forward unchanged, features you disabled
+  stay off, and before anything is written Dex shows you the exact list of
+  settings that will change, old value to new. Your original setup date is
+  kept, with the reconfiguration recorded alongside it. Thanks to the beta
+  user whose role change surfaced this.
+* **Quarter goals written in your own words now count.** If you wrote your
+  quarterly goals as a simple list instead of the structured layout, Dex
+  silently treated the page as empty — no goal links, no goal progress,
+  anywhere. Dex now recognizes a plain goal list, tells you what it found, and
+  offers once to structure it so tasks and weekly priorities can link to it.
+  The starter page now shows a worked example in the shape Dex reads.
+* **Asking for blocked tasks now shows the tasks you marked blocked.** The
+  blocked-task list only looked for words like “waiting” in the title and
+  ignored the actual blocked marker. It now returns everything marked blocked,
+  and a task marked “started” finally keeps that state instead of reverting to
+  not-started.
+* **New tasks land in the right place.** A task created without saying where
+  now files under its own priority's section in your task list instead of a
+  catch-all "Next Week" heading, and the guide no longer teaches a task format
+  Dex couldn't actually read — following the old examples silently dropped the
+  goal and week links they promised.
+* **Dex can now tell you which tasks serve no goal.** The alignment check
+  used to always report zero orphaned tasks; it now genuinely lists open tasks
+  linked to neither a quarterly goal nor a weekly priority.
+* **Your task list finally has a middle layer between quarter goals and the
+  week.** Everything used to land in one flat list, and the running backlog
+  under each goal lived nowhere. Ask Dex "what's under this goal" and it now
+  shows the open work grouped by the goal it serves, flags what has sat
+  untouched for three weeks or more, and lets you mark what gets picked up
+  first when that goal earns week-time. Weekly planning then suggests those
+  chosen items by name instead of guessing. Thanks to the beta user whose
+  forty-task swamp shaped this.
+* **A new `/goal-backlog` command grooms the swamp with you.** One goal at a
+  time: confirm the doubtful links, retire what's dead — finished, parked to a
+  Someday list, or deleted only after you've seen the exact lines and said yes
+  for that task — and set the pick-up order for the survivors. Nothing is ever
+  removed silently.
+* **Changing roles is now snapshot-protected.** Before a role change rewrites
+  your settings, Dex saves an exact copy of them, and afterwards it checks the
+  result against what you actually re-answered and tells you plainly:
+  "Changed (you chose): role, company. Carried forward: 31 settings.
+  Lost: none." If anything was lost or changed that you didn't ask for, the
+  transition stops, says so, and can put your settings back exactly as they
+  were. The health checkup also watches the latest snapshot and flags drift.
+* **Changing jobs is now a guided transition, not a weekend of manual
+  reshaping.** Tell Dex "I changed jobs" and the new `/change-job` command
+  walks the whole move: the setup questions again with every unanswered
+  setting carried forward, your people re-sorted for the new work email,
+  the old role's goals, priorities and projects archived — never deleted,
+  each project your call to carry, close or park — and open tasks re-pointed
+  at the new pillars. It ends with a plain record of what changed and how to
+  undo any single step. Built from a beta user's report of redoing a role
+  restructure by hand.
+* **A new company email domain no longer leaves your people filed wrong.**
+  After a role change, ex-colleagues used to stay filed as Internal forever
+  and new colleagues landed as External. Dex can now re-check every person
+  against your current company domain and move them to the right side —
+  showing you the full plan first, never guessing when a page has no email
+  recorded, and never overwriting anything.
 
 ## [1.97.6] — Dex stops saying things are running when they are not (2026-08-29)
 

@@ -645,6 +645,11 @@ QUICK_CHECKS = (
         "MCP customizations",
         "_probe_customization_mcp",
     ),
+    CheckDefinition(
+        "customizations.transition",
+        "Role-transition snapshots",
+        "_probe_transition_capsules",
+    ),
     CheckDefinition("core.drift", "Shipped-file drift", "_probe_core_drift"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
@@ -2279,6 +2284,101 @@ def _probe_customization_migration_status(context: DoctorContext) -> ProbeResult
     else:
         detail = "Every customization capsule validates; none are pending"
     return ProbeResult("OK", detail, structured_detail=structured_detail)
+
+
+def _transition_capsule_date(capsule_id: str) -> str:
+    """The capture date embedded in a canonical tcap-YYYYMMDDT... id."""
+    stamp = capsule_id[5:13]
+    return f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}"
+
+
+def _transition_history_note(capsule_ids: tuple[str, ...]) -> str:
+    """Name the earlier snapshots by id only; only the latest is verified."""
+    older = capsule_ids[:-1]
+    if not older:
+        return ""
+    shown = ", ".join(older[-3:])
+    if len(older) > 3:
+        shown += f" and {len(older) - 3} more"
+    noun = "snapshot" if len(older) == 1 else "snapshots"
+    return f"; {len(older)} earlier {noun} kept ({shown})"
+
+
+def _probe_transition_capsules(context: DoctorContext) -> ProbeResult:
+    """Verify the latest role-transition snapshot without changing the vault."""
+    try:
+        from core.customization_migration import transition
+    except ModuleNotFoundError as error:
+        missing = error.name or ""
+        if missing == "core.customization_migration" or missing.startswith(
+            "core.customization_migration."
+        ):
+            return ProbeResult(
+                "OFF",
+                "Role-transition snapshots are unavailable on this older Dex release",
+            )
+        return ProbeResult(
+            "UNKNOWN",
+            f"The role-transition snapshot module could not load: {_one_line(error)}",
+        )
+
+    try:
+        capsule_ids = transition.list_transition_capsule_ids(context.vault_root)
+    except Exception as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"The role-transition snapshots could not be listed: {_one_line(error)}",
+        )
+    if not capsule_ids:
+        return ProbeResult(
+            "OFF",
+            "No role transition has been recorded; a snapshot is taken "
+            "automatically when onboarding reruns over a completed vault",
+        )
+
+    latest = capsule_ids[-1]
+    identity = f"{latest}, taken {_transition_capsule_date(latest)}"
+    history = _transition_history_note(capsule_ids)
+    try:
+        report = transition.verify_transition(context.vault_root, latest)
+    except transition.TransitionCapsuleError as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"The latest role-transition snapshot ({identity}) could not be "
+            f"verified: {_one_line(error)}",
+        )
+    except Exception as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"The role-transition verification could not run: {_one_line(error)}",
+        )
+    verified = report.get("verified") if isinstance(report, dict) else None
+    summary = report.get("summary") if isinstance(report, dict) else None
+    if type(verified) is not bool or not isinstance(summary, str) or not summary:
+        return ProbeResult(
+            "UNKNOWN",
+            "The role-transition verification report was structurally incomplete",
+        )
+    if verified:
+        return ProbeResult(
+            "OK",
+            f"The latest role-transition snapshot ({identity}) verifies: "
+            f"{summary.rstrip('.')}{history}",
+        )
+    return ProbeResult(
+        "BROKEN",
+        "The live settings have drifted from the latest role-transition "
+        f"snapshot ({identity}): {summary.rstrip('.')}{history}",
+        heal=Heal(
+            tier=3,
+            action=(
+                "Review the drift through the reset skill: verify_transition "
+                "shows the full diff, and restore_transition_capsule can put "
+                "System/user-profile.yaml and System/pillars.yaml back exactly "
+                "as captured (dry-run first). Nothing is restored automatically."
+            ),
+        ),
+    )
 
 
 def _mcp_config_path(context: DoctorContext) -> Path:

@@ -65,6 +65,7 @@ QUICK_IDS = [
     "entity.engine",
     "customizations.skills",
     "customizations.mcp",
+    "customizations.transition",
     "core.drift",
     "doctor.self",
 ]

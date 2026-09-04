@@ -1,0 +1,39 @@
+# Trigger evals for /goal-backlog.
+# Canonical shape (see .claude/skills/skill-score/evals/trigger-cases.yaml):
+#   3 positive, 2 negative/collision, 1 ambiguous, 1 missing-prerequisite,
+#   1 failure-recovery.
+
+skill: goal-backlog
+
+positive:
+  - utterance: "My tasks are a swamp — help me groom the backlog."
+    expect: fire
+  - utterance: "What's actually sitting under my mobile-beta goal?"
+    expect: fire
+  - utterance: "Clean up my tasks — half of these are ancient."
+    expect: fire
+
+negative:
+  - utterance: "My inbox is piling up, sort out these notes."
+    expect: no-fire
+    route_to: triage
+    why: routing new inbound items into the pool is triage's job; goal-backlog grooms what's already in it.
+  - utterance: "Plan my week — what should I focus on?"
+    expect: no-fire
+    route_to: week-plan
+    why: choosing the week's priorities is week-plan; it pulls FROM the groomed backlog rather than grooming it.
+
+ambiguous:
+  - utterance: "Sort my tasks out for the sales goal thing."  # no goal by that name; several sales-adjacent goals exist
+    expect: ask
+    why: goal named loosely and more than one could match — ask which goal before grooming.
+
+missing_prerequisite:
+  - utterance: "Groom my backlog"  # Quarter Goals room off, get_goal_backlog returns feature_status off
+    expect: degrade
+    why: one calm line from the returned user_message, then stop — never improvise a grooming pass from grep.
+
+failure_recovery:
+  - utterance: "Park those three stale tasks in Someday"  # the move edit fails midway
+    expect: honest-failure
+    why: report which tasks actually moved and which did not; never summarize a change that didn't land.

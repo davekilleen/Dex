@@ -259,7 +259,7 @@ If you enable quarterly and weekly planning, everything connects from pillars â†
    Today's work supporting weekly priorities (created by `/daily-plan`)
 
 5. **Tasks** (`03-Tasks/Tasks.md`)  
-   Backlog tagged with `#pillar [Q1-2] [Week-1]` connecting to goals
+   Backlog linked to goals through child bullets (e.g. `- Goal: Q1-2026-goal-2`)
 
 **Note:** Both weekly planning (`02-Week_Priorities/`) and quarterly planning (`01-Quarter_Goals/`) are set up from the start. Quarterly planning can be switched off with `/manage-capabilities` if you don't work that way.
 

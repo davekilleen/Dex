@@ -550,14 +550,58 @@ def check_granola() -> Dict[str, Any]:
         "setup": "/granola-setup",
     }
 
+def _completed_profile_capability_states() -> Dict[str, bool]:
+    """Room choices already recorded by a vault that completed onboarding.
+
+    Mirrors the read path of ``capabilities.enabled()``: the explicit
+    ``capabilities.<room>.enabled`` key wins, and when it is absent a room's
+    legacy config switch (e.g. ``quarterly_planning.enabled`` for
+    ``quarter_goals``) still counts as a recorded choice. Reading only the new
+    key would let a reset re-enable a room the user turned off the legacy way.
+    """
+    if not MARKER_FILE.exists():
+        return {}
+    profile_path = BASE_DIR / "System" / "user-profile.yaml"
+    if not profile_path.exists():
+        return {}
+    try:
+        import yaml
+        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(profile, dict):
+        return {}
+    rooms = profile.get("capabilities")
+    rooms = rooms if isinstance(rooms, dict) else {}
+    states: Dict[str, bool] = {}
+    for room in capability_rooms.room_ids():
+        state = rooms.get(room)
+        if isinstance(state, dict) and isinstance(state.get("enabled"), bool):
+            states[room] = state["enabled"]
+            continue
+        legacy_config = capability_rooms.surfaces_for(room).get("config")
+        if isinstance(legacy_config, str):
+            legacy = profile.get(legacy_config)
+            if isinstance(legacy, dict) and isinstance(legacy.get("enabled"), bool):
+                states[room] = legacy["enabled"]
+    return states
+
+
 def _capability_states(
     selected: Dict[str, bool] | None = None,
 ) -> Dict[str, bool]:
     selected = selected or {}
+    # A room the user did not re-answer keeps its current state on a completed
+    # vault (a /manage-capabilities choice must survive a reset); the contract
+    # default applies only when neither an answer nor a recorded state exists.
+    current = _completed_profile_capability_states()
     states: Dict[str, bool] = {}
     for room in capability_rooms.room_ids():
         if room in selected:
             states[room] = selected[room] is True
+            continue
+        if room in current:
+            states[room] = current[room]
             continue
         default = capability_rooms.surfaces_for(room).get("default_enabled", False)
         states[room] = default if isinstance(default, bool) else False
@@ -696,23 +740,146 @@ def _run_harness_receipt_provisioner(
             profile_path.unlink(missing_ok=True)
 
 
+# Config files the onboard provisioner rewrites in place when they already
+# exist; everything else it touches is only ever created when missing.
+_REWRITTEN_CONFIG_PATHS = (
+    "System/user-profile.yaml",
+    "System/pillars.yaml",
+    "System/.onboarding-complete",
+    "System/.dex/harness-profile.json",
+    "CLAUDE.md",
+    ".mcp.json",
+    "core/paths.json",
+)
+
+
 def _finalize_through_provisioner(session: Dict) -> Dict[str, Any]:
     """Collect onboarding inputs and let the sanctioned provisioner mutate."""
+    preexisting = {
+        relative
+        for relative in _REWRITTEN_CONFIG_PATHS
+        if (BASE_DIR / relative).exists()
+    }
     receipt = _run_onboarding_provisioner(session, dry_run=False)
     created = receipt.get("created", [])
     folders = [relative for relative in created if (BASE_DIR / relative).is_dir()]
-    files = [relative for relative in created if (BASE_DIR / relative).is_file()]
+    files = [
+        relative
+        for relative in created
+        if (BASE_DIR / relative).is_file() and relative not in preexisting
+    ]
+    configs_updated = [
+        relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
+    ]
+    # A rewritten pre-existing file was replaced, not created; reporting it
+    # honestly matters most for the profile and pillars on a reset.
+    replaced = [
+        relative
+        for relative in created
+        if relative in preexisting and relative not in configs_updated
+    ]
     return {
         "executor": "core/provision.cjs",
         "lifecycle_executor": receipt.get("lifecycle_executor"),
         "folders_created": folders,
         "files_created": files,
-        "configs_updated": [
-            relative for relative in ("CLAUDE.md", ".mcp.json") if relative in created
-        ],
+        "files_replaced": replaced,
+        "configs_updated": configs_updated,
         "errors": [],
         "receipt": receipt,
     }
+
+
+def _flatten_profile(value: Any, prefix: str = "") -> Dict[str, Any]:
+    """Flatten nested mappings to dotted keys; lists and scalars are leaves."""
+    if isinstance(value, dict) and value:
+        flat: Dict[str, Any] = {}
+        for key, child in value.items():
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            flat.update(_flatten_profile(child, child_prefix))
+        return flat
+    return {prefix: value} if prefix else {}
+
+
+_ABSENT = object()
+
+
+def _profile_changes(planned: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Every profile key the planned write changes, with old and new values."""
+    existing: Dict[str, Any] = {}
+    profile_path = BASE_DIR / "System" / "user-profile.yaml"
+    if profile_path.exists():
+        try:
+            import yaml
+            loaded = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except Exception:
+            existing = {}
+    old_flat = _flatten_profile(existing)
+    new_flat = _flatten_profile(planned)
+    changes: List[Dict[str, Any]] = []
+    for key in sorted(set(old_flat) | set(new_flat)):
+        old = old_flat.get(key, _ABSENT)
+        new = new_flat.get(key, _ABSENT)
+        if old is not _ABSENT and new is not _ABSENT and old == new:
+            continue
+        changes.append(
+            {
+                "key": key,
+                "old": None if old is _ABSENT else old,
+                "new": None if new is _ABSENT else new,
+            }
+        )
+    return changes
+
+
+def _transition_allowed_prefixes(session: Dict[str, Any]) -> List[str]:
+    """Dotted-key prefixes the replayed onboarding steps were allowed to change.
+
+    Namespaced by target: ``profile.`` for user-profile.yaml, ``pillars.``
+    for pillars.yaml, ``rooms.`` for the effective room map. Everything the
+    user did not re-answer stays outside this set, so the verifier can flag
+    any other key that moved.
+    """
+    data = _approved_profile_session_data(session)
+    prefixes = {f"profile.{key}" for key in data if key != "capabilities"}
+    for room in data.get("capabilities") or {}:
+        prefixes.add(f"profile.capabilities.{room}")
+        prefixes.add(f"rooms.{room}")
+        # Re-answered rooms also realign their legacy config switch.
+        config = capability_rooms.surfaces_for(room).get("config")
+        if isinstance(config, str):
+            prefixes.add(f"profile.{config}.enabled")
+    if "pillars" in data:
+        prefixes.add("pillars.pillars")
+    return sorted(prefixes)
+
+
+def _capture_transition_capsule(session: Dict[str, Any]) -> Dict[str, Any]:
+    """Snapshot the pre-change profile, pillars, and room map before mutation."""
+    from core.customization_migration import transition as transition_capsules
+
+    return transition_capsules.create_transition_capsule(
+        BASE_DIR,
+        allowed_prefixes=_transition_allowed_prefixes(session),
+        rooms=transition_capsules.effective_room_map(BASE_DIR),
+    )
+
+
+def _run_transition_verification(capsule_id: str) -> Dict[str, Any]:
+    """Verify the finalize outcome; a failure is reported, never raised."""
+    try:
+        from core.customization_migration import transition as transition_capsules
+
+        return transition_capsules.verify_transition(BASE_DIR, capsule_id)
+    except Exception as error:
+        return {
+            "verified": False,
+            "capsule_id": capsule_id,
+            "error": str(error),
+            "summary": f"The transition could not be verified: {error}",
+        }
 
 
 def _preview_through_provisioner(session: Dict) -> Dict[str, Any]:
@@ -738,7 +905,21 @@ def _preview_through_provisioner(session: Dict) -> Dict[str, Any]:
     would_update_files = [
         relative for relative in created_files if (BASE_DIR / relative).is_file()
     ]
+    profile_plan = receipt.get("profile_plan")
+    planned_profile = (
+        profile_plan.get("profile") if isinstance(profile_plan, dict) else None
+    )
     return {
+        # "merge" carries every non-re-answered key forward from the existing
+        # profile; "replace" rebuilds it from the answers alone.
+        "profile_write_mode": (
+            profile_plan.get("mode") if isinstance(profile_plan, dict) else None
+        ),
+        "profile_changes": (
+            _profile_changes(planned_profile)
+            if isinstance(planned_profile, dict)
+            else []
+        ),
         "would_create_folders": created_folders,
         "already_exist_folders": [
             relative for relative in skipped if (BASE_DIR / relative).is_dir()
@@ -2008,6 +2189,47 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="verify_transition",
+            description=(
+                "After finalize runs on a vault that already completed onboarding, prove "
+                "nothing was silently lost: diff the pre-change snapshot against the current "
+                "profile, pillars, and rooms, allowing only the keys the re-answered steps "
+                "chose to change. Defaults to the most recent snapshot."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "capsule_id": {
+                        "type": "string",
+                        "description": "Snapshot to verify against; omit for the most recent one",
+                    }
+                },
+            },
+        ),
+        types.Tool(
+            name="restore_transition_capsule",
+            description=(
+                "Restore System/user-profile.yaml and System/pillars.yaml exactly as a "
+                "pre-change snapshot recorded them. Previews by default; pass dry_run=false "
+                "to write. Refuses a snapshot whose recorded fingerprints no longer match "
+                "its stored content, and never touches anything else."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "capsule_id": {
+                        "type": "string",
+                        "description": "Snapshot to restore from; omit for the most recent one",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true (default), show what would change without writing",
+                        "default": True,
+                    },
+                },
+            },
+        ),
+        types.Tool(
             name="check_onboarding_complete",
             description="Check if onboarding is complete and get vault age. Returns completion status and days since setup.",
             inputSchema={
@@ -2782,65 +3004,117 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
                 provision_preview = _preview_through_provisioner(session)
 
-                # Build preview of user-profile.yaml content
+                # Build preview of user-profile.yaml content — the provisioner's
+                # own plan when available, so a merge previews the merged result
+                # rather than a template rebuild.
                 data = _approved_profile_session_data(session)
-                profile_preview = {
-                    'name': data.get('name', ''),
-                    'role': data.get('role', ''),
-                    'role_group': data.get('role_group', ''),
-                    'company': data.get('company', ''),
-                    'company_size': data.get('company_size', ''),
-                    'email_domain': data.get('email_domain', ''),
-                    'obsidian_mode': data.get('obsidian_mode', False),
-                    # 'suggest', not 'auto': onboarding now asks whether page
-                    # creation should be automatic and writes the answer, so a
-                    # completed setup never leaves someone on a default they
-                    # were never told about.
-                    'entity_creation': {'mode': 'suggest'},
-                    'working_week': data.get('working_week', {}),
-                    'communication': data.get('communication', {}),
-                    'capabilities': {
-                        room: {'enabled': selected_capabilities[room]}
-                        for room in capability_rooms.room_ids()
-                    },
-                }
+                receipt_preview = provision_preview.get('provision_receipt') or {}
+                profile_plan = receipt_preview.get('profile_plan') or {}
+                profile_preview = profile_plan.get('profile')
+                if not isinstance(profile_preview, dict):
+                    profile_preview = {
+                        'name': data.get('name', ''),
+                        'role': data.get('role', ''),
+                        'role_group': data.get('role_group', ''),
+                        'company': data.get('company', ''),
+                        'company_size': data.get('company_size', ''),
+                        'email_domain': data.get('email_domain', ''),
+                        'obsidian_mode': data.get('obsidian_mode', False),
+                        # 'suggest', not 'auto': onboarding now asks whether page
+                        # creation should be automatic and writes the answer, so a
+                        # completed setup never leaves someone on a default they
+                        # were never told about.
+                        'entity_creation': {'mode': 'suggest'},
+                        'working_week': data.get('working_week', {}),
+                        'communication': data.get('communication', {}),
+                        'capabilities': {
+                            room: {'enabled': selected_capabilities[room]}
+                            for room in capability_rooms.room_ids()
+                        },
+                    }
                 # Build preview of pillars.yaml content
-                pillars_preview = []
-                for pillar in data.get('pillars', []):
-                    pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
-                    pillars_preview.append({'id': pillar_id, 'name': pillar})
+                pillars_plan = receipt_preview.get('pillars_plan')
+                if isinstance(pillars_plan, dict):
+                    pillars_preview = pillars_plan.get('pillars', [])
+                else:
+                    pillars_preview = []
+                    for pillar in data.get('pillars', []):
+                        pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
+                        pillars_preview.append({'id': pillar_id, 'name': pillar})
 
-                # Completion marker preview
-                marker_preview = {
-                    'completed': True,
-                    'completed_at': '(timestamp)',
-                    'provisioned_by': 'core/provision.cjs',
-                    'adopted': False,
-                    'version': _onboarding_package_version(),
-                    'user_name': data.get('name', ''),
-                    'role': data.get('role', ''),
-                    'email_domain': data.get('email_domain', ''),
-                    'has_pillars': len(data.get('pillars', [])) > 0,
-                    'phase2_completed': False,
-                    'pre_analysis_deferred': True
-                }
+                # Completion marker preview: an existing marker is updated in
+                # place and keeps its original completed_at.
+                marker_key = 'would_create_marker'
+                if MARKER_FILE.exists():
+                    marker_key = 'would_update_marker'
+                    existing_marker: Dict[str, Any] = {}
+                    try:
+                        loaded_marker = json.loads(MARKER_FILE.read_text())
+                        if isinstance(loaded_marker, dict):
+                            existing_marker = loaded_marker
+                    except Exception:
+                        existing_marker = {}
+                    marker_preview = {
+                        **existing_marker,
+                        'completed': True,
+                        'provisioned_by': 'core/provision.cjs',
+                        'version': _onboarding_package_version(),
+                        'user_name': data.get('name', ''),
+                        'role': data.get('role', ''),
+                        'email_domain': data.get('email_domain', ''),
+                        'has_pillars': len(data.get('pillars', [])) > 0,
+                        'last_reconfigured_at': '(timestamp)',
+                    }
+                else:
+                    marker_preview = {
+                        'completed': True,
+                        'completed_at': '(timestamp)',
+                        'provisioned_by': 'core/provision.cjs',
+                        'adopted': False,
+                        'version': _onboarding_package_version(),
+                        'user_name': data.get('name', ''),
+                        'role': data.get('role', ''),
+                        'email_domain': data.get('email_domain', ''),
+                        'has_pillars': len(data.get('pillars', [])) > 0,
+                        'phase2_completed': False,
+                        'pre_analysis_deferred': True
+                    }
 
                 dry_run_summary = {
                     'dry_run': True,
                     'validation_passed': True,
                     **provision_preview,
-                    'would_create_marker': marker_preview,
+                    marker_key: marker_preview,
                     'preview_user_profile': profile_preview,
                     'preview_pillars': pillars_preview,
+                    # A vault that completed onboarding gets a pre-change
+                    # snapshot of its profile, pillars, and room map before
+                    # anything is rewritten.
+                    'would_create_transition_capsule': MARKER_FILE.exists(),
                     'session_data_snapshot': data
                 }
 
+                profile_changes = provision_preview.get('profile_changes', [])
+                profile_mode = provision_preview.get('profile_write_mode')
+                if profile_mode == 'merge':
+                    profile_line = (
+                        f" Profile: {len(profile_changes)} settings change "
+                        "(see profile_changes); everything else carries forward."
+                    )
+                elif profile_mode == 'replace':
+                    profile_line = (
+                        " Profile: replaced from these answers "
+                        f"({len(profile_changes)} settings change, see profile_changes)."
+                    )
+                else:
+                    profile_line = ""
                 result = create_success_response(
                     dry_run_summary,
                     "DRY RUN: Would create "
                     f"{len(provision_preview['would_create_folders'])} folders, "
                     f"{len(provision_preview['would_create_files'])} files, update "
-                    f"{len(provision_preview['would_update_configs'])} configs. No changes made."
+                    f"{len(provision_preview['would_update_configs'])} configs."
+                    f"{profile_line} No changes made."
                 )
                 return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
@@ -2853,14 +3127,62 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 "errors": []
             }
 
+            # A vault that completed onboarding is being reconfigured, not
+            # built: nothing may mutate until the pre-change profile, pillars,
+            # and room map are captured for verification and restore.
+            transition_capsule = None
+            if MARKER_FILE.exists():
+                try:
+                    transition_capsule = _capture_transition_capsule(session)
+                except Exception as error:
+                    logger.error(f"Transition capsule capture failed: {error}")
+                    result = create_error_response(
+                        "Refusing to change settings without a pre-change "
+                        f"snapshot: {error}",
+                        suggestion=(
+                            "Nothing was changed. Fix the snapshot failure and "
+                            "call finalize_onboarding again"
+                        ),
+                    )
+                    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
             try:
                 logger.info("Routing onboarding finalization through the provision contract")
                 summary = _finalize_through_provisioner(session)
 
-                result = create_success_response(
-                    summary,
-                    f"Onboarding complete! Created {len(summary['folders_created'])} folders, {len(summary['files_created'])} files"
+                completion_message = (
+                    "Onboarding complete! Created "
+                    f"{len(summary['folders_created'])} folders, "
+                    f"{len(summary['files_created'])} files"
                 )
+                replaced = summary.get('files_replaced', [])
+                if replaced:
+                    completion_message += (
+                        f", replaced {len(replaced)} existing config "
+                        f"file{'s' if len(replaced) != 1 else ''} "
+                        f"({', '.join(replaced)})"
+                    )
+                if transition_capsule is not None:
+                    summary['transition_capsule'] = transition_capsule
+                    verification = _run_transition_verification(
+                        transition_capsule['capsule_id']
+                    )
+                    summary['transition_verification'] = verification
+                    if verification.get('verified') is True:
+                        completion_message += (
+                            ". Pre-change snapshot "
+                            f"{transition_capsule['capsule_id']} kept. "
+                            f"{verification['summary']}"
+                        )
+                    else:
+                        completion_message += (
+                            ". WARNING — the transition did not verify: "
+                            f"{verification['summary']} The pre-change snapshot "
+                            f"{transition_capsule['capsule_id']} can put "
+                            "user-profile.yaml and pillars.yaml back exactly as "
+                            "they were via restore_transition_capsule."
+                        )
+                result = create_success_response(summary, completion_message)
                 surface_analytics_attempt(
                     result,
                     _fire_analytics_event,
@@ -2876,6 +3198,50 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
         
+        elif name == "verify_transition":
+            from core.customization_migration import transition as transition_capsules
+
+            try:
+                report = transition_capsules.verify_transition(
+                    BASE_DIR, arguments.get("capsule_id")
+                )
+            except Exception as error:
+                result = create_error_response(str(error))
+            else:
+                result = create_success_response(report, report["summary"])
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "restore_transition_capsule":
+            from core.customization_migration import transition as transition_capsules
+
+            dry_run = arguments.get("dry_run", True)
+            if not isinstance(dry_run, bool):
+                result = create_error_response("dry_run must be true or false")
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+            try:
+                report = transition_capsules.restore_transition_capsule(
+                    BASE_DIR, arguments.get("capsule_id"), dry_run=dry_run
+                )
+            except Exception as error:
+                result = create_error_response(str(error))
+            else:
+                to_restore = [
+                    item["path"]
+                    for item in report["files"]
+                    if item["action"] == "restore"
+                ]
+                if report["restored"]:
+                    message = "Restored exactly as captured: " + ", ".join(to_restore)
+                elif to_restore:
+                    message = (
+                        "Preview only — nothing written. Would restore: "
+                        + ", ".join(to_restore)
+                    )
+                else:
+                    message = "Already matches the snapshot; nothing to restore."
+                result = create_success_response(report, message)
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
         elif name == "check_onboarding_complete":
             if not MARKER_FILE.exists():
                 result = create_success_response({

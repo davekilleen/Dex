@@ -424,6 +424,32 @@ def test_reset_uses_the_canonical_onboarding_route_without_moving_user_content()
     assert "A reset does not rename, merge\n  or move your content." in reset
     assert "Never create folders, move files, or edit `CLAUDE.md` or `System/user-profile.yaml`\nby hand" in reset
 
+    # The carry-forward guarantee: a completed vault keeps every setting the
+    # user does not re-answer, and the skill must both promise it and teach
+    # the honest preview that proves it.
+    assert "**Carried forward:**" in reset
+    assert "profile_changes" in reset
+    assert "Rooms the user disabled stay disabled" in reset
+    assert "`priority_limits` survives" in reset
+    assert "original setup date" in reset
+
+    # force_new re-arms the calendar and harness gates; the skill must warn
+    # that finalize refuses until both are replayed.
+    assert "clears the calendar answer and\n   the harness confirmation" in reset
+    assert "refuses to run" in reset
+
+    # The pre-change snapshot and its verification: finalize captures the two
+    # settings files and the room states before rewriting, and the skill must
+    # relay the verification honestly instead of declaring success itself —
+    # including the restore path when the check fails.
+    assert "**Snapshotted and checked:**" in reset
+    assert "transition_verification" in reset
+    assert "Lost: none." in reset
+    assert "say so plainly instead of declaring\n   success" in reset
+    assert "restore_transition_capsule" in reset
+    assert "`dry_run=false`" in reset
+    assert "it is not a backup of anything else" in reset
+
     for retired_promise in (
         "Create new folder structure",
         "Move existing content",
@@ -647,3 +673,100 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     assert "first-class Calendar surfaces" in skill
     assert "Do not promise that a Mac permission dialog will appear" in skill
     assert "Do not send them to a standalone terminal as the only path" in skill
+
+
+def test_goal_backlog_grooming_never_deletes_silently_and_offers_once() -> None:
+    """The grooming skill's two ratified promises: no silent removals, no nagging."""
+    grooming = _read(".claude/skills/goal-backlog/SKILL.md")
+
+    # Never delete or move a task without showing exactly what changes.
+    assert "**Never delete or move a task silently.**" in grooming
+    assert "you show the exact lines that will change" in grooming
+    assert "Show the exact lines that will be removed and get an explicit yes" in grooming
+    assert "Never batch-delete on one blanket approval" in grooming
+
+    # Completion is not the only exit, and Someday parks without destroying.
+    assert "completion is not the only exit" in grooming.lower()
+    assert "Nothing is deleted; moving the lines back revives the task." in grooming
+    assert "Marking a task done to tidy it away" in grooming
+
+    # Provisional goals: offer to structure them once, then drop it.
+    assert "Offer **once**" in grooming
+    assert "don't raise it again this session" in grooming
+    assert "don't repeat the offer per goal" in grooming
+
+    # Degradation is honest: an off room or failed read never becomes fake grooming.
+    assert "one calm line" in grooming
+    assert "say the backlog could not be checked" in grooming.lower()
+    assert "Do not improvise a grooming pass from grep" in grooming
+
+
+def test_planning_skills_pull_from_the_groomed_backlog_not_prose() -> None:
+    """/week-plan reads the groomed order; /triage only offers a queue jump when one exists."""
+    week_plan = _read(".claude/skills/week-plan/SKILL.md")
+    triage = _read(".claude/skills/triage/SKILL.md")
+
+    # The prose-only instruction is gone; a concrete call path replaces it.
+    assert "Find tasks that could advance stalled goals" not in week_plan
+    assert "get_weekly_planning_context()" in week_plan
+    assert "`next_up_tasks`" in week_plan
+    assert "`get_goal_backlog(goal_id)`" in week_plan
+    assert "Say it once for the whole plan, not per goal" in week_plan
+
+    # Triage asks the queue-jump question only for goals with a groomed order.
+    assert "get_goal_backlog(goal_id)" in triage
+    assert "set_task_next_up" in triage
+    assert "If the goal has no next-up order, say nothing" in triage
+
+
+def test_change_job_relays_verification_stops_on_failure_and_never_deletes() -> None:
+    """The guided transition's ratified promises, pinned against drift."""
+    transition = _read(".claude/skills/change-job/SKILL.md")
+
+    # Carry-forward is promised up front and the verification is relayed, not
+    # invented: the skill delegates to reset's canonical route and repeats the
+    # honest preview and after-check summary word for word.
+    assert "Every setting you don't re-answer carries forward unchanged" in transition
+    assert "follow its steps 2–5 exactly" in transition
+    assert "`profile_changes`" in transition
+    assert "`transition_verification` summary word for word" in transition
+    assert "Carried forward: N settings. Lost: none." in transition
+
+    # A failed after-check stops everything; later passes never run on top of
+    # a suspect profile, and the snapshot restore is offered, preview first.
+    assert "**If verification fails, stop the whole transition.**" in transition
+    assert "Do not run any later pass." in transition
+    assert "restore_transition_capsule" in transition
+    assert "preview first (it defaults to a dry run)" in transition
+    assert "`dry_run=false` only if they confirm" in transition
+
+    # Archive, never delete — and the archive pass previews every move.
+    assert "**Nothing is deleted, and nothing moves without a yes.**" in transition
+    assert "Nothing was deleted at any step." in transition
+    assert "show the exact source → destination for each file first" in transition
+    assert "stop on that conflict and keep both versions — never overwrite" in transition
+    assert "**Deleting anything, ever.**" in transition
+
+    # Projects are walked one at a time, each with its own confirmation.
+    assert "one at a time" in transition
+    assert "never as a batch" in transition
+    assert "Every project gets its own answer" in transition
+    assert "never apply one blanket yes" in transition
+
+    # Old-employer connections are listed for review, never auto-removed.
+    assert "I never remove a connection myself" in transition
+    assert "**Removing an integration or connection automatically.**" in transition
+    assert "only ever removed by the user" in transition
+
+    # The question script stays single-sourced; profile files stay tool-owned.
+    assert ".claude/flows/onboarding.md" in transition
+    assert "this skill never restates it" in transition
+    assert "written only by the onboarding tools, never by hand from here" in transition
+
+    # Degradation is honest when the people re-sort tool is unavailable.
+    assert "say the people re-sort could not be run" in transition
+    assert "never move person pages by hand" in transition
+
+    # And the reset skill routes the big transition here instead of absorbing it.
+    reset = _read(".claude/skills/reset/SKILL.md")
+    assert "use `change-job` instead" in reset
