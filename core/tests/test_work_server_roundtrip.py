@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 from datetime import date, datetime
 from pathlib import Path
@@ -207,6 +208,42 @@ def test_valid_weekly_priority_link_round_trips_into_week_progress(task_vault):
     linked = next(item for item in progress["priorities"] if item["priority_id"] == priority_id)
     assert linked["tasks_total"] == 1
     assert linked["tasks_done"] == 0
+
+
+def test_week_progress_reads_utf8_priority_with_windows_default(
+    task_vault, monkeypatch
+):
+    task_vault["priorities"].write_text(
+        "# Week Priorities\n\n"
+        "1. Ship customer launch — **Test Pillar** ^week-2026-W36-p1\n\n"
+        "## 📝 Notes\n",
+        encoding="utf-8",
+    )
+    original_open = io.open
+
+    def windows_default_open(
+        file,
+        mode="r",
+        buffering=-1,
+        encoding=None,
+        errors=None,
+        newline=None,
+        closefd=True,
+        opener=None,
+    ):
+        if "b" not in mode and encoding in (None, "locale"):
+            encoding = "cp1252"
+        return original_open(
+            file, mode, buffering, encoding, errors, newline, closefd, opener
+        )
+
+    monkeypatch.setattr(io, "open", windows_default_open)
+
+    progress = _call_tool("get_week_progress")
+
+    assert [priority["title"] for priority in progress["priorities"]] == [
+        "Ship customer launch"
+    ]
 
 
 def test_public_week_progress_counts_completed_task_named_in_success_criteria(
