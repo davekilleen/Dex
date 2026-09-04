@@ -33,6 +33,10 @@ along than it was.
   named by ID in Success criteria.** Progress stayed “not started” unless that
   task also had a separate weekly-priority backlink. Only exact task IDs count;
   close names are still ignored.
+* **Calendar no longer attaches a meeting attendee to the wrong person just
+  because another person page mentioned that email in its notes.** Dex now
+  matches attendee emails only against recorded person email fields. The
+  correct structured-email page still resolves.
 
 Public Latest remains 1.97.6 until the next numbered release.
 
