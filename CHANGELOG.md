@@ -7,6 +7,19 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.9] — Session memory tells the truth before the app has created it (2026-09-05)
+
+A new Dex vault can advertise its conversation-memory tools before the desktop
+app has created the small database behind them. Every tool then returned a raw
+missing-file error, making an optional feature look like a broken Dex install.
+
+**What this fixes for you:**
+
+* **Session memory now says it is not installed yet.** All eight tools return
+  the same clear unavailable state and the existing setup guidance until the
+  desktop app creates its database. Checking never creates the database or
+  changes your vault.
+
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 
 A sharp-eyed beta tester stopped an update one step before it quietly erased a
