@@ -7,11 +7,13 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.9] — Session memory tells the truth before the app has created it (2026-09-05)
+## [1.97.9] — Session memory is honest, and completed meetings stay completed (2026-09-05)
 
 A new Dex vault can advertise its conversation-memory tools before the desktop
 app has created the small database behind them. Every tool then returned a raw
 missing-file error, making an optional feature look like a broken Dex install.
+Separately, a meeting already turned into a finished note could remain in its
+incoming queue and make every new session say the meeting still needed work.
 
 **What this fixes for you:**
 
@@ -19,6 +21,10 @@ missing-file error, making an optional feature look like a broken Dex install.
   the same clear unavailable state and the existing setup guidance until the
   desktop app creates its database. Checking never creates the database or
   changes your vault.
+* **A completed meeting no longer comes back as pending.** Dex matches the
+  incoming meeting's identity to notes already in your vault, so a finished
+  note is counted zero times and an unfinished note is counted once. Damaged
+  or unreadable incoming items still stay visible for safe follow-up.
 
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 

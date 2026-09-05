@@ -61,7 +61,7 @@ function parseFrontmatter(source) {
   if (!document || typeof document !== 'object' || Array.isArray(document)) return null;
 
   const fields = {};
-  for (const key of ['date', 'ai_analyzed']) {
+  for (const key of ['date', 'ai_analyzed', 'granola_id']) {
     if (!Object.hasOwn(document, key) || document[key] === null) continue;
     fields[key] = document[key] instanceof Date
       ? document[key].toISOString()
@@ -72,6 +72,31 @@ function parseFrontmatter(source) {
     fields,
     body: source.slice(match[0].length),
   };
+}
+
+function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
+  if (parsed?.fields.granola_id) return parsed.fields.granola_id;
+
+  const frontmatter = source.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|$)/);
+  if (!frontmatter) return null;
+  const line = frontmatter[1].match(/(?:^|\r?\n)granola_id:[ \t]*([^\r\n]*)/);
+  if (!line) return null;
+
+  const raw = line[1].trim();
+  if (!raw || raw === 'null' || /^[\[{>|]/.test(raw)) return null;
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    try {
+      const value = JSON.parse(raw);
+      return typeof value === 'string' && value.trim() ? value.trim() : null;
+    } catch (error) {
+      return null;
+    }
+  }
+  if (raw.startsWith("'") && raw.endsWith("'")) {
+    const value = raw.slice(1, -1).replace(/''/g, "'").trim();
+    return value || null;
+  }
+  return raw;
 }
 
 function dayFromValue(value) {
@@ -125,28 +150,34 @@ function hasUncheckedForMeItem(source) {
   return false;
 }
 
-function noteIsWaiting(filePath, fallbackDay, nowMilliseconds) {
+function noteIsWaiting(filePath, fallbackDay, nowMilliseconds, existingGranolaIds) {
   try {
     const source = fs.readFileSync(filePath, 'utf8');
     const parsed = parseFrontmatter(source);
-
-    const day = resolveNoteDay(filePath, parsed?.fields.date, fallbackDay);
-    if (!isRecentDay(day, nowMilliseconds)) return false;
+    const granolaId = granolaIdFromFrontmatter(source, parsed);
 
     if (
       /<!--\s*tasks-extracted:/.test(source)
       || source.includes('<!-- dex:skip-processing -->')
     ) {
+      if (granolaId) existingGranolaIds.add(granolaId);
       return false;
     }
-    if (parsed?.fields.ai_analyzed?.toLowerCase() === 'false') return true;
-    return hasUncheckedForMeItem(parsed ? parsed.body : source);
+    const waiting = parsed?.fields.ai_analyzed?.toLowerCase() === 'false'
+      || hasUncheckedForMeItem(parsed ? parsed.body : source);
+    const day = resolveNoteDay(filePath, parsed?.fields.date, fallbackDay);
+    if (!isRecentDay(day, nowMilliseconds)) {
+      if (!waiting && granolaId) existingGranolaIds.add(granolaId);
+      return false;
+    }
+    if (granolaId) existingGranolaIds.add(granolaId);
+    return waiting;
   } catch (error) {
     return false;
   }
 }
 
-function countWaitingNotes(meetingsDir, nowMilliseconds) {
+function countWaitingNotes(meetingsDir, nowMilliseconds, existingGranolaIds) {
   let entries;
   try {
     entries = fs.readdirSync(meetingsDir, { withFileTypes: true });
@@ -161,6 +192,7 @@ function countWaitingNotes(meetingsDir, nowMilliseconds) {
       path.join(meetingsDir, file.name),
       null,
       nowMilliseconds,
+      existingGranolaIds,
     )) {
       count += 1;
     }
@@ -182,6 +214,7 @@ function countWaitingNotes(meetingsDir, nowMilliseconds) {
         path.join(directoryPath, file.name),
         dayDirectory.name,
         nowMilliseconds,
+        existingGranolaIds,
       )) {
         count += 1;
       }
@@ -190,10 +223,23 @@ function countWaitingNotes(meetingsDir, nowMilliseconds) {
   return count;
 }
 
-function countQueueFiles(meetingsDir) {
+function countQueueFiles(meetingsDir, existingGranolaIds) {
   try {
     return fs.readdirSync(path.join(meetingsDir, 'queue'), { withFileTypes: true })
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .filter((entry) => {
+        try {
+          const queued = JSON.parse(fs.readFileSync(
+            path.join(meetingsDir, 'queue', entry.name),
+            'utf8',
+          ));
+          const queuedId = queued?.id;
+          if (queuedId === undefined || queuedId === null) return true;
+          return !existingGranolaIds.has(String(queuedId).trim());
+        } catch (error) {
+          return true;
+        }
+      })
       .length;
   } catch (error) {
     return 0;
@@ -241,8 +287,12 @@ function checkMeetingQueue(options = {}) {
     }
     if (!meetingsDirectory.isDirectory()) return emptyResult();
 
-    const count = countWaitingNotes(paths.meetingsDir, nowMilliseconds)
-      + countQueueFiles(paths.meetingsDir);
+    const existingGranolaIds = new Set();
+    const count = countWaitingNotes(
+      paths.meetingsDir,
+      nowMilliseconds,
+      existingGranolaIds,
+    ) + countQueueFiles(paths.meetingsDir, existingGranolaIds);
     if (count === 0) return emptyResult();
 
     try {
