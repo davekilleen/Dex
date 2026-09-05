@@ -14,7 +14,11 @@ Safety rules, in order of precedence:
 - A page with no recorded emails (frontmatter ``emails:`` falling back to the
   ``dex_last_written`` mirror) is ambiguous and never guessed at.
 - A page whose ``location`` is user-owned (pinned, or hand-edited away from
-  the mirror) is skipped rather than half-migrated.
+  the mirror) is routed by the user's own value: the recompute never wins,
+  the frontmatter is never rewritten, and the page is moved only when its
+  folder disagrees with the user's value. A user-owned value that maps to no
+  routed folder (e.g. ``unknown``) is skipped with a warning rather than
+  half-migrated.
 - ``People/CPO_Network`` and any other sibling folders are never touched.
 """
 
@@ -184,16 +188,38 @@ def _evaluate_page(
     entry["email_source"] = email_source
 
     effective_location = parsed.get("location")
+    owned_reason = _location_user_owned(frontmatter, effective_location)
+    if owned_reason is not None:
+        # The user owns location: route by their value, never recompute over
+        # it and never rewrite it. Only the folder may move to match.
+        entry["reason"] = owned_reason
+        if effective_location == current_location:
+            entry["action"] = "none"
+            return entry
+        user_folder = _FOLDER_FOR_LOCATION.get(effective_location or "")
+        if user_folder is None:
+            entry["action"] = "skip"
+            entry["reason"] = (
+                f"{owned_reason}, and its value {effective_location!r} "
+                "matches no routed People folder"
+            )
+            return entry
+        target_dir = people_dir / user_folder
+        if _collision(target_dir, page.name):
+            entry["action"] = "skip"
+            entry["reason"] = (
+                f"target filename already exists in "
+                f"{_relative(target_dir, vault_root)}; never overwritten"
+            )
+            return entry
+        entry["action"] = "move"
+        entry["target_path"] = _relative(target_dir / page.name, vault_root)
+        entry["frontmatter_update"] = False
+        return entry
+
     needs_relabel = (
         frontmatter is not None and effective_location != recomputed
     )
-    if needs_relabel:
-        owned_reason = _location_user_owned(frontmatter, effective_location)
-        if owned_reason is not None:
-            entry["action"] = "skip"
-            entry["reason"] = owned_reason
-            return entry
-
     if recomputed == current_location:
         if needs_relabel:
             entry["action"] = "relabel"

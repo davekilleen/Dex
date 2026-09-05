@@ -4736,8 +4736,10 @@ async def handle_list_tools() -> list[types.Tool]:
                 "moved (collisions skipped, never overwritten), location "
                 "frontmatter and its mirror are rewritten, and the People "
                 "index is rebuilt. Pages with no recorded emails are listed "
-                "as ambiguous and never guessed; People/CPO_Network is never "
-                "touched."
+                "as ambiguous and never guessed; a location the user pinned "
+                "or hand-edited is honoured as written (the page is routed "
+                "to the user's own value and its frontmatter is never "
+                "rewritten); People/CPO_Network is never touched."
             ),
             inputSchema={
                 "type": "object",

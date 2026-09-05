@@ -193,13 +193,78 @@ def test_unreadable_page_is_ambiguous_and_untouched(tmp_path, monkeypatch):
     assert broken.read_bytes() == b"\xff\xfe\x00 not a page"
 
 
-def test_user_owned_location_is_skipped_not_half_migrated(tmp_path, monkeypatch):
+def test_user_owned_location_matching_its_folder_is_respected_quietly(tmp_path, monkeypatch):
+    """Regression: a pin already honoured by the folder must not warn on every run."""
     people_dir, _ = _setup(tmp_path, monkeypatch)
+    # Pia's email recomputes to external, but the user pinned her internal and
+    # she already sits in Internal/ — nothing to do, and no recurring warning.
     pinned = _write_person(people_dir, "Internal", "Pia_Pinned.md", "Pia Pinned",
                            emails=["pia@example.org"], location="internal")
     pinned.write_text(pinned.read_text().replace(
         "dex_pinned: {}", "dex_pinned:\n  location: user"
     ))
+    before = _tree_bytes(tmp_path)
+
+    result = work_server.reroute_people_data(dry_run=False)
+
+    assert result["moves"] == []
+    assert result["skipped"] == []
+    assert result["warnings"] == []
+    assert result["already_correct"] == 1
+    assert (people_dir / "Internal" / "Pia_Pinned.md").read_bytes() == before["People/Internal/Pia_Pinned.md"]
+
+
+def test_user_owned_location_routes_the_page_by_the_users_value(tmp_path, monkeypatch):
+    """Regression: pinned pages were skipped whole; the pin must govern routing."""
+    people_dir, _ = _setup(tmp_path, monkeypatch)
+    # The user pinned Pat external, but the page still sits in Internal/ and
+    # Pat's email recomputes to internal. The user's value wins: the page
+    # moves to External/ and the pinned frontmatter is never rewritten.
+    pinned = _write_person(people_dir, "Internal", "Pat_Pinned.md", "Pat Pinned",
+                           emails=["pat@example.com"], location="external")
+    pinned.write_text(pinned.read_text().replace(
+        "dex_pinned: {}", "dex_pinned:\n  location: user"
+    ))
+    frontmatter_before = _frontmatter(people_dir / "Internal" / "Pat_Pinned.md")
+
+    result = work_server.reroute_people_data(dry_run=False)
+
+    assert [entry["path"] for entry in result["moves"]] == ["People/Internal/Pat_Pinned.md"]
+    move = result["moves"][0]
+    assert move["target_path"] == "People/External/Pat_Pinned.md"
+    assert move["reason"] == "location is pinned by the user"
+    assert move["frontmatter"] == "unchanged"
+    assert not (people_dir / "Internal" / "Pat_Pinned.md").exists()
+    after = _frontmatter(people_dir / "External" / "Pat_Pinned.md")
+    assert after["location"] == "external"
+    assert after == frontmatter_before  # moved, never rewritten
+
+
+def test_hand_edited_routable_location_is_honoured(tmp_path, monkeypatch):
+    people_dir, _ = _setup(tmp_path, monkeypatch)
+    # The user hand-edited Elle to external (mirror still says internal);
+    # her email recomputes to internal. The hand edit governs: move only.
+    edited = _write_person(people_dir, "Internal", "Elle_Edit.md", "Elle Edit",
+                           emails=["elle@example.com"], location="internal")
+    edited.write_text(edited.read_text().replace(
+        "\nlocation: internal\n", "\nlocation: external\n", 1
+    ))
+
+    result = work_server.reroute_people_data(dry_run=False)
+
+    assert [entry["path"] for entry in result["moves"]] == ["People/Internal/Elle_Edit.md"]
+    move = result["moves"][0]
+    assert move["reason"] == "location was hand-edited since the last engine write"
+    assert move["frontmatter"] == "unchanged"
+    after = _frontmatter(people_dir / "External" / "Elle_Edit.md")
+    assert after["location"] == "external"
+    assert after["dex_last_written"]["location"] == "internal"  # mirror untouched
+
+
+def test_user_owned_unroutable_location_is_skipped_not_half_migrated(tmp_path, monkeypatch):
+    people_dir, _ = _setup(tmp_path, monkeypatch)
+    # Dana was hand-edited to "unknown": no People folder matches, so the page
+    # is skipped whole with a warning rather than guessed at or half-migrated.
     drifted = _write_person(people_dir, "Internal", "Dana_Drift.md", "Dana Drift",
                             emails=["dana@example.org"], location="internal")
     drifted.write_text(drifted.read_text().replace(
@@ -210,12 +275,29 @@ def test_user_owned_location_is_skipped_not_half_migrated(tmp_path, monkeypatch)
     result = work_server.reroute_people_data(dry_run=False)
 
     skipped = {entry["path"]: entry["reason"] for entry in result["skipped"]}
-    assert "pinned" in skipped["People/Internal/Pia_Pinned.md"]
-    assert "hand-edited" in skipped["People/Internal/Dana_Drift.md"]
+    reason = skipped["People/Internal/Dana_Drift.md"]
+    assert "hand-edited" in reason
+    assert "matches no routed People folder" in reason
     assert result["moves"] == []
-    # Index rebuild aside, the pages themselves are untouched.
-    assert (people_dir / "Internal" / "Pia_Pinned.md").read_bytes() == before["People/Internal/Pia_Pinned.md"]
     assert (people_dir / "Internal" / "Dana_Drift.md").read_bytes() == before["People/Internal/Dana_Drift.md"]
+
+
+def test_user_owned_move_never_overwrites_a_colliding_page(tmp_path, monkeypatch):
+    people_dir, _ = _setup(tmp_path, monkeypatch)
+    pinned = _write_person(people_dir, "Internal", "Cody_Clash.md", "Cody Clash",
+                           emails=["cody@example.com"], location="external")
+    pinned.write_text(pinned.read_text().replace(
+        "dex_pinned: {}", "dex_pinned:\n  location: user"
+    ))
+    _write_person(people_dir, "External", "Cody_Clash.md", "Other Cody",
+                  emails=["fixture-cody@invalid.test"], location="external")
+
+    result = work_server.reroute_people_data(dry_run=False)
+
+    skipped = {entry["path"]: entry["reason"] for entry in result["skipped"]}
+    assert "already exists" in skipped["People/Internal/Cody_Clash.md"]
+    assert (people_dir / "Internal" / "Cody_Clash.md").exists()
+    assert _frontmatter(people_dir / "External" / "Cody_Clash.md")["name"] == "Other Cody"
 
 
 def test_obsidian_filename_links_survive_the_move(tmp_path, monkeypatch):
