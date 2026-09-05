@@ -1,6 +1,7 @@
 # Customization Re-Anchoring Design (proving a vault's release identity without the blocked update)
 
-**Status:** Design draft for founder review. Nothing here is built. Grounded in a
+**Status:** Founder-ruled 2026-09-05 (see "Founder rulings" at the end); nothing
+is built yet. Grounded in a
 code audit of `core/customization_migration/`, `core/lifecycle/inventory.py`,
 `core/lifecycle/customizations.py`, `core/lifecycle/catalog.py`,
 `core/update/apply_update.py`, `core/utils/doctor.py`,
@@ -467,3 +468,36 @@ above. Each is an interactive act; removing any one must make a test fail
    the fix priority (slice 1, item 2) rises accordingly. Worth one
    verification pass against a known-good production vault before build
    sequencing is locked.
+
+## Founder rulings — 2026-09-05
+
+Ruled by the founder in session (accepting the orchestrator's recommendations
+as put, one per decision above). Recorded here per the write-the-ruling-down
+rule; the later-dated committed ruling governs on any conflict.
+
+1. **Full-coverage catalog shape:** sibling hash-table file, bound by hash from
+   the catalog. The catalog document stays human-reviewable.
+2. **Trust-on-first-use adoption:** not built in v1. A vault whose manifest
+   matches no official release stays UNKNOWN; learn from the field how often
+   that occurs before revisiting. The constraints in "Candidate directions, B"
+   remain the floor if ever revisited.
+3. **Network-fetch consent:** lives inside the Doctor re-anchor flow as its own
+   explicit yes/no question (not a separate command). Wording is founder copy
+   (ruling 5).
+4. **A2 seam addition:** approved in principle; the adversarial review is the
+   gating item and must be scheduled before build starts. Build does not
+   proceed without it.
+5. **Tester-visible copy:** two-stage approval accepted — the corrected
+   guidance string is approved for the next patch once the founder confirms
+   its verbatim wording; the re-anchor flow prompts (including fetch-consent
+   wording) come back for approval when slice 2 is built.
+6. **Anchor freshness:** repair artifact created on demand only in v1. No
+   automatic regeneration inside the update transaction; full-coverage
+   catalogs (ruling 1) make it redundant over time.
+7. **Coverage finding:** run the verification pass against a known-good
+   production vault (the founder's own) before build sequencing is locked.
+   If confirmed, the full-coverage catalog (slice 1, item 2) moves to the
+   front of the queue.
+
+Open at ruling time: the verbatim guidance-string wording (ruling 5, first
+half) and the verification-pass result (ruling 7).
