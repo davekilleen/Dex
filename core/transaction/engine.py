@@ -46,6 +46,13 @@ from core.transaction.snapshot import Snapshot
 TX_ROOT_RELATIVE = Path("System") / ".dex" / "tx"
 
 
+# Operations that only append their own small receipt. They are committed and
+# byte-verified like any other transaction, but there is nothing in them a user
+# would ask to undo, so they must not consume the retention budget that adoption
+# and release snapshots depend on. See ``Transaction._prune_committed``.
+BOOKKEEPING_OPERATIONS = frozenset({"analytics-receipt", "automation-ownership"})
+
+
 class TransactionError(RuntimeError):
     """The transaction could not proceed safely."""
 
@@ -570,20 +577,41 @@ class Transaction:
         """Retention (owner decision, lean): keep the newest ``keep`` COMMITTED
         transactions' snapshots for undo; delete older COMMITTED ones. Only
         transactions that verifiably reached COMMITTED are ever pruned —
-        anything unreadable or unfinished is left for resume()."""
+        anything unreadable or unfinished is left for resume().
+
+        ``keep`` is applied per class. Bookkeeping operations append a receipt
+        line and have nothing a user would ever ask to rewind, but they are
+        frequent: ``analytics-receipt`` alone fires on every session start. When
+        they shared one budget with the operations that matter, three ordinary
+        session opens were enough to evict an adoption snapshot, and
+        ``rewind_adoption`` would then refuse with "no longer available under
+        keep-last-3 retention" through no action of the user's. Counting the two
+        classes separately keeps the documented promise -- rewind available
+        while the snapshot is among the newest three -- true against the
+        operations that promise is about.
+        """
         tx_root = self.vault_root / TX_ROOT_RELATIVE
-        committed: list[Path] = []
+        rewindable: list[Path] = []
+        bookkeeping: list[Path] = []
         for candidate in sorted(tx_root.iterdir()):
             if not candidate.is_dir():
                 continue
             try:
-                events = {entry.event for entry in Journal(candidate / "journal.jsonl").read()}
+                entries = Journal(candidate / "journal.jsonl").read()
             except JournalCorruptError:
                 continue
-            if "COMMITTED" in events:
-                committed.append(candidate)
-        for stale in committed[:-keep] if keep else committed:
-            shutil.rmtree(stale, ignore_errors=True)
+            if not any(entry.event == "COMMITTED" for entry in entries):
+                continue
+            operation = None
+            for entry in entries:
+                if entry.event == "BEGIN":
+                    operation = entry.payload.get("operation")
+                    break
+            bucket = bookkeeping if operation in BOOKKEEPING_OPERATIONS else rewindable
+            bucket.append(candidate)
+        for group in (rewindable, bookkeeping):
+            for stale in group[:-keep] if keep else group:
+                shutil.rmtree(stale, ignore_errors=True)
 
     # -- recovery / undo -------------------------------------------------------
 
