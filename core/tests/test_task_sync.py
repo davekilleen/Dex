@@ -856,6 +856,116 @@ def test_record_mapping_validates_task_updates_state_and_removes_queue_item(sync
     assert [item["external_id"] for item in json.loads(sync_vault["inbound"].read_text())] == ["keep-me"]
 
 
+def test_create_task_adopts_inbound_external_task_before_the_next_sync(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    task_sync._write_state(_state(todoist=_service_state()))
+    sync_vault["inbound"].write_text(
+        json.dumps(
+            [
+                {
+                    "service": "todoist",
+                    "external_id": "originating-todoist-id",
+                    "title": "Adopt inbound task",
+                    "raw": {"pillar": "pillar_1", "priority": "P1"},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        work_server, "generate_task_id", lambda: "task-20260712-009"
+    )
+    monkeypatch.setattr(work_server, "refresh_search_index", lambda: None)
+    monkeypatch.setattr(work_server, "_fire_analytics_event", lambda *_args, **_kwargs: None)
+    create_calls = []
+
+    def run_adapter(_service, operation, _config, args):
+        if operation == "create":
+            create_calls.append(args)
+            return "duplicate-todoist-id"
+        if operation == "get_changes":
+            return []
+        raise AssertionError(operation)
+
+    monkeypatch.setattr(task_sync, "_run_adapter", run_adapter)
+
+    created = _decode_tool_result(
+        asyncio.run(
+            work_server.handle_call_tool(
+                "create_task",
+                {
+                    "title": "Adopt inbound task",
+                    "pillar": "pillar_1",
+                    "priority": "P1",
+                    "on_duplicate": "fail",
+                    "external_service": "todoist",
+                    "external_id": "originating-todoist-id",
+                },
+            )
+        )
+    )
+    task_id = created["task"]["task_id"]
+    assert task_sync._load_state()["todoist"]["map"] == {
+        task_id: "originating-todoist-id"
+    }
+    assert json.loads(sync_vault["inbound"].read_text(encoding="utf-8")) == []
+
+    synced = task_sync.sync_external_tasks(services=["todoist"])
+
+    assert created["success"] is True
+    assert created["external_mapping"] == {
+        "success": True,
+        "task_id": task_id,
+        "service": "todoist",
+        "external_id": "originating-todoist-id",
+        "removed_from_inbound": 1,
+    }
+    assert synced["todoist"]["pushed_creates"] == 0
+    assert create_calls == []
+
+
+@pytest.mark.parametrize(
+    "external_identity",
+    [
+        {"external_service": "todoist"},
+        {"external_id": "originating-todoist-id"},
+    ],
+)
+def test_create_task_rejects_partial_external_identity_without_writing(
+    sync_vault, external_identity
+):
+    before = sync_vault["tasks"].read_bytes()
+
+    created = _decode_tool_result(
+        asyncio.run(
+            work_server.handle_call_tool(
+                "create_task",
+                {
+                    "title": "Adopt inbound task",
+                    "pillar": "pillar_1",
+                    **external_identity,
+                },
+            )
+        )
+    )
+
+    assert created["success"] is False
+    assert "provided together" in created["error"]
+    assert sync_vault["tasks"].read_bytes() == before
+
+
+def test_daily_plan_uses_one_inbound_task_adoption_call():
+    skill = (REPO_ROOT / ".claude" / "skills" / "daily-plan" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "`external_service`: the item's `service`" in skill
+    assert "`external_id`: the item's `external_id`" in skill
+    assert "Immediately after each successful create" not in skill
+
+
 def test_record_mapping_rejects_missing_canonical_task_without_writes(sync_vault):
     task_sync._write_state(_state(todoist=_service_state()))
     before = sync_vault["state"].read_bytes()
@@ -932,6 +1042,10 @@ def test_health_is_read_only_explicit_and_redacted(sync_vault, monkeypatch):
 def test_work_mcp_exposes_task_sync_tool_schemas():
     tools = asyncio.run(work_server.handle_list_tools())
     by_name = {tool.name: tool for tool in tools}
+
+    create_schema = by_name["create_task"].inputSchema
+    assert create_schema["properties"]["external_service"]["type"] == "string"
+    assert create_schema["properties"]["external_id"]["type"] == "string"
 
     sync_schema = by_name["sync_external_tasks"].inputSchema
     assert sync_schema["properties"]["services"] == {

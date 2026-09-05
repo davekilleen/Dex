@@ -4182,7 +4182,9 @@ async def handle_list_tools() -> list[types.Tool]:
                     "account": {"type": "string", "description": "Account page path, company name, URL, or domain to resolve and link"},
                     "people": {"type": "array", "items": {"type": "string"}, "description": "Person page paths or names to resolve and link"},
                     "source": {"type": "string", "description": "Vault-relative source file path to link"},
-                    "stamp_source_line": {"type": "string", "description": "Exact source checkbox line text to stamp with the created task ID"}
+                    "stamp_source_line": {"type": "string", "description": "Exact source checkbox line text to stamp with the created task ID"},
+                    "external_service": {"type": "string", "description": "Connected task service when accepting an inbound external task; provide with external_id so creation and mapping happen together"},
+                    "external_id": {"type": "string", "description": "Originating external task ID when accepting an inbound task; provide with external_service"}
                 },
                 "required": ["title", "pillar"]
             }
@@ -5010,6 +5012,23 @@ async def _handle_call_tool_inner(
         people = arguments.get('people', []) or []
         source = arguments.get('source', '') or ''
         stamp_source_line = arguments.get('stamp_source_line', '') or ''
+        external_service = arguments.get('external_service', '') or ''
+        external_id = arguments.get('external_id', '') or ''
+        if bool(external_service) != bool(external_id):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "external_service and external_id must be provided together",
+            }, indent=2))]
+        if external_service and (
+            not isinstance(external_service, str)
+            or re.fullmatch(r'[a-z][a-z0-9_-]*', external_service) is None
+            or not isinstance(external_id, str)
+            or not external_id.strip()
+        ):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "Invalid external task identity",
+            }, indent=2))]
         if _LEAKED_TOOL_CALL_DELIMITER_RE.search(context):
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
@@ -5333,6 +5352,20 @@ async def _handle_call_tool_inner(
         
         get_tasks_file().write_text(new_content)
 
+        external_mapping = None
+        if external_service:
+            from core.integrations import task_sync
+
+            external_mapping = task_sync.record_external_task_mapping(
+                task_id=task_id,
+                service=external_service,
+                external_id=external_id,
+            )
+            if not external_mapping.get("success"):
+                raise RuntimeError(
+                    str(external_mapping.get("error") or "External task mapping failed")
+                )
+
         if stamp_source_line and source:
             try:
                 stamp_result = stamp_task_source_line(
@@ -5394,6 +5427,7 @@ async def _handle_call_tool_inner(
                 "tentative": tentative_link,
             },
             "stamp": stamp_result,
+            "external_mapping": external_mapping,
             "synced_pages": synced_pages,
             "message": f"Task '{title}' created successfully under {section} with ID: {task_id}"
         }

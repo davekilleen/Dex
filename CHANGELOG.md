@@ -7,13 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.9] — Session memory is honest, and completed meetings stay completed (2026-09-05)
+## [1.97.9] — Three quiet trust breaks stop repeating work (2026-09-05)
 
 A new Dex vault can advertise its conversation-memory tools before the desktop
 app has created the small database behind them. Every tool then returned a raw
 missing-file error, making an optional feature look like a broken Dex install.
 Separately, a meeting already turned into a finished note could remain in its
 incoming queue and make every new session say the meeting still needed work.
+And a task accepted from Todoist could be sent straight back as a brand-new
+Todoist task before Dex recorded where it came from.
 
 **What this fixes for you:**
 
@@ -25,6 +27,10 @@ incoming queue and make every new session say the meeting still needed work.
   incoming meeting's identity to notes already in your vault, so a finished
   note is counted zero times and an unfinished note is counted once. Damaged
   or unreadable incoming items still stay visible for safe follow-up.
+* **A Todoist task stays one task when you bring it into Dex.** Dex now records
+  the originating service and task ID inside the same create operation, before
+  another sync can run. The accepted item leaves the incoming queue and is not
+  pushed back as a duplicate.
 
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 

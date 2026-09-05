@@ -508,12 +508,13 @@ Give the user one place to review tasks that arrived from a connected task app
      user to choose a valid pillar before calling `create_task`
    - `priority`: user-specified, otherwise a valid P0-P3 value from `raw` when present
    - `context`: notes/description/context from `raw` when present
+   - `external_service`: the item's `service`
+   - `external_id`: the item's `external_id`
    - Do not pass the integration name as `source`; `source` is reserved for a
      vault-relative source page, while the external mapping records provenance
+   - Passing both external fields makes task creation and mapping one operation, so a
+     sync cannot push the newly accepted task back to the originating service
 4. On "skip": leave the item in the queue so it can be reviewed later
-5. Immediately after each successful create, call `record_external_task_mapping` with
-   the returned `task.task_id`, the item's `service`, and its `external_id`. This records
-   the link and removes that item from the inbound queue.
 
 **Silent when empty:** if `inbound-tasks.json` doesn't exist or is empty/`[]`, skip this
 step entirely. Never say "no inbound tasks" — just proceed.
