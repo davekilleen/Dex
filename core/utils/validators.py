@@ -13,6 +13,27 @@ import yaml
 PLACEHOLDER_PATTERN = re.compile(r"\{\{[^{}]+\}\}")
 
 
+class _FrontmatterLoader(yaml.SafeLoader):
+    """SafeLoader that keeps YAML 1.1 bare words (yes/no/on/off/null/...) as strings.
+
+    A skill legitimately named ``yes`` writes ``name: yes`` in its frontmatter;
+    plain YAML 1.1 would resolve that to boolean True and the validator would
+    wrongly reject the skill. Skill frontmatter scalars are text, so the
+    implicit bool/null resolvers are removed for plain (unquoted) scalars.
+    Explicitly tagged values (``!!bool``) still resolve normally.
+    """
+
+
+_FrontmatterLoader.yaml_implicit_resolvers = {
+    key: [
+        (tag, regexp)
+        for tag, regexp in resolvers
+        if tag not in {"tag:yaml.org,2002:bool", "tag:yaml.org,2002:null"}
+    ]
+    for key, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+
+
 def validate_user_profile_config(config: object) -> list[str]:
     """Return minimal schema errors for ``System/user-profile.yaml``."""
     if not isinstance(config, Mapping):
@@ -160,7 +181,7 @@ def validate_skill_frontmatter(path: str | Path) -> list[str]:
         return ["frontmatter is missing its closing ---"]
 
     try:
-        frontmatter = yaml.safe_load("\n".join(lines[1:closing_index]))
+        frontmatter = yaml.load("\n".join(lines[1:closing_index]), Loader=_FrontmatterLoader)
     except yaml.YAMLError as exc:
         return [f"frontmatter is not valid YAML: {exc}"]
     if not isinstance(frontmatter, Mapping):

@@ -73,6 +73,40 @@ def test_skill_frontmatter_is_valid(skill_path: Path) -> None:
     assert validate_skill_frontmatter(skill_path) == []
 
 
+@pytest.mark.parametrize("skill_name", ["yes", "no", "on", "off", "true", "false", "null", "y", "n"])
+def test_skill_named_after_yaml_bare_word_stays_a_string(tmp_path: Path, skill_name: str) -> None:
+    """Regression: ``name: yes`` must validate as the string "yes", not boolean True.
+
+    YAML 1.1 resolves unquoted yes/no/on/off/true/false/null to booleans or
+    null; a skill legitimately named after one of these words was rejected
+    with "frontmatter name must be a non-empty string".
+    """
+    skill_dir = tmp_path / skill_name
+    skill_dir.mkdir()
+    skill_path = skill_dir / "SKILL.md"
+    skill_path.write_text(
+        f"---\nname: {skill_name}\ndescription: {skill_name}\n---\n\n# Fixture\n",
+        encoding="utf-8",
+    )
+
+    assert validate_skill_frontmatter(skill_path) == []
+
+
+def test_skill_frontmatter_bare_word_mismatch_reports_string_name(tmp_path: Path) -> None:
+    """A bare-word name that doesn't match its folder still errors, as text."""
+    skill_dir = tmp_path / "example"
+    skill_dir.mkdir()
+    skill_path = skill_dir / "SKILL.md"
+    skill_path.write_text(
+        "---\nname: yes\ndescription: Example skill\n---\n",
+        encoding="utf-8",
+    )
+
+    assert validate_skill_frontmatter(skill_path) == [
+        "frontmatter name 'yes' must match folder 'example'"
+    ]
+
+
 def test_skill_runnable_references_exist_or_are_documented_dynamic_paths() -> None:
     missing: dict[str, list[str]] = {}
     for skill_path in SKILL_FILES:
