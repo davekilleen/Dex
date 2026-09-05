@@ -11,6 +11,14 @@
     </array>
     <key>WorkingDirectory</key>
     <string>__VAULT_PATH__</string>
+    <!-- launchd supplies a minimal PATH. Both Homebrew prefixes are listed so a
+         scheduled run can find node for the hook syntax checks, matching the
+         other shipped Dex Launch Agents. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin</string>
+    </dict>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>

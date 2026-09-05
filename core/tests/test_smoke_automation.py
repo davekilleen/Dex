@@ -148,3 +148,73 @@ def test_nightly_worker_records_broken_verdict_without_success_heartbeat(tmp_pat
     assert (vault / "telemetry-called").exists()
     assert not (vault / ".scripts" / "logs" / "smoke-nightly.log").exists()
     assert not (vault / "System" / ".dex" / "session-health-success.json").exists()
+
+
+def test_rendered_plist_gives_the_job_a_path_that_can_reach_node(tmp_path: Path) -> None:
+    """launchd supplies a minimal PATH, so the job has to bring its own.
+
+    Without this, smoke.py cannot find node, every .cjs hook syntax check
+    reports UNKNOWN, and nightly hook checking is dead without looking broken.
+    """
+    rendered = TEMPLATE.read_text(encoding="utf-8").replace("__VAULT_PATH__", str(tmp_path))
+    plist = plistlib.loads(rendered.encode("utf-8"))
+
+    path = plist["EnvironmentVariables"]["PATH"].split(":")
+
+    # Both Homebrew prefixes: Apple Silicon and Intel.
+    assert "/opt/homebrew/bin" in path
+    assert "/usr/local/bin" in path
+    # The system locations the other shipped agents also carry.
+    assert "/usr/bin" in path
+
+
+def test_the_worker_widens_path_for_node_when_the_environment_hides_it(tmp_path: Path) -> None:
+    """The worker must repair a minimal PATH itself, not rely on the plist.
+
+    An install that already exists keeps its installed plist across updates,
+    so a template-only fix would never reach it. The worker script does get
+    updated, which is why the fallback lives here too.
+    """
+    fake_prefix = tmp_path / "opt" / "homebrew" / "bin"
+    fake_prefix.mkdir(parents=True)
+    node = fake_prefix / "node"
+    node.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+    node.chmod(0o755)
+
+    # PATH must hide node for the fallback to be exercised at all, and
+    # "/usr/bin:/bin" does not hide it everywhere: some hosts ship
+    # /usr/bin/node, where the guard resolves node immediately and this test
+    # silently asserts nothing. An empty directory hides it on every host.
+    # The block below uses only bash builtins, and bash is invoked by absolute
+    # path, so an otherwise-unusable PATH costs it nothing.
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+
+    # Reproduce the worker's discovery block against a PATH with no node on it,
+    # pointing it at the fake prefix instead of the real one.
+    lines = WORKER.read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("if ! command -v node"))
+    # The block ends at the next unindented "fi", not the inner one.
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "fi")
+    block = "\n".join(lines[start:end + 1]).replace("/opt/homebrew/bin", str(fake_prefix))
+
+    result = subprocess.run(
+        ["/bin/bash", "-c", f'PATH="{empty}"\n{block}\ncommand -v node'],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(node)
+
+
+def test_the_worker_leaves_an_already_working_path_alone() -> None:
+    """Anything already on PATH keeps priority; this only widens the search."""
+    snippet = WORKER.read_text(encoding="utf-8")
+    start = snippet.index("if ! command -v node")
+
+    # The guard is a negative check, so a PATH that already resolves node is
+    # never touched.
+    assert snippet[start:].startswith("if ! command -v node >/dev/null 2>&1; then")
+    assert 'PATH="$PATH:$NODE_DIR"' in snippet, "must append, never prepend or replace"
