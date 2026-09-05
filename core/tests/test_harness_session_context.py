@@ -159,6 +159,43 @@ def test_boot_today_matches_session_hook_and_mcp(tmp_path: Path, monkeypatch) ->
     assert mcp == payload
 
 
+def test_session_start_background_job_staleness_reads_mtime_on_linux(
+    tmp_path: Path,
+) -> None:
+    """The staleness check must read the job log's modification time with GNU
+    stat first (`stat -c %Y`): on Linux the BSD form (`stat -f %m`) succeeds
+    with filesystem info instead of an mtime, the bug pattern fixed in
+    claude-composition-refresh.sh (v1.97.8). This pins that a stale log is
+    flagged and a fresh one stays quiet on this platform."""
+    import time
+
+    vault = _write_vault(tmp_path)
+    log = vault / ".scripts" / "logs" / "changelog-checker.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("ran\n", encoding="utf-8")
+    stale = time.time() - 10 * 86400
+    os.utime(log, (stale, stale))
+    agents = tmp_path / "LaunchAgents"
+    agents.mkdir(exist_ok=True)
+    (agents / "com.dex.changelog-checker.plist").write_text(
+        "<plist/>\n", encoding="utf-8"
+    )
+
+    hook = _run_session_start(vault, tmp_path)
+    assert hook.returncode == 0, hook.stderr
+    assert "Claude update watcher last ran" in hook.stdout
+    assert "days ago" in hook.stdout
+
+    # A fresh log stays quiet — proof the stat call yielded a real epoch
+    # number, not filesystem garbage that would break the age arithmetic.
+    now = time.time()
+    os.utime(log, (now, now))
+    (tmp_path / "dedup").unlink()  # the hook self-dedups within 5 seconds
+    hook = _run_session_start(vault, tmp_path)
+    assert hook.returncode == 0, hook.stderr
+    assert "Claude update watcher" not in hook.stdout
+
+
 def test_person_context_matches_hook_and_mcp(tmp_path: Path, monkeypatch) -> None:
     vault = _write_vault(tmp_path)
     note = vault / "00-Inbox" / "Meetings" / "person-context.md"

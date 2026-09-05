@@ -411,9 +411,13 @@ fi
             JOB_TS_SECONDS="${JOB_TS%%.*}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%Z}"; JOB_TS_SECONDS="${JOB_TS_SECONDS%[+-]??:??}"
             JOB_MTIME=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "$JOB_TS_SECONDS" +%s 2>/dev/null || date -u -d "$JOB_TS" +%s 2>/dev/null || true)
         else
-            JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
+            # GNU stat first: on Linux, `stat -f %m` SUCCEEDS with filesystem
+            # info (BSD -f means mtime, GNU -f means file system), so trying
+            # the BSD form first only works by accident of the numeric guard
+            # below catching the garbage output. GNU-first is deterministic.
+            JOB_MTIME=$(stat -c %Y "$JOB_LOG" 2>/dev/null || true)
             if [[ ! "$JOB_MTIME" =~ ^[0-9]+$ ]]; then
-                JOB_MTIME=$(stat -c %Y "$JOB_LOG" 2>/dev/null || true)
+                JOB_MTIME=$(stat -f %m "$JOB_LOG" 2>/dev/null || true)
             fi
         fi
         [[ "$JOB_MTIME" =~ ^[0-9]+$ && "$NOW" =~ ^[0-9]+$ ]] || continue
