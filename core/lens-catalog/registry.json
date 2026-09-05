@@ -6624,8 +6624,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/change-job/SKILL.md",
-        "sha256": "8df96fdec9fe6139f7189316f576e4ec78c014e2d3b38b3107d53d89c2cccd42",
-        "byte_size": 11491
+        "sha256": "3127262a04e2ff4149f42c265bfac2be78f0d4a8f0269119982f77ce7b2a015b",
+        "byte_size": 11718
       },
       "value": "Moves a whole Dex from one job to the next without losing anything: setup answers carried forward and checked against a snapshot, people re-sorted for the new work email, the old role's planning archived rather than deleted, and open tasks re-pointed at the new pillars.",
       "jobs_served": [

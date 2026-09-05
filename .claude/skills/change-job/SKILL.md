@@ -11,9 +11,11 @@ Move a whole Dex vault from one role to the next without losing anything: the sa
 
 ## Step 0: Orient and promise
 
-Read `System/user-profile.yaml` (read-only — never edit it from this skill) and note the current `role`, `company_size`, `email_domain` and, if present, the company name. These are the **old role** values the later passes need. Then lay out the whole transition in plain words and get an explicit yes:
+Read `System/user-profile.yaml` (read-only — never edit it from this skill) and note the current `role`, `company_size`, `email_domain` and, if present, the company name. These are the **old role** values the later passes need. Then lay out the whole transition in plain words and get an explicit yes.
 
-> "Congratulations on the new role. Here's what a job change involves — five steps, and you can skip any of them:
+Open in the user's own register: congratulate only if they've shown this is good news — a job change can also follow a layoff, and "Congratulations" lands badly there. When unsure, open neutrally:
+
+> "A new role is a big shift — let's move Dex over with you. Here's what a job change involves — five steps, and you can skip any of them:
 >
 > 1. **Setup questions again.** The same questions as first-time setup. Every setting you don't re-answer carries forward unchanged. A snapshot of your current settings is taken first, and the result is checked against it afterwards — if anything was lost, you'll know, and the snapshot can put it back.
 > 2. **Re-sort your people.** Old colleagues and new ones are re-filed for your new work email — you see the full list before anyone moves.
