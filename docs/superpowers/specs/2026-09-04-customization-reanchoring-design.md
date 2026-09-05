@@ -501,3 +501,13 @@ rule; the later-dated committed ruling governs on any conflict.
 
 Open at ruling time: the verbatim guidance-string wording (ruling 5, first
 half) and the verification-pass result (ruling 7).
+
+Update, 2026-09-05 (later the same day): the founder approved the interim
+guidance wording verbatim ("Dex can't yet prove these files came from your
+installed release — that's a gap in Dex's own records, not a problem with
+your files. A guided repair that checks them against the official release
+record is coming. Updating will not clear this notice, so don't update just
+to fix it."), together with the reworded /change-job opener. Ruling 5's
+first half is settled; the re-anchor flow prompts remain open for slice 2.
+The adversarial review (2026-09-05-anchor-seam-adversarial-review.md)
+returned APPROVE-WITH-CONDITIONS; its C1–C12 are binding on the build.
