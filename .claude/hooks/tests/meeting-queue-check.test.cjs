@@ -264,9 +264,99 @@ test('counts ai_analyzed false using the day-directory date', (t) => {
 
 test('counts a queue JSON without applying a note age filter', (t) => {
   const root = fixture(t);
-  writeQueueMeeting(root, 'old-manual-meeting.json');
+  writeQueueMeeting(
+    root,
+    'old-manual-meeting.json',
+    JSON.stringify({ id: 'meeting-without-a-note' }),
+  );
 
   const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('does not count a queued meeting whose completed note already exists', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'already-completed.md',
+    meetingNote({ granolaId: 'meeting-1', tasksExtracted: true }),
+  );
+  writeQueueMeeting(
+    root,
+    'meeting-1.json',
+    JSON.stringify({ id: 'meeting-1', title: 'Already completed' }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('counts an incomplete note once when its queued JSON has the same id', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'still-incomplete.md',
+    meetingNote({ granolaId: 'meeting-2' }),
+  );
+  writeQueueMeeting(
+    root,
+    'meeting-2.json',
+    JSON.stringify({ id: 'meeting-2', title: 'Still incomplete' }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('an old incomplete note cannot hide its queued JSON', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    dayFromNow(-30),
+    'still-incomplete.md',
+    meetingNote({ day: dayFromNow(-30), granolaId: 'meeting-old' }),
+  );
+  writeQueueMeeting(
+    root,
+    'meeting-old.json',
+    JSON.stringify({ id: 'meeting-old', title: 'Still incomplete' }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('malformed and missing-id queue items still count as pending', (t) => {
+  const root = fixture(t);
+  writeQueueMeeting(root, 'malformed.json', '{not-json');
+  writeQueueMeeting(root, 'missing-id.json', JSON.stringify({ title: 'No id' }));
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 2, lines: expectedLines(2) });
+});
+
+test('an unreadable queue item still counts as pending', (t) => {
+  const root = fixture(t);
+  const queued = writeQueueMeeting(
+    root,
+    'unreadable.json',
+    JSON.stringify({ id: 'meeting-3' }),
+  );
+  fs.chmodSync(queued, 0o000);
+
+  let result;
+  try {
+    result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+  } finally {
+    fs.chmodSync(queued, 0o600);
+  }
 
   assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
 });

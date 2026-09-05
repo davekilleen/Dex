@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -24,6 +25,12 @@ import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
+
+_repo_root = str(Path(__file__).parent.parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
+from core.utils.feature_status import feature_status
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -729,10 +736,15 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
     except FileNotFoundError as e:
-        return [types.TextContent(type="text", text=json.dumps({
-            "error": str(e),
-            "hint": "The Dex app creates this database. Start the app and have at least one conversation first."
-        }))]
+        hint = "The Dex app creates this database. Start the app and have at least one conversation first."
+        payload = feature_status(
+            "Session memory",
+            "not_installed",
+            hint,
+            error=str(e),
+            hint=hint,
+        )
+        return [types.TextContent(type="text", text=json.dumps(payload))]
     except Exception as e:
         logger.error(f"Error in {name}: {e}")
         return [types.TextContent(type="text", text=json.dumps({"error": str(e)}))]

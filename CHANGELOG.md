@@ -7,6 +7,37 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.9] — Four user-reported trust breaks are repaired (2026-09-05)
+
+A new Dex vault can advertise its conversation-memory tools before the desktop
+app has created the small database behind them. Every tool then returned a raw
+missing-file error, making an optional feature look like a broken Dex install.
+Separately, a meeting already turned into a finished note could remain in its
+incoming queue and make every new session say the meeting still needed work.
+And a task accepted from Todoist could be sent straight back as a brand-new
+Todoist task before Dex recorded where it came from.
+Finally, first-time setup could start on a working Dex Python and then quietly
+switch to an older machine Python while creating the vault, stopping setup.
+
+**What this fixes for you:**
+
+* **Session memory now says it is not installed yet.** All eight tools return
+  the same clear unavailable state and the existing setup guidance until the
+  desktop app creates its database. Checking never creates the database or
+  changes your vault.
+* **A completed meeting no longer comes back as pending.** Dex matches the
+  incoming meeting's identity to notes already in your vault, so a finished
+  note is counted zero times and an unfinished note is counted once. Damaged
+  or unreadable incoming items still stay visible for safe follow-up.
+* **A Todoist task stays one task when you bring it into Dex.** Dex now records
+  the originating service and task ID inside the same create operation, before
+  another sync can run. The accepted item leaves the incoming queue and is not
+  pushed back as a duplicate.
+* **First-time setup keeps using the Python that already runs Dex.** Every
+  Python-backed setup stage now receives that same working interpreter instead
+  of falling back to an incompatible system copy, including capability files,
+  the main vault structure, harness setup and the protected lifecycle write.
+
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 
 A sharp-eyed beta tester stopped an update one step before it quietly erased a

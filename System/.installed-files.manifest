@@ -1536,6 +1536,7 @@ core/tests/test_ritual_match.py
 core/tests/test_safe_autosave.py
 core/tests/test_security_gate.py
 core/tests/test_session_health.py
+core/tests/test_session_memory_server.py
 core/tests/test_setup_credential_disclosure.py
 core/tests/test_shipped_seed_policy.py
 core/tests/test_skill_delegated_gathering.py
