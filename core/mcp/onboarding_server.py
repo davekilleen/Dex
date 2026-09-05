@@ -659,7 +659,13 @@ def _run_onboarding_provisioner(
             text=True,
             timeout=120,
             check=False,
-            env={**os.environ, "DEX_LIFECYCLE_PYTHON": sys.executable},
+            env={
+                **os.environ,
+                "DEX_CAPABILITY_PYTHON": sys.executable,
+                "DEX_PROVISION_PYTHON": sys.executable,
+                "DEX_HARNESS_PYTHON": sys.executable,
+                "DEX_LIFECYCLE_PYTHON": sys.executable,
+            },
         )
         try:
             receipt = json.loads(completed.stdout)

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import sys
@@ -1433,6 +1434,97 @@ class TestCapabilityStep:
         }
         assert 8 in session["completed_steps"]
         assert session["current_step"] == 9
+
+    def test_finalize_uses_the_running_python_for_every_provisioning_stage(
+        self, tmp_path, monkeypatch
+    ):
+        _prepare_finalize_vault(tmp_path, monkeypatch)
+        session = onboarding_server.create_new_session()
+        session["completed_steps"] = [1, 2, 3, 4, 5, 6, 7, 8]
+        session["current_step"] = 9
+        session["data"] = {
+            "calendar": {"permissions_pending": True},
+            "name": "Interpreter Test User",
+            "role": "Founder",
+            "role_group": "leadership",
+            "company_size": "startup",
+            "email_domain": "example.com",
+            "pillars": ["Build", "Learn"],
+            "communication": {},
+            "working_week": {"days": ["monday"]},
+            "capabilities": {
+                "career": False,
+                "companies": False,
+                "quarter_goals": False,
+            },
+        }
+        onboarding_server.save_session(session)
+
+        fake_bin = tmp_path / "fake-bin"
+        fake_bin.mkdir()
+        system_python = fake_bin / "python3"
+        system_python.write_text(
+            "#!/bin/sh\n"
+            "echo \"TypeError: unsupported operand type(s) for |: 'type' and 'type'\" >&2\n"
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        system_python.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+        for variable in (
+            "DEX_CAPABILITY_PYTHON",
+            "DEX_PROVISION_PYTHON",
+            "DEX_HARNESS_PYTHON",
+            "DEX_LIFECYCLE_PYTHON",
+            "DEX_PYTHON",
+        ):
+            monkeypatch.delenv(variable, raising=False)
+
+        payload = _decode_tool_result(
+            asyncio.run(onboarding_server.handle_call_tool("finalize_onboarding", {}))
+        )
+
+        assert payload["success"] is True, payload
+        assert (tmp_path / "System/.onboarding-complete").is_file()
+
+    def test_onboarding_provisioner_pins_every_current_python_stage(
+        self, monkeypatch
+    ):
+        captured = {}
+        session = {"data": {}}
+        monkeypatch.setattr(
+            onboarding_server,
+            "_approved_profile_session_data",
+            lambda _session: {"pillars": []},
+        )
+        monkeypatch.setattr(
+            onboarding_server,
+            "_capability_states",
+            lambda _selected: {
+                room: False for room in onboarding_server.capability_rooms.room_ids()
+            },
+        )
+
+        def fake_run(command, **kwargs):
+            captured.update(kwargs["env"])
+            return onboarding_server.subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"ok": true}\n',
+                stderr="",
+            )
+
+        monkeypatch.setattr(onboarding_server.subprocess, "run", fake_run)
+
+        onboarding_server._run_onboarding_provisioner(session, dry_run=True)
+
+        for variable in (
+            "DEX_CAPABILITY_PYTHON",
+            "DEX_PROVISION_PYTHON",
+            "DEX_HARNESS_PYTHON",
+            "DEX_LIFECYCLE_PYTHON",
+        ):
+            assert captured[variable] == sys.executable
 
     def test_omitted_room_answers_use_contract_defaults(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"

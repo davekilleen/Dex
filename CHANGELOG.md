@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.9] — Three quiet trust breaks stop repeating work (2026-09-05)
+## [1.97.9] — Four user-reported trust breaks are repaired (2026-09-05)
 
 A new Dex vault can advertise its conversation-memory tools before the desktop
 app has created the small database behind them. Every tool then returned a raw
@@ -16,6 +16,8 @@ Separately, a meeting already turned into a finished note could remain in its
 incoming queue and make every new session say the meeting still needed work.
 And a task accepted from Todoist could be sent straight back as a brand-new
 Todoist task before Dex recorded where it came from.
+Finally, first-time setup could start on a working Dex Python and then quietly
+switch to an older machine Python while creating the vault, stopping setup.
 
 **What this fixes for you:**
 
@@ -31,6 +33,10 @@ Todoist task before Dex recorded where it came from.
   the originating service and task ID inside the same create operation, before
   another sync can run. The accepted item leaves the incoming queue and is not
   pushed back as a duplicate.
+* **First-time setup keeps using the Python that already runs Dex.** Every
+  Python-backed setup stage now receives that same working interpreter instead
+  of falling back to an incompatible system copy, including capability files,
+  the main vault structure, harness setup and the protected lifecycle write.
 
 ## [1.97.8] — Words you wrote into Dex can no longer be lost by an update (2026-09-04)
 
