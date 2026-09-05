@@ -44,7 +44,17 @@ EXCLUSION_GUIDANCE = {
     "read-error": "Make the file readable and valid for its format, then reassess.",
     "embedded-secret": "Remove the credential or secret before including this file; Dex will not archive it.",
     "trust-hash-mismatch": "Re-authorize the current file through the trust flow, then reassess.",
-    "release-identity-unproved": "Restore a verified release catalog through /dex-update, then reassess.",
+    # Interim wording (re-anchoring design ruling 5; verbatim wording is
+    # founder copy): honest before the re-anchor repair exists. Once that flow
+    # ships, this string changes to point at it — see the design's "Guidance
+    # correction" section.
+    "release-identity-unproved": (
+        "Dex can't yet prove these files came from your installed release — "
+        "that's a gap in Dex's own records, not a problem with your files. "
+        "A guided repair that checks them against the official release record "
+        "is coming. Updating will not clear this notice, so don't update just "
+        "to fix it."
+    ),
     "dependency-tree-excluded": "Move the dependency into a regular supported vault path, then reassess.",
     "embedded-repository": "Keep the nested repository separate and record its dependency manually.",
     "canonical-path-collision": "Rename the colliding path so each canonical vault path is unique.",
