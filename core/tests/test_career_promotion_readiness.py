@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from core.mcp import career_server
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CAREER_SERVER = REPO_ROOT / "core" / "mcp" / "career_server.py"
+MCP_EXAMPLE = REPO_ROOT / "System" / ".mcp.json.example"
 
 STRUCTURED_LADDER = """# Career Ladder
 
@@ -240,3 +247,124 @@ def test_skills_gap_and_parse_ladder_agree_on_heading_names(
     assert _required_skill_names(gap) == [
         item["category"] for item in parsed["competencies"]
     ]
+
+
+def test_public_folder_download_launches_career_server_with_vault_path() -> None:
+    """The public folder copies System/.mcp.json.example into .mcp.json.
+
+    That is the path /career-coach actually runs: a fresh interpreter of
+    career_server.py with VAULT_PATH set. Monkeypatched module globals are
+    not that path.
+    """
+    config = json.loads(MCP_EXAMPLE.read_text(encoding="utf-8"))
+    career = config["mcpServers"]["career-mcp"]
+
+    assert career["args"] == ["{{VAULT_PATH}}/core/mcp/career_server.py"]
+    assert career["env"]["VAULT_PATH"] == "{{VAULT_PATH}}"
+    assert CAREER_SERVER.is_file()
+
+
+def test_career_server_source_refuses_the_dummy_score_assignments() -> None:
+    source = CAREER_SERVER.read_text(encoding="utf-8")
+
+    assert "skills_score = 15" not in source
+    assert "growth_score = 5" not in source
+    assert "category_dir.glob('*.md')" not in source
+    assert "scan_evidence_directory(EVIDENCE_DIR)" in source
+    assert "_score_skills_from_coverage" in source
+
+
+def _write_download_vault(tmp_path: Path, *, ladder: str | None = None) -> Path:
+    vault = tmp_path / "vault"
+    career_dir = vault / "05-Areas" / "Career"
+    evidence_dir = career_dir / "Evidence"
+    profile = vault / "System" / "user-profile.yaml"
+    evidence_dir.mkdir(parents=True)
+    profile.parent.mkdir(parents=True)
+    profile.write_text("capabilities:\n  career:\n    enabled: true\n", encoding="utf-8")
+    if ladder is not None:
+        (career_dir / "Career_Ladder.md").write_text(ladder, encoding="utf-8")
+    return vault
+
+
+def _run_on_download_path(vault: Path) -> dict:
+    """Score and gap as the public folder launch does: VAULT_PATH, no monkeypatch."""
+    script = r"""
+import asyncio, json
+from core.mcp import career_server
+
+def decode(result):
+    return json.loads(result[0].text)
+
+score = decode(asyncio.run(career_server.handle_call_tool(
+    "promotion_readiness_score", {"time_in_role_months": 3, "target_level": "Senior PM"}
+)))
+gap = decode(asyncio.run(career_server.handle_call_tool(
+    "skills_gap_analysis", {"target_level": "Senior PM"}
+)))
+print(json.dumps({"score": score, "gap": gap}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        env={**os.environ, "VAULT_PATH": str(vault)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    return json.loads(result.stdout)
+
+
+def test_download_path_refuses_dummy_scores_when_evidence_is_empty(tmp_path) -> None:
+    vault = _write_download_vault(tmp_path)
+    payload = _run_on_download_path(vault)
+    skills = payload["score"]["score_breakdown"]["skills_coverage"]
+    velocity = payload["score"]["score_breakdown"]["growth_velocity"]
+    evidence = payload["score"]["score_breakdown"]["evidence_coverage"]
+
+    assert evidence["evidence_count"] == 0
+    assert skills["score"] != 15
+    assert skills["score"] == 0
+    assert velocity["score"] != 5
+    assert velocity["score"] == 0
+
+
+def test_download_path_uses_real_evidence_and_ignores_conversation(tmp_path) -> None:
+    vault = _write_download_vault(tmp_path, ladder=STRUCTURED_LADDER)
+    evidence_dir = vault / "05-Areas" / "Career" / "Evidence"
+    for name, competency in (
+        ("2026-01-10 - Strategy memo.md", "Product Strategy"),
+        ("2026-02-11 - Design review.md", "Technical Depth"),
+        ("2026-03-12 - Exec review.md", "Stakeholder Leadership"),
+    ):
+        _write_mapped_evidence(evidence_dir / name, name, competency)
+    (evidence_dir / "README.md").write_text("# Career Evidence\n", encoding="utf-8")
+
+    # Conversation is never a source. Inbox chat and meeting notes must not
+    # change the score — only files sitting in the Evidence folder count.
+    meetings = vault / "00-Inbox" / "Meetings"
+    meetings.mkdir(parents=True)
+    (meetings / "2026-08-17 - Promotion chat.md").write_text(
+        "# Promotion chat\n\n"
+        "We talked about Product Strategy, Technical Depth, and "
+        "Stakeholder Leadership. Pretend this conversation is evidence.\n",
+        encoding="utf-8",
+    )
+    (vault / "00-Inbox" / "Ideas").mkdir(parents=True)
+    (vault / "00-Inbox" / "Ideas" / "conversation.md").write_text(
+        "# Chat log\n\nA conversation is not career evidence.\n",
+        encoding="utf-8",
+    )
+
+    payload = _run_on_download_path(vault)
+    skills = payload["score"]["score_breakdown"]["skills_coverage"]
+    evidence = payload["score"]["score_breakdown"]["evidence_coverage"]
+    gap = payload["gap"]
+
+    assert evidence["evidence_count"] == 3
+    assert skills["score"] != 15
+    assert skills["score"] == 8
+    assert skills["required_competencies"] == 3
+    assert gap["required_skills_count"] == 3
+    assert _required_skill_names(gap) == COMPETENCY_HEADINGS
