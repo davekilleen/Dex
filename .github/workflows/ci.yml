@@ -397,7 +397,15 @@ jobs:
 
   build-release:
     needs: [quality, test-results, portable-plugin-platforms]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Runs on the release merge to main AND on the v* tag push. The main run
+    # can only publish once the tag exists (the release-tree gate refuses to
+    # label assets no tag vouches for), and the tag is pushed by a person some
+    # minutes after the merge — so whichever push arrives second is the one
+    # that actually publishes. The already-published guard plus the serialized
+    # concurrency group make the other run a safe no-op. Before the tag
+    # trigger existed, a tag arriving after the main run's gate had given up
+    # meant no publish until someone re-ran the failed job by hand (v1.97.8).
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: macos-latest
     concurrency:
       group: stable-public-route
@@ -465,7 +473,16 @@ jobs:
         if: steps.release_guard.outputs.already_published != 'true'
         run: |
           set -euo pipefail
-          bash scripts/build-release.sh
+          # A tag run checks out detached at the tag commit with no local main,
+          # and main may have moved on since the tag. Build from the tag's own
+          # commit so the assets are provably the tag's tree — the release-tree
+          # gate above already proved HEAD's tree is the tag's tree.
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            git branch -f tag-release-source "$GITHUB_SHA"
+            bash scripts/build-release.sh --source tag-release-source
+          else
+            bash scripts/build-release.sh
+          fi
           echo "release_sha=$(git rev-parse release)" >> "$GITHUB_OUTPUT"
           RELEASE_TAG="$(python3 scripts/check-release-catalog-tag-identity.py --release-ref release --print-release-tag)"
           test -n "$RELEASE_TAG"
