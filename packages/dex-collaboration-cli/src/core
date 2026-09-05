@@ -1,0 +1,396 @@
+#!/bin/bash
+set -euo pipefail
+
+# Use only the operating-system baseline. The collaboration clients are resolved
+# from this artifact, never caller PATH or caller-provided runtime overrides.
+PATH=/usr/bin:/bin
+export PATH
+
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+BUZZ="$SCRIPT_DIR/../libexec/buzz"
+BUZZ_ADMIN="$SCRIPT_DIR/../libexec/buzz-admin"
+STUDIO_HOME="${DEX_STUDIO_HOME:-${HOME:-}/.dex-studio}"
+case "$STUDIO_HOME" in
+  /*) ;;
+  *) STUDIO_HOME="$(pwd -P)/$STUDIO_HOME" ;;
+esac
+KEYS_DIR="$STUDIO_HOME/keys/agents"
+export BUZZ_RELAY_URL="${BUZZ_RELAY_URL:-ws://127.0.0.1:34000}"
+
+json_escape() {
+  local input="${1:-}" output="" character code index
+  index=0
+  while [[ "$index" -lt "${#input}" ]]; do
+    character="${input:$index:1}"
+    case "$character" in
+      '"') output="$output\\\"" ;;
+      '\\') output="$output\\\\" ;;
+      $'\b') output="$output\\b" ;;
+      $'\f') output="$output\\f" ;;
+      $'\n') output="$output\\n" ;;
+      $'\r') output="$output\\r" ;;
+      $'\t') output="$output\\t" ;;
+      *)
+        LC_CTYPE=C printf -v code '%d' "'$character"
+        if [[ "$code" -lt 32 ]]; then
+          printf -v character '\\u%04x' "$code"
+        fi
+        output="$output$character"
+        ;;
+    esac
+    index=$((index + 1))
+  done
+  printf '%s' "$output"
+}
+
+die() {
+  printf '{"error":"%s"}\n' "$(json_escape "$1")" >&2
+  exit 1
+}
+
+require_runtime() {
+  [[ -x "$BUZZ" ]] || die "packaged Buzz client is missing or not executable"
+  [[ -x "$BUZZ_ADMIN" ]] || die "packaged Buzz admin client is missing or not executable"
+  [[ -n "${HOME:-}${DEX_STUDIO_HOME:-}" ]] || die "HOME or DEX_STUDIO_HOME is required"
+}
+
+slugify() {
+  LC_ALL=C printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+require_identity_id() {
+  local identity_id="$1"
+  [[ "$identity_id" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] \
+    || die "identity id is invalid"
+}
+
+ensure_custody_root() {
+  local directory parent
+  for directory in "$STUDIO_HOME" "$STUDIO_HOME/keys" "$KEYS_DIR"; do
+    [[ ! -L "$directory" ]] || die "unsafe identity custody"
+    if [[ -e "$directory" ]]; then
+      [[ -d "$directory" && -O "$directory" ]] || die "unsafe identity custody"
+    else
+      parent="${directory%/*}"
+      if [[ "$directory" != "$STUDIO_HOME" ]]; then
+        [[ -d "$parent" && ! -L "$parent" && -O "$parent" ]] \
+          || die "unsafe identity custody"
+      fi
+      mkdir "$directory" || die "unsafe identity custody"
+    fi
+    [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] \
+      || die "unsafe identity custody"
+    chmod 0700 "$directory" || die "unsafe identity custody"
+    [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] \
+      || die "unsafe identity custody"
+  done
+}
+
+parse_key_line() {
+  local label="$1" payload="$2"
+  printf '%s\n' "$payload" | awk -v label="$label" '$1 " " $2 == label { print $3; exit }'
+}
+
+identity_create() {
+  local name="$1" forced_id="${2:-}" id pair pubkey privkey target_dir temp_dir created_at
+  local keys_root identity_root
+  id="$forced_id"
+  if [[ -z "$id" ]]; then
+    id="$(slugify "$name")"
+  fi
+  [[ -n "$id" ]] || die "identity name must contain a letter or number"
+  require_identity_id "$id"
+
+  ensure_custody_root
+  target_dir="$KEYS_DIR/$id"
+  [[ ! -e "$target_dir" && ! -L "$target_dir" ]] || die "identity already exists: $id"
+
+  if ! pair="$($BUZZ_ADMIN generate-key 2>&1)"; then
+    die "Buzz key generation failed"
+  fi
+  pubkey="$(parse_key_line "Public key:" "$pair")"
+  privkey="$(parse_key_line "Secret key:" "$pair")"
+  [[ "$pubkey" =~ ^[0-9a-fA-F]{64}$ && "$privkey" =~ ^[0-9a-fA-F]{64}$ ]] \
+    || die "Buzz key generation returned an invalid keypair"
+
+  temp_dir="$KEYS_DIR/.core-identity-$id-$$"
+  [[ ! -e "$temp_dir" && ! -L "$temp_dir" ]] || die "temporary identity path already exists"
+  mkdir "$temp_dir"
+  chmod 0700 "$temp_dir"
+  created_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  umask 077
+  printf '{"id":"%s","name":"%s","pubkey":"%s","privkey":"%s","created_at":"%s"}\n' \
+    "$(json_escape "$id")" "$(json_escape "$name")" "$pubkey" "$privkey" "$created_at" \
+    > "$temp_dir/key.json"
+  chmod 0600 "$temp_dir/key.json"
+
+  if ! BUZZ_PRIVATE_KEY="$privkey" "$BUZZ" users set-profile --name "$name" >/dev/null 2>&1; then
+    rm -f "$temp_dir/key.json"
+    rmdir "$temp_dir"
+    die "Buzz profile publication failed"
+  fi
+  ensure_custody_root
+  [[ -d "$temp_dir" && ! -L "$temp_dir" && -O "$temp_dir" ]] \
+    || die "unsafe identity custody"
+  [[ ! -e "$target_dir" && ! -L "$target_dir" ]] || die "identity already exists: $id"
+  mv "$temp_dir" "$target_dir"
+  keys_root="$(CDPATH= cd "$KEYS_DIR" && pwd -P)"
+  identity_root="$(CDPATH= cd "$target_dir" && pwd -P)"
+  case "$identity_root" in
+    "$keys_root"/*) ;;
+    *) die "unsafe identity custody" ;;
+  esac
+  printf '{"id":"%s","name":"%s","pubkey":"%s"}\n' \
+    "$(json_escape "$id")" "$(json_escape "$name")" "$pubkey"
+}
+
+ensure_studio_identity() {
+  if [[ ! -f "$KEYS_DIR/studio/key.json" ]]; then
+    identity_create "Studio Service" "studio" >/dev/null
+  fi
+}
+
+load_private_key() {
+  local identity_id="$1" key_file private_key directory mode keys_root identity_root
+  require_identity_id "$identity_id"
+  key_file="$KEYS_DIR/$identity_id/key.json"
+  [[ -e "$key_file" || -L "$key_file" ]] || die "unknown identity: $identity_id"
+  for directory in "$STUDIO_HOME" "$STUDIO_HOME/keys" "$KEYS_DIR" "$KEYS_DIR/$identity_id"; do
+    [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] \
+      || die "unsafe identity custody: $identity_id"
+    if mode="$(stat -c '%a' "$directory" 2>/dev/null)"; then
+      :
+    elif mode="$(stat -f '%Lp' "$directory" 2>/dev/null)"; then
+      :
+    else
+      die "unsafe identity custody: $identity_id"
+    fi
+    [[ "$mode" == "700" ]] || die "unsafe identity custody: $identity_id"
+  done
+  keys_root="$(CDPATH= cd "$KEYS_DIR" && pwd -P)"
+  identity_root="$(CDPATH= cd "$KEYS_DIR/$identity_id" && pwd -P)"
+  case "$identity_root" in
+    "$keys_root"/*) ;;
+    *) die "unsafe identity custody: $identity_id" ;;
+  esac
+  [[ -f "$key_file" && ! -L "$key_file" && -O "$key_file" ]] \
+    || die "unsafe identity custody: $identity_id"
+  if mode="$(stat -c '%a' "$key_file" 2>/dev/null)"; then
+    :
+  elif mode="$(stat -f '%Lp' "$key_file" 2>/dev/null)"; then
+    :
+  else
+    die "unsafe identity custody: $identity_id"
+  fi
+  [[ "$mode" == "600" ]] || die "unsafe identity custody: $identity_id"
+  private_key="$(
+    sed -n 's/.*"privkey"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]\{64\}\)".*/\1/p' \
+      "$key_file" | head -n 1
+  )"
+  [[ "$private_key" =~ ^[0-9a-fA-F]{64}$ ]] || die "identity key is invalid: $identity_id"
+  printf '%s' "$private_key"
+}
+
+run_buzz_json() {
+  local private_key="$1" operation="$2" output
+  shift 2
+  if ! output="$(BUZZ_PRIVATE_KEY="$private_key" "$BUZZ" "$@" 2>&1)"; then
+    output="${output//$private_key/[secret]}"
+    die "$operation failed${output:+: $output}"
+  fi
+  case "$output" in
+    \{* | \[*) printf '%s\n' "$output" ;;
+    *) die "$operation returned non-JSON output" ;;
+  esac
+}
+
+join_room_best_effort() {
+  local private_key="$1" room_id="$2"
+  BUZZ_PRIVATE_KEY="$private_key" "$BUZZ" channels join --channel "$room_id" \
+    >/dev/null 2>&1 || true
+}
+
+require_room() {
+  local private_key="$1" room_id="$2" operation="$3" output
+  if ! output="$(BUZZ_PRIVATE_KEY="$private_key" "$BUZZ" channels get --channel "$room_id" 2>&1)"; then
+    output="${output//$private_key/[secret]}"
+    die "$operation failed${output:+: $output}"
+  fi
+  case "$output" in
+    null) die "unknown room: $room_id" ;;
+    \{*) ;;
+    *) die "$operation returned non-JSON output" ;;
+  esac
+}
+
+if [[ "${1:-}" == "--artifact-info" && "$#" -eq 1 ]]; then
+  printf '%s\n' '{"schema":"dex-collaboration-cli/1","artifact_id":"dex-core-collaboration-cli","commands":["identity create","rooms list","rooms create","post","timeline"]}'
+  exit 0
+fi
+
+require_runtime
+
+command_name="${1:-}"
+if [[ "$command_name" == "identity" && "${2:-}" == "create" ]]; then
+  shift 2
+  name=""
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --name)
+        [[ "$#" -ge 2 ]] || die "--name requires a value"
+        name="$2"
+        shift 2
+        ;;
+      *) die "unknown identity create option: $1" ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "--name is required"
+  identity_create "$name"
+  exit 0
+fi
+
+if [[ "$command_name" == "rooms" && "${2:-}" == "list" ]]; then
+  shift 2
+  owner="studio"
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --as)
+        [[ "$#" -ge 2 ]] || die "--as requires a value"
+        owner="$2"
+        shift 2
+        ;;
+      --json) shift ;;
+      *) die "unknown rooms list option: $1" ;;
+    esac
+  done
+  if [[ "$owner" == "studio" ]]; then
+    ensure_studio_identity
+  fi
+  owner_key="$(load_private_key "$owner")"
+  run_buzz_json "$owner_key" "rooms list" channels list
+  exit 0
+fi
+
+if [[ "$command_name" == "rooms" && "${2:-}" == "create" ]]; then
+  shift 2
+  name=""
+  description=""
+  owner="studio"
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --name)
+        [[ "$#" -ge 2 ]] || die "--name requires a value"
+        name="$2"
+        shift 2
+        ;;
+      --description)
+        [[ "$#" -ge 2 ]] || die "--description requires a value"
+        description="$2"
+        shift 2
+        ;;
+      --as)
+        [[ "$#" -ge 2 ]] || die "--as requires a value"
+        owner="$2"
+        shift 2
+        ;;
+      *) die "unknown rooms create option: $1" ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "--name is required"
+  if [[ "$owner" == "studio" ]]; then
+    ensure_studio_identity
+  fi
+  owner_key="$(load_private_key "$owner")"
+  if [[ -n "$description" ]]; then
+    run_buzz_json "$owner_key" "rooms create" channels create \
+      --name "$name" --type stream --visibility open --description "$description"
+  else
+    run_buzz_json "$owner_key" "rooms create" channels create \
+      --name "$name" --type stream --visibility open
+  fi
+  exit 0
+fi
+
+if [[ "$command_name" == "post" ]]; then
+  shift
+  author=""
+  room=""
+  text=""
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --as)
+        [[ "$#" -ge 2 ]] || die "--as requires a value"
+        author="$2"
+        shift 2
+        ;;
+      --room)
+        [[ "$#" -ge 2 ]] || die "--room requires a value"
+        room="$2"
+        shift 2
+        ;;
+      --text)
+        [[ "$#" -ge 2 ]] || die "--text requires a value"
+        text="$2"
+        shift 2
+        ;;
+      *) die "unknown post option: $1" ;;
+    esac
+  done
+  [[ -n "$author" ]] || die "--as is required"
+  [[ -n "$room" ]] || die "--room is required"
+  [[ -n "$text" ]] || die "--text is required"
+  author_key="$(load_private_key "$author")"
+  require_room "$author_key" "$room" "post room lookup"
+  join_room_best_effort "$author_key" "$room"
+  run_buzz_json "$author_key" "post" messages send --channel "$room" --content "$text"
+  exit 0
+fi
+
+if [[ "$command_name" == "timeline" ]]; then
+  shift
+  room=""
+  limit=""
+  reader="studio"
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --room)
+        [[ "$#" -ge 2 ]] || die "--room requires a value"
+        room="$2"
+        shift 2
+        ;;
+      --limit)
+        [[ "$#" -ge 2 ]] || die "--limit requires a value"
+        limit="$2"
+        shift 2
+        ;;
+      --as)
+        [[ "$#" -ge 2 ]] || die "--as requires a value"
+        reader="$2"
+        shift 2
+        ;;
+      --json) shift ;;
+      *) die "unknown timeline option: $1" ;;
+    esac
+  done
+  [[ -n "$room" ]] || die "--room is required"
+  if [[ -n "$limit" ]]; then
+    [[ "$limit" =~ ^[1-9][0-9]*$ && "$limit" -le 200 ]] \
+      || die "--limit must be an integer from 1 to 200"
+  fi
+  if [[ "$reader" == "studio" ]]; then
+    ensure_studio_identity
+  fi
+  reader_key="$(load_private_key "$reader")"
+  require_room "$reader_key" "$room" "timeline room lookup"
+  join_room_best_effort "$reader_key" "$room"
+  if [[ -n "$limit" ]]; then
+    run_buzz_json "$reader_key" "timeline" messages get --channel "$room" --limit "$limit"
+  else
+    run_buzz_json "$reader_key" "timeline" messages get --channel "$room"
+  fi
+  exit 0
+fi
+
+die "usage: core identity create|rooms list|rooms create|post|timeline"
