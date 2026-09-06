@@ -157,3 +157,12 @@ def test_shipped_skills_never_turn_instruction_diffs_into_movable_orphans() -> N
     ):
         skill = (REPO_ROOT / skill_path).read_text(encoding="utf-8")
         assert boundary in " ".join(skill.split()), skill_path
+
+
+def test_current_changelog_never_prescribes_line_level_instruction_moves() -> None:
+    changelog = " ".join((REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
+
+    assert "review the whole file through `/dex-update` Compare and conflict choices" in changelog
+    assert "move those lines into the protected block" not in changelog
+    assert "offer to move them into your protected block" not in changelog
+    assert "offers to move them into your protected block" not in changelog
