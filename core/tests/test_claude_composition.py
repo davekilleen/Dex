@@ -812,6 +812,9 @@ def test_direct_edit_outside_the_block_still_refuses_after_a_custom_edit(tmp_pat
 
     assert result.startswith("unavailable:")
     assert "1 line" in result
+    assert "Leave CLAUDE.md unchanged" in result
+    assert "review the whole file through /dex-update Compare and conflict choices" in result
+    assert "move them into CLAUDE-custom.md" not in result
     assert b"A line she wrote at the bottom." in (root / "CLAUDE.md").read_bytes()
 
 

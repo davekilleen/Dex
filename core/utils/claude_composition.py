@@ -39,6 +39,10 @@ CLAUDE = "CLAUDE.md"
 CUSTOM = "CLAUDE-custom.md"
 BRAIN_GIT = ".dex/brain.git"
 ACTIVATION = "System/.dex/lifecycle/activation.json"
+DIRECT_EDIT_RESCUE = (
+    "Leave CLAUDE.md unchanged; review the whole file through /dex-update Compare "
+    "and conflict choices. Do not move individual lines."
+)
 
 _RELEASE_TAG = re.compile(r"^dist/release/v(?P<version>\d+\.\d+\.\d+)-[0-9a-f]{7,64}$")
 
@@ -379,9 +383,8 @@ def recompose_if_needed(vault_root: Path, *, force: bool = False) -> str:
                     noun = "line was" if count == 1 else "lines were"
                     return (
                         f"unavailable:{count} {noun} edited directly into "
-                        f"{CLAUDE} and would be lost by recomposing; move them "
-                        f"into {CUSTOM} (your protected block) first — Dex can "
-                        "do this for you"
+                        f"{CLAUDE} and would be lost by recomposing. "
+                        f"{DIRECT_EDIT_RESCUE}"
                     )
             tmp = claude.with_suffix(claude.suffix + ".recompose-tmp")
             tmp.write_bytes(expected)

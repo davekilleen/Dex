@@ -275,12 +275,6 @@ def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
 
 DIRECT_EDIT_LISTING_LIMIT = 40
 _DIRECT_EDIT_LINE_WIDTH = 160
-DIRECT_EDIT_RESCUE = (
-    "Leave CLAUDE.md unchanged; review the whole file through /dex-update Compare "
-    "and conflict choices. Do not move individual lines."
-)
-
-
 def _listed_direct_edits(lines: tuple[str, ...]) -> str:
     shown = [
         line
@@ -324,6 +318,7 @@ def _refuse_dropping_direct_edits(
 
     # Late import: claude_composition imports this module at load time.
     from core.utils.claude_composition import (
+        DIRECT_EDIT_RESCUE,
         RecomposeUnavailable,
         compose_current,
         true_user_edits,

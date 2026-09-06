@@ -5051,10 +5051,11 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     acceptable: an instruction written five minutes ago is exactly as inert as
     one written five weeks ago.
     """
-    from core.update.apply_update import DIRECT_EDIT_RESCUE, CompositionError
+    from core.update.apply_update import CompositionError
     from core.utils.claude_composition import (
         CLAUDE,
         CUSTOM,
+        DIRECT_EDIT_RESCUE,
         RecomposeUnavailable,
         compose_current,
         true_user_edits,
@@ -5132,10 +5133,11 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
     instead of mid-update. Never auto-fixed: resolving someone's whole
     instruction file is theirs to approve.
     """
-    from core.update.apply_update import DIRECT_EDIT_RESCUE, CompositionError
+    from core.update.apply_update import CompositionError
     from core.utils.claude_composition import (
         CLAUDE,
         CUSTOM,
+        DIRECT_EDIT_RESCUE,
         RecomposeUnavailable,
         compose_current,
         true_user_edits,
