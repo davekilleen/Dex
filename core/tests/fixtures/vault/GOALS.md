@@ -1,1 +1,0 @@
-# Legacy Goals (Fixture)

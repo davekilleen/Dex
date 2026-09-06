@@ -259,3 +259,71 @@ scripts/private/
 .codex-*-task.md
 System/.doctor-last-run.json
 .claude/settings.local.json
+
+# >>> dex-vault-mode (managed by Dex updates) >>>
+# This repository is your private vault. The Dex product files below are
+# delivered and refreshed by Dex's receipt-backed updates, not tracked
+# here. Derived from the ownership contract; edits inside this section
+# are replaced on every update.
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/*-custom/
+/.ci/
+/.claude/*
+!/.claude/skills-custom/
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/*-custom/
+/.cursor/
+/.distignore
+/.gitattributes
+/.github/
+/.gitignore
+/.obsidian/
+/.scripts/
+/AGENTS.md
+/CHANGELOG.md
+/COMMERCIAL_LICENSE.md
+/CONTRIBUTING.md
+/DISTRIBUTION_READY.md
+/LICENSE
+/README.md
+/core/*
+!/core/mcp-custom/
+!/core/mcp-premium/
+/docs/
+/install.sh
+/package-lock.json
+/package.json
+/packages/
+/pyproject.toml
+/requirements-dev.txt
+/requirements.txt
+/scripts/
+/staging/
+/uv.lock
+# Vault regions are the user's own content and stay tracked.
+!/00-Inbox/
+!/01-Quarter_Goals/
+!/02-Week_Priorities/
+!/03-Tasks/
+!/04-Projects/
+!/05-Areas/
+!/06-Resources/
+!/07-Archives/
+# Product files delivered inside a vault region stay untracked.
+/06-Resources/Dex_System/Background_Processing_Guide.md
+/06-Resources/Dex_System/Calendar_Setup.md
+/06-Resources/Dex_System/Dex_Jobs_to_Be_Done.md
+/06-Resources/Dex_System/Dex_System_Guide.md
+/06-Resources/Dex_System/Dex_Technical_Guide.md
+/06-Resources/Dex_System/Distribution_Checklist.md
+/06-Resources/Dex_System/Distribution_Strategy.md
+/06-Resources/Dex_System/Folder_Structure.md
+/06-Resources/Dex_System/Memory_Ownership.md
+/06-Resources/Dex_System/Named_Sessions_Guide.md
+/06-Resources/Dex_System/Obsidian_Guide.md
+/06-Resources/Dex_System/README.md
+/06-Resources/Dex_System/Updating_Dex.md
+# <<< dex-vault-mode (managed by Dex updates) <<<
