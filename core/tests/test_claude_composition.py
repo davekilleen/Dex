@@ -431,8 +431,9 @@ def test_composer_refuses_and_lists_direct_edits_outside_markers(tmp_path):
     assert "2 lines" in message
     assert "Remember: check the fleet dashboard before standup." in message
     assert "Never touch the pricing sheet on Fridays." in message
-    assert "move these lines into CLAUDE-custom.md (your protected block)" in message
-    assert "Dex can do this for you" in message
+    assert "Leave CLAUDE.md unchanged" in message
+    assert "review the whole file through /dex-update Compare and conflict choices" in message
+    assert "move these lines into CLAUDE-custom.md" not in message
     assert (root / "CLAUDE.md").read_bytes() == live, "refusal must not write"
 
 
@@ -584,10 +585,16 @@ def test_direct_edits_probe_warns_on_the_reporters_shape(tmp_path):
     assert "1 line lives only in CLAUDE.md" in result.detail
     assert "CLAUDE-custom.md is older than CLAUDE.md" in result.detail
     assert "leave CLAUDE.md untouched" in result.detail
-    assert "Dex can move them" in result.detail
+    assert "whole file is reviewed through /dex-update Compare and conflict choices" in result.detail
+    assert "Dex can move them" not in result.detail
     assert result.heal is not None
     assert result.heal.applied is False
     assert result.heal.tier != 1, "moving someone's words is never auto-applied"
+    assert result.heal.action == (
+        "Leave CLAUDE.md unchanged; review the whole file through /dex-update Compare "
+        "and conflict choices. "
+        "Do not move individual lines."
+    )
 
 
 def test_direct_edits_probe_is_unknown_when_baseline_is_unavailable(tmp_path):
@@ -622,7 +629,11 @@ def test_composition_probe_stops_prescribing_the_refresh_over_direct_edits(tmp_p
     assert "not being loaded" in result.detail
     assert "would be lost" in result.detail
     assert "/dex-doctor" not in result.heal.action
-    assert "protected block" in result.heal.action
+    assert result.heal.action == (
+        "Leave CLAUDE.md unchanged; review the whole file through /dex-update Compare "
+        "and conflict choices. "
+        "Do not move individual lines."
+    )
 
     # And the heal it no longer prescribes really does refuse.
     assert doctor._heal_claude_composition(context) is None

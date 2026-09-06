@@ -276,8 +276,8 @@ def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
 DIRECT_EDIT_LISTING_LIMIT = 40
 _DIRECT_EDIT_LINE_WIDTH = 160
 DIRECT_EDIT_RESCUE = (
-    "move these lines into CLAUDE-custom.md (your protected block) and run "
-    "the update again — Dex can do this for you"
+    "Leave CLAUDE.md unchanged; review the whole file through /dex-update Compare "
+    "and conflict choices. Do not move individual lines."
 )
 
 

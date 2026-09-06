@@ -5051,7 +5051,7 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     acceptable: an instruction written five minutes ago is exactly as inert as
     one written five weeks ago.
     """
-    from core.update.apply_update import CompositionError
+    from core.update.apply_update import DIRECT_EDIT_RESCUE, CompositionError
     from core.utils.claude_composition import (
         CLAUDE,
         CUSTOM,
@@ -5097,8 +5097,9 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     edited = true_user_edits(live, expected, context.vault_root)
     if edited:
         # The force refresh refuses this shape on purpose, so pointing at
-        # /dex-doctor here would be advice that cannot work. The only safe
-        # repair moves the lines into the protected block first.
+        # /dex-doctor here would be advice that cannot work. Preserve the
+        # whole live file and route resolution through the normal conflict
+        # boundary instead of treating inferred lines as movable units.
         count = len(edited)
         noun = "line" if count == 1 else "lines"
         return ProbeResult(
@@ -5106,14 +5107,7 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
             f"{CLAUDE} does not match {CUSTOM}, so some of your personal instructions are "
             f"not being loaded — and {count} {noun} edited directly into {CLAUDE} would be "
             "lost by a refresh, so Dex will not refresh over them",
-            Heal(
-                tier=3,
-                action=(
-                    f"Ask Dex to move the directly edited lines into {CUSTOM} "
-                    "(your protected block). Nothing is moved automatically."
-                ),
-                applied=False,
-            ),
+            Heal(tier=3, action=DIRECT_EDIT_RESCUE, applied=False),
         )
 
     return ProbeResult(
@@ -5135,10 +5129,10 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
     live file is never an input. A line typed straight into CLAUDE.md therefore
     exists nowhere else, and the composer now refuses to write over it — so
     this probe is the early warning, surfacing the problem during a checkup
-    instead of mid-update. Never auto-fixed: moving someone's words is theirs
-    to approve.
+    instead of mid-update. Never auto-fixed: resolving someone's whole
+    instruction file is theirs to approve.
     """
-    from core.update.apply_update import CompositionError
+    from core.update.apply_update import DIRECT_EDIT_RESCUE, CompositionError
     from core.utils.claude_composition import (
         CLAUDE,
         CUSTOM,
@@ -5193,16 +5187,9 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
         "BROKEN",
         f"{count} {noun} only in {CLAUDE}{staleness}; the next update will "
         f"leave {CLAUDE} untouched rather than lose them, so it stays on the "
-        f"old release wording until they move into {CUSTOM} — Dex can move "
-        "them for you",
-        Heal(
-            tier=3,
-            action=(
-                f"Ask Dex to move the directly edited lines into {CUSTOM} "
-                "(your protected block). Nothing is moved automatically."
-            ),
-            applied=False,
-        ),
+        "old release wording until the whole file is reviewed through "
+        "/dex-update Compare and conflict choices",
+        Heal(tier=3, action=DIRECT_EDIT_RESCUE, applied=False),
     )
 
 
