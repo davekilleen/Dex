@@ -103,10 +103,11 @@ should have.
 **What this fixes for you:**
 
 * **An update now refuses to write over words that exist only on your
-  instructions page.** If it finds lines you typed there directly, it leaves
-  that page exactly as it was and lists each line, then sends the whole file
-  through `/dex-update` Compare and conflict choices before the next update.
-  No individual line is moved or removed.
+  instructions page.** v1.97.8 first left that page exactly as it was and
+  listed each line instead of losing it. The original v1.97.8 line-level
+  remediation is obsolete; current Dex sends the whole file through
+  `/dex-update` Compare and conflict choices before the next update. No
+  individual line is moved or removed.
 * **You see the lines, not a number.** Where the preview used to report a
   size change, the update now names the exact lines that would have been
   lost — the difference between "tidied up" and "a month of your edits gone"
@@ -116,9 +117,8 @@ should have.
   that background refresh now also declines to replace any line you typed
   directly, instead of quietly overwriting it.
 * **The health checkup warns you early.** Ask Dex for a checkup and it now
-  spots lines living only on the live page, names them, and sends the whole
-  file through `/dex-update` Compare and conflict choices — never an
-  individual-line move.
+  spots lines living only on the live page and names them. Current Dex uses
+  the whole-file review above rather than the original v1.97.8 remediation.
 * **Your pillars finally show up.** The instructions page filled in your name,
   role and company from setup but left Pillars on "Not yet configured" even
   when you had configured them, because it looked in the wrong place. It now

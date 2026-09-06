@@ -166,6 +166,7 @@ def test_current_changelog_never_prescribes_line_level_instruction_moves() -> No
     assert "move those lines into the protected block" not in changelog
     assert "offer to move them into your protected block" not in changelog
     assert "offers to move them into your protected block" not in changelog
+    assert "The original v1.97.8 line-level remediation is obsolete" in changelog
 
     for strategy_path in (
         "docs/Dex_System/Distribution_Strategy.md",
