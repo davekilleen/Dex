@@ -166,3 +166,11 @@ def test_current_changelog_never_prescribes_line_level_instruction_moves() -> No
     assert "move those lines into the protected block" not in changelog
     assert "offer to move them into your protected block" not in changelog
     assert "offers to move them into your protected block" not in changelog
+
+    for strategy_path in (
+        "docs/Dex_System/Distribution_Strategy.md",
+        "06-Resources/Dex_System/Distribution_Strategy.md",
+    ):
+        strategy = " ".join((REPO_ROOT / strategy_path).read_text(encoding="utf-8").split())
+        assert "suggest moving them to `CLAUDE-custom.md`" not in strategy, strategy_path
+        assert "Review the whole file through `/dex-update` Compare and conflict choices" in strategy
