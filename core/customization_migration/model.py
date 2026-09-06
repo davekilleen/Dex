@@ -55,7 +55,10 @@ EXCLUSION_GUIDANCE = {
         "is coming. Updating will not clear this notice, so don't update just "
         "to fix it."
     ),
-    "dependency-tree-excluded": "Move the dependency into a regular supported vault path, then reassess.",
+    "dependency-tree-excluded": (
+        "This path is intentionally excluded from customization capture. "
+        "Leave it where it is; do not move it into a notes folder."
+    ),
     "embedded-repository": "Keep the nested repository separate and record its dependency manually.",
     "canonical-path-collision": "Rename the colliding path so each canonical vault path is unique.",
     "invalid-trust-registry": "Repair or recreate the trust registry through its setup flow, then reassess.",

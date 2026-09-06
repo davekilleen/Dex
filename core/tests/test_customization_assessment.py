@@ -734,10 +734,19 @@ def test_dependency_tree_is_excluded_instead_of_becoming_customizations(
     assessment = assess(vault)
 
     assert "node_modules/example/index.js" not in _records_by_path(assessment)
-    assert (
-        "node_modules",
-        "dependency-tree-excluded",
-    ) in {(item.path, item.reason) for item in assessment.exclusions}
+    exclusion = next(
+        item.to_dict()
+        for item in assessment.exclusions
+        if item.path == "node_modules"
+    )
+    assert exclusion == {
+        "path": "node_modules",
+        "reason": "dependency-tree-excluded",
+        "guidance": (
+            "This path is intentionally excluded from customization capture. "
+            "Leave it where it is; do not move it into a notes folder."
+        ),
+    }
     assert assessment.completeness == "UNKNOWN"
     assert assessment.records == ()
     assert assessment.edges == ()
