@@ -92,7 +92,8 @@ def test_goal_without_id_does_not_crash_weekly_planning_context(planning_vault):
     assert ANCHORLESS_TITLE in titles
     anchorless = next(g for g in result["goal_health"] if g["title"] == ANCHORLESS_TITLE)
     assert anchorless["goal_id"] is None
-    assert anchorless["linked_priority_count"] == 0
+    # Unknown, not zero: Dex never looked, because it could not.
+    assert anchorless["linked_priority_count"] is None
 
 
 def test_goal_without_id_is_not_reported_as_neglected(planning_vault):
@@ -142,7 +143,7 @@ def test_goal_without_id_does_not_absorb_unlinked_backlog_tasks(planning_vault):
     result = _call_tool("get_weekly_planning_context")
 
     anchorless = next(g for g in result["goal_health"] if g["title"] == ANCHORLESS_TITLE)
-    assert anchorless["open_task_count"] == 0
+    assert anchorless["open_task_count"] is None
     assert anchorless["next_up_tasks"] == []
     # The real link still lands on the goal that actually owns it.
     anchored = next(g for g in result["goal_health"] if g["goal_id"] == ANCHORED_ID)
@@ -266,3 +267,47 @@ def test_many_missing_ids_produce_one_recommendation(planning_vault):
     for n in range(1, 6):
         assert f"Hand written goal {n}" in id_recs[0]
     assert "Quarter_Goals.md" in id_recs[0]
+
+
+def test_provisional_goals_are_not_told_to_add_an_id(planning_vault):
+    """They have generated IDs; migration would report nothing to update."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "- Grow the newsletter audience\n"
+        "- Reduce onboarding drop-off\n",
+        encoding="utf-8",
+    )
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_weekly_planning_context")
+
+    assert all("^Qx-YYYY-goal-N" not in r for r in result["recommendations"])
+    assert any("freeform" in r for r in result["recommendations"])
+
+
+def test_one_missing_id_reads_as_one(planning_vault):
+    """The single-goal case is the common one; it must not read as broken."""
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_weekly_planning_context")
+
+    rec = next(r for r in result["recommendations"] if "^Qx-YYYY-goal-N" in r)
+    assert "1 goal has no ID" in rec
+    assert "belongs to it" in rec
+    assert "goals have" not in rec
+
+
+def test_unknowable_activity_is_reported_as_unknown_not_as_zero(planning_vault):
+    """Reading has_activity alone must not resurrect the wrong answer."""
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_weekly_planning_context")
+
+    anchorless = next(g for g in result["goal_health"] if g["title"] == ANCHORLESS_TITLE)
+    assert anchorless["has_activity"] is None
+    assert anchorless["linked_priority_count"] is None
+    anchored = next(g for g in result["goal_health"] if g["goal_id"] == ANCHORED_ID)
+    assert anchored["has_activity"] is True
+    assert anchored["linked_priority_count"] == 1

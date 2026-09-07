@@ -6987,11 +6987,11 @@ async def _handle_call_tool_inner(
                 'milestones_completed': completed_milestones,
                 'milestones_total': total_milestones,
                 'next_milestone': next_milestone,
-                'linked_priority_count': len(linked_priorities),
-                'has_activity': len(linked_priorities) > 0,
+                'linked_priority_count': len(linked_priorities) if activity_known else None,
+                'has_activity': len(linked_priorities) > 0 if activity_known else None,
                 'activity_known': activity_known,
                 'provisional': provisional,
-                'open_task_count': len(goal_tasks),
+                'open_task_count': len(goal_tasks) if activity_known else None,
                 'next_up_tasks': next_up_tasks,
             })
 
@@ -7000,7 +7000,10 @@ async def _handle_call_tool_inner(
         neglected_goals = [
             g for g in goal_health if g['activity_known'] and not g['has_activity']
         ]
-        goals_missing_ids = [g for g in goal_health if not g['activity_known']]
+        goals_missing_ids = [
+            g for g in goal_health if not g['goal_id'] and not g['provisional']
+        ]
+        provisional_goals = [g for g in goal_health if g['provisional']]
 
         # Auto-match proposed priorities against goals if provided
         proposed = arguments.get('proposed_priorities', []) if arguments else []
@@ -7029,12 +7032,25 @@ async def _handle_call_tool_inner(
         recommendations = []
         if goals_missing_ids:
             names = ', '.join(f"\"{g['title']}\"" for g in goals_missing_ids)
-            plural = 's' if len(goals_missing_ids) > 1 else ''
+            count = len(goals_missing_ids)
+            subject = f"{count} goals have" if count > 1 else "1 goal has"
+            belong = "belong to them" if count > 1 else "belongs to it"
+            heading = "each heading" if count > 1 else "its heading"
             recommendations.append(
-                f"{len(goals_missing_ids)} goal{plural} have no ID, so Dex cannot tell "
-                f"which weekly priorities or tasks belong to them: {names}. Add an ID "
-                "like ^Qx-YYYY-goal-N to the end of each heading in Quarter_Goals.md, "
-                "or run migrate_quarterly_goals to add them all at once."
+                f"{subject} no ID, so Dex cannot tell which weekly priorities or "
+                f"tasks {belong}: {names}. Add an ID like ^Qx-YYYY-goal-N to the end "
+                f"of {heading} in Quarter_Goals.md, or run migrate_quarterly_goals "
+                "to add them all at once."
+            )
+        if provisional_goals:
+            names = ', '.join(f"\"{g['title']}\"" for g in provisional_goals)
+            count = len(provisional_goals)
+            subject = f"{count} goals were" if count > 1 else "1 goal was"
+            recommendations.append(
+                f"{subject} recovered from a freeform list and are provisional: "
+                f"their IDs are generated, so nothing links to them automatically "
+                f"({names}). Structure them (e.g. via /quarter-plan) as "
+                "### N. Title — **Pillar** ^Qn-YYYY-goal-N to link real work."
             )
         if neglected_goals:
             names = ', '.join(f"Goal {g['goal_id']}: {g['title']}" for g in neglected_goals)
