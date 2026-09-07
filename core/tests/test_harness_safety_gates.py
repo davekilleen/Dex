@@ -41,7 +41,7 @@ def _hook(vault: Path, *, tool_name: str = "Bash", command: str | None = None, p
         tool_input["path"] = path
     return subprocess.run(
         ["bash", str(GUARD)],
-        input=json.dumps({"tool_name": tool_name, "tool_input": tool_input}),
+        input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool_name, "tool_input": tool_input}),
         capture_output=True,
         text=True,
         cwd=vault,
@@ -131,7 +131,7 @@ def test_hook_refuses_when_the_shared_gate_cannot_decide(tmp_path: Path) -> None
     result = subprocess.run(
         ["bash", str(hooks / GUARD.name)],
         input=json.dumps(
-            {"tool_name": "Bash", "tool_input": {"command": DESTRUCTIVE}}
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": DESTRUCTIVE}}
         ),
         capture_output=True,
         text=True,

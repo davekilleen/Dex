@@ -180,7 +180,9 @@ def _migration_lock_is_live(vault: Path) -> bool:
 
 
 def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
-    candidate = _safe_string(path).strip()
+    # File tools use literal names. Trimming whitespace or expanding shell
+    # variables can judge a different inode and hide an escaping symlink.
+    candidate = _safe_string(path)
     if not candidate:
         return None
     collapsed = candidate.rstrip("/") or "/"
@@ -190,8 +192,7 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
         return None
 
     try:
-        expanded = os.path.expanduser(os.path.expandvars(candidate))
-        expanded_path = Path(expanded)
+        expanded_path = Path(candidate)
     except (OSError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     if expanded_path.is_absolute():
@@ -202,7 +203,9 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
         return None
     try:
         reason = unsafe_existing_parent(vault, candidate)
-    except (OSError, TypeError, ValueError):
+        # The parent-only helper does not inspect a symlink in the final target.
+        (vault / expanded_path).resolve().relative_to(vault.resolve())
+    except (OSError, RuntimeError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     return REASON_UNSAFE_PATH if reason else None
 
@@ -256,6 +259,17 @@ FILE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "Delete", 
 SHELL_TOOLS = frozenset({"Bash", "Shell", "exec_command", "shell_command", "run_shell_command"})
 
 
+def read_hook_event(payload: Mapping[str, Any]) -> str | None:
+    """Normalize recognized event names without defaulting missing/malformed input."""
+    aliases = {"PreToolUse": "PreToolUse", "preToolUse": "PreToolUse", "BeforeTool": "PreToolUse",
+               "SessionStart": "SessionStart", "sessionStart": "SessionStart"}
+    values = [payload[key] for key in ("hook_event_name", "hookEventName") if key in payload]
+    if not values or any(not isinstance(value, str) or value not in aliases for value in values):
+        return None
+    normalized = {aliases[value] for value in values}
+    return normalized.pop() if len(normalized) == 1 else None
+
+
 def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Path | None = None) -> GateDecision:
     """Check all exposed action targets, refusing malformed intercepted events.
 
@@ -264,9 +278,8 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
     """
     if not isinstance(payload, Mapping):
         return refusal("Blocked: invalid safety hook payload.")
-    event = payload.get("hook_event_name") or payload.get("hookEventName")
-    if event is not None and (not isinstance(event, str) or event not in {"PreToolUse", "preToolUse", "BeforeTool"}):
-        return refusal("Blocked: unknown safety hook event.")
+    if read_hook_event(payload) != "PreToolUse":
+        return refusal("Blocked: unknown or missing safety hook event.")
     tool = payload.get("tool_name")
     raw_input = payload.get("tool_input")
     if not isinstance(tool, str) or not tool.strip():

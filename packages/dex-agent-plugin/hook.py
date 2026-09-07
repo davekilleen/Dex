@@ -17,7 +17,7 @@ if str(RUNTIME) not in sys.path:
 
 from core.context.session_boot import build_session_boot  # noqa: E402
 from core.context.vault_selection import VaultSelectionError, select_vault  # noqa: E402
-from core.gates.safety import evaluate_hook_payload, refusal  # noqa: E402
+from core.gates.safety import evaluate_hook_payload, read_hook_event, refusal  # noqa: E402
 
 
 def _read_payload() -> dict[str, Any]:
@@ -32,11 +32,6 @@ def _vault(payload: dict[str, Any]) -> Path:
         raise VaultSelectionError("Blocked: invalid explicit vault selection.")
     return select_vault(explicit=payload.get("vault_path"), cwd=payload.get("cwd"),
                         workspace_roots=payload.get("workspace_roots"))
-
-
-def _event(payload: dict[str, Any]) -> str:
-    value = payload.get("hook_event_name") or payload.get("hookEventName")
-    return value.strip() if isinstance(value, str) else ""
 
 
 def _session_start(payload: dict[str, Any], protocol: str) -> int:
@@ -105,10 +100,10 @@ def main(argv: list[str] | None = None) -> int:
     args, _ = parser.parse_known_args(argv)
     try:
         payload = _read_payload()
-        event = _event(payload)
-        if event in {"SessionStart", "sessionStart"}:
+        event = read_hook_event(payload)
+        if event == "SessionStart":
             return _session_start(payload, args.protocol)
-        if event in {"PreToolUse", "preToolUse", "BeforeTool"}:
+        if event == "PreToolUse":
             return _pre_tool_use(payload, args.protocol)
         return _emit_decision(refusal("Blocked: unknown or missing safety hook event."), args.protocol)
     except VaultSelectionError as exc:

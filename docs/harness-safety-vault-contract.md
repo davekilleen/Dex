@@ -45,8 +45,14 @@ the shared checker, including MCP; no claim is made about an unsupported event.
 The checker inspects shell command fields and all recognized path fields:
 `file_path`, `path`, `notebook_path`, `source`, `destination`, `source_path`, and
 `destination_path`. It checks every patch Add/Update/Delete/Move target, including
-Codex's `tool_input.command` patch format. It checks symlink-resolved containment.
+Codex's `tool_input.command` patch format. It checks symlink-resolved containment, including final-target symlinks, and
+preserves literal filename whitespace and dollar signs rather than applying
+shell expansion to file-tool paths.
 Patch body text is file content, not an executable command.
+
+Intercepted calls require a recognized event name; missing, empty, null, typed,
+or conflicting event aliases refuse on both native and portable boundaries. The
+event-free advisory interface is `evaluate_safety_gate`, not the hook adapter.
 
 Malformed intercepted events, missing required shell/file targets, uninspectable
 patches, unknown lifecycle events, and vault conflicts refuse. Unknown tools with

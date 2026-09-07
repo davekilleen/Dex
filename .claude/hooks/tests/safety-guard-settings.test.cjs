@@ -47,7 +47,7 @@ function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = unde
     cwd,
     timeout: 5000,
     env: { ...env, ...envOverrides },
-    input: JSON.stringify({ tool_name: toolName, tool_input: command ? { command } : {} }),
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: command ? { command } : {} }),
   });
 }
 

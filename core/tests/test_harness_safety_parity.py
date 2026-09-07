@@ -218,3 +218,57 @@ def test_native_unknown_event_refuses(vaults):
     payload = proposal(root, "Bash", command="git status")
     payload["hook_event_name"] = "unknown-event"
     assert hook(root, payload, native=True).returncode == 2
+
+
+@pytest.mark.parametrize("event", ["missing", "", " PreToolUse ", None, 0, False, [], {}, ["PreToolUse"]])
+@pytest.mark.parametrize("native", [False, True])
+def test_invalid_event_with_valid_action_refuses(vaults, event, native):
+    root = vaults[0]
+    payload = proposal(root, file_path="safe.md")
+    if event == "missing":
+        del payload["hook_event_name"]
+    else:
+        payload["hook_event_name"] = event
+    result = hook(root, payload, native=native)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert not (root / "safe.md").exists()
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("alias", ["", "SessionStart", None, 12, []])
+def test_conflicting_event_alias_cannot_override_valid_event(vaults, native, alias):
+    root = vaults[0]
+    payload = proposal(root, file_path="safe.md")
+    payload["hookEventName"] = alias
+    assert hook(root, payload, native=native).returncode == 2
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_supported_camel_case_event_alias_is_accepted(vaults, native):
+    root = vaults[0]
+    payload = proposal(root, file_path="safe.md")
+    payload["hookEventName"] = payload.pop("hook_event_name")
+    assert hook(root, payload, native=native).returncode == 0
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("filename", ["target ", "literal$DEX_PATH_FRAGMENT", "$DEX_PATH_FRAGMENT"])
+def test_literal_filename_identity_cannot_hide_symlink_escape(vaults, native, filename):
+    one, two = vaults
+    sentinel = two / "sentinel.md"
+    sentinel.write_text("unchanged")
+    (one / filename).symlink_to(sentinel)
+    result = hook(one, proposal(one, file_path=filename), native=native,
+                  env={"DEX_PATH_FRAGMENT": str(one / "safe")})
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert sentinel.read_text() == "unchanged"
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("filename", ["target ", "literal$DEX_PATH_FRAGMENT", "$DEX_PATH_FRAGMENT"])
+def test_allowed_literal_filename_is_not_rewritten(vaults, native, filename):
+    one, two = vaults
+    result = hook(one, proposal(one, file_path=filename), native=native,
+                  env={"DEX_PATH_FRAGMENT": str(two / "outside")})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (one / filename).exists()
