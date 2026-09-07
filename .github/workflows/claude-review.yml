@@ -17,6 +17,7 @@ jobs:
 
       - uses: anthropics/claude-code-action@v1
         with:
+          show_full_output: true
           # Subscription token (from `claude setup-token`), not an API key:
           # reviews draw on the founder's Claude subscription usage.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
