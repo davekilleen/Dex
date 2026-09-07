@@ -2320,9 +2320,12 @@ def generate_goal_id(quarter: str, existing_goals: List[Dict]) -> str:
     max_num = 0
     prefix = f"{q_num}-{year}-goal-"
     for goal in existing_goals:
-        if 'goal_id' in goal and goal['goal_id'].startswith(prefix):
+        # A hand-written goal heading has no ID at all, and it is exactly the
+        # vault migrate_quarterly_goals exists to repair.
+        existing_id = goal.get('goal_id')
+        if existing_id and existing_id.startswith(prefix):
             try:
-                num = int(goal['goal_id'].split('-')[-1])
+                num = int(existing_id.split('-')[-1])
                 max_num = max(max_num, num)
             except (ValueError, IndexError):
                 continue
@@ -3016,6 +3019,20 @@ def infer_goal_link(priority_title: str, priority_pillar: str,
             })
             continue
 
+        # A goal with no ID cannot be linked to: create_task rejects any goal
+        # absent from the available IDs, and a None ID names nothing anywhere.
+        # Surfacing it as a match would only promise a link that cannot exist.
+        if not goal_id:
+            candidates.append({
+                'goal_id': None,
+                'goal_title': goal_title,
+                'goal_pillar': goal_pillar,
+                'score': 0,
+                'confidence': 'none',
+                'reasons': ['goal_has_no_id'],
+            })
+            continue
+
         # --- Pillar match ---
         # Normalize pillar names: the goal stores display name like "deal_support",
         # the priority pillar may be the key or the display name
@@ -3275,34 +3292,84 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
     # Parse existing goals
     existing_goals = parse_quarterly_goals(goals_file)
     goals_updated = 0
-    
-    # Find goals without IDs and add them
+    headings_needing_manual_fix = []
+
+    # Decide on the whole heading line, not just its last token. A heading may
+    # already carry a valid goal ID somewhere other than straight after the
+    # pillar, and a user's own anchor may sit anywhere on the line. Neither may
+    # be rewritten here: adding a second ID would orphan every existing link,
+    # and overwriting a user's anchor destroys something that may be
+    # load-bearing elsewhere in their vault.
+    heading_re = re.compile(r'(###\s+\d+\.\s+(.+?)\s+—\s+\*\*.*?\*\*)(.*)$')
+    canonical_re = re.compile(r'\^Q\d+-\d{4}-goal-\d+')
+    any_anchor_re = re.compile(r'\^\S+')
+
     for i, line in enumerate(lines):
-        # Match goal headers without IDs
-        goal_match = re.match(r'(###\s+\d+\.\s+.+?\s+—\s+\*\*.*?\*\*)(?!\s+\^)', line)
-        if goal_match:
-            # This goal doesn't have an ID, add one
-            goal_header = goal_match.group(1)
-            
-            # Generate ID
-            quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
-            quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
-            
-            goal_id = generate_goal_id(quarter, existing_goals)
-            lines[i] = f"{goal_header} ^{goal_id}"
-            
-            # Add this goal to existing_goals so next ID is incremented
-            existing_goals.append({'goal_id': goal_id})
-            goals_updated += 1
+        heading = heading_re.match(line)
+        if not heading:
+            continue
+
+        goal_header, title, trailing = heading.group(1), heading.group(2).strip(), heading.group(3)
+
+        if canonical_re.search(line):
+            # Already has a goal ID. If it is not straight after the pillar the
+            # parser cannot read it, so name it rather than adding a second.
+            if not re.match(r'\s+\^Q\d+-\d{4}-goal-\d+', trailing):
+                headings_needing_manual_fix.append({
+                    'line_number': i + 1,
+                    'title': title,
+                    'existing_anchor': canonical_re.search(line).group(0),
+                    'reason': (
+                        'This heading has a goal ID, but not straight after the '
+                        'bolded pillar, which is the only place Dex reads it. '
+                        'Move it there. Dex will not add a second ID, because '
+                        'that would orphan everything already linked to this one.'
+                    ),
+                })
+            continue
+
+        foreign = any_anchor_re.search(trailing)
+        if foreign:
+            headings_needing_manual_fix.append({
+                'line_number': i + 1,
+                'title': title,
+                'existing_anchor': foreign.group(0),
+                'reason': (
+                    'This heading carries an anchor that is not a quarterly goal '
+                    'ID, so Dex cannot read it as one and will not overwrite your '
+                    'anchor. Replace it with ^Qn-YYYY-goal-N, or move your anchor '
+                    'elsewhere on the page.'
+                ),
+            })
+            continue
+
+        # No ID at all: add one straight after the pillar, where the parser
+        # looks, and carry anything the user wrote after it through untouched.
+        quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
+        quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
+
+        goal_id = generate_goal_id(quarter, existing_goals)
+        lines[i] = f"{goal_header} ^{goal_id}{trailing}"
+
+        # Add this goal to existing_goals so next ID is incremented
+        existing_goals.append({'goal_id': goal_id})
+        goals_updated += 1
     
     if goals_updated > 0:
         goals_file.write_text('\n'.join(lines))
     
-    return {
+    result = {
         'success': True,
         'goals_updated': goals_updated,
         'message': f"Added IDs to {goals_updated} quarterly goals"
     }
+    if headings_needing_manual_fix:
+        result['headings_needing_manual_fix'] = headings_needing_manual_fix
+        result['message'] += (
+            f"; {len(headings_needing_manual_fix)} heading(s) end with an anchor "
+            "that is not a goal ID and were left untouched"
+        )
+    return result
 
 def migrate_weekly_priorities() -> Dict[str, Any]:
     """Add IDs to existing weekly priorities that don't have them"""
@@ -6237,9 +6304,18 @@ async def _handle_call_tool_inner(
             if goal['quarter'] == quarter or not goal['quarter']:
                 if include_completed or goal['progress'] < 100:
                     # Enrich with linked priorities
-                    linked_priorities = find_linked_priorities(goal['goal_id']) if goal['goal_id'] else []
-                    goal['linked_priorities'] = linked_priorities
-                    goal['linked_priorities_count'] = len(linked_priorities)
+                    # A hand-written goal has no ID, and a provisional goal's
+                    # ID is generated and exists nowhere on disk. Neither one's
+                    # links can be read, so report unknown rather than zero.
+                    activity_known = bool(goal['goal_id']) and not goal.get('provisional')
+                    linked_priorities = (
+                        find_linked_priorities(goal['goal_id']) if activity_known else []
+                    )
+                    goal['activity_known'] = activity_known
+                    goal['linked_priorities'] = linked_priorities if activity_known else None
+                    goal['linked_priorities_count'] = (
+                        len(linked_priorities) if activity_known else None
+                    )
                     filtered_goals.append(goal)
         
         result = {
@@ -6263,14 +6339,39 @@ async def _handle_call_tool_inner(
 
     elif name == "get_goal_status":
         goal_id = arguments['goal_id']
-        
+
+        # get_goal_by_id(None) happily matches a hand-written goal, whose ID
+        # is also None, and every link lookup below then crashes on it.
+        if not goal_id:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "This goal has no ID, so Dex cannot tell what links to it. "
+                    "Add an ID like ^Qx-YYYY-goal-N straight after the bolded "
+                    "pillar in its heading in Quarter_Goals.md, or run "
+                    "migrate_quarterly_goals."
+                ),
+            }, indent=2))]
+
         goal = get_goal_by_id(goal_id)
         if not goal:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
                 "error": f"Goal not found: {goal_id}"
             }, indent=2))]
-        
+
+        if goal.get('provisional'):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    f"Goal '{goal['title']}' is provisional: it was recovered "
+                    "from a freeform list and its ID is generated, so it exists "
+                    "nowhere on disk and any match would be a collision. "
+                    "Structure it (e.g. via /quarter-plan) as "
+                    "### N. Title — **Pillar** ^Qn-YYYY-goal-N first."
+                ),
+            }, indent=2))]
+
         # Get linked priorities
         linked_priorities = find_linked_priorities(goal_id)
         
@@ -6599,7 +6700,9 @@ async def _handle_call_tool_inner(
         
         # Check for stalled goals
         for goal in goals:
-            if goal.get('goal_id'):
+            # A provisional goal's ID is generated; it can neither be linked to
+            # nor be shown to lack links, so it is never "stalled".
+            if goal.get('goal_id') and not goal.get('provisional'):
                 linked_priorities = find_linked_priorities(goal['goal_id'])
                 if len(linked_priorities) == 0:
                     warnings.append({
@@ -6658,7 +6761,7 @@ async def _handle_call_tool_inner(
         goals_with_no_priorities = []
         
         for goal in goals:
-            if goal.get('goal_id'):
+            if goal.get('goal_id') and not goal.get('provisional'):
                 linked_priorities = find_linked_priorities(goal['goal_id'])
                 if len(linked_priorities) == 0:
                     goals_with_no_priorities.append(goal)
@@ -6695,6 +6798,19 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "get_goal_backlog":
+        # An explicit null means the caller has a goal with no ID. Coercing that
+        # to 'all' hands back every other goal's backlog as if it were this
+        # goal's, which is worse than refusing.
+        if arguments and 'goal_id' in arguments and arguments['goal_id'] is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "That goal has no ID, so Dex cannot tell which tasks belong "
+                    "to it. Add an ID like ^Qx-YYYY-goal-N straight after the "
+                    "bolded pillar in its heading in Quarter_Goals.md, or run "
+                    "migrate_quarterly_goals. Pass 'all' if you meant every goal."
+                ),
+            }, indent=2))]
         requested_goal_id = str(arguments.get('goal_id') or 'all').strip() or 'all'
 
         goals = (
@@ -6926,7 +7042,16 @@ async def _handle_call_tool_inner(
         # Build goal health report
         goal_health = []
         for goal in goals:
-            linked_priorities = find_linked_priorities(goal.get('goal_id', ''))
+            # A hand-written goal heading carries no ^Qx-YYYY-goal-N anchor, so
+            # the parser yields goal_id None. Nothing can be linked to a goal
+            # with no ID, so report no links instead of crashing, and keep it
+            # out of every count that would otherwise claim work it cannot own.
+            goal_id = goal.get('goal_id')
+            # A provisional goal was recovered from freeform text; its ID
+            # exists nowhere on disk, so nothing can be linked to it either.
+            provisional = bool(goal.get('provisional'))
+            activity_known = bool(goal_id) and not provisional
+            linked_priorities = find_linked_priorities(goal_id) if activity_known else []
             completed_milestones = sum(1 for m in goal.get('milestones', []) if m.get('completed'))
             total_milestones = len(goal.get('milestones', []))
             next_milestone = None
@@ -6938,10 +7063,10 @@ async def _handle_call_tool_inner(
             goal_tasks = sorted(
                 (
                     task for task in open_backlog
-                    if task.get('goal') == goal.get('goal_id')
+                    if task.get('goal') == goal_id
                 ),
                 key=backlog_sort_key,
-            )
+            ) if activity_known else []
             next_up_tasks = [
                 {
                     'task_id': task.get('task_id'),
@@ -6954,21 +7079,30 @@ async def _handle_call_tool_inner(
             ][:3]
 
             goal_health.append({
-                'goal_id': goal.get('goal_id'),
+                'goal_id': goal_id,
                 'title': goal.get('title'),
                 'pillar': goal.get('pillar'),
                 'progress': goal.get('progress', 0),
                 'milestones_completed': completed_milestones,
                 'milestones_total': total_milestones,
                 'next_milestone': next_milestone,
-                'linked_priority_count': len(linked_priorities),
-                'has_activity': len(linked_priorities) > 0,
-                'open_task_count': len(goal_tasks),
-                'next_up_tasks': next_up_tasks,
+                'linked_priority_count': len(linked_priorities) if activity_known else None,
+                'has_activity': len(linked_priorities) > 0 if activity_known else None,
+                'activity_known': activity_known,
+                'provisional': provisional,
+                'open_task_count': len(goal_tasks) if activity_known else None,
+                'next_up_tasks': next_up_tasks if activity_known else None,
             })
 
-        # Identify neglected goals (0 linked priorities)
-        neglected_goals = [g for g in goal_health if not g['has_activity']]
+        # Identify neglected goals (0 linked priorities). A goal whose links
+        # cannot be read at all is unknown, not neglected.
+        neglected_goals = [
+            g for g in goal_health if g['activity_known'] and not g['has_activity']
+        ]
+        goals_missing_ids = [
+            g for g in goal_health if not g['goal_id'] and not g['provisional']
+        ]
+        provisional_goals = [g for g in goal_health if g['provisional']]
 
         # Auto-match proposed priorities against goals if provided
         proposed = arguments.get('proposed_priorities', []) if arguments else []
@@ -6995,6 +7129,34 @@ async def _handle_call_tool_inner(
 
         # Build recommendations
         recommendations = []
+        if goals_missing_ids:
+            names = ', '.join(f"\"{g['title']}\"" for g in goals_missing_ids)
+            count = len(goals_missing_ids)
+            subject = f"{count} goals have" if count > 1 else "1 goal has"
+            belong = "belong to them" if count > 1 else "belong to it"
+            heading = "each heading" if count > 1 else "its heading"
+            recommendations.append(
+                f"{subject} no ID, so Dex cannot tell which weekly priorities or "
+                f"tasks {belong}: {names}. Add an ID like ^Qx-YYYY-goal-N "
+                f"straight after the bolded pillar in {heading} in "
+                "Quarter_Goals.md, or run migrate_quarterly_goals "
+                f"to add {'them all at once' if count > 1 else 'it'}."
+            )
+        if provisional_goals:
+            names = ', '.join(f"\"{g['title']}\"" for g in provisional_goals)
+            count = len(provisional_goals)
+            many = count > 1
+            recommendations.append(
+                f"{count} goals were" if many else "1 goal was"
+            )
+            recommendations[-1] += (
+                f" recovered from a freeform list and {'are' if many else 'is'} "
+                f"provisional: {'their IDs are' if many else 'its ID is'} generated, "
+                f"so nothing links to {'them' if many else 'it'} automatically "
+                f"({names}). Structure {'them' if many else 'it'} (e.g. via "
+                "/quarter-plan) as ### N. Title — **Pillar** ^Qn-YYYY-goal-N "
+                "to link real work."
+            )
         if neglected_goals:
             names = ', '.join(f"Goal {g['goal_id']}: {g['title']}" for g in neglected_goals)
             recommendations.append(f"{len(neglected_goals)} goals have zero weekly activity: {names}")
