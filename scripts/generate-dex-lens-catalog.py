@@ -1142,8 +1142,13 @@ def generate_enriched_preview(
         "catalog_version": catalog_version,
         "produced_at": issued.isoformat().replace("+00:00", "Z"),
         "expires_at": (issued + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
-        "producer": f"Dex Core enriched preview v{release_version}",
-        "core_release": f"v{release_version}",
+        # The preview is a committed, deterministic example checked
+        # byte-for-byte against generator output. Embedding the live release
+        # version here made every version bump break that gate (it blocked
+        # the v1.97.12 release), so the preview pins fixed metadata; the
+        # signed release paths keep the real version.
+        "producer": "Dex Core enriched preview (version-independent example)",
+        "core_release": "v0.0.0-preview",
         "key_id": key_id,
     }
     envelope = {

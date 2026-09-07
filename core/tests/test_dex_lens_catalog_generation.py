@@ -694,6 +694,27 @@ def test_enriched_preview_validates_all_four_classes_against_released_schema(tmp
     jsonschema.Draft202012Validator(released_schema).validate(envelope)
 
 
+def test_the_preview_example_never_embeds_the_release_version(tmp_path: Path) -> None:
+    """A version bump must not break the committed example.
+
+    The enriched preview is a committed, deterministic example checked
+    byte-for-byte against generator output. When its metadata carried the
+    live package.json version, the v1.97.12 release bump made the generated
+    preview differ from the committed one and the gate correctly refused —
+    blocking the release that only wanted to ship. The preview therefore
+    pins fixed, version-independent metadata; the signed release paths keep
+    the real version and their own assertions above.
+    """
+    result = _generate_enriched(tmp_path, "--lens-schema", str(RELEASED_LENS_SCHEMA))
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dex-lens-catalog-enriched-preview.json").read_text())
+    version = json.loads((REPO_ROOT / "package.json").read_text())["version"]
+    assert envelope["metadata"]["core_release"] == "v0.0.0-preview"
+    assert envelope["metadata"]["producer"] == "Dex Core enriched preview (version-independent example)"
+    assert version not in json.dumps(envelope["metadata"])
+
+
 def test_committed_enriched_example_is_generator_output_and_matches_released_schema(tmp_path: Path) -> None:
     result = _generate_enriched(tmp_path, "--lens-schema", str(RELEASED_LENS_SCHEMA))
 
