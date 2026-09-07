@@ -194,6 +194,10 @@ def test_copilot_mcp_json_can_read_a_vault_without_opening_the_cli(tmp_path: Pat
         **os.environ,
         "PYTHONNOUSERSITE": "1",
     }
+    # This host selects its vault per request; do not inherit the test runner's
+    # unrelated session binding. Configured-vault conflicts have separate tests.
+    for key in ("DEX_VAULT_PATH", "VAULT_PATH", "CLAUDE_PROJECT_DIR"):
+        env.pop(key, None)
     for key, value in server.get("env", {}).items():
         env[key] = _expand_plugin_vars(value, PLUGIN_ROOT, plugin_data)
     payload = "".join(
