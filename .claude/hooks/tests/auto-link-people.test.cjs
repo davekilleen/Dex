@@ -151,6 +151,17 @@ test('does not link an ambiguous standalone first name', () => {
   assert.equal(autoLinkContent('Sarah raised the risk.', registry), 'Sarah raised the risk.');
 });
 
+test('does not link a unique bare first name without document evidence', () => {
+  const { autoLinkContent } = loadScript();
+  const registry = makeRegistry({
+    fullNames: ['Emma Brown'],
+    firstNames: [['Emma', 'Emma Brown']],
+    targets: [['Emma Brown', 'Emma_Brown']],
+  });
+
+  assert.equal(autoLinkContent('Decision owned by Emma).', registry), 'Decision owned by Emma).');
+});
+
 test('poisons a known first name when an unknown full name uses it', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
@@ -216,8 +227,8 @@ test('applies the complete stoplist case-sensitively', () => {
     firstNames: [['mark', 'mark Person']],
   });
   assert.equal(
-    autoLinkContent('mark spoke.', lowercaseRegistry),
-    '[[mark Person|mark]] spoke.',
+    autoLinkContent('---\nattendee: mark Person\n---\nmark spoke.', lowercaseRegistry),
+    '---\nattendee: mark Person\n---\n[[mark Person|mark]] spoke.',
   );
 });
 
@@ -333,10 +344,12 @@ test('does not match names inside longer words or compound identifiers', () => {
     fullNames: ['Sarah Chen'],
     firstNames: [['Sarah', 'Sarah Chen']],
   });
+  const frontmatter = '---\nattendee: Sarah Chen\n---\n';
+  const prose = 'preSarah Sarahish Sarah2 _Sarah Sarah-Jane 𐐀Sarah Sarah–Jane Sarah';
 
   assert.equal(
-    autoLinkContent('preSarah Sarahish Sarah2 _Sarah Sarah-Jane 𐐀Sarah Sarah–Jane Sarah', registry),
-    'preSarah Sarahish Sarah2 _Sarah Sarah-Jane 𐐀Sarah Sarah–Jane [[Sarah Chen|Sarah]]',
+    autoLinkContent(frontmatter + prose, registry),
+    frontmatter + 'preSarah Sarahish Sarah2 _Sarah Sarah-Jane 𐐀Sarah Sarah–Jane [[Sarah Chen|Sarah]]',
   );
 });
 
