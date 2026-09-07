@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface copilot-cli --event preToolUse", "timeoutSec": 15}],
+    "sessionStart": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface copilot-cli --event sessionStart", "timeoutSec": 15}],
+    "sessionEnd": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface copilot-cli --event sessionEnd", "timeoutSec": 15}],
+    "agentStop": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface copilot-cli --event agentStop", "timeoutSec": 15}]
+  }
+}
