@@ -22,13 +22,15 @@ from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts/generate-dex-lens-catalog.py"
 REAL_REGISTRY = REPO_ROOT / "core/lens-catalog/registry.json"
+SIGNIFICANT_CAPABILITIES = REPO_ROOT / "core/lens-catalog/significant-capabilities.json"
 RELEASED_LENS_SCHEMA = REPO_ROOT / "core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json"
 ENRICHED_EXAMPLE = REPO_ROOT / "docs/examples/dex-lens-catalog-enriched-preview.json"
-# Lens v0.1.9 producer bytes plus the host-adapter pattern
-# `^[a-z][a-z0-9-]{1,80}$`, which is required so two-character harness
+# Lens 0.1.16 producer bytes: the exact schemas/dex-lens-catalogue-v2.schema.json
+# export that first carries CapabilityFamilyV2 (the significant-family contract)
+# and the host-adapter pattern `^[a-z][a-z0-9-]{1,80}$` so two-character harness
 # ids (`bb`, `pi`) can appear in compatibility.host_adapters.
 LENS_PRODUCER_SCHEMA_SHA256 = (
-    "030a3bdb4471e7bc57753fbb9bef3a12511bc08de726e5614f94da706de9fe0d"
+    "b15af8bccecc5cfb3a5e33fc1e44679e34c5539d0fb79d565ed67b56deee2e3b"
 )
 
 WAVE3_IDS = (
@@ -644,7 +646,8 @@ def test_vendored_lens_schema_matches_pinned_producer_bytes() -> None:
     schema = json.loads(schema_bytes)
 
     assert hashlib.sha256(schema_bytes).hexdigest() == LENS_PRODUCER_SCHEMA_SHA256
-    assert schema["x-dex-lens-minimum-version"] == "0.1.9"
+    assert schema["x-dex-lens-minimum-version"] == "0.1.16"
+    assert "CapabilityFamilyV2" in schema["$defs"]
     assert [
         branch["$ref"].rsplit("/", 1)[1]
         for branch in schema["$defs"]["CatalogueCapabilityEntryV2"]["oneOf"]
@@ -749,6 +752,139 @@ def test_corrected_catalogue_has_complete_truthful_identity_sets(
     assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
     assert by_id["connection-manager-engine"]["availability"] == "parked"
     assert sum(entry.get("tool_count", 0) for entry in entries) == 156
+
+
+def test_signed_enriched_release_path_carries_the_significant_family_contract(
+    tmp_path: Path, signing_key_b64: str
+) -> None:
+    """The signed enriched catalogue is the significant-family contract's only carrier.
+
+    Lens derives family_contract_present from bool(catalogue.capability_families)
+    after envelope verification, so the release path must emit exactly the
+    founder-resolved families from core/lens-catalog/significant-capabilities.json.
+    """
+    result = _generate_enriched_release(tmp_path, signing_key_b64)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
+    families = envelope["catalogue"]["capability_families"]
+    registry = json.loads(SIGNIFICANT_CAPABILITIES.read_text(encoding="utf-8"))
+    assert families == registry["capability_families"]
+    assert len(families) == 14
+    capability_ids = {entry["capability_id"] for entry in envelope["catalogue"]["capabilities"]}
+    for family in families:
+        members = set(family["member_capability_ids"])
+        assert members <= capability_ids, family["family_id"]
+        assert {component["capability_id"] for component in family["components"]} == members
+    schema = json.loads(RELEASED_LENS_SCHEMA.read_text())
+    jsonschema.Draft202012Validator(schema).validate(envelope)
+
+
+def test_plain_catalogue_does_not_claim_the_family_contract(tmp_path: Path) -> None:
+    """The legacy skills-only catalogue cannot carry families whose members it lacks."""
+    _registry(tmp_path)
+
+    result = _generate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    envelope = json.loads((tmp_path / "dist/dex-lens-catalog-latest.json").read_text())
+    assert "capability_families" not in envelope["catalogue"]
+
+
+def _significant_capabilities_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generator) -> dict:
+    registry = json.loads(SIGNIFICANT_CAPABILITIES.read_text(encoding="utf-8"))
+    registry_path = tmp_path / "significant-capabilities.json"
+    monkeypatch.setattr(generator, "SIGNIFICANT_CAPABILITIES_PATH", registry_path)
+    return registry
+
+
+def test_enriched_catalogue_rejects_family_members_missing_from_the_catalogue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _load_generator_module()
+    registry = _significant_capabilities_fixture(tmp_path, monkeypatch, generator)
+    registry["capability_families"][0]["member_capability_ids"].append("capability-that-does-not-exist")
+    registry["capability_families"][0]["components"].append(
+        {"component_type": "capability", "capability_id": "capability-that-does-not-exist"}
+    )
+    (tmp_path / "significant-capabilities.json").write_text(json.dumps(registry), encoding="utf-8")
+
+    with pytest.raises(
+        generator.LensCatalogError,
+        match="absent from the generated catalogue: capability-that-does-not-exist",
+    ):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+def test_enriched_catalogue_rejects_family_components_core_cannot_prove(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tool-level components stay out until Core publishes complete MCP inventories."""
+    generator = _load_generator_module()
+    registry = _significant_capabilities_fixture(tmp_path, monkeypatch, generator)
+    registry["capability_families"][0]["components"].append(
+        {"component_type": "mcp-tool", "server_id": "dex-granola-mcp", "tool_name": "list_meetings"}
+    )
+    (tmp_path / "significant-capabilities.json").write_text(json.dumps(registry), encoding="utf-8")
+
+    with pytest.raises(generator.LensCatalogError, match="component_type must be capability"):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+def test_enriched_catalogue_rejects_family_member_without_component(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _load_generator_module()
+    registry = _significant_capabilities_fixture(tmp_path, monkeypatch, generator)
+    registry["capability_families"][0]["components"].pop()
+    (tmp_path / "significant-capabilities.json").write_text(json.dumps(registry), encoding="utf-8")
+
+    with pytest.raises(generator.LensCatalogError, match="members have no capability component"):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+def test_enriched_catalogue_rejects_family_with_unknown_job_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _load_generator_module()
+    registry = _significant_capabilities_fixture(tmp_path, monkeypatch, generator)
+    registry["capability_families"][0]["jobs"] = ["job-that-does-not-exist"]
+    (tmp_path / "significant-capabilities.json").write_text(json.dumps(registry), encoding="utf-8")
+
+    with pytest.raises(generator.LensCatalogError, match="unknown job reference: job-that-does-not-exist"):
+        generator._build_enriched_catalogue(REPO_ROOT)
+
+
+def test_real_significant_capabilities_registry_matches_wow_expectation_families() -> None:
+    """The Wow Gate rows activate only when all fourteen documented families sign."""
+    registry = json.loads(SIGNIFICANT_CAPABILITIES.read_text(encoding="utf-8"))
+    families = registry["capability_families"]
+
+    assert registry["registry_version"] == 1
+    assert set(registry) == {"registry_version", "capability_families"}
+    assert [family["family_id"] for family in families] == [
+        "meeting-follow-through",
+        "living-people-company-context",
+        "durable-task-continuity",
+        "external-task-interoperability",
+        "connected-work-context",
+        "pipedrive-pipeline-continuity",
+        "daily-weekly-operating-rhythm",
+        "durable-work-memory",
+        "proactive-health-and-recovery",
+        "backup-and-restore-confidence",
+        "safe-change-and-rewind",
+        "capability-discovery-and-adoption",
+        "privacy-safe-feedback-loop",
+        "career-growth-evidence",
+    ]
+    manual_only = [f["family_id"] for f in families if f["assessment"]["mode"] == "manual-only"]
+    assert manual_only == ["privacy-safe-feedback-loop"]
+    assert all(
+        component["component_type"] == "capability"
+        for family in families
+        for component in family["components"]
+    )
 
 
 def test_generator_rejects_unshipped_or_stale_source(tmp_path: Path) -> None:

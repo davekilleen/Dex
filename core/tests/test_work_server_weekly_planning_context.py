@@ -163,6 +163,15 @@ def test_anchored_goals_keep_their_linked_priorities(planning_vault):
     assert anchored["has_activity"] is True
 
 
+def test_a_goal_with_no_id_is_credited_with_no_priorities(planning_vault):
+    """An ID-less goal owns nothing, so it must never absorb every priority."""
+    _write_priorities(planning_vault["priorities"])
+
+    assert work_server.find_linked_priorities("") == []
+    assert work_server.find_linked_priorities(None) == []
+    assert len(work_server.find_linked_priorities(ANCHORED_ID)) == 1
+
+
 def test_goal_without_id_is_never_offered_as_a_priority_link(planning_vault):
     """Suggesting a link that create_weekly_priority would refuse helps nobody."""
     _write_goals(planning_vault["goals"], with_anchored=False)

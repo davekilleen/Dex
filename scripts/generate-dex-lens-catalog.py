@@ -33,6 +33,7 @@ from core.lens_catalog_sources import SkillSourceError, resolve_skill_source
 
 REGISTRY_PATH = Path("core/lens-catalog/registry.json")
 ENRICHED_REGISTRY_PATH = Path("core/lens-catalog/enriched-registry.json")
+SIGNIFICANT_CAPABILITIES_PATH = Path("core/lens-catalog/significant-capabilities.json")
 LENS_CATALOG_SCHEMA_PATH = Path("core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json")
 PACKAGE_PATH = Path("package.json")
 CHANGELOG_PATH = Path("CHANGELOG.md")
@@ -40,6 +41,9 @@ HARNESS_REGISTRY_PATH = Path("core/harnesses/registry.json")
 HARNESS_PORTABILITY_PATH = Path("core/harnesses/portability.json")
 CONTRACT_VERSION = "dex-lens-catalogue-v2"
 MINIMUM_LENS_CONTRACT = "0.1.0"
+# The enriched catalogue (capability classes plus the significant-family
+# contract) needs the Lens schema export that first carries CapabilityFamilyV2.
+ENRICHED_LENS_SCHEMA_VERSION = "0.1.16"
 REGISTRY_VERSION = 1
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 KEBAB = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
@@ -68,6 +72,21 @@ CANONICAL_JOB_IDS = (
     "evolve-the-system-itself",
 )
 IMPACT_TIERS = frozenset({"core", "high", "medium", "niche"})
+# The closed detector-profile vocabulary from the Lens schema's
+# AutomaticAssessmentV2; an unknown profile must fail here, not in the field.
+FAMILY_ASSESSMENT_PROFILES = frozenset(
+    {
+        "catalogue",
+        "mcp",
+        "mcp-tool",
+        "filesystem",
+        "source-component",
+        "provider",
+        "scheduled-automation",
+        "health",
+        "doctor",
+    }
+)
 
 
 class LensCatalogError(RuntimeError):
@@ -707,6 +726,137 @@ def _build_catalogue(
     return catalog_version, release_version, catalogue
 
 
+def _family_assessment(value: object, *, context: str) -> dict[str, str]:
+    raw = _mapping(value, context=f"{context} assessment")
+    mode = _text(raw.get("mode"), context=f"{context} assessment mode", max_length=32)
+    if mode == "automatic":
+        _exact_fields(raw, {"mode", "profile"}, context=f"{context} assessment")
+        profile = _text(raw.get("profile"), context=f"{context} assessment profile", max_length=64)
+        if profile not in FAMILY_ASSESSMENT_PROFILES:
+            raise LensCatalogError(f"{context} assessment profile is not a known detector profile: {profile}")
+        return {"mode": "automatic", "profile": profile}
+    if mode == "manual-only":
+        _exact_fields(raw, {"mode", "reason"}, context=f"{context} assessment")
+        return {
+            "mode": "manual-only",
+            "reason": _text(raw.get("reason"), context=f"{context} assessment reason", max_length=600),
+        }
+    raise LensCatalogError(f"{context} assessment mode must be automatic or manual-only")
+
+
+def _capability_families(
+    release_root: Path,
+    *,
+    capability_ids: frozenset[str],
+    known_jobs: set[str],
+) -> tuple[dict[str, object], ...]:
+    """Load the founder-resolved significant-family contract registry.
+
+    Every family member must name a capability the generated catalogue actually
+    carries: a signed family over an absent capability would make Lens derive
+    release-distance state from nothing, so drift fails the build here.
+    """
+    registry = _mapping(
+        _closed_json(release_root / SIGNIFICANT_CAPABILITIES_PATH),
+        context=str(SIGNIFICANT_CAPABILITIES_PATH),
+    )
+    _exact_fields(registry, {"registry_version", "capability_families"}, context=str(SIGNIFICANT_CAPABILITIES_PATH))
+    if registry.get("registry_version") != REGISTRY_VERSION:
+        raise LensCatalogError(f"{SIGNIFICANT_CAPABILITIES_PATH} has an unsupported registry version")
+    families_raw = registry.get("capability_families")
+    if not isinstance(families_raw, list) or not families_raw:
+        raise LensCatalogError(f"{SIGNIFICANT_CAPABILITIES_PATH} capability_families must be a non-empty array")
+
+    families: list[dict[str, object]] = []
+    seen_families: set[str] = set()
+    for index, raw_family in enumerate(families_raw):
+        context = f"capability family {index}"
+        family = _mapping(raw_family, context=context)
+        _exact_fields(
+            family,
+            {
+                "family_id",
+                "title",
+                "outcome",
+                "jobs",
+                "aliases",
+                "member_capability_ids",
+                "components",
+                "assessment",
+            },
+            context=context,
+        )
+        family_id = _text(family.get("family_id"), context=f"{context} family_id", max_length=81)
+        if CATALOG_ID.fullmatch(family_id) is None:
+            raise LensCatalogError(f"{context} family_id must be a Lens catalogue id")
+        if family_id in seen_families:
+            raise LensCatalogError(f"duplicate capability family id {family_id!r}")
+        seen_families.add(family_id)
+        jobs = _catalog_id_tuple(family.get("jobs"), context=f"{context} jobs")
+        for job_id in jobs:
+            if job_id not in known_jobs:
+                raise LensCatalogError(f"{context} has unknown job reference: {job_id}")
+        aliases_raw = family.get("aliases")
+        if not isinstance(aliases_raw, list):
+            raise LensCatalogError(f"{context} aliases must be an array")
+        aliases = _catalog_id_tuple(aliases_raw, context=f"{context} aliases") if aliases_raw else ()
+        members = _catalog_id_tuple(family.get("member_capability_ids"), context=f"{context} member_capability_ids")
+        unknown_members = sorted(set(members) - capability_ids)
+        if unknown_members:
+            raise LensCatalogError(
+                f"{context} ({family_id}) names capability ids absent from the generated catalogue: "
+                + ", ".join(unknown_members)
+            )
+        components_raw = family.get("components")
+        if not isinstance(components_raw, list) or not components_raw:
+            raise LensCatalogError(f"{context} components must be a non-empty array")
+        components: list[dict[str, str]] = []
+        component_capability_ids: set[str] = set()
+        for component_index, raw_component in enumerate(components_raw):
+            component_context = f"{context} component {component_index}"
+            component = _mapping(raw_component, context=component_context)
+            component_type = _text(
+                component.get("component_type"), context=f"{component_context} component_type", max_length=32
+            )
+            if component_type != "capability":
+                # mcp-tool, nango-provider, and source-component references are
+                # verified by systems Core does not own; the registry may only
+                # carry components this generator can prove against its own
+                # catalogue. Extend deliberately, never silently.
+                raise LensCatalogError(f"{component_context} component_type must be capability")
+            _exact_fields(component, {"component_type", "capability_id"}, context=component_context)
+            capability_id = _text(
+                component.get("capability_id"), context=f"{component_context} capability_id", max_length=81
+            )
+            if capability_id not in members:
+                raise LensCatalogError(
+                    f"{component_context} references {capability_id!r}, which is not a family member"
+                )
+            if capability_id in component_capability_ids:
+                raise LensCatalogError(f"{component_context} duplicates component {capability_id!r}")
+            component_capability_ids.add(capability_id)
+            components.append({"component_type": "capability", "capability_id": capability_id})
+        members_without_component = sorted(set(members) - component_capability_ids)
+        if members_without_component:
+            raise LensCatalogError(
+                f"{context} ({family_id}) members have no capability component: "
+                + ", ".join(members_without_component)
+            )
+        families.append(
+            {
+                "family_id": family_id,
+                "title": _text(family.get("title"), context=f"{context} title", max_length=140),
+                "outcome": _text(family.get("outcome"), context=f"{context} outcome", max_length=800),
+                "jobs": jobs,
+                "aliases": aliases,
+                "member_capability_ids": members,
+                "components": tuple(components),
+                "assessment": _family_assessment(family.get("assessment"), context=context),
+            }
+        )
+    return tuple(families)
+
+
 def _preview_title(capability_id: str) -> str:
     words = capability_id.removeprefix("com.dex.").replace(".", "-").split("-")
     return " ".join({"dex": "Dex", "mcp": "MCP"}.get(word, word.capitalize()) for word in words)
@@ -877,6 +1027,13 @@ def _build_enriched_catalogue(release_root: Path) -> tuple[int, str, dict[str, o
             }
         )
     catalogue["capabilities"] = preview_entries
+    catalogue["capability_families"] = list(
+        _capability_families(
+            release_root,
+            capability_ids=frozenset(entry["capability_id"] for entry in preview_entries),
+            known_jobs=known_jobs,
+        )
+    )
     return catalog_version + 1, release_version, catalogue
 
 
@@ -943,7 +1100,7 @@ def generate_lens_catalog(
     _validate_against_lens_schema(
         release_root,
         {**signed_payload, "signature": "schema-validation-placeholder"},
-        required_lens_version="0.1.9" if enriched else None,
+        required_lens_version=ENRICHED_LENS_SCHEMA_VERSION if enriched else None,
     )
     payload = _canonical_json(signed_payload)
     signature = ""
@@ -975,7 +1132,7 @@ def generate_enriched_preview(
     issued_at: str | None = None,
     key_id: str = "dex-core-lens-1",
 ) -> Path:
-    """Write one unsigned, non-release preview for the Lens 0.1.9 contract."""
+    """Write one unsigned, non-release preview for the Lens enriched contract."""
 
     release_root = release_root.resolve()
     issued = _parse_issued_at(issued_at or datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
@@ -998,7 +1155,7 @@ def generate_enriched_preview(
         release_root,
         envelope,
         schema_path=lens_schema.resolve(),
-        required_lens_version="0.1.9",
+        required_lens_version=ENRICHED_LENS_SCHEMA_VERSION,
     )
     destination = output_dir / "dex-lens-catalog-enriched-preview.json"
     _atomic_write(destination, (_canonical_json(envelope) + "\n").encode("utf-8"))
@@ -1034,7 +1191,9 @@ def main(argv: list[str] | None = None) -> int:
             ):
                 raise LensCatalogError("enriched previews cannot use signing options")
             if args.lens_schema is None:
-                raise LensCatalogError("--enriched-preview requires --lens-schema from Dex Lens 0.1.9 or newer")
+                raise LensCatalogError(
+                    f"--enriched-preview requires --lens-schema from Dex Lens {ENRICHED_LENS_SCHEMA_VERSION} or newer"
+                )
             preview = generate_enriched_preview(
                 args.release_root,
                 output_dir=args.output_dir,

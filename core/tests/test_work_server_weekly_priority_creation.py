@@ -39,12 +39,24 @@ def _call_get_priorities() -> dict:
     return json.loads(result[0].text)
 
 
+def _call_get_goal_status(goal_id: str) -> dict:
+    result = asyncio.run(
+        work_server.handle_call_tool("get_goal_status", {"goal_id": goal_id})
+    )
+    return json.loads(result[0].text)
+
+
 @pytest.fixture
 def priority_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "02-Week_Priorities" / "Week_Priorities.md"
     path.parent.mkdir(parents=True)
     goals = tmp_path / "01-Quarter_Goals" / "Quarter_Goals.md"
+    tasks = tmp_path / "03-Tasks" / "Tasks.md"
+    tasks.parent.mkdir(parents=True)
+    tasks.write_text("# Tasks\n", encoding="utf-8")
 
+    monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: tasks)
     monkeypatch.setattr(work_server, "get_week_priorities_file", lambda: path)
     monkeypatch.setattr(work_server, "QUARTER_GOALS_FILE", goals)
     monkeypatch.setattr(work_server, "PILLARS", PILLARS)
@@ -132,6 +144,47 @@ def test_created_weekly_priority_reads_back_its_goal_after_success_criteria(
     assert created["linked_goal"] == "Q3-2026-goal-2"
     assert listed["priorities"][0]["linked_goal_id"] == "Q3-2026-goal-2"
     assert listed["alignment_summary"]["priorities_linked_to_goals"] == 1
+
+
+@pytest.mark.parametrize("existing_count", [0, 3])
+def test_created_goal_link_is_visible_to_goal_status_for_any_priority_number(
+    priority_file: Path,
+    existing_count: int,
+):
+    goal_id = "Q3-2026-goal-2"
+    goals_file = priority_file.parents[1] / "01-Quarter_Goals" / "Quarter_Goals.md"
+    goals_file.parent.mkdir(parents=True, exist_ok=True)
+    goals_file.write_text(
+        "# Quarter Goals\n\n"
+        f"### 1. Publish renewal proof — **Customer Growth** ^{goal_id}\n",
+        encoding="utf-8",
+    )
+    existing = "".join(
+        f"{number}. Existing priority {number} — **Customer Growth** "
+        f"^week-2026-W29-p{number}\n"
+        for number in range(1, existing_count + 1)
+    )
+    priority_file.write_text(
+        "# Week Priorities\n\n"
+        f"{TOP_3}\n\n"
+        f"{existing}\n"
+        "## 📊 Review\n",
+        encoding="utf-8",
+    )
+
+    created = _call_create_priority(quarterly_goal_id=goal_id)
+    listed = _call_get_priorities()
+    status = _call_get_goal_status(goal_id)
+
+    created_priority = next(
+        priority
+        for priority in listed["priorities"]
+        if priority["priority_id"] == created["priority_id"]
+    )
+    assert created_priority["linked_goal_id"] == goal_id
+    assert status["linked_priorities_count"] == 1
+    assert status["progress_method"] == "automatic"
+    assert status["stalled"] is False
 
 
 @pytest.mark.parametrize("existing_count", [1, 2])

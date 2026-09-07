@@ -486,6 +486,14 @@ def test_week_skills_read_the_users_working_week_for_timing() -> None:
     assert "Friday/end of week" not in week_review
 
 
+def test_week_plan_writes_machine_readable_quarterly_goal_links() -> None:
+    week_plan = _read(".claude/skills/week-plan/SKILL.md")
+
+    assert "Use the exact `goal_id` returned by the planning tools" in week_plan
+    assert week_plan.count("- Quarterly goal: [Qx-YYYY-goal-N]") == 3
+    assert "[Q1 Goal #X]" not in week_plan
+
+
 def test_onboarding_runs_the_first_week_reveal_before_tool_discovery() -> None:
     flow = _read(".claude/flows/onboarding.md")
     finale = flow.split("## Step 9:", 1)[1].split("## Step 10:", 1)[0]

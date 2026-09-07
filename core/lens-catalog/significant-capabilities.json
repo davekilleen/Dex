@@ -1,0 +1,570 @@
+{
+  "registry_version": 1,
+  "capability_families": [
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "dex-granola-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-meeting-intel",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "granola-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "meeting-closeout",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "meeting-prep",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "process-meetings",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "meeting-follow-through",
+      "jobs": [
+        "capture-without-friction",
+        "track-people-and-relationships"
+      ],
+      "member_capability_ids": [
+        "dex-granola-mcp",
+        "dex-meeting-intel",
+        "granola-setup",
+        "meeting-closeout",
+        "meeting-prep",
+        "process-meetings"
+      ],
+      "outcome": "Meetings become notes, people context and tracked follow-up.",
+      "title": "Meeting follow-through"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "entity-temperature-engine",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "relationship-radar",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "living-people-company-context",
+      "jobs": [
+        "track-people-and-relationships"
+      ],
+      "member_capability_ids": [
+        "entity-temperature-engine",
+        "relationship-radar"
+      ],
+      "outcome": "People and company pages are created, refreshed and connected over time.",
+      "title": "Living people and company context"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "commitments",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "delegate-check",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-work-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "proactive-promise-engine",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "triage",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "durable-task-continuity",
+      "jobs": [
+        "evolve-the-system-itself",
+        "keep-projects-on-track",
+        "manage-tasks-reliably",
+        "track-people-and-relationships"
+      ],
+      "member_capability_ids": [
+        "commitments",
+        "delegate-check",
+        "dex-work-mcp",
+        "proactive-promise-engine",
+        "triage"
+      ],
+      "outcome": "Tasks can be captured from several places and completion returns to linked surfaces.",
+      "title": "Durable task continuity"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "things-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "todoist-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "trello-setup",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "external-task-interoperability",
+      "jobs": [
+        "manage-tasks-reliably"
+      ],
+      "member_capability_ids": [
+        "things-setup",
+        "todoist-setup",
+        "trello-setup"
+      ],
+      "outcome": "Todoist, Things and Trello can exchange tasks on request without pretending background polling exists.",
+      "title": "External task interoperability"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "apple-mail-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "atlassian-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "calendar-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-calendar-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "google-workspace-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "ms-teams-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "zoom-setup",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "connected-work-context",
+      "jobs": [
+        "capture-without-friction",
+        "keep-projects-on-track",
+        "start-each-day-focused",
+        "track-people-and-relationships"
+      ],
+      "member_capability_ids": [
+        "apple-mail-setup",
+        "atlassian-setup",
+        "calendar-setup",
+        "dex-calendar-mcp",
+        "google-workspace-setup",
+        "ms-teams-setup",
+        "zoom-setup"
+      ],
+      "outcome": "Google, Teams, Zoom, Atlassian and Apple Mail can inform plans, preparation and reviews when explicitly connected.",
+      "title": "Connected work context"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "dex-pipedrive-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "pipedrive-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "pipeline-sync",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "pipedrive-pipeline-continuity",
+      "jobs": [
+        "keep-projects-on-track",
+        "track-people-and-relationships"
+      ],
+      "member_capability_ids": [
+        "dex-pipedrive-mcp",
+        "pipedrive-setup",
+        "pipeline-sync"
+      ],
+      "outcome": "Live pipeline context informs local work; external writes stay previewed and confirmed.",
+      "title": "Pipedrive pipeline continuity"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "daily-plan",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "daily-review",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "week-plan",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "week-review",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "weekly-reflection",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "daily-weekly-operating-rhythm",
+      "jobs": [
+        "reflect-and-improve-continuously",
+        "start-each-day-focused"
+      ],
+      "member_capability_ids": [
+        "daily-plan",
+        "daily-review",
+        "week-plan",
+        "week-review",
+        "weekly-reflection"
+      ],
+      "outcome": "Planning, review and reflection form one repeatable operating cadence.",
+      "title": "Daily and weekly operating rhythm"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "decision-log",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-session-memory",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "enable-semantic-search",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "journal",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "save-insight",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "durable-work-memory",
+      "jobs": [
+        "keep-projects-on-track",
+        "reflect-and-improve-continuously"
+      ],
+      "member_capability_ids": [
+        "decision-log",
+        "dex-session-memory",
+        "enable-semantic-search",
+        "journal",
+        "save-insight"
+      ],
+      "outcome": "Sourced decisions, commitments, context and patterns remain available across sessions.",
+      "title": "Durable work memory"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "dex-doctor",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-smoke-nightly",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "proactive-health-and-recovery",
+      "jobs": [
+        "evolve-the-system-itself"
+      ],
+      "member_capability_ids": [
+        "dex-doctor",
+        "dex-smoke-nightly"
+      ],
+      "outcome": "Doctor and scheduled checks distinguish healthy, off, broken and unknown, then use bounded repair paths.",
+      "title": "Proactive health and recovery"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "backup-now",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "backup-restore",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "backup-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-vault-backup",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "backup-and-restore-confidence",
+      "jobs": [
+        "evolve-the-system-itself"
+      ],
+      "member_capability_ids": [
+        "backup-now",
+        "backup-restore",
+        "backup-setup",
+        "dex-vault-backup"
+      ],
+      "outcome": "Backups are created and recovery is proved by a safe restore rehearsal.",
+      "title": "Backup and restore confidence"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "dex-rollback",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-update",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "diff-adopt",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "diff-adopt-profile",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "diff-generate",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "diff-list",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "diff-profile",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "diff-remove",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "safe-change-and-rewind",
+      "jobs": [
+        "evolve-the-system-itself",
+        "reflect-and-improve-continuously"
+      ],
+      "member_capability_ids": [
+        "dex-rollback",
+        "dex-update",
+        "diff-adopt",
+        "diff-adopt-profile",
+        "diff-generate",
+        "diff-list",
+        "diff-profile",
+        "diff-remove"
+      ],
+      "outcome": "Changes are previewed, verified, receipted and reversible.",
+      "title": "Safe change and rewind"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "create-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "create-skill",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-add-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-whats-new",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "integrate-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "manage-capabilities",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "skill-score",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "capability-discovery-and-adoption",
+      "jobs": [
+        "evolve-the-system-itself"
+      ],
+      "member_capability_ids": [
+        "create-mcp",
+        "create-skill",
+        "dex-add-mcp",
+        "dex-whats-new",
+        "integrate-mcp",
+        "manage-capabilities",
+        "skill-score"
+      ],
+      "outcome": "Useful methods can be discovered, reviewed, adopted and created through the safe lifecycle.",
+      "title": "Capability discovery and adoption"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "manual-only",
+        "reason": "A person must confirm that no private work leaves the machine before feedback is shared."
+      },
+      "components": [
+        {
+          "capability_id": "feedback",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "privacy-safe-feedback-loop",
+      "jobs": [
+        "evolve-the-system-itself"
+      ],
+      "member_capability_ids": [
+        "feedback"
+      ],
+      "outcome": "A problem can become a minimal report and a returned answer or fix without exporting private work.",
+      "title": "Privacy-safe feedback loop"
+    },
+    {
+      "aliases": [],
+      "assessment": {
+        "mode": "automatic",
+        "profile": "catalogue"
+      },
+      "components": [
+        {
+          "capability_id": "career-coach",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "career-setup",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-career-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "dex-resume-mcp",
+          "component_type": "capability"
+        },
+        {
+          "capability_id": "resume-builder",
+          "component_type": "capability"
+        }
+      ],
+      "family_id": "career-growth-evidence",
+      "jobs": [
+        "reflect-and-improve-continuously",
+        "track-career-growth"
+      ],
+      "member_capability_ids": [
+        "career-coach",
+        "career-setup",
+        "dex-career-mcp",
+        "dex-resume-mcp",
+        "resume-builder"
+      ],
+      "outcome": "Career and Resume tools turn consented evidence into development and application support without inventing claims.",
+      "title": "Career growth evidence"
+    }
+  ]
+}
