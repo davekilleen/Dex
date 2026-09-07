@@ -316,3 +316,23 @@ def test_nested_cwd_preserves_root_and_home_shorthand_refusals(vaults, native, t
     result = hook(nested, proposal(nested, file_path=target), native=native,
                   env={"DEX_VAULT_PATH": str(one)})
     assert result.returncode == 2, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("target,expected", [("safe.md", 0), ("../escaped.md", 2)])
+def test_native_safety_decides_without_optional_context_dependencies(vaults, target, expected):
+    root = vaults[0]
+    # A native safety proposal must still work if the optional person/session
+    # package cannot load (as on the system-Python fallback in the Mac runner).
+    script = (
+        "import runpy, sys; sys.modules['core.context'] = None; "
+        "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", script, str(ROOT / "core/gates/safety.py"), "--hook"],
+        input=json.dumps(proposal(root, file_path=target)), cwd=root,
+        env={**os.environ, "DEX_VAULT_PATH": str(root)}, text=True,
+        capture_output=True, timeout=15,
+    )
+    assert result.returncode == expected, result.stdout + result.stderr
+    assert not (root / "safe.md").exists()
+    assert not (root.parent / "escaped.md").exists()

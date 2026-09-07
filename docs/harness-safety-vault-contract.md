@@ -6,7 +6,7 @@ are data sent to the checker; never run a destructive command to verify refusal.
 
 ## One selected vault
 
-`core/context/vault_selection.py` is the shared selector for the native safety
+`core/vault_selection.py` is the shared selector for the native safety
 hook, portable session/safety hooks, and the portable read-only MCP tools.
 
 - `DEX_VAULT_PATH`, `VAULT_PATH`, and `CLAUDE_PROJECT_DIR`, when set, bind the

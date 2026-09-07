@@ -21,8 +21,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from core.context.vault_selection import VaultSelectionError, select_vault
 from core.path_safety import unsafe_existing_parent
+from core.vault_selection import VaultSelectionError, select_vault
 
 DECISION_BLOCK = "block"
 DECISION_ALLOW = "allow"

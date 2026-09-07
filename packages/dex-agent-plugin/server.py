@@ -18,8 +18,8 @@ if str(RUNTIME) not in sys.path:
 
 from core.context.person_context import get_person_context  # noqa: E402
 from core.context.session_boot import build_session_boot  # noqa: E402
-from core.context.vault_selection import VaultSelectionError, select_vault  # noqa: E402
 from core.gates.safety import evaluate_safety_gate, refusal  # noqa: E402
+from core.vault_selection import VaultSelectionError, select_vault  # noqa: E402
 
 
 def _load_registry() -> dict[str, Any]:

@@ -16,8 +16,8 @@ if str(RUNTIME) not in sys.path:
     sys.path.insert(0, str(RUNTIME))
 
 from core.context.session_boot import build_session_boot  # noqa: E402
-from core.context.vault_selection import VaultSelectionError, select_vault  # noqa: E402
 from core.gates.safety import evaluate_hook_payload, read_hook_event, refusal  # noqa: E402
+from core.vault_selection import VaultSelectionError, select_vault  # noqa: E402
 
 
 def _read_payload() -> dict[str, Any]:

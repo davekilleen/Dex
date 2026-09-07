@@ -34,14 +34,13 @@ function assertSafetyRouting(settings) {
   assert.deepEqual(matchingCommands(settings, 'WebFetch'), []);
 }
 
-function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = undefined, envOverrides = {}) {
+function runGuard(toolName, script = GUARD_PATH, command = undefined, cwd = ROOT, envOverrides = {}) {
   const env = { ...process.env };
-  if (cwd !== undefined) {
-    // The shared gate deliberately honours explicit harness vault variables
-    // ahead of cwd. Keep this fixture isolated from CI's global VAULT_PATH.
-    delete env.CLAUDE_PROJECT_DIR;
-    env.VAULT_PATH = cwd;
-  }
+  // These routing tests select their own vault, independent of CI's relative
+  // VAULT_PATH or an agent's configured session. Conflict policy has its own tests.
+  delete env.CLAUDE_PROJECT_DIR;
+  delete env.DEX_VAULT_PATH;
+  env.VAULT_PATH = cwd;
   return spawnSync('/bin/bash', [script], {
     encoding: 'utf8',
     cwd,

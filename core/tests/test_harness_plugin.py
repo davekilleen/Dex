@@ -399,7 +399,7 @@ def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
         "core/context/__init__.py",
         "core/context/person_context.py",
         "core/context/session_boot.py",
-        "core/context/vault_selection.py",
+        "core/vault_selection.py",
         "core/gates/__init__.py",
         "core/gates/safety.py",
     ):

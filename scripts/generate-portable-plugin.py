@@ -29,7 +29,7 @@ RUNTIME_SOURCES = (
     Path("core/context/__init__.py"),
     Path("core/context/person_context.py"),
     Path("core/context/session_boot.py"),
-    Path("core/context/vault_selection.py"),
+    Path("core/vault_selection.py"),
     Path("core/gates/__init__.py"),
     Path("core/gates/safety.py"),
 )
