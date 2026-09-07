@@ -259,3 +259,6 @@ scripts/private/
 .codex-*-task.md
 System/.doctor-last-run.json
 .claude/settings.local.json
+
+# Local Lens-catalogue tooling venv (also created by CI on runners)
+.lens-venv/
