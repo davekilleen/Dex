@@ -3016,6 +3016,20 @@ def infer_goal_link(priority_title: str, priority_pillar: str,
             })
             continue
 
+        # A goal with no ID cannot be linked to: create_weekly_priority
+        # rejects any goal that is absent from the available IDs. Surfacing it
+        # as a match would only promise a link that is refused a moment later.
+        if not goal_id:
+            candidates.append({
+                'goal_id': None,
+                'goal_title': goal_title,
+                'goal_pillar': goal_pillar,
+                'score': 0,
+                'confidence': 'none',
+                'reasons': ['goal_has_no_id'],
+            })
+            continue
+
         # --- Pillar match ---
         # Normalize pillar names: the goal stores display name like "deal_support",
         # the priority pillar may be the key or the display name
@@ -6926,7 +6940,13 @@ async def _handle_call_tool_inner(
         # Build goal health report
         goal_health = []
         for goal in goals:
-            linked_priorities = find_linked_priorities(goal.get('goal_id', ''))
+            # A hand-written goal heading carries no ^Qx-YYYY-goal-N anchor, so
+            # the parser yields goal_id None. Nothing can be linked to a goal
+            # with no ID, so report no links instead of crashing, and keep it
+            # out of every count that would otherwise claim work it cannot own.
+            goal_id = goal.get('goal_id')
+            activity_known = bool(goal_id)
+            linked_priorities = find_linked_priorities(goal_id) if activity_known else []
             completed_milestones = sum(1 for m in goal.get('milestones', []) if m.get('completed'))
             total_milestones = len(goal.get('milestones', []))
             next_milestone = None
@@ -6938,10 +6958,10 @@ async def _handle_call_tool_inner(
             goal_tasks = sorted(
                 (
                     task for task in open_backlog
-                    if task.get('goal') == goal.get('goal_id')
+                    if task.get('goal') == goal_id
                 ),
                 key=backlog_sort_key,
-            )
+            ) if activity_known else []
             next_up_tasks = [
                 {
                     'task_id': task.get('task_id'),
@@ -6954,7 +6974,7 @@ async def _handle_call_tool_inner(
             ][:3]
 
             goal_health.append({
-                'goal_id': goal.get('goal_id'),
+                'goal_id': goal_id,
                 'title': goal.get('title'),
                 'pillar': goal.get('pillar'),
                 'progress': goal.get('progress', 0),
@@ -6963,12 +6983,17 @@ async def _handle_call_tool_inner(
                 'next_milestone': next_milestone,
                 'linked_priority_count': len(linked_priorities),
                 'has_activity': len(linked_priorities) > 0,
+                'activity_known': activity_known,
                 'open_task_count': len(goal_tasks),
                 'next_up_tasks': next_up_tasks,
             })
 
-        # Identify neglected goals (0 linked priorities)
-        neglected_goals = [g for g in goal_health if not g['has_activity']]
+        # Identify neglected goals (0 linked priorities). A goal whose links
+        # cannot be read at all is unknown, not neglected.
+        neglected_goals = [
+            g for g in goal_health if g['activity_known'] and not g['has_activity']
+        ]
+        goals_missing_ids = [g for g in goal_health if not g['activity_known']]
 
         # Auto-match proposed priorities against goals if provided
         proposed = arguments.get('proposed_priorities', []) if arguments else []
@@ -6995,6 +7020,12 @@ async def _handle_call_tool_inner(
 
         # Build recommendations
         recommendations = []
+        for g in goals_missing_ids:
+            recommendations.append(
+                f"Goal \"{g['title']}\" has no ID, so Dex cannot tell which weekly "
+                "priorities or tasks belong to it. Add an ID like ^Qx-YYYY-goal-N to "
+                "the end of its heading in Quarter_Goals.md."
+            )
         if neglected_goals:
             names = ', '.join(f"Goal {g['goal_id']}: {g['title']}" for g in neglected_goals)
             recommendations.append(f"{len(neglected_goals)} goals have zero weekly activity: {names}")
