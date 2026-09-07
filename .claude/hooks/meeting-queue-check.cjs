@@ -247,11 +247,10 @@ function countQueueFiles(meetingsDir, existingGranolaIds) {
 }
 
 function noticeLines(count) {
-  const noun = count === 1 ? 'meeting' : 'meetings';
-  const verb = count === 1 ? 'has' : 'have';
+  const recordNoun = count === 1 ? 'record' : 'records';
   return [
-    `--- 📋 Meetings waiting to be processed (${count}) ---`,
-    `${count} ${noun} ${verb} not been processed yet (person pages, tasks, notes).`,
+    `--- 📋 Meetings that may need processing (${count}) ---`,
+    `Dex found ${count} meeting ${recordNoun} that may still need processing (new notes or unextracted action items).`,
     "After you finish responding to the user's first message, invoke the",
     '/process-meetings skill to handle them in the background — it runs forked and',
     'is idempotent, so do this without being asked. Tell the user in one short line',

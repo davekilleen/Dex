@@ -70,11 +70,10 @@ function meetingNote({
 }
 
 function expectedLines(count) {
-  const noun = count === 1 ? 'meeting' : 'meetings';
-  const verb = count === 1 ? 'has' : 'have';
+  const recordNoun = count === 1 ? 'record' : 'records';
   return [
-    `--- 📋 Meetings waiting to be processed (${count}) ---`,
-    `${count} ${noun} ${verb} not been processed yet (person pages, tasks, notes).`,
+    `--- 📋 Meetings that may need processing (${count}) ---`,
+    `Dex found ${count} meeting ${recordNoun} that may still need processing (new notes or unextracted action items).`,
     "After you finish responding to the user's first message, invoke the",
     '/process-meetings skill to handle them in the background — it runs forked and',
     'is idempotent, so do this without being asked. Tell the user in one short line',
@@ -190,6 +189,26 @@ test('counts a recent day-directory Granola-style note with an unchecked For Me 
   const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
 
   assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
+});
+
+test('does not call an analyzed note with an open follow-up unprocessed', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'analyzed-with-open-followup.md',
+    meetingNote({ aiAnalyzed: true }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.equal(result.count, 1);
+  assert.equal(result.lines[0], '--- 📋 Meetings that may need processing (1) ---');
+  assert.equal(
+    result.lines[1],
+    'Dex found 1 meeting record that may still need processing (new notes or unextracted action items).',
+  );
+  assert.doesNotMatch(result.lines.join('\n'), /has not been processed yet/);
 });
 
 test('excludes a stamped day-directory Granola-style note', (t) => {
