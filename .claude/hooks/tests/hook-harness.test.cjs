@@ -54,7 +54,9 @@ for (const hookName of HOOK_PROGRAMS) {
       cwd: sandbox.vault,
       encoding: 'utf-8',
       env: minimalEnv(sandbox),
-      input: '{}\n',
+      input: hookName === 'dex-safety-guard.sh'
+        ? JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git status --short' } })
+        : '{}\n',
       timeout: 10_000,
     });
 

@@ -91,6 +91,15 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
+          }
+        ]
       }
     ],
     "Stop": [

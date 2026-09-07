@@ -9,8 +9,18 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from core.gates.safety import evaluate_safety_gate
 from core.mcp import work_server
+
+
+@pytest.fixture(autouse=True)
+def isolated_vault_binding(monkeypatch):
+    # The suite bootstrap binds its own fixture; these tests select fresh vaults.
+    for key in ("DEX_VAULT_PATH", "VAULT_PATH", "CLAUDE_PROJECT_DIR"):
+        monkeypatch.delenv(key, raising=False)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude" / "hooks" / "dex-safety-guard.sh"
@@ -79,7 +89,7 @@ def test_destructive_command_has_identical_hook_and_mcp_decision(tmp_path: Path,
 def test_unsafe_path_has_identical_hook_and_mcp_decision(tmp_path: Path, monkeypatch) -> None:
     vault = _vault(tmp_path)
     shared = evaluate_safety_gate(path="../../../etc/passwd", vault=vault)
-    hook = _hook(vault, path="../../../etc/passwd")
+    hook = _hook(vault, tool_name="Write", path="../../../etc/passwd")
     mcp = _mcp(monkeypatch, vault, {"path": "../../../etc/passwd"})
     assert shared.refused and shared.code == "unsafe_path"
     assert hook.returncode == 2
@@ -102,7 +112,7 @@ def test_migration_lock_only_blocks_mutating_git(tmp_path: Path) -> None:
 def test_malformed_safety_inputs_return_safe_payload(tmp_path: Path, monkeypatch) -> None:
     vault = _vault(tmp_path)
     assert evaluate_safety_gate(command=object(), path=object(), vault=vault).refused is False
-    assert evaluate_safety_gate(vault=object()).refused is False
+    assert evaluate_safety_gate(vault=object()).code == "vault_selection_conflict"
     result = _mcp(monkeypatch, vault, [])
     assert result["refused"] is False
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,37 +16,22 @@ if str(RUNTIME) not in sys.path:
     sys.path.insert(0, str(RUNTIME))
 
 from core.context.session_boot import build_session_boot  # noqa: E402
-from core.gates.safety import evaluate_hook_payload  # noqa: E402
+from core.context.vault_selection import VaultSelectionError, select_vault  # noqa: E402
+from core.gates.safety import evaluate_hook_payload, refusal  # noqa: E402
 
 
 def _read_payload() -> dict[str, Any]:
-    try:
-        parsed = json.loads(sys.stdin.read() or "{}")
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    parsed = json.loads(sys.stdin.read())
+    if not isinstance(parsed, dict):
+        raise ValueError("invalid hook payload")
+    return parsed
 
 
 def _vault(payload: dict[str, Any]) -> Path:
-    workspace_roots = payload.get("workspace_roots")
-    workspace_root = (
-        workspace_roots[0]
-        if isinstance(workspace_roots, list) and workspace_roots and isinstance(workspace_roots[0], str)
-        else None
-    )
-    for value in (
-        payload.get("cwd"),
-        workspace_root,
-        os.environ.get("DEX_VAULT_PATH"),
-        os.environ.get("VAULT_PATH"),
-        os.environ.get("CLAUDE_PROJECT_DIR"),
-    ):
-        if isinstance(value, str) and value.strip():
-            try:
-                return Path(value).expanduser()
-            except (OSError, TypeError, ValueError):
-                continue
-    return Path.cwd()
+    if "vault_path" in payload and not isinstance(payload["vault_path"], str):
+        raise VaultSelectionError("Blocked: invalid explicit vault selection.")
+    return select_vault(explicit=payload.get("vault_path"), cwd=payload.get("cwd"),
+                        workspace_roots=payload.get("workspace_roots"))
 
 
 def _event(payload: dict[str, Any]) -> str:
@@ -73,7 +57,10 @@ def _session_start(payload: dict[str, Any], protocol: str) -> int:
 
 
 def _pre_tool_use(payload: dict[str, Any], protocol: str) -> int:
-    decision = evaluate_hook_payload(payload, vault=_vault(payload))
+    return _emit_decision(evaluate_hook_payload(payload), protocol)
+
+
+def _emit_decision(decision, protocol: str) -> int:
     if decision.refused:
         if protocol == "cursor":
             output = {
@@ -116,13 +103,20 @@ def main(argv: list[str] | None = None) -> int:
         default="claude",
     )
     args, _ = parser.parse_known_args(argv)
-    payload = _read_payload()
-    event = _event(payload)
-    if event in {"SessionStart", "sessionStart"}:
-        return _session_start(payload, args.protocol)
-    if event in {"PreToolUse", "preToolUse", "BeforeTool"}:
-        return _pre_tool_use(payload, args.protocol)
-    return 0
+    try:
+        payload = _read_payload()
+        event = _event(payload)
+        if event in {"SessionStart", "sessionStart"}:
+            return _session_start(payload, args.protocol)
+        if event in {"PreToolUse", "preToolUse", "BeforeTool"}:
+            return _pre_tool_use(payload, args.protocol)
+        return _emit_decision(refusal("Blocked: unknown or missing safety hook event."), args.protocol)
+    except VaultSelectionError as exc:
+        return _emit_decision(refusal(str(exc), exc.code), args.protocol)
+    except Exception:
+        # Never expose paths or traceback data; a crashed checker made no decision.
+        return _emit_decision(refusal("Blocked: Dex could not check this hook request. Check the selected vault and runtime."), args.protocol)
+
 
 
 if __name__ == "__main__":

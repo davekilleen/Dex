@@ -28,6 +28,9 @@ function assertSafetyRouting(settings) {
   assert.deepEqual(matchingCommands(settings, 'mcp__rag-web-browser__search'), [
     GUARD_COMMAND,
   ]);
+  for (const name of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'apply_patch']) {
+    assert.deepEqual(matchingCommands(settings, name), [GUARD_COMMAND]);
+  }
   assert.deepEqual(matchingCommands(settings, 'WebFetch'), []);
 }
 
