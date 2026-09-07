@@ -2264,9 +2264,10 @@ def test_update_keeps_claude_when_the_live_file_carries_direct_edits(
     reason = result["kept_reasons"]["CLAUDE.md"]
     assert "1 line" in reason
     assert "Always loop in the platform team before schema work." in reason
-    assert "Leave CLAUDE.md unchanged" in reason
-    assert "review the whole file through /dex-update Compare and conflict choices" in reason
-    assert "move these lines into CLAUDE-custom.md" not in reason
+    assert "carry each line into CLAUDE-custom.md (your protected block)" in reason
+    assert "replace any older version of the same instruction" in reason
+    assert "restate an edit made inside Dex's own standard wording" in reason
+    assert "Dex can do this for you" in reason
 
 
 def test_update_still_recomposes_a_stale_claude_the_baseline_explains(

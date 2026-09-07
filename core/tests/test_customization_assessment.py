@@ -723,6 +723,42 @@ def test_model_and_planning_import_without_third_party_packages() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_the_vaults_own_git_directory_never_blocks_completeness(
+    tmp_path: Path,
+) -> None:
+    """Every real vault is a git repository. Its own top-level .git is denied
+    by the contract (never read, never descended), so it must not create the
+    dependency-tree exclusion that made completeness UNKNOWN — and the Capsule
+    route unreachable — on every production vault."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    (vault / ".git").mkdir()
+
+    assessment = assess(vault)
+
+    assert (".git", "dependency-tree-excluded") not in {
+        (item.path, item.reason) for item in assessment.exclusions
+    }
+    assert assessment.completeness == "OK"
+
+
+def test_an_embedded_repositorys_git_directory_is_still_excluded(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_verified_catalog(vault)
+    (vault / "04-Projects" / "clone" / ".git").mkdir(parents=True)
+    write_file(vault, "04-Projects/clone/.git/config", b"[core]\n")
+
+    assessment = assess(vault)
+
+    reasons = {(item.path, item.reason) for item in assessment.exclusions}
+    assert ("04-Projects/clone", "embedded-repository") in reasons
+    assert assessment.completeness == "UNKNOWN"
+
+
 def test_dependency_tree_is_excluded_instead_of_becoming_customizations(
     tmp_path: Path,
 ) -> None:

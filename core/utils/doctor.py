@@ -1959,15 +1959,56 @@ def _customization_persistence_detail(
     return detail
 
 
+def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
+    """One plain sentence about the release anchor, empty when none exists.
+
+    The anchor is the re-anchoring design's repair evidence
+    (System/.dex/release-anchor.json). A verified anchor is reported as such;
+    a rejected anchor — present but unprovable, so ignored — is a warning
+    naming the exact error the fail-closed consumer recorded.
+    """
+    anchor_state = baseline_detail.get("anchor_state")
+    if anchor_state == "verified":
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
+        return (
+            " A saved proof record vouches for the files that came with Dex "
+            "in this vault."
+        )
+    if anchor_state == "rejected":
+        errors = baseline_detail.get("errors")
+        named = next(
+            (
+                error
+                for error in (errors if isinstance(errors, list) else [])
+                if isinstance(error, str) and "release anchor" in error
+            ),
+            "the anchor could not be verified",
+        )
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
+        return (
+            " Warning: a proof record is present but couldn't be trusted, so "
+            f"Dex ignored it: {named}. Run the guided repair in /dex-doctor "
+            "again to replace it."
+        )
+    return ""
+
+
 def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     """Build the read-only customization assessment entirely in memory."""
     from core.customization_migration.report import assessment_report
     from core.customization_migration.service import assess
+    from core.lifecycle.customizations import load_release_baseline
 
     assessment = assess(context.vault_root)
     authority = _customization_persistence_detail(
         assessment_report(assessment)
     )
+    # Release-anchor awareness (re-anchoring design): the baseline's own
+    # anchor_state travels in the structured detail so the surface can render
+    # it, and the human-readable detail carries a verified/rejected note.
+    baseline_detail = load_release_baseline(context.vault_root).to_dict()
+    authority["release_baseline"] = baseline_detail
+    anchor_note = _release_anchor_note(baseline_detail)
     catalog_path = _release_catalog_path(context)
     if os.path.lexists(catalog_path):
         try:
@@ -1982,7 +2023,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
         return ProbeResult(
             "UNKNOWN",
             "I couldn't verify which Dex version is installed, so I can't tell you "
-            "what you've changed.",
+            "what you've changed." + anchor_note,
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":
@@ -1992,7 +2033,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             f"I found {observed} {noun}, but couldn't prove the inventory is complete "
             f"({', '.join(assessment.incomplete_reasons)}). Review the listed exclusions "
-            "before creating a Capsule.",
+            "before creating a Capsule." + anchor_note,
             structured_detail=authority,
         )
     count = assessment.identity.customization_count
@@ -2001,7 +2042,8 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     blocked_suffix = f", {blocked_count} blocked" if blocked_count else ""
     return ProbeResult(
         "OK",
-        f"Customization assessment completed: {count} {noun}{blocked_suffix}",
+        f"Customization assessment completed: {count} {noun}{blocked_suffix}"
+        + anchor_note,
         structured_detail=authority,
     )
 
@@ -5055,7 +5097,6 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     from core.utils.claude_composition import (
         CLAUDE,
         CUSTOM,
-        DIRECT_EDIT_RESCUE,
         RecomposeUnavailable,
         compose_current,
         true_user_edits,
@@ -5098,9 +5139,8 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
     edited = true_user_edits(live, expected, context.vault_root)
     if edited:
         # The force refresh refuses this shape on purpose, so pointing at
-        # /dex-doctor here would be advice that cannot work. Preserve the
-        # whole live file and route resolution through the normal conflict
-        # boundary instead of treating inferred lines as movable units.
+        # /dex-doctor here would be advice that cannot work. The only safe
+        # repair moves the lines into the protected block first.
         count = len(edited)
         noun = "line" if count == 1 else "lines"
         return ProbeResult(
@@ -5108,7 +5148,16 @@ def _probe_claude_composition(context: DoctorContext) -> ProbeResult:
             f"{CLAUDE} does not match {CUSTOM}, so some of your personal instructions are "
             f"not being loaded — and {count} {noun} edited directly into {CLAUDE} would be "
             "lost by a refresh, so Dex will not refresh over them",
-            Heal(tier=3, action=DIRECT_EDIT_RESCUE, applied=False),
+            Heal(
+                tier=3,
+                action=(
+                    f"Ask Dex to carry the directly edited lines into {CUSTOM} "
+                    "(your protected block), each the way it needs — replacing "
+                    "older versions rather than duplicating, restating edits made "
+                    "inside Dex's own wording. Nothing is changed automatically."
+                ),
+                applied=False,
+            ),
         )
 
     return ProbeResult(
@@ -5130,14 +5179,13 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
     live file is never an input. A line typed straight into CLAUDE.md therefore
     exists nowhere else, and the composer now refuses to write over it — so
     this probe is the early warning, surfacing the problem during a checkup
-    instead of mid-update. Never auto-fixed: resolving someone's whole
-    instruction file is theirs to approve.
+    instead of mid-update. Never auto-fixed: moving someone's words is theirs
+    to approve.
     """
     from core.update.apply_update import CompositionError
     from core.utils.claude_composition import (
         CLAUDE,
         CUSTOM,
-        DIRECT_EDIT_RESCUE,
         RecomposeUnavailable,
         compose_current,
         true_user_edits,
@@ -5189,9 +5237,20 @@ def _probe_claude_direct_edits(context: DoctorContext) -> ProbeResult:
         "BROKEN",
         f"{count} {noun} only in {CLAUDE}{staleness}; the next update will "
         f"leave {CLAUDE} untouched rather than lose them, so it stays on the "
-        "old release wording until the whole file is reviewed through "
-        "/dex-update Compare and conflict choices",
-        Heal(tier=3, action=DIRECT_EDIT_RESCUE, applied=False),
+        f"old release wording until they are carried into {CUSTOM} — Dex can "
+        "do this for you, handling each line the way it needs (replacing an "
+        "older version of the same instruction rather than duplicating it, "
+        "and restating edits made inside Dex's own wording in your words)",
+        Heal(
+            tier=3,
+            action=(
+                f"Ask Dex to carry the directly edited lines into {CUSTOM} "
+                "(your protected block), each the way it needs — replacing "
+                "older versions rather than duplicating, restating edits made "
+                "inside Dex's own wording. Nothing is changed automatically."
+            ),
+            applied=False,
+        ),
     )
 
 

@@ -44,16 +44,17 @@ EXCLUSION_GUIDANCE = {
     "read-error": "Make the file readable and valid for its format, then reassess.",
     "embedded-secret": "Remove the credential or secret before including this file; Dex will not archive it.",
     "trust-hash-mismatch": "Re-authorize the current file through the trust flow, then reassess.",
-    # Interim wording (re-anchoring design ruling 5; verbatim wording is
-    # founder copy): honest before the re-anchor repair exists. Once that flow
-    # ships, this string changes to point at it — see the design's "Guidance
-    # correction" section.
+    # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring design ruling 5,
+    # second half): the post-flow wording, drafted now that the re-anchor flow
+    # exists (python3 -m core.update.reanchor_cli, offered through
+    # /dex-doctor). The founder approves the verbatim wording before release;
+    # the previously approved interim wording it replaces is preserved in the
+    # design doc.
     "release-identity-unproved": (
-        "Dex can't yet prove these files came from your installed release — "
-        "that's a gap in Dex's own records, not a problem with your files. "
-        "A guided repair that checks them against the official release record "
-        "is coming. Updating will not clear this notice, so don't update just "
-        "to fix it."
+        "Dex can't prove these files came with your installed version of Dex. "
+        "Run the guided repair offered in /dex-doctor — it checks them "
+        "against the official release record. Don't update until that's "
+        "done."
     ),
     "dependency-tree-excluded": (
         "This path is intentionally excluded from customization capture. "

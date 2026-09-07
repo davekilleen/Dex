@@ -94,6 +94,10 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'acknowledgement_token',
   'rewind_available',
   'rewindable',
+  // Result field on the delivered-release receipt: names why a file was
+  // deliberately kept (e.g. CLAUDE.md carrying direct edits). The skill
+  // teaches how to explain and rescue that outcome, so it may name it.
+  'kept_reasons',
 ]);
 
 function assertInOrder(document, needles, label) {

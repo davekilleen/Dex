@@ -566,6 +566,23 @@ CUSTOMIZATION_MIGRATION_SEAMS_VERSION = 0
 CUSTOMIZATION_MIGRATION_SEAM_PREFIXES = ("System/.dex/customization-migrations/",)
 CUSTOMIZATION_MIGRATION_SEAM_PATHS = ("CLAUDE-custom.md",)
 
+# Release-anchor seam (A2 addition, adversarial review 2026-09-05 conditions
+# C1-C3). The re-anchor flow writes exactly one evidence artifact plus its
+# audit receipt, both in one transaction. EXACT FILE PATHS ONLY — no
+# directory grant, no prefix: granting "System/.dex/" (or any slashless
+# prefix) would quietly authorize the ledger, adoption receipts, health
+# state, and the topology marker (review §2.11). The anchor deliberately
+# does NOT join the customization-migration seam list, so a migration-
+# consented transaction can never write or overwrite the anchor under a
+# consent the user gave for something else.
+RELEASE_ANCHOR_SEAMS_VERSION = 0
+RELEASE_ANCHOR_RELATIVE = "System/.dex/release-anchor.json"
+RELEASE_ANCHOR_RECEIPT_RELATIVE = "System/.dex/release-anchor.receipt.json"
+RELEASE_ANCHOR_SEAM_PATHS = (
+    RELEASE_ANCHOR_RELATIVE,
+    RELEASE_ANCHOR_RECEIPT_RELATIVE,
+)
+
 # Transition capsules snapshot the two reset-owned config files before a
 # re-onboarding mutates them. They live outside the update lane's capsule root
 # because its status projection treats every entry there as an update capsule.
@@ -640,6 +657,7 @@ def update_write_verdict(
         "automation-ownership",
         "conflict-resolution",
         "adoption-rewind",
+        "release-anchor",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -976,6 +994,54 @@ def update_write_verdict(
             resolution.rule_id if resolution is not None else None,
         )
 
+    if operation == "release-anchor":
+        # C2: this branch TERMINATES. It must never fall through to the
+        # generic mutation policy (the conflict-resolution/adoption-rewind
+        # idiom) — falling through would let the anchor operation write
+        # brain and generated paths wholesale (review §2.11 hazard 2).
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        if candidate in RELEASE_ANCHOR_SEAM_PATHS:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-release-anchor",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-release-anchor",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
     if operation == "conflict-resolution":
         try:
             denied = is_denied(path)
@@ -1266,6 +1332,7 @@ def build_contract_schema(
             "ownership_classes",
             "mutation_policy",
             "customization_migration",
+            "release_anchor",
             "hard_deny",
             "vault_regions",
             "rules",
@@ -1311,6 +1378,27 @@ def build_contract_schema(
                     "seam_paths": {
                         "type": "array",
                         "items": {"type": "string", "minLength": 1},
+                        "uniqueItems": True,
+                    },
+                },
+            },
+            "release_anchor": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "version",
+                    "action",
+                    "seam_paths",
+                ],
+                "properties": {
+                    "version": {"const": RELEASE_ANCHOR_SEAMS_VERSION},
+                    "action": {"const": "write-release-anchor"},
+                    # Deliberately no seam_prefixes: the anchor seam grants
+                    # exact file paths only (review §2.11).
+                    "seam_paths": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
                         "uniqueItems": True,
                     },
                 },
@@ -1399,6 +1487,11 @@ def build_contract_document(
             "action": "write-with-user-approval",
             "seam_prefixes": list(CUSTOMIZATION_MIGRATION_SEAM_PREFIXES),
             "seam_paths": list(CUSTOMIZATION_MIGRATION_SEAM_PATHS),
+        },
+        "release_anchor": {
+            "version": RELEASE_ANCHOR_SEAMS_VERSION,
+            "action": "write-release-anchor",
+            "seam_paths": list(RELEASE_ANCHOR_SEAM_PATHS),
         },
         "hard_deny": list(HARD_DENY_PATTERNS),
         "vault_regions": list(VAULT_REGIONS),

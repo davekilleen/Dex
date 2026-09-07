@@ -17,6 +17,7 @@ from core.lifecycle.catalog import (
 )
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
 from core.lifecycle.model import ReleaseCatalog
+from core.lifecycle.release_anchor import consume_release_anchor
 
 MANIFEST_PATH = "System/.installed-files.manifest"
 CATALOG_CANDIDATES = (
@@ -51,6 +52,14 @@ class ReleaseBaseline:
     # "rejected" (binding present but the sibling was missing, unreadable, or
     # did not match — its rows contributed nothing, exactly as if absent).
     hash_table_state: str = "absent"
+    # Release-anchor evidence (System/.dex/release-anchor.json): "absent"
+    # (no anchor on disk), "verified" (self-hash + manifest binding + catalog
+    # binding all proved; its brain-owned rows merged UNDER the catalog and
+    # hash-table rows), or "rejected" (present but unprovable — contributed
+    # nothing, and the named reason travels in ``errors``). The anchor is
+    # never trusted on presence and never consulted unless the catalog
+    # baseline itself already verified.
+    anchor_state: str = "absent"
 
     def expected_sha256(self, canonical_path: str) -> str | None:
         return self.expected_hashes.get(canonical_path)
@@ -62,6 +71,7 @@ class ReleaseBaseline:
             "manifest_path_count": len(self.manifest_paths),
             "catalog_hash_count": len(self.expected_hashes),
             "hash_table_state": self.hash_table_state,
+            "anchor_state": self.anchor_state,
             "errors": list(self.errors),
         }
 
@@ -164,6 +174,7 @@ def load_release_baseline(
     release_version: str | None = None
     identity_state = "UNKNOWN"
     hash_table_state = "absent"
+    anchor_state = "absent"
     if selected_catalog is not None and manifest_bytes is not None:
         if not release_bytes_match(
             selected_catalog.release.manifest.sha256, manifest_bytes
@@ -248,6 +259,24 @@ def load_release_baseline(
                         # cannot carry for itself).
                         merged_hashes.setdefault(binding.path, binding.sha256)
                         hash_table_state = "verified"
+                # Release-anchor consumer (re-anchoring design, conditions
+                # C5-C7). The anchor is consulted ONLY here — after the
+                # catalog/manifest pair has already verified — so it can
+                # never rescue an unverified baseline, and its rows merge
+                # strictly UNDER the catalog and hash-table rows
+                # (setdefault: stronger evidence wins on conflict). Every
+                # failure demotes to exactly today's behavior with a named
+                # error; silence (no anchor) neither promotes nor complains.
+                anchor_state, anchor_rows, anchor_errors = consume_release_anchor(
+                    root,
+                    manifest_bytes=manifest_bytes,
+                    manifest_paths=manifest_paths,
+                    catalog_sha256=selected_catalog.integrity.catalog_sha256,
+                    release_version=selected_catalog.release.version,
+                )
+                errors.extend(anchor_errors)
+                for anchor_path, anchor_sha256 in anchor_rows.items():
+                    merged_hashes.setdefault(anchor_path, anchor_sha256)
                 expected_hashes = MappingProxyType(dict(sorted(merged_hashes.items())))
                 release_version = selected_catalog.release.version
                 identity_state = "VERIFIED"
@@ -261,6 +290,7 @@ def load_release_baseline(
         expected_hashes,
         tuple(sorted(set(errors))),
         hash_table_state,
+        anchor_state,
     )
 
 

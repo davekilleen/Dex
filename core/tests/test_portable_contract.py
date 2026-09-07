@@ -660,6 +660,227 @@ def test_ordinary_transaction_still_cannot_write_customization_seam(
     assert not (vault / "CLAUDE-custom.md").exists()
 
 
+# ---------------------------------------------------------------------------
+# The release-anchor seam (A2 addition, adversarial review conditions C1-C3).
+# This suite mirrors the customization-migration seam suite above: every test
+# is red-when-removed against the named check in the release-anchor branch.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.dex/release-anchor.json",
+        "System/.dex/release-anchor.receipt.json",
+    ],
+)
+@pytest.mark.parametrize("exists", [False, True])
+def test_release_anchor_operation_allows_only_exact_seam_files(
+    path: str, exists: bool
+) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=exists,
+        operation="release-anchor",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "write-release-anchor"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # C2: the branch must TERMINATE with its own refusal — reintroducing
+        # the conflict-resolution fall-through idiom would return the generic
+        # policy's "replace" for this brain path and turn this test red.
+        "core/x.py",
+        "05-Areas/People/Jane_Doe.md",
+        "System/.dex/ledger/000001.json",
+        "System/.dex/adoptions/receipt.json",
+        "System/.dex/topology.json",
+        "CLAUDE-custom.md",
+        "System/.dex/customization-migrations/abc123/manifest.json",
+    ],
+)
+def test_release_anchor_operation_refuses_everything_outside_the_seam(
+    path: str,
+) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="release-anchor",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-release-anchor"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # C1: exact files only — a sibling name, a nested path, and a name
+        # that merely starts with the anchor path must all refuse. A
+        # directory or slashless-prefix grant would allow these.
+        "System/.dex/release-anchor-evil.json",
+        "System/.dex/release-anchor.json.bak",
+        "System/.dex/release-anchor/rows.json",
+        "System/.dex/release-anchors.json",
+    ],
+)
+def test_release_anchor_seam_grants_no_directory_or_prefix(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="release-anchor",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-release-anchor"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env",
+        "System/.dex/release-anchor.key",
+        "System/.dex/release-anchor-token.json",
+    ],
+)
+def test_release_anchor_hard_deny_wins_before_the_seam_check(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="release-anchor",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "deny"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.dex/release-anchor.json",
+        "System/.dex/release-anchor.receipt.json",
+    ],
+)
+def test_default_update_still_refuses_release_anchor_paths(path: str) -> None:
+    verdict = portable_contract.update_write_verdict(path, exists=True)
+
+    assert verdict.allowed is False
+    assert verdict.action == "never"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.dex/release-anchor.json",
+        "System/.dex/release-anchor.receipt.json",
+    ],
+)
+def test_customization_migration_still_refuses_release_anchor_paths(
+    path: str,
+) -> None:
+    # Review §2.11 hazard 3: the anchor never joins the migration seam list,
+    # so a migration-consented transaction cannot touch it.
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=True,
+        operation="customization-migration",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-migration-seams"
+
+
+def test_release_anchor_traversal_forms_normalize_before_matching() -> None:
+    # §2.6 both directions: a traversal INTO the anchor via the migration
+    # seam refuses under the migration operation; a traversal OUT of the
+    # anchor into the migration root refuses under the anchor operation.
+    into_anchor = portable_contract.update_write_verdict(
+        "System/.dex/customization-migrations/../release-anchor.json",
+        exists=False,
+        operation="customization-migration",
+    )
+    out_of_anchor = portable_contract.update_write_verdict(
+        "System/.dex/release-anchor.json/../customization-migrations/x.json",
+        exists=False,
+        operation="release-anchor",
+    )
+
+    assert into_anchor.allowed is False
+    assert into_anchor.action == "outside-migration-seams"
+    assert out_of_anchor.allowed is False
+    assert out_of_anchor.action == "outside-release-anchor"
+
+
+def test_release_anchor_root_escape_is_unclassified() -> None:
+    verdict = portable_contract.update_write_verdict(
+        "../release-anchor.json",
+        exists=False,
+        operation="release-anchor",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "unclassified-never-write"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "SYSTEM/.dex/release-anchor.json",
+        "System/.DEX/Release-Anchor.json",
+    ],
+)
+def test_release_anchor_case_variant_fails_closed(path: str) -> None:
+    # §2.8: seam matching stays case-sensitive; a case-folding "fix" must
+    # fail this test loudly rather than silently widening the seam on
+    # case-sensitive filesystems.
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="release-anchor",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-release-anchor"
+
+
+def test_release_anchor_contract_view_is_frozen() -> None:
+    # C3: the seam travels in the frozen JSON view. Changing it is a
+    # deliberate contract change — this failing IS the tripwire working.
+    assert portable_contract.build_contract_document()["release_anchor"] == {
+        "version": 0,
+        "action": "write-release-anchor",
+        "seam_paths": [
+            "System/.dex/release-anchor.json",
+            "System/.dex/release-anchor.receipt.json",
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.dex/release-anchor.json",
+        "System/.dex/release-anchor.receipt.json",
+    ],
+)
+def test_ordinary_transaction_still_cannot_write_release_anchor(
+    tmp_path: Path, path: str
+) -> None:
+    from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+
+    vault = tmp_path / "vault"
+    (vault / "System/.dex").mkdir(parents=True)
+
+    with pytest.raises(PlanRejected, match="the ownership contract forbids writing"):
+        Transaction.begin(vault, [PlanEntry(path, b"{}\n")])
+
+    assert not (vault / path).exists()
+
+
 def test_legacy_shipped_runtime_surfaces_the_baseline_debt() -> None:
     debt = portable_contract.legacy_shipped_runtime(_tracked_paths())
     # Runtime debt still exists, but untrack-v1 no longer ships personal

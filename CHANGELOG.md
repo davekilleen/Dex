@@ -7,6 +7,43 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.11] — The files Dex ships can finally prove themselves, and a guided repair when they can't (2026-09-07)
+
+A long-time beta tester's checkup flagged 1,807 files as ones Dex "couldn't
+account for" — and the only advice offered was to run the very update that
+state made untrustworthy. Digging into her report found something bigger:
+the records Dex used to vouch for its own files were so thin that every
+vault had this problem, hidden until her checkup made it visible.
+
+**What this fixes for you:**
+
+* **A guided repair when Dex can't vouch for its own files.** Your checkup
+  now offers a short, guided check you run yourself. It compares the files
+  Dex shipped against the official release record, shows you exactly what
+  it found, and asks for your yes twice — once before it looks, again
+  before it saves anything. Decline at any point and nothing changes. It
+  only ever answers to a person at the keyboard: no shortcut, setting, or
+  script can answer for you.
+* **The protected update path opens for everyone.** A long-standing quirk
+  meant the extra-safe update route could never actually finish its checks
+  on a real, working vault — it tripped over the vault's own history
+  folder, which every vault has. Fixed; the safe route is reachable at
+  last.
+* **Moving lines into your protected block is now done the careful way.**
+  When an update finds words you wrote directly into your instructions
+  page, Dex offered to "move" them — but some of those lines need
+  replacing an older version, and some need restating rather than copying.
+  Dex now works out which is which, shows you the plan, and only then
+  edits.
+* **The health page keeps itself current.** A release published by the
+  second of the two build runs used to leave the public health page a step
+  behind until the next change landed. It updates either way now.
+
+The repair that can check against the official record *online* — for a
+vault whose own records can't prove anything at all — is designed and
+coming next; this repair says so honestly and stops rather than guessing.
+Once again, most of this traces to the same beta tester's reports.
+
 ## [1.97.10] — One check before you update, and your own choices finally win (2026-09-06)
 
 **Before you update from an older version, one check.** If you or Dex ever

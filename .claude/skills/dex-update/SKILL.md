@@ -312,6 +312,31 @@ Use language such as:
 
 Never claim success from a command exit alone. Success means the service returned a committed receipt and the post-update lifecycle state verifies it.
 
+### When the receipt says CLAUDE.md was kept
+
+A result whose `kept_reasons` names lines edited directly into CLAUDE.md means
+the update completed and deliberately left that one file untouched. Explain
+that plainly (nothing failed, nothing was lost), show the named lines, and
+offer to carry them into CLAUDE-custom.md so the next update writes cleanly.
+
+If the user says yes, classify each named line before touching anything — a
+blind append causes real harm:
+
+1. **Supersedes a line already in CLAUDE-custom.md** (same instruction, older
+   wording there): replace the old wording in place. Never append a second,
+   contradictory copy.
+2. **An edit made inside Dex's own standard text** (a corrected path, a
+   changed default in release prose): there is nothing to move. Write a fresh
+   instruction in the protected block stating the correct value in the user's
+   own words, explicit enough to override the standard text it contradicts.
+3. **A genuinely new instruction living only in CLAUDE.md**: copy it into the
+   protected block as-is. This is the only plain copy.
+
+Show the user the classified plan (which lines get which treatment) before
+writing, make the whole edit in one pass, and afterwards confirm the
+recompose carries every instruction — nothing may remain that exists only in
+the live file.
+
 ## Boundaries
 
 - Never perform a raw vault write.

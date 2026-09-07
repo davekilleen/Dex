@@ -26,6 +26,14 @@
       "CLAUDE-custom.md"
     ]
   },
+  "release_anchor": {
+    "version": 0,
+    "action": "write-release-anchor",
+    "seam_paths": [
+      "System/.dex/release-anchor.json",
+      "System/.dex/release-anchor.receipt.json"
+    ]
+  },
   "hard_deny": [
     ".env",
     ".env.*",

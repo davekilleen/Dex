@@ -511,3 +511,17 @@ to fix it."), together with the reworded /change-job opener. Ruling 5's
 first half is settled; the re-anchor flow prompts remain open for slice 2.
 The adversarial review (2026-09-05-anchor-seam-adversarial-review.md)
 returned APPROVE-WITH-CONDITIONS; its C1–C12 are binding on the build.
+
+## Deferred follow-up from beta verification (2026-09-06)
+
+The tester's Dex re-audited the direct-edit rescue against her real vault and
+found the remediation half needs hardening (the refusal half is correct as
+shipped): lines the guard names are not one kind. Some are already present in
+the protected block in older wording (a blind append creates contradictory
+duplicates), and some live in template prose (nothing to "move" — they must be
+restated as an override, which then argues with the body from above). The
+rescue copy says "move these lines into CLAUDE-custom.md"; the next patch
+should teach the assisting model to classify before acting — merge lines that
+supersede an existing protected-block line, restate body-prose edits as
+explicit overrides, move only true block orphans — and soften the user-facing
+verb accordingly. Tester-visible copy: founder approves final wording.

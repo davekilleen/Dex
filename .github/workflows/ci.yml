@@ -294,7 +294,10 @@ jobs:
           echo "collected=$COLLECTED merged=$MERGED"
           [ "$COLLECTED" = "$MERGED" ] || { echo "Shards ran $MERGED tests but this commit collects $COLLECTED — tests were dropped or duplicated." >&2; exit 1; }
       - name: Upload release health inputs
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        # Tag pushes included: when the release publishes from the tag run
+        # (the main run lost the tag race), deploy-health runs there too and
+        # needs these inputs.
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: release-health-inputs
@@ -637,7 +640,9 @@ jobs:
 
   deploy-health:
     needs: [quality, build-release]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.quality.result == 'success' && needs['build-release'].result == 'success'
+    # Tag pushes included so the health page still deploys when the release
+    # publishes from the tag run rather than the main run (the tag race).
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && needs.quality.result == 'success' && needs['build-release'].result == 'success'
     runs-on: ubuntu-latest
     permissions:
       pages: write

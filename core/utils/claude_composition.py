@@ -33,16 +33,18 @@ from core.transaction.lock import (
     LockError,
     acquire_owned_lock,
 )
-from core.update.apply_update import CompositionError, _compose_claude
+from core.update.apply_update import (
+    DIRECT_EDIT_RESCUE_CORE as DIRECT_EDIT_RESCUE,
+)
+from core.update.apply_update import (
+    CompositionError,
+    _compose_claude,
+)
 
 CLAUDE = "CLAUDE.md"
 CUSTOM = "CLAUDE-custom.md"
 BRAIN_GIT = ".dex/brain.git"
 ACTIVATION = "System/.dex/lifecycle/activation.json"
-DIRECT_EDIT_RESCUE = (
-    "Leave CLAUDE.md unchanged; review the whole file through /dex-update Compare "
-    "and conflict choices. Do not move individual lines."
-)
 
 _RELEASE_TAG = re.compile(r"^dist/release/v(?P<version>\d+\.\d+\.\d+)-[0-9a-f]{7,64}$")
 
@@ -383,7 +385,7 @@ def recompose_if_needed(vault_root: Path, *, force: bool = False) -> str:
                     noun = "line was" if count == 1 else "lines were"
                     return (
                         f"unavailable:{count} {noun} edited directly into "
-                        f"{CLAUDE} and would be lost by recomposing. "
+                        f"{CLAUDE} and would be lost by recomposing; "
                         f"{DIRECT_EDIT_RESCUE}"
                     )
             tmp = claude.with_suffix(claude.suffix + ".recompose-tmp")

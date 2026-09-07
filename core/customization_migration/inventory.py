@@ -508,6 +508,21 @@ def discover(vault_root: Path) -> DiscoveryResult:
         exclusions[(exclusion.path, exclusion.reason)] = exclusion
     for entry in inventory.entries:
         dependency_root = _dependency_root(entry.actual_path)
+        if (
+            dependency_root == ".git"
+            and entry.actual_path == ".git"
+            and entry.denied
+        ):
+            # The vault's OWN history, not a dependency tree: every real vault
+            # is a git repository, so treating its top-level .git as an
+            # exclusion made completeness UNKNOWN — and the Capsule route
+            # unreachable — on every production vault, whatever else was
+            # repaired. The contract denies the directory outright (never
+            # read, never descended, never written), so nothing assessable
+            # hides inside it; only the exactly-denied root is exempt, and an
+            # embedded repository's .git deeper in the tree keeps its
+            # exclusion above.
+            continue
         if dependency_root is not None and not any(
             _is_within(dependency_root, repository_root)
             for repository_root in embedded_repository_roots

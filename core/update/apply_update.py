@@ -275,6 +275,22 @@ def _apply_user_profile(template: bytes, vault_root: Path) -> bytes:
 
 DIRECT_EDIT_LISTING_LIMIT = 40
 _DIRECT_EDIT_LINE_WIDTH = 160
+# The rescue text shown wherever direct edits block a write (the everyday
+# refresh imports it too, so both refusals stay identical). Read by both the
+# user and the assisting model, so it teaches classify-before-acting: a named
+# line is not always a plain copy (beta-verified 2026-09-06 — a blind append
+# resurrects superseded text, duplicates rules already present in older
+# wording, and cannot express an edit made inside Dex's own prose).
+DIRECT_EDIT_RESCUE_CORE = (
+    "carry each line into CLAUDE-custom.md (your protected block) the way it "
+    "needs: replace any older version of the same instruction rather than "
+    "adding a duplicate, restate an edit made inside Dex's own standard "
+    "wording as an instruction in your own words, and copy a line as-is only "
+    "when nothing like it is there yet — Dex can do this for you"
+)
+DIRECT_EDIT_RESCUE = DIRECT_EDIT_RESCUE_CORE + ", then run the update again"
+
+
 def _listed_direct_edits(lines: tuple[str, ...]) -> str:
     shown = [
         line
@@ -318,7 +334,6 @@ def _refuse_dropping_direct_edits(
 
     # Late import: claude_composition imports this module at load time.
     from core.utils.claude_composition import (
-        DIRECT_EDIT_RESCUE,
         RecomposeUnavailable,
         compose_current,
         true_user_edits,

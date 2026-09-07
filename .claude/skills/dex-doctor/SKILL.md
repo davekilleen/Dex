@@ -236,6 +236,46 @@ Always close this section with the exact line:
 
 `Nothing has changed — this is an inventory only.`
 
+#### Offering the release re-anchoring repair
+
+<!-- FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring design ruling 5):
+     everything in this subsection is tester-visible guidance; the founder
+     approves the verbatim wording before release. -->
+
+The assessment's `release_baseline` object carries `anchor_state`:
+
+- `verified` — say the release anchor proves the vault's release-owned files;
+  nothing to offer.
+- `rejected` — surface the probe's warning verbatim (it names the exact
+  error) and offer the re-anchor flow below to regenerate the anchor.
+- `absent` with `release-identity-unproved` exclusions present — offer the
+  re-anchor flow below. This is the guided repair those exclusions' guidance
+  points at.
+
+The re-anchor flow is deliberately interactive: it asks for an explicit yes
+before it runs and again before it writes, and it refuses anything that is
+not a real terminal — so you cannot run it from here, and no flag or token
+substitutes for the person's yes. Never attempt to run it through Bash, never
+suggest piping answers into it, and never present its refusal as an error.
+Instead, give the user the exact command to run themselves in their own
+terminal window, from their vault folder:
+
+> Dex can't prove some of its own files came with your installed version.
+> There's a guided repair that checks them against the official release
+> record — it asks for your yes before it does anything. Open the Terminal
+> app in your Dex vault folder and run:
+>
+> `python3 -m core.update.reanchor_cli`
+>
+> It shows you everything before saving anything, and if it can't prove your
+> version from what's on this computer it stops without changing a thing.
+
+After the user reports back (or on the next Doctor run), re-read the deep
+assessment rather than assuming the outcome. If the flow said it couldn't
+prove the release from local sources, say plainly that the vault stays
+honestly unproved for now — do not route the user through `/dex-update` to
+fix it, and do not suggest editing the anchor file by hand.
+
 ### Step 3c: Render the customization migration status
 
 Deep reports include a top-level `customization_migration_status` object. Render every

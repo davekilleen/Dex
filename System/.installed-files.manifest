@@ -1170,6 +1170,7 @@ core/lifecycle/model.py
 core/lifecycle/performance-budget-v1.json
 core/lifecycle/plan.py
 core/lifecycle/preview.py
+core/lifecycle/release_anchor.py
 core/lifecycle/retention.py
 core/lifecycle/runtime_evidence.py
 core/lifecycle/schemas/automation-ownership-v1.schema.json
@@ -1509,8 +1510,11 @@ core/tests/test_product_agents_bootstrap.py
 core/tests/test_provision_parity.py
 core/tests/test_provision_transaction.py
 core/tests/test_qmd_query_grep_fallback.py
+core/tests/test_reanchor_cli.py
 core/tests/test_relationship_radar_skill.py
 core/tests/test_relationships_feed.py
+core/tests/test_release_anchor.py
+core/tests/test_release_anchor_generation.py
 core/tests/test_release_asset_prober.py
 core/tests/test_release_catalog.py
 core/tests/test_release_catalog_generation.py
@@ -1585,9 +1589,11 @@ core/transaction/journal.py
 core/transaction/lock.py
 core/transaction/snapshot.py
 core/update/__init__.py
+core/update/anchor_generation.py
 core/update/apply_update.py
 core/update/journey-protocol-v1.json
 core/update/journey_protocol.py
+core/update/reanchor_cli.py
 core/utils/__init__.py
 core/utils/apple_mail_health.py
 core/utils/automation_ownership.py

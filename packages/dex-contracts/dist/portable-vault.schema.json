@@ -11,6 +11,7 @@
     "ownership_classes",
     "mutation_policy",
     "customization_migration",
+    "release_anchor",
     "hard_deny",
     "vault_regions",
     "rules",
@@ -110,6 +111,32 @@
             "type": "string",
             "minLength": 1
           },
+          "uniqueItems": true
+        }
+      }
+    },
+    "release_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "action",
+        "seam_paths"
+      ],
+      "properties": {
+        "version": {
+          "const": 0
+        },
+        "action": {
+          "const": "write-release-anchor"
+        },
+        "seam_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
           "uniqueItems": true
         }
       }
