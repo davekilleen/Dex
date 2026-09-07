@@ -7,6 +7,34 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+This release also carries everything listed under v1.97.11 below: that
+version's build never reached the downloads page (its release run stopped
+before publishing), so updating from v1.97.10 brings both sets of changes
+at once.
+
+**What this fixes for you:**
+
+* **Dex Lens can now see the whole of Dex, area by area.** The published
+  capability catalogue now carries Dex's fourteen capability families —
+  meeting follow-through, proactive health and recovery, backup confidence,
+  durable work memory and the rest — signed alongside the capabilities
+  themselves. A Dex Lens checkup can tell you which of those areas your own
+  system covers, where the gaps are, and how far your install sits behind
+  the current release, instead of judging one capability at a time.
+* **Weekly planning no longer trips on a goal without an ID.** A quarterly
+  goal written by hand, without the ID Dex normally adds, could stop weekly
+  planning with an error. Planning now works around it, tells you which goal
+  needs an ID and exactly where to put it, and never mistakes "can't read
+  the links" for "no activity".
+* **A weekly priority that names its quarterly goal now counts toward it.**
+* **Planning next quarter early no longer hides this quarter's goals.** If
+  you record next quarter in your profile and write its goals ahead of time,
+  asking for your quarterly goals answers for the quarter you are planning —
+  and never replaces the goals you can see today with an empty page.
+
+Also in this release: every change to Dex itself now gets an automatic
+Claude review before it ships, replacing the previous review bot.
+
 ## [1.97.11] — The files Dex ships can finally prove themselves, and a guided repair when they can't (2026-09-07)
 
 A long-time beta tester's checkup flagged 1,807 files as ones Dex "couldn't
