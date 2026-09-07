@@ -2601,6 +2601,12 @@ def get_goal_by_id(goal_id: str) -> Optional[Dict[str, Any]]:
 
 def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     """Find all weekly priorities linked to a goal"""
+    # A goal with no ID cannot own a link. Without this guard the reference
+    # pattern below would collapse to a bare word boundary and match every
+    # priority line, inventing links that were never written.
+    if not goal_id:
+        return []
+
     priorities_file = get_week_priorities_file()
     if not priorities_file.exists():
         return []
@@ -2608,30 +2614,49 @@ def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     content = priorities_file.read_text()
     lines = content.split('\n')
     
+    goal_reference = re.compile(
+        rf'(?<![A-Za-z0-9_-]){re.escape(goal_id)}(?![A-Za-z0-9_-])'
+    )
     linked_priorities = []
     for i, line in enumerate(lines):
-        # Look for lines that mention the goal_id
-        if goal_id in line:
-            # Check if this is a priority line
-            if '**' in line and ('- [ ]' in line or '- [x]' in line or line.strip().startswith('1.') or line.strip().startswith('2.') or line.strip().startswith('3.')):
-                completed = '- [x]' in line
-                
-                # Extract priority ID
-                priority_id = extract_priority_id(line)
-                
-                # Extract title
-                title_match = re.search(r'(?:\d+\.\s+)?(.+?)\s+—', line)
-                if not title_match:
-                    title_match = re.search(r'\*\*(.+?)\*\*', line)
-                title = title_match.group(1).strip() if title_match else line.strip()
-                
-                linked_priorities.append({
-                    'priority_id': priority_id,
-                    'title': title,
-                    'completed': completed,
-                    'line_number': i + 1
-                })
-    
+        stripped = line.strip()
+        is_priority_line = '**' in line and (
+            '- [ ]' in line
+            or '- [x]' in line
+            or bool(re.match(r'\d+\.\s+', stripped))
+        )
+        if not is_priority_line:
+            continue
+
+        linked = bool(goal_reference.search(line))
+        if not linked:
+            for metadata_line in lines[i + 1:]:
+                if not re.match(r'^\s+-\s+', metadata_line):
+                    break
+                if 'Quarterly goal:' in metadata_line and goal_reference.search(metadata_line):
+                    linked = True
+                    break
+        if not linked:
+            continue
+
+        completed = '- [x]' in line
+
+        # Extract priority ID
+        priority_id = extract_priority_id(line)
+
+        # Extract title
+        title_match = re.search(r'(?:\d+\.\s+)?(.+?)\s+—', line)
+        if not title_match:
+            title_match = re.search(r'\*\*(.+?)\*\*', line)
+        title = title_match.group(1).strip() if title_match else stripped
+
+        linked_priorities.append({
+            'priority_id': priority_id,
+            'title': title,
+            'completed': completed,
+            'line_number': i + 1
+        })
+
     return linked_priorities
 
 def calculate_goal_progress(goal_id: str) -> Dict[str, Any]:

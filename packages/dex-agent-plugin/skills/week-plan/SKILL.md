@@ -288,6 +288,10 @@ Check `System/Dex_Backlog.md` for high-priority improvement ideas worth tackling
 
 Archive old file to `07-Archives/Plans/YYYY-Wxx.md`.
 
+Use the exact `goal_id` returned by the planning tools in each linked
+`Quarterly goal` bullet. For work that advances no quarterly goal, write
+`Operational` instead of inventing or paraphrasing an ID.
+
 Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 ```markdown
@@ -328,19 +332,19 @@ Create updated `02-Week_Priorities/Week_Priorities.md`:
 
 1. **[Priority 1]** — **[Pillar]** ^week-YYYY-WXX-p1
    - Success criteria: [What done looks like]
-   - Quarterly goal: [Q1 Goal #X]
+   - Quarterly goal: [Qx-YYYY-goal-N]
    - **Scheduled:** [Day/time block]
    - Effort: [deep_work / medium / quick]
    
 2. **[Priority 2]** — **[Pillar]** ^week-YYYY-WXX-p2
    - Success criteria: [What done looks like]
-   - Quarterly goal: [Q1 Goal #X]
+   - Quarterly goal: [Qx-YYYY-goal-N]
    - **Scheduled:** [Day/time block]
    - Effort: [deep_work / medium / quick]
    
 3. **[Priority 3]** — **[Pillar]** ^week-YYYY-WXX-p3
    - Success criteria: [What done looks like]
-   - Quarterly goal: [Q1 Goal #X] or Operational
+   - Quarterly goal: [Qx-YYYY-goal-N] or Operational
    - **Scheduled:** [Day/time block]
    - Effort: [deep_work / medium / quick]
 
