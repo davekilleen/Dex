@@ -3019,9 +3019,9 @@ def infer_goal_link(priority_title: str, priority_pillar: str,
             })
             continue
 
-        # A goal with no ID cannot be linked to: create_weekly_priority
-        # rejects any goal that is absent from the available IDs. Surfacing it
-        # as a match would only promise a link that is refused a moment later.
+        # A goal with no ID cannot be linked to: create_task rejects any goal
+        # absent from the available IDs, and a None ID names nothing anywhere.
+        # Surfacing it as a match would only promise a link that cannot exist.
         if not goal_id:
             candidates.append({
                 'goal_id': None,
@@ -3292,9 +3292,32 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
     # Parse existing goals
     existing_goals = parse_quarterly_goals(goals_file)
     goals_updated = 0
-    
-    # Find goals without IDs and add them
+    headings_needing_manual_fix = []
+
+    # A heading whose trailing anchor is not a canonical goal ID reads as
+    # ID-less to the parser, but must never be rewritten here: that anchor is
+    # the user's, and it may be load-bearing elsewhere in their vault. Name it
+    # instead, so the advice to run this tool has a route out.
     for i, line in enumerate(lines):
+        foreign_anchor = re.match(
+            r'(###\s+\d+\.\s+(.+?)\s+—\s+\*\*.*?\*\*)\s+(\^\S+)\s*$', line
+        )
+        if foreign_anchor and not re.fullmatch(
+            r'\^Q\d+-\d{4}-goal-\d+', foreign_anchor.group(3)
+        ):
+            headings_needing_manual_fix.append({
+                'line_number': i + 1,
+                'title': foreign_anchor.group(2).strip(),
+                'existing_anchor': foreign_anchor.group(3),
+                'reason': (
+                    'This heading ends with an anchor that is not a quarterly '
+                    'goal ID, so Dex cannot read it as one and will not '
+                    'overwrite your anchor. Replace it with ^Qn-YYYY-goal-N, '
+                    'or move your anchor elsewhere on the page.'
+                ),
+            })
+            continue
+
         # Match goal headers without IDs
         goal_match = re.match(r'(###\s+\d+\.\s+.+?\s+—\s+\*\*.*?\*\*)(?!\s+\^)', line)
         if goal_match:
@@ -3315,11 +3338,18 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
     if goals_updated > 0:
         goals_file.write_text('\n'.join(lines))
     
-    return {
+    result = {
         'success': True,
         'goals_updated': goals_updated,
         'message': f"Added IDs to {goals_updated} quarterly goals"
     }
+    if headings_needing_manual_fix:
+        result['headings_needing_manual_fix'] = headings_needing_manual_fix
+        result['message'] += (
+            f"; {len(headings_needing_manual_fix)} heading(s) end with an anchor "
+            "that is not a goal ID and were left untouched"
+        )
+    return result
 
 def migrate_weekly_priorities() -> Dict[str, Any]:
     """Add IDs to existing weekly priorities that don't have them"""
@@ -6992,7 +7022,7 @@ async def _handle_call_tool_inner(
                 'activity_known': activity_known,
                 'provisional': provisional,
                 'open_task_count': len(goal_tasks) if activity_known else None,
-                'next_up_tasks': next_up_tasks,
+                'next_up_tasks': next_up_tasks if activity_known else None,
             })
 
         # Identify neglected goals (0 linked priorities). A goal whose links
@@ -7034,23 +7064,28 @@ async def _handle_call_tool_inner(
             names = ', '.join(f"\"{g['title']}\"" for g in goals_missing_ids)
             count = len(goals_missing_ids)
             subject = f"{count} goals have" if count > 1 else "1 goal has"
-            belong = "belong to them" if count > 1 else "belongs to it"
+            belong = "belong to them" if count > 1 else "belong to it"
             heading = "each heading" if count > 1 else "its heading"
             recommendations.append(
                 f"{subject} no ID, so Dex cannot tell which weekly priorities or "
                 f"tasks {belong}: {names}. Add an ID like ^Qx-YYYY-goal-N to the end "
                 f"of {heading} in Quarter_Goals.md, or run migrate_quarterly_goals "
-                "to add them all at once."
+                f"to add {'them all at once' if count > 1 else 'it'}."
             )
         if provisional_goals:
             names = ', '.join(f"\"{g['title']}\"" for g in provisional_goals)
             count = len(provisional_goals)
-            subject = f"{count} goals were" if count > 1 else "1 goal was"
+            many = count > 1
             recommendations.append(
-                f"{subject} recovered from a freeform list and are provisional: "
-                f"their IDs are generated, so nothing links to them automatically "
-                f"({names}). Structure them (e.g. via /quarter-plan) as "
-                "### N. Title — **Pillar** ^Qn-YYYY-goal-N to link real work."
+                f"{count} goals were" if many else "1 goal was"
+            )
+            recommendations[-1] += (
+                f" recovered from a freeform list and {'are' if many else 'is'} "
+                f"provisional: {'their IDs are' if many else 'its ID is'} generated, "
+                f"so nothing links to {'them' if many else 'it'} automatically "
+                f"({names}). Structure {'them' if many else 'it'} (e.g. via "
+                "/quarter-plan) as ### N. Title — **Pillar** ^Qn-YYYY-goal-N "
+                "to link real work."
             )
         if neglected_goals:
             names = ', '.join(f"Goal {g['goal_id']}: {g['title']}" for g in neglected_goals)

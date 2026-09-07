@@ -144,7 +144,7 @@ def test_goal_without_id_does_not_absorb_unlinked_backlog_tasks(planning_vault):
 
     anchorless = next(g for g in result["goal_health"] if g["title"] == ANCHORLESS_TITLE)
     assert anchorless["open_task_count"] is None
-    assert anchorless["next_up_tasks"] == []
+    assert anchorless["next_up_tasks"] is None
     # The real link still lands on the goal that actually owns it.
     anchored = next(g for g in result["goal_health"] if g["goal_id"] == ANCHORED_ID)
     assert anchored["open_task_count"] == 1
@@ -294,8 +294,8 @@ def test_one_missing_id_reads_as_one(planning_vault):
 
     rec = next(r for r in result["recommendations"] if "^Qx-YYYY-goal-N" in r)
     assert "1 goal has no ID" in rec
-    assert "belongs to it" in rec
     assert "goals have" not in rec
+    assert "them all at once" not in rec
 
 
 def test_unknowable_activity_is_reported_as_unknown_not_as_zero(planning_vault):
@@ -311,3 +311,56 @@ def test_unknowable_activity_is_reported_as_unknown_not_as_zero(planning_vault):
     anchored = next(g for g in result["goal_health"] if g["goal_id"] == ANCHORED_ID)
     assert anchored["has_activity"] is True
     assert anchored["linked_priority_count"] == 1
+
+
+def test_migration_reports_headings_it_cannot_repair(planning_vault):
+    """A heading with a non-goal anchor is ID-less to the parser but skipped
+    by migration, so the advice would loop forever with no route out."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "### 1. Goal with an unrelated anchor — **Growth** ^a1b2c3\n\n"
+        "- [ ] A milestone\n",
+        encoding="utf-8",
+    )
+
+    result = _call_tool("migrate_quarterly_goals")
+
+    assert result["goals_updated"] == 0
+    skipped = result.get("headings_needing_manual_fix") or []
+    assert any("Goal with an unrelated anchor" in s["title"] for s in skipped)
+    assert "^a1b2c3" in skipped[0]["existing_anchor"]
+    # The user's own anchor is never rewritten for them.
+    assert "^a1b2c3" in planning_vault["goals"].read_text(encoding="utf-8")
+
+
+def test_next_up_tasks_is_unknown_not_empty_when_links_are_unreadable(planning_vault):
+    """week-plan reads next_up_tasks directly; [] would read as 'nothing'."""
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_weekly_planning_context")
+
+    anchorless = next(g for g in result["goal_health"] if g["title"] == ANCHORLESS_TITLE)
+    assert anchorless["next_up_tasks"] is None
+    anchored = next(g for g in result["goal_health"] if g["goal_id"] == ANCHORED_ID)
+    assert anchored["next_up_tasks"] == []
+
+
+def test_single_goal_advice_reads_as_english(planning_vault):
+    """This text is user-facing; it has to read like a person wrote it."""
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+    result = _call_tool("get_weekly_planning_context")
+    rec = next(r for r in result["recommendations"] if "^Qx-YYYY-goal-N" in r)
+    assert "tasks belong to it" in rec
+    assert "belongs" not in rec
+
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n- Only one recovered goal\n", encoding="utf-8"
+    )
+    result = _call_tool("get_weekly_planning_context")
+    rec = next(r for r in result["recommendations"] if "freeform" in r)
+    assert "1 goal was recovered" in rec
+    assert "is provisional" in rec
+    assert "its ID is generated" in rec
+    assert "links to it automatically" in rec
