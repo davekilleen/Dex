@@ -167,8 +167,14 @@ quarterly_planning:
   # Common: 1 (calendar year), 2 (some fiscal years), 4 (many fiscal years)
   q1_start_month: 1
   
-  # Current quarter — derived at runtime from q1_start_month.
-  # Ship empty so no frozen quarter is distributed; the system fills this in.
+  # The quarter you are planning. Leave empty to follow today's date.
+  # Set it to the quarter you are actively planning — for example "Q4 2026"
+  # while you get a head start on next quarter — and your quarterly goals
+  # lookup answers for that quarter instead. It is only followed when the
+  # quarter has not already ended, starts no more than one quarter from now,
+  # and you have goals written for it, so it can never blank out the goals you
+  # can see today. Pacing and velocity always follow today's real quarter.
+  # Ship empty so no frozen quarter is distributed.
   current_quarter: ""
   
   # Current quarter dates — derived at runtime; ship empty (see above).

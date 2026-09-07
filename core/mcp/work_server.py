@@ -2334,6 +2334,89 @@ def extract_goal_id(text: str) -> Optional[str]:
     match = re.search(r'\^(Q\d+-\d{4}-goal-\d+)', text)
     return match.group(1) if match else None
 
+def _fiscal_quarter_window(day: date, q1_start_month: int) -> tuple:
+    """First and last day of the fiscal quarter containing `day`.
+
+    Worked out from the fiscal start month by counting whole months, so it does
+    not depend on get_quarter_info's own start-year arithmetic.
+    """
+    import calendar
+    index = day.year * 12 + (day.month - 1)
+    start_index = index - ((index - (q1_start_month - 1)) % 3)
+    start = date(start_index // 12, start_index % 12 + 1, 1)
+    end_index = start_index + 2
+    end_year, end_month = end_index // 12, end_index % 12 + 1
+    end = date(end_year, end_month, calendar.monthrange(end_year, end_month)[1])
+    return start, end
+
+
+def _fiscal_quarter_label(day: date, q1_start_month: int) -> str:
+    """The quarter name get_quarter_info gives to the quarter containing `day`.
+
+    Kept identical to that function on purpose: goals are matched against these
+    strings, so a different naming rule here would simply fail to match.
+    """
+    return f"Q{((day.month - q1_start_month) % 12) // 3 + 1} {day.year}"
+
+
+def _declared_planning_quarter(today: date) -> Optional[str]:
+    """The quarter the user says they are planning, when it is safe to use.
+
+    Someone preparing the next quarter early records that choice in their
+    profile. It is returned only when it names the quarter running now or the
+    one starting immediately after, so vaults still carrying the Q1 2026 value
+    seeded into early installs — a value nothing ever rewrites — can never be
+    stranded in a quarter that is long gone.
+
+    Deliberately independent of get_quarter_info: that function answers "which
+    quarter is it now", which velocity and weekly pacing depend on. Pointing it
+    at a quarter that has not started yet produces negative elapsed weeks and a
+    "behind pace" verdict for a quarter nobody has begun.
+    """
+    if not (USER_PROFILE_FILE.exists() and yaml):
+        return None
+    try:
+        data = yaml.safe_load(USER_PROFILE_FILE.read_text())
+    except Exception as e:
+        logger.error(f"Error reading quarterly_planning: {e}")
+        return None
+
+    configured = data.get('quarterly_planning') if isinstance(data, dict) else None
+    if not isinstance(configured, dict):
+        return None
+
+    # An absent or blank key parses as None, whose str() is the word "None" —
+    # treat every empty shape as "not chosen" rather than as a bad value.
+    raw = str(configured.get('current_quarter') or '').strip()
+    if not re.fullmatch(r'Q[1-4]\s+\d{4}', raw):
+        if raw:
+            # Say so rather than falling back silently: a near miss like
+            # "q4 2026" or "Q4-2026" is otherwise indistinguishable from the
+            # bug where the chosen quarter was ignored altogether.
+            logger.warning(
+                "Ignoring quarterly_planning.current_quarter %r: expected the "
+                "form 'Q4 2026'. Using today's quarter instead.",
+                raw,
+            )
+        return None
+    declared = re.sub(r'\s+', ' ', raw)
+
+    q1_start_month = configured.get('q1_start_month', 1)
+    if not isinstance(q1_start_month, int) or not 1 <= q1_start_month <= 12:
+        q1_start_month = 1
+
+    # Name the quarter running now and the one starting the day after it ends,
+    # then accept the declaration only if it is one of those two. Comparing
+    # names rather than reconstructing dates from the name removes the guesswork
+    # about which calendar year a quarter that straddles new year belongs to.
+    _, live_end = _fiscal_quarter_window(today, q1_start_month)
+    allowed = {
+        _fiscal_quarter_label(today, q1_start_month),
+        _fiscal_quarter_label(live_end + timedelta(days=1), q1_start_month),
+    }
+    return declared if declared in allowed else None
+
+
 def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
     """Parse quarterly goals from 01-Quarter_Goals/Quarter_Goals.md"""
     if not filepath.exists():
@@ -6131,15 +6214,22 @@ async def _handle_call_tool_inner(
         quarter = arguments.get('quarter') if arguments else None
         include_completed = arguments.get('include_completed', True) if arguments else True
         
-        # Determine quarter if not provided
-        if not quarter:
-            quarter_info = get_quarter_info()
-            quarter = quarter_info['quarter']
-        
         # Read goals
         goals_file = QUARTER_GOALS_FILE
         
         goals = parse_quarterly_goals(goals_file)
+        
+        # Determine quarter if not provided
+        if not quarter:
+            quarter = get_quarter_info()['quarter']
+            # Someone planning the next quarter early said so in their profile.
+            # Answer for that quarter, but only once it actually has goals —
+            # otherwise honoring it would replace the goals they can see today
+            # with an empty list, which is the very complaint this addresses.
+            declared = _declared_planning_quarter(_tz_today())
+            if declared and declared != quarter:
+                if any(goal.get('quarter') == declared for goal in goals):
+                    quarter = declared
         
         # Filter by quarter and completion
         filtered_goals = []
