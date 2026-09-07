@@ -1,5 +1,7 @@
 # @dex/contracts
 
+This contributor package exports the generated contracts listed below. The app capability registry and portable MCP bridge live separately under `core/harnesses/` and `packages/dex-agent-plugin/`; this package does not export a complete host workflow API. Generated output proves its declared format, not native app support.
+
 Shared cross-repo contract package.
 
 ## Build

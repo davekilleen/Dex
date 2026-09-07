@@ -1,28 +1,32 @@
 # Skills
 
+This is the canonical source catalogue. Generated `.agents/skills/` and packaged copies are built from eligible sources; do not edit those copies independently. A skill supplies instructions, not missing tools or runtime permissions. Invocation may be a slash command, natural-language request or app-specific action.
+
+The portable package is distributed in v1.97.13; complete new-app workflows remain unverified. Read [app limits](../../docs/HARNESS-PORTABILITY.md) before claiming a copied workflow works. Claude-specific hooks, subagents and frontmatter below apply only where the host supports them.
+
 **Purpose:** User-facing commands following the [Agent Skills](https://agentskills.io) standard for invoking workflows, tools, and features.
 
 ---
 
 ## What Are Skills?
 
-**Skills** are commands that extend what Claude can do - like giving Claude new capabilities. Each skill is a set of instructions for a specific workflow.
+**Skills** are instructions that help your AI assistant carry out a defined workflow.
 
-Think of skills as **expert modes** for Claude. Just like you'd switch to a specialized tool for a specific job, skills equip Claude with domain expertise, workflows, and tooling for particular tasks.
+Think of skills as **expert modes** for your assistant. Just like you'd switch to a specialized tool for a specific job, skills equip the assistant with domain expertise, workflows, and tooling for particular tasks.
 
 ### The Power of Skills
 
-Skills transform Claude from general-purpose assistant into specialized agent:
+Skills give a general-purpose assistant a defined workflow:
 
 **Without skills:**
 - "Can you help me plan my day?"
-- Claude makes educated guesses about what you want
+- The assistant makes educated guesses about what you want
 - Results vary, require back-and-forth clarification
 
 **With skills:**
 - `/daily-plan`
-- Claude knows exactly what to do: check calendar, review tasks, analyze priorities, generate structured plan
-- Consistent, reliable, no explanation needed
+- The skill describes what to do: check calendar, review tasks, analyze priorities, generate structured plan
+- A repeatable process that can report missing sources or tools
 
 **Real examples:**
 - `/career-coach` - Personal career coaching with 4 specialized modes (weekly reports, monthly reflections, self-reviews, promotion assessments)
@@ -34,11 +38,11 @@ Skills transform Claude from general-purpose assistant into specialized agent:
 
 **Simple version:**
 1. Skills live in this folder as instruction files
-2. You run a skill by typing `/skill-name` (like `/daily-plan`)
-3. Claude reads the instructions and follows them
+2. Invoke the installed skill using the app's supported action (for example `/daily-plan` in Claude Code)
+3. Your assistant reads the instructions and uses the available tools
 4. You get the result
 
-**Example:** When you type `/daily-plan`, Claude:
+**Example:** With the full planning skill and its services available, Dex:
 - Checks your calendar for today's meetings
 - Reviews your task list
 - Looks at your weekly priorities
@@ -50,7 +54,7 @@ Skills follow the [Agent Skills](https://agentskills.io) standard - a universal 
 
 **Two parts:**
 
-**1. Metadata** (at the top, tells Claude about the skill):
+**1. Metadata** (at the top, tells the assistant about the skill):
 ```yaml
 ---
 name: daily-plan
@@ -74,7 +78,7 @@ description: Generate context-aware daily plan with calendar and tasks
 
 **Benefits:**
 - **Reusable** - run the same workflow anytime
-- **Consistent** - same result every time
+- **Consistent** - a defined process whose outcome still depends on tools and sources
 - **Organized** - each skill has its own space
 - **Shareable** - works across AI assistants following Agent Skills standard
 

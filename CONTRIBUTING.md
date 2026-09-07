@@ -2,7 +2,7 @@
 
 You've been using Dex. Maybe you fixed something that was bugging you. Maybe you built a new skill, connected a new tool, or wrote a guide that would've saved you an hour on day one. Whatever it is — Dave would love to see it.
 
-**You don't need to be a developer to contribute.** If you can use Dex, you can share improvements. Claude will help you with the technical bits.
+**You don't need to be a developer to contribute.** If you can use Dex, you can share improvements. Your AI assistant can help you with the technical bits.
 
 ---
 
@@ -24,11 +24,11 @@ Anything that makes Dex better for someone else:
 ### The simple version (recommended)
 
 1. **Make your changes in Dex as normal** — fix the bug, build the skill, write the guide
-2. **Ask Claude to help you share it.** Say something like:
+2. **Ask your AI assistant to help you share it.** Say something like:
 
    > "I made some improvements to Dex that I'd like to share back with the community. Can you help me create a pull request?"
 
-3. Claude will walk you through it — creating a branch, describing what you changed, and submitting it. You don't need to know what any of those words mean. Just follow along.
+3. Your assistant can walk you through it — creating a branch, describing what you changed, and submitting it. You don't need to know what any of those words mean. Just follow along.
 
 4. **Your changes appear on GitHub** for review. Dave will take a look, give feedback if needed, and merge it in.
 
@@ -37,7 +37,7 @@ Anything that makes Dex better for someone else:
    change. On forked pull requests where GitHub will not allow a bot comment, the
    same report remains available in the `pr-report` job summary.
 
-That's it. Claude handles the git mechanics. You just describe what you changed and why.
+That's it. Your assistant can help with the git mechanics. You just describe what you changed and why.
 
 ### What makes a good contribution
 
@@ -48,7 +48,7 @@ That's it. Claude handles the git mechanics. You just describe what you changed 
 
 ### What to avoid
 
-- **Personal data.** CI enforces this on every pull request by checking newly added lines for real emails, filled-in profile or integration identity, vault content, and other personal configuration. If the PII / personal-config gate fails, remove the named data, restore the tracked placeholder template, or replace examples with an approved fake value from `scripts/pii-allowlist.txt`; the failure prints the exact file and line. You can still ask Claude: "Can you check these files for any personal information before I share them?"
+- **Personal data.** CI enforces this on every pull request by checking newly added lines for real emails, filled-in profile or integration identity, vault content, and other personal configuration. If the PII / personal-config gate fails, remove the named data, restore the tracked placeholder template, or replace examples with an approved fake value from `scripts/pii-allowlist.txt`; the failure prints the exact file and line. You can still ask your assistant: "Can you check these files for any personal information before I share them?"
 - **Breaking existing features.** If you're not sure whether your change might affect something else, mention that in your description. Dave would rather know upfront than discover it later.
 
 ---
@@ -82,7 +82,7 @@ Describe:
 
 ## A Note on AI-Assisted Contributions
 
-Most Dex contributions are written with AI help — and that's not just OK, it's the point. Dex is an AI-powered system built by people who use AI daily. If Claude helped you write the code, that's great. Just make sure you understand what it does and that you've tested it.
+Most Dex contributions are written with AI help — and that's not just OK, it's the point. Dex is an AI-powered system built by people who use AI daily. If an AI assistant helped you write the code, that's great. Just make sure you understand what it does and that you've tested it.
 
 ---
 

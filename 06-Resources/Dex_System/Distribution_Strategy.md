@@ -1,5 +1,11 @@
 # Dex Distribution Strategy
 
+## Current distribution boundary
+
+The current route distributes the full vault/product bundle plus host-specific portable artifacts. Package files are present in v1.97.13; complete supported journeys for new apps remain unverified. Preserve established full-vault users while certifying each app's install, first outcome, permissions, update and removal separately. Use the [current checklist](Distribution_Checklist.md) and [app guide](../../docs/HARNESS-PORTABILITY.md) for that evidence.
+
+The January design record below is historical; its Git merge and customization mechanics are not current install instructions.
+
 **Status: HISTORICAL (January 2026) — mechanisms superseded.** The philosophy below
 ("Dex is yours, not ours"; updates enhance without disrupting) still holds, but the
 git-upstream merge mechanics this document describes were replaced in mid-2026 by
