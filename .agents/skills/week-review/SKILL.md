@@ -209,8 +209,18 @@ Scan `03-Tasks/Tasks.md` for completion timestamps from this week:
 
 ```
 Use: get_quarterly_goals()
-Use: get_goal_status(goal_id) for each goal
+Use: get_goal_status(goal_id) for each goal that has a goal_id
 ```
+
+Skip `get_goal_status` for any goal whose `goal_id` is null, or that is marked
+`provisional` — there is no ID to look up, and the call will say so rather than
+return a status.
+
+**Check `activity_known` before judging any goal.** When it is `false`,
+`linked_priorities` and `linked_priorities_count` are `null`, meaning *not
+known*, never *none*. Never report such a goal as stalled or as having no
+linked work; say its links cannot be read yet and pass on the recommendation
+about giving it an ID.
 
 For each goal:
 - Milestones completed this week

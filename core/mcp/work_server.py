@@ -3294,48 +3294,66 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
     goals_updated = 0
     headings_needing_manual_fix = []
 
-    # A heading whose trailing anchor is not a canonical goal ID reads as
-    # ID-less to the parser, but must never be rewritten here: that anchor is
-    # the user's, and it may be load-bearing elsewhere in their vault. Name it
-    # instead, so the advice to run this tool has a route out.
+    # Decide on the whole heading line, not just its last token. A heading may
+    # already carry a valid goal ID somewhere other than straight after the
+    # pillar, and a user's own anchor may sit anywhere on the line. Neither may
+    # be rewritten here: adding a second ID would orphan every existing link,
+    # and overwriting a user's anchor destroys something that may be
+    # load-bearing elsewhere in their vault.
+    heading_re = re.compile(r'(###\s+\d+\.\s+(.+?)\s+—\s+\*\*.*?\*\*)(.*)$')
+    canonical_re = re.compile(r'\^Q\d+-\d{4}-goal-\d+')
+    any_anchor_re = re.compile(r'\^\S+')
+
     for i, line in enumerate(lines):
-        foreign_anchor = re.match(
-            r'(###\s+\d+\.\s+(.+?)\s+—\s+\*\*.*?\*\*)\s+(\^\S+)\s*$', line
-        )
-        if foreign_anchor and not re.fullmatch(
-            r'\^Q\d+-\d{4}-goal-\d+', foreign_anchor.group(3)
-        ):
+        heading = heading_re.match(line)
+        if not heading:
+            continue
+
+        goal_header, title, trailing = heading.group(1), heading.group(2).strip(), heading.group(3)
+
+        if canonical_re.search(line):
+            # Already has a goal ID. If it is not straight after the pillar the
+            # parser cannot read it, so name it rather than adding a second.
+            if not re.match(r'\s+\^Q\d+-\d{4}-goal-\d+', trailing):
+                headings_needing_manual_fix.append({
+                    'line_number': i + 1,
+                    'title': title,
+                    'existing_anchor': canonical_re.search(line).group(0),
+                    'reason': (
+                        'This heading has a goal ID, but not straight after the '
+                        'bolded pillar, which is the only place Dex reads it. '
+                        'Move it there. Dex will not add a second ID, because '
+                        'that would orphan everything already linked to this one.'
+                    ),
+                })
+            continue
+
+        foreign = any_anchor_re.search(trailing)
+        if foreign:
             headings_needing_manual_fix.append({
                 'line_number': i + 1,
-                'title': foreign_anchor.group(2).strip(),
-                'existing_anchor': foreign_anchor.group(3),
+                'title': title,
+                'existing_anchor': foreign.group(0),
                 'reason': (
-                    'This heading ends with an anchor that is not a quarterly '
-                    'goal ID, so Dex cannot read it as one and will not '
-                    'overwrite your anchor. Replace it with ^Qn-YYYY-goal-N, '
-                    'or move your anchor elsewhere on the page.'
+                    'This heading carries an anchor that is not a quarterly goal '
+                    'ID, so Dex cannot read it as one and will not overwrite your '
+                    'anchor. Replace it with ^Qn-YYYY-goal-N, or move your anchor '
+                    'elsewhere on the page.'
                 ),
             })
             continue
 
-        # Match goal headers without IDs
-        goal_match = re.match(r'(###\s+\d+\.\s+.+?\s+—\s+\*\*.*?\*\*)(?!\s+\^)', line)
-        if goal_match:
-            # This goal doesn't have an ID, add one. Anything the user wrote
-            # after the pillar is theirs and is carried through untouched.
-            goal_header = goal_match.group(1)
-            trailing = line[goal_match.end():]
-            
-            # Generate ID
-            quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
-            quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
-            
-            goal_id = generate_goal_id(quarter, existing_goals)
-            lines[i] = f"{goal_header} ^{goal_id}{trailing}"
-            
-            # Add this goal to existing_goals so next ID is incremented
-            existing_goals.append({'goal_id': goal_id})
-            goals_updated += 1
+        # No ID at all: add one straight after the pillar, where the parser
+        # looks, and carry anything the user wrote after it through untouched.
+        quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
+        quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
+
+        goal_id = generate_goal_id(quarter, existing_goals)
+        lines[i] = f"{goal_header} ^{goal_id}{trailing}"
+
+        # Add this goal to existing_goals so next ID is incremented
+        existing_goals.append({'goal_id': goal_id})
+        goals_updated += 1
     
     if goals_updated > 0:
         goals_file.write_text('\n'.join(lines))
@@ -6341,7 +6359,19 @@ async def _handle_call_tool_inner(
                 "success": False,
                 "error": f"Goal not found: {goal_id}"
             }, indent=2))]
-        
+
+        if goal.get('provisional'):
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    f"Goal '{goal['title']}' is provisional: it was recovered "
+                    "from a freeform list and its ID is generated, so it exists "
+                    "nowhere on disk and any match would be a collision. "
+                    "Structure it (e.g. via /quarter-plan) as "
+                    "### N. Title — **Pillar** ^Qn-YYYY-goal-N first."
+                ),
+            }, indent=2))]
+
         # Get linked priorities
         linked_priorities = find_linked_priorities(goal_id)
         
@@ -6768,6 +6798,19 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "get_goal_backlog":
+        # An explicit null means the caller has a goal with no ID. Coercing that
+        # to 'all' hands back every other goal's backlog as if it were this
+        # goal's, which is worse than refusing.
+        if arguments and 'goal_id' in arguments and arguments['goal_id'] is None:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "That goal has no ID, so Dex cannot tell which tasks belong "
+                    "to it. Add an ID like ^Qx-YYYY-goal-N straight after the "
+                    "bolded pillar in its heading in Quarter_Goals.md, or run "
+                    "migrate_quarterly_goals. Pass 'all' if you meant every goal."
+                ),
+            }, indent=2))]
         requested_goal_id = str(arguments.get('goal_id') or 'all').strip() or 'all'
 
         goals = (

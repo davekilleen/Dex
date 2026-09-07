@@ -499,3 +499,74 @@ def test_missing_id_advice_says_where_the_id_goes(planning_vault):
     rec = next(r for r in result["recommendations"] if "^Qx-YYYY-goal-N" in r)
     assert "end of" not in rec
     assert "pillar" in rec
+
+
+def test_migration_never_adds_a_second_id_to_a_heading(planning_vault):
+    """A heading whose valid ID sits after trailing text must be left alone;
+    adding a second ID orphans every existing link to the first."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "### 1. Ship v2 — **Growth** (stretch) ^Q3-2026-goal-5\n",
+        encoding="utf-8",
+    )
+
+    result = _call_tool("migrate_quarterly_goals")
+
+    heading = next(
+        line
+        for line in planning_vault["goals"].read_text(encoding="utf-8").split("\n")
+        if "Ship v2" in line
+    )
+    assert heading.count("^Q") == 1
+    assert "^Q3-2026-goal-5" in heading
+    assert result["goals_updated"] == 0
+    entry = next(
+        h for h in result.get("headings_needing_manual_fix", [])
+        if "Ship v2" in h["title"]
+    )
+    # It already has a goal ID; the fix is to move it, not to replace it.
+    assert entry["existing_anchor"] == "^Q3-2026-goal-5"
+    assert "not straight after the bolded pillar" in entry["reason"]
+    assert "orphan" in entry["reason"]
+
+
+def test_migration_reports_a_foreign_anchor_anywhere_on_the_line(planning_vault):
+    """The anchor need not be the last token to strand the heading."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n### 1. Ship v2 — **Growth** ^a1b2c3 (stretch)\n",
+        encoding="utf-8",
+    )
+
+    result = _call_tool("migrate_quarterly_goals")
+
+    assert result["goals_updated"] == 0
+    skipped = result.get("headings_needing_manual_fix") or []
+    assert any("Ship v2" in h["title"] for h in skipped)
+    assert "^a1b2c3" in planning_vault["goals"].read_text(encoding="utf-8")
+
+
+def test_goal_status_refuses_a_provisional_goals_generated_id(planning_vault):
+    """Its ID exists nowhere on disk, so any match is a collision."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n- A recovered goal\n", encoding="utf-8"
+    )
+    _write_priorities(planning_vault["priorities"])
+
+    goals = _call_tool("get_quarterly_goals")["goals"]
+    generated_id = goals[0]["goal_id"]
+    assert generated_id, "expected a generated ID"
+
+    result = _call_tool("get_goal_status", {"goal_id": generated_id})
+
+    assert result["success"] is False
+    assert "provisional" in result["error"]
+
+
+def test_goal_backlog_refuses_a_null_goal_id(planning_vault):
+    """Coercing null to 'all' hands back every other goal's backlog."""
+    _write_goals(planning_vault["goals"])
+
+    result = _call_tool("get_goal_backlog", {"goal_id": None})
+
+    assert result["success"] is False
+    assert "no ID" in result["error"]
