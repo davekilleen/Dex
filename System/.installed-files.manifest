@@ -894,6 +894,7 @@
 .github/dependabot.yml
 .github/pull_request_template.md
 .github/workflows/ci.yml
+.github/workflows/claude-review.yml
 .github/workflows/historic-fleet-darwin.yml
 .github/workflows/nightly-quality.yml
 .github/workflows/release-asset-prober.yml
@@ -1148,6 +1149,7 @@ core/integrations/task_sync.py
 core/lens-catalog/enriched-registry.json
 core/lens-catalog/registry.json
 core/lens-catalog/schemas/dex-lens-catalogue-v2.schema.json
+core/lens-catalog/significant-capabilities.json
 core/lens_catalog_discovery.py
 core/lens_catalog_sources.py
 core/lifecycle/__init__.py
@@ -1575,10 +1577,12 @@ core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
 core/tests/test_work_server_meeting_context.py
 core/tests/test_work_server_production_paths.py
+core/tests/test_work_server_quarter_resolution.py
 core/tests/test_work_server_quarterly_goals.py
 core/tests/test_work_server_roundtrip.py
 core/tests/test_work_server_task_goal_readers.py
 core/tests/test_work_server_task_priorities.py
+core/tests/test_work_server_weekly_planning_context.py
 core/tests/test_work_server_weekly_priority_creation.py
 core/tests/test_working_week.py
 core/tests/vault_observed_writes.py

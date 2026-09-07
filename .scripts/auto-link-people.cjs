@@ -456,6 +456,17 @@ function boundaryIsSafe(text, start, length) {
     && (!next || !WORD_CONTINUATION.test(next));
 }
 
+function containsName(text, name) {
+  let fromIndex = 0;
+  while (fromIndex < text.length) {
+    const start = text.indexOf(name, fromIndex);
+    if (start === -1) return false;
+    if (boundaryIsSafe(text, start, name.length)) return true;
+    fromIndex = start + Math.max(1, name.length);
+  }
+  return false;
+}
+
 function findPoisonedFirstNames(text, registry, protectedRanges) {
   const poisoned = new Set();
   const pattern = /[\p{Lu}][\p{L}\p{M}'’\p{Pd}]*/gu;
@@ -517,6 +528,10 @@ function autoLinkContent(text, registry = buildRegistry()) {
       || firstName === ownerFirstName
       || STOPLIST.has(firstName)
       || poisoned.has(firstName)
+      // A unique name in the vault is not proof that this note means the
+      // same person. Require the full name somewhere in this document (the
+      // meeting attendee metadata counts) before shortening it to a first-name link.
+      || !containsName(text, fullName)
     ) {
       continue;
     }
