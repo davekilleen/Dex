@@ -364,3 +364,48 @@ def test_single_goal_advice_reads_as_english(planning_vault):
     assert "is provisional" in rec
     assert "its ID is generated" in rec
     assert "links to it automatically" in rec
+
+
+def test_migration_never_deletes_the_rest_of_a_heading(planning_vault):
+    """The PR tells every affected user to run this; it must not eat text."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "### 1. Ship v2 — **Growth** (stretch, owner: Dana)\n\n"
+        "- [ ] A milestone\n",
+        encoding="utf-8",
+    )
+
+    result = _call_tool("migrate_quarterly_goals")
+
+    assert result["goals_updated"] == 1
+    heading = next(
+        line
+        for line in planning_vault["goals"].read_text(encoding="utf-8").split("\n")
+        if "Ship v2" in line
+    )
+    assert "(stretch, owner: Dana)" in heading
+    assert "^Q" in heading
+    # And the repaired heading still parses as a goal.
+    after = _call_tool("get_weekly_planning_context")
+    ship = next(g for g in after["goal_health"] if g["title"] == "Ship v2")
+    assert ship["goal_id"] is not None
+    assert ship["activity_known"] is True
+
+
+def test_provisional_goals_claim_no_linked_priorities_anywhere(planning_vault):
+    """A generated ID can collide with a stale reference in the week file."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n- A recovered goal\n", encoding="utf-8"
+    )
+    planning_vault["priorities"].write_text(
+        "# Week Priorities\n\n"
+        f"1. **Stale reference** — Growth (Goal: {ANCHORED_ID}) ^week-2026-W37-p1\n",
+        encoding="utf-8",
+    )
+
+    result = _call_tool("get_quarterly_goals")
+
+    provisional = [g for g in result["goals"] if g.get("provisional")]
+    assert provisional, "expected a recovered goal"
+    assert all(g["linked_priorities_count"] == 0 for g in provisional)
+    assert all(g["linked_priorities"] == [] for g in provisional)

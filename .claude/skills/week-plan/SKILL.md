@@ -89,7 +89,11 @@ Get all open tasks and:
 Use: get_weekly_planning_context()
 ```
 
-Each goal in the response's `goal_health` carries `open_task_count` and `next_up_tasks` — the top items the user already marked "take these first" during grooming. Use them directly:
+Each goal in the response's `goal_health` carries `open_task_count` and `next_up_tasks` — the top items the user already marked "take these first" during grooming.
+
+**First, check `activity_known`.** When it is `false`, that goal has no usable ID — it was typed by hand, or recovered from a freeform list — so Dex cannot tell what links to it. `linked_priority_count`, `has_activity`, `open_task_count` and `next_up_tasks` are all `null` for that goal, meaning *not known*, never *none*. Do not read a `null` as zero, do not call it stalled or neglected, and do not call `get_goal_backlog` for it (a null ID falls back to every goal's backlog). Plan around it normally and pass on the `recommendations` line that says how to give it an ID.
+
+For every goal where `activity_known` is `true`, use the fields directly:
 
 - **Goal has `next_up_tasks`:** suggest those items by name — "Goal X's next-up items are A and B — they fit Wednesday's block."
 - **Stalled goal with open tasks but no groomed order:** call `get_goal_backlog(goal_id)` and pick candidates from the top of its ordering (priority, then oldest).

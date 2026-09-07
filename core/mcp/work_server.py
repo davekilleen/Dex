@@ -3321,15 +3321,17 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
         # Match goal headers without IDs
         goal_match = re.match(r'(###\s+\d+\.\s+.+?\s+—\s+\*\*.*?\*\*)(?!\s+\^)', line)
         if goal_match:
-            # This goal doesn't have an ID, add one
+            # This goal doesn't have an ID, add one. Anything the user wrote
+            # after the pillar is theirs and is carried through untouched.
             goal_header = goal_match.group(1)
+            trailing = line[goal_match.end():]
             
             # Generate ID
             quarter_match = re.search(r'quarter:\s+(.+)', content[:content.find(line)])
             quarter = quarter_match.group(1) if quarter_match else get_quarter_info()['quarter']
             
             goal_id = generate_goal_id(quarter, existing_goals)
-            lines[i] = f"{goal_header} ^{goal_id}"
+            lines[i] = f"{goal_header} ^{goal_id}{trailing}"
             
             # Add this goal to existing_goals so next ID is incremented
             existing_goals.append({'goal_id': goal_id})
@@ -6284,7 +6286,11 @@ async def _handle_call_tool_inner(
             if goal['quarter'] == quarter or not goal['quarter']:
                 if include_completed or goal['progress'] < 100:
                     # Enrich with linked priorities
-                    linked_priorities = find_linked_priorities(goal['goal_id']) if goal['goal_id'] else []
+                    linked_priorities = (
+                        find_linked_priorities(goal['goal_id'])
+                        if goal['goal_id'] and not goal.get('provisional')
+                        else []
+                    )
                     goal['linked_priorities'] = linked_priorities
                     goal['linked_priorities_count'] = len(linked_priorities)
                     filtered_goals.append(goal)
