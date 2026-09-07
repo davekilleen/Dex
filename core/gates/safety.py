@@ -179,14 +179,18 @@ def _migration_lock_is_live(vault: Path) -> bool:
     return process_is_running(pid)
 
 
+def _is_catastrophic_path(candidate: str) -> bool:
+    collapsed = candidate.rstrip("/") or "/"
+    return collapsed in CATASTROPHIC_BARE_PATHS or candidate.startswith(("~/", "$HOME/"))
+
+
 def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     # File tools use literal names. Trimming whitespace or expanding shell
     # variables can judge a different inode and hide an escaping symlink.
     candidate = _safe_string(path)
     if not candidate:
         return None
-    collapsed = candidate.rstrip("/") or "/"
-    if collapsed in CATASTROPHIC_BARE_PATHS or candidate.startswith(("~/", "$HOME/")):
+    if _is_catastrophic_path(candidate):
         return REASON_UNSAFE_PATH
     if vault is None:
         return None
@@ -348,8 +352,9 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
             warning = decision
     for path in paths:
         # Relative paths are relative to the host's working directory, which
-        # may be below the selected vault root.
-        if path.startswith(("~", "$")) or path in CATASTROPHIC_BARE_PATHS:
+        # may be below the selected vault root. Preserve explicit root/home
+        # refusals, but treat all other prefixes as literal filename characters.
+        if _is_catastrophic_path(path):
             target = path
         else:
             target = str(base / path)

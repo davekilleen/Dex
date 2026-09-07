@@ -272,3 +272,47 @@ def test_allowed_literal_filename_is_not_rewritten(vaults, native, filename):
                   env={"DEX_PATH_FRAGMENT": str(two / "outside")})
     assert result.returncode == 0, result.stdout + result.stderr
     assert not (one / filename).exists()
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("filename", ["$literal", "~literal"])
+@pytest.mark.parametrize("parent_link", [False, True], ids=["final-link", "parent-link"])
+@pytest.mark.parametrize("action", ["write", "patch-add", "patch-move"])
+@pytest.mark.parametrize("escapes", [False, True], ids=["safe", "escape"])
+def test_prefixed_literal_target_uses_nested_cwd(vaults, native, filename, parent_link, action, escapes):
+    one, two = vaults
+    nested = one / "nested"
+    nested.mkdir()
+    # Escapes have no root-level counterpart; safe controls have an unsafe
+    # root-level decoy. Both must be judged using the reported cwd.
+    destination, decoy = (two, one / "System") if escapes else (one / "System", two)
+    suffix = "/untouched.md" if parent_link else ""
+    (nested / filename).symlink_to(destination if parent_link else destination / "untouched.md",
+                                  target_is_directory=parent_link)
+    if not escapes:
+        (one / filename).symlink_to(decoy if parent_link else decoy / "untouched.md",
+                                   target_is_directory=parent_link)
+    target = filename + suffix
+    if action == "write":
+        payload = proposal(nested, file_path=target)
+    elif action == "patch-add":
+        payload = proposal(nested, "apply_patch", command=f"*** Begin Patch\n*** Add File: {target}\n+x\n*** End Patch")
+    else:
+        payload = proposal(nested, "apply_patch", command=f"*** Begin Patch\n*** Update File: note.md\n*** Move to: {target}\n@@\n-x\n+y\n*** End Patch")
+    result = hook(nested, payload, native=native,
+                  env={"DEX_VAULT_PATH": str(one), "literal": str(decoy)})
+    assert result.returncode == (2 if escapes else 0), result.stdout + result.stderr
+    assert not (one / "System/untouched.md").exists()
+    assert not (two / "untouched.md").exists()
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("target", ["/", "/Users", "~", "~/", "~/untouched.md",
+                                   "$HOME", "$HOME/", "$HOME/untouched.md"])
+def test_nested_cwd_preserves_root_and_home_shorthand_refusals(vaults, native, target):
+    one = vaults[0]
+    nested = one / "nested"
+    nested.mkdir()
+    result = hook(nested, proposal(nested, file_path=target), native=native,
+                  env={"DEX_VAULT_PATH": str(one)})
+    assert result.returncode == 2, result.stdout + result.stderr
