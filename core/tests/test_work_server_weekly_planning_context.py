@@ -191,3 +191,78 @@ def test_anchored_goals_are_still_inferred_normally(planning_vault):
     matched = result["matched_priorities"][0]
     assert matched["inferred_goal"]["goal_id"] == ANCHORED_ID
     assert all(alt["goal_id"] is not None for alt in matched["alternatives"])
+
+
+def test_migration_can_add_the_missing_id_it_recommends(planning_vault):
+    """The one-call repair must survive the vault it exists to repair."""
+    _write_goals(planning_vault["goals"])
+
+    result = _call_tool("migrate_quarterly_goals")
+
+    assert result.get("success") is not False
+    text = planning_vault["goals"].read_text(encoding="utf-8")
+    heading = next(
+        line for line in text.split("\n") if ANCHORLESS_TITLE in line
+    )
+    assert "^Q" in heading and "-goal-" in heading
+    # The already-anchored goal keeps the ID it had.
+    assert f"^{ANCHORED_ID}" in text
+    # And the repaired goal is now readable by weekly planning.
+    after = _call_tool("get_weekly_planning_context")
+    assert all(g["activity_known"] for g in after["goal_health"])
+
+
+def test_creating_a_goal_works_alongside_an_anchorless_one(planning_vault):
+    """Adding a new goal must not trip over a hand-written neighbour."""
+    _write_goals(planning_vault["goals"])
+
+    result = _call_tool(
+        "create_quarterly_goal",
+        {
+            "title": "A brand new goal",
+            "pillar": "pillar_1",
+            "success_criteria": "The new goal is reachable.",
+        },
+    )
+
+    assert result.get("success") is not False
+    assert result["goal_id"].endswith("-goal-2")
+
+
+def test_provisional_goals_are_not_accused_of_zero_activity(planning_vault):
+    """A recovered goal's ID exists nowhere, so its links are unknowable."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "- Grow the newsletter audience\n"
+        "- Reduce onboarding drop-off\n",
+        encoding="utf-8",
+    )
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_weekly_planning_context")
+
+    provisional = [g for g in result["goal_health"] if g.get("provisional")]
+    assert provisional, "expected recovered goals to be marked provisional"
+    assert all(not g["activity_known"] for g in provisional)
+    assert result["neglected_goals_count"] == 0
+    assert all("zero weekly activity" not in r for r in result["recommendations"])
+
+
+def test_many_missing_ids_produce_one_recommendation(planning_vault):
+    """Five copies of one sentence is not five pieces of advice."""
+    headings = "\n\n".join(
+        f"### {n}. Hand written goal {n} — **Growth**\n\n- [ ] A milestone"
+        for n in range(1, 6)
+    )
+    planning_vault["goals"].write_text(
+        f"# Quarter Goals\n\n{headings}\n", encoding="utf-8"
+    )
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_weekly_planning_context")
+
+    id_recs = [r for r in result["recommendations"] if "^Qx-YYYY-goal-N" in r]
+    assert len(id_recs) == 1
+    for n in range(1, 6):
+        assert f"Hand written goal {n}" in id_recs[0]
+    assert "Quarter_Goals.md" in id_recs[0]

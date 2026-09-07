@@ -2320,9 +2320,12 @@ def generate_goal_id(quarter: str, existing_goals: List[Dict]) -> str:
     max_num = 0
     prefix = f"{q_num}-{year}-goal-"
     for goal in existing_goals:
-        if 'goal_id' in goal and goal['goal_id'].startswith(prefix):
+        # A hand-written goal heading has no ID at all, and it is exactly the
+        # vault migrate_quarterly_goals exists to repair.
+        existing_id = goal.get('goal_id')
+        if existing_id and existing_id.startswith(prefix):
             try:
-                num = int(goal['goal_id'].split('-')[-1])
+                num = int(existing_id.split('-')[-1])
                 max_num = max(max_num, num)
             except (ValueError, IndexError):
                 continue
@@ -6945,7 +6948,10 @@ async def _handle_call_tool_inner(
             # with no ID, so report no links instead of crashing, and keep it
             # out of every count that would otherwise claim work it cannot own.
             goal_id = goal.get('goal_id')
-            activity_known = bool(goal_id)
+            # A provisional goal was recovered from freeform text; its ID
+            # exists nowhere on disk, so nothing can be linked to it either.
+            provisional = bool(goal.get('provisional'))
+            activity_known = bool(goal_id) and not provisional
             linked_priorities = find_linked_priorities(goal_id) if activity_known else []
             completed_milestones = sum(1 for m in goal.get('milestones', []) if m.get('completed'))
             total_milestones = len(goal.get('milestones', []))
@@ -6984,6 +6990,7 @@ async def _handle_call_tool_inner(
                 'linked_priority_count': len(linked_priorities),
                 'has_activity': len(linked_priorities) > 0,
                 'activity_known': activity_known,
+                'provisional': provisional,
                 'open_task_count': len(goal_tasks),
                 'next_up_tasks': next_up_tasks,
             })
@@ -7020,11 +7027,14 @@ async def _handle_call_tool_inner(
 
         # Build recommendations
         recommendations = []
-        for g in goals_missing_ids:
+        if goals_missing_ids:
+            names = ', '.join(f"\"{g['title']}\"" for g in goals_missing_ids)
+            plural = 's' if len(goals_missing_ids) > 1 else ''
             recommendations.append(
-                f"Goal \"{g['title']}\" has no ID, so Dex cannot tell which weekly "
-                "priorities or tasks belong to it. Add an ID like ^Qx-YYYY-goal-N to "
-                "the end of its heading in Quarter_Goals.md."
+                f"{len(goals_missing_ids)} goal{plural} have no ID, so Dex cannot tell "
+                f"which weekly priorities or tasks belong to them: {names}. Add an ID "
+                "like ^Qx-YYYY-goal-N to the end of each heading in Quarter_Goals.md, "
+                "or run migrate_quarterly_goals to add them all at once."
             )
         if neglected_goals:
             names = ', '.join(f"Goal {g['goal_id']}: {g['title']}" for g in neglected_goals)
