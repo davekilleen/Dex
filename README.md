@@ -200,12 +200,15 @@ python3 --version
 
 ### Step 2: Run the Installer
 
-Inside Cursor, you'll see a panel at the bottom (or go to **View → Terminal**). This is where you'll type commands.
+The repository installer is a **Bash script**. Run it from the Dex folder you opened in Step 1.
 
-Copy and paste this command and press Enter:
+- **Mac:** Open Cursor's **View → Terminal** in that folder.
+- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. PowerShell can run the version checks above, but cannot directly run this Bash installer. For the PowerShell installation route, use [Quick install](#quick-install-claude-code-or-cursor).
+
+In the terminal selected above, run:
 
 ```bash
-./install.sh
+bash ./install.sh
 ```
 
 **What's happening:** This installs the automation that makes Dex work (task sync, career tracking, meeting intelligence). Takes 1-2 minutes. You'll see text scrolling - that's normal.
@@ -218,7 +221,7 @@ Copy and paste this command and press Enter:
 
 **Verify MCP servers:** Cursor should automatically detect `.mcp.json` and enable the MCP servers. Look for the MCP icon in Cursor's bottom panel - you should see server names with green checkmarks.
 
-**If you see errors:** The most common issue is Python dependencies not landing in Dex's virtual environment. Recreate it and reinstall — this keeps everything inside `.venv` and never touches your system Python:
+**If you see errors:** The most common issue is Python dependencies not landing in Dex's virtual environment. Use the commands for your operating system under [Python dependency troubleshooting](#all-platforms-could-not-install-python-dependencies). On **Mac**, those commands are:
 
 ```bash
 python3 -m venv .venv
@@ -283,7 +286,7 @@ This means Python wasn't added to your PATH during installation.
 4. ⚠️ **CHECK THE BOX: "Add Python to PATH"** (on first screen)
 5. Complete installation
 6. **Restart your terminal completely** (close and reopen)
-7. Run `./install.sh` again
+7. Return to **Git Bash** in your Dex folder and run `bash ./install.sh` again
 
 ---
 
@@ -296,7 +299,7 @@ Git for Windows isn't installed.
 1. Download from [git-scm.com/download/win](https://git-scm.com/download/win)
 2. Run installer with default options
 3. **Restart your terminal**
-4. Run `./install.sh` again
+4. Open **Git Bash** in your Dex folder and run `bash ./install.sh` again
 
 ---
 
@@ -304,7 +307,7 @@ Git for Windows isn't installed.
 
 The installer tries two methods automatically. If both fail, your pip version might be too old.
 
-**Fix (reinstall into Dex's virtual environment):**
+**Mac — reinstall into Dex's virtual environment:**
 
 ```bash
 python3 -m venv .venv
@@ -312,9 +315,9 @@ python3 -m venv .venv
 .venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
-**Windows:**
+**Windows — PowerShell, in your Dex folder:**
 
-```bash
+```powershell
 python -m venv .venv
 .venv\Scripts\pip install --upgrade pip
 .venv\Scripts\pip install -r core/mcp/requirements.txt
@@ -328,7 +331,7 @@ If you see red error indicators next to MCP server names in Cursor:
 
 **"No server info found" error:**
 
-This means the Python MCP servers can't start. Most common fix — reinstall the dependencies into Dex's virtual environment:
+This means the Python MCP servers can't start. Reinstall dependencies using the [commands for your operating system](#all-platforms-could-not-install-python-dependencies). The **Mac** commands are:
 
 ```bash
 python3 -m venv .venv

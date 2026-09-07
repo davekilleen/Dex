@@ -129,7 +129,8 @@ For organization-level context, check company pages in `05-Areas/Companies/`. Sh
 |-----------|--------------|
 | `/journal` command | Morning, evening, or weekly reflection prompts |
 | `/review` command | End-of-day synthesis of what happened, captures learnings |
-| `/week` command | Weekly pattern recognition and planning |
+| `/week-review` command | Review accomplishments and patterns from the week |
+| `/week-plan` command | Set priorities for the week ahead |
 | Background changelog monitor | Installed macOS job checks every 6 hours for Claude Code updates; configured session hooks deliver the notice |
 | Learning review prompts | Daily check: when 5+ learnings pending, reminds you to review |
 | `Mistake_Patterns.md` | Logged mistakes become rules that prevent repetition |
@@ -138,7 +139,7 @@ For organization-level context, check company pages in `05-Areas/Companies/`. Sh
 
 **v1.11.0**: Learning heartbeat now focused on operational knowledge only. Preferences are handled by Claude's built-in memory, so session learnings are cleaner and less noisy.
 
-**Example Flow**: Friday afternoon, run `/week`. Dex synthesizes the week: themes that emerged, energy patterns (what energized vs drained you), progress by project, questions that came up. You spot a pattern - every meeting with Team X drains energy. That's useful data for next week's planning.
+**Example Flow**: Friday afternoon, run `/week-review`. Dex synthesizes the week: themes that emerged, energy patterns (what energized vs drained you), progress by project, questions that came up. You spot a pattern - every meeting with Team X drains energy. That's useful data for next week's planning with `/week-plan`.
 
 During the week, you mentioned "I prefer summaries in bullet points." Dex captured this in Session_Learnings and now asks: "You've mentioned this preference 3 times. Add to Working_Preferences.md so all future summaries use bullets?"
 
