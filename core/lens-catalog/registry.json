@@ -122,8 +122,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-plan/SKILL.md",
-        "sha256": "02235fc9462e52666feb0c940d585124acdcbbd36229ec7072e6bd6613f16fb9",
-        "byte_size": 15133
+        "sha256": "4869440e3bc53319412f365de76359f4f169e786353b83d2f27dada882e32cdb",
+        "byte_size": 16297
       },
       "value": "Turns goals, capacity and open work into a weekly focus plan, so repeated work starts from priorities rather than a blank chat.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "79e9ee08d47e060e1ab10a37aa39764ce3249557b074b01a96ee1eac4410a820",
-        "byte_size": 19385
+        "sha256": "04e09c80dcbb092e6d99f12088b8e5633a2b1c0b02c0c190aa6de46dc54e32ac",
+        "byte_size": 19905
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
