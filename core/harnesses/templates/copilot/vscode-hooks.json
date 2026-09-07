@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "PreToolUse": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface vscode --event PreToolUse", "timeout": 15}],
+    "SessionStart": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface vscode --event SessionStart", "timeout": 15}],
+    "Stop": [{"type": "command", "command": "node \"${PLUGIN_ROOT}/bin/dex-copilot-hook.mjs\" --surface vscode --event Stop", "timeout": 15}]
+  }
+}
