@@ -6286,13 +6286,18 @@ async def _handle_call_tool_inner(
             if goal['quarter'] == quarter or not goal['quarter']:
                 if include_completed or goal['progress'] < 100:
                     # Enrich with linked priorities
+                    # A hand-written goal has no ID, and a provisional goal's
+                    # ID is generated and exists nowhere on disk. Neither one's
+                    # links can be read, so report unknown rather than zero.
+                    activity_known = bool(goal['goal_id']) and not goal.get('provisional')
                     linked_priorities = (
-                        find_linked_priorities(goal['goal_id'])
-                        if goal['goal_id'] and not goal.get('provisional')
-                        else []
+                        find_linked_priorities(goal['goal_id']) if activity_known else []
                     )
-                    goal['linked_priorities'] = linked_priorities
-                    goal['linked_priorities_count'] = len(linked_priorities)
+                    goal['activity_known'] = activity_known
+                    goal['linked_priorities'] = linked_priorities if activity_known else None
+                    goal['linked_priorities_count'] = (
+                        len(linked_priorities) if activity_known else None
+                    )
                     filtered_goals.append(goal)
         
         result = {
@@ -6316,7 +6321,20 @@ async def _handle_call_tool_inner(
 
     elif name == "get_goal_status":
         goal_id = arguments['goal_id']
-        
+
+        # get_goal_by_id(None) happily matches a hand-written goal, whose ID
+        # is also None, and every link lookup below then crashes on it.
+        if not goal_id:
+            return [types.TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": (
+                    "This goal has no ID, so Dex cannot tell what links to it. "
+                    "Add an ID like ^Qx-YYYY-goal-N straight after the bolded "
+                    "pillar in its heading in Quarter_Goals.md, or run "
+                    "migrate_quarterly_goals."
+                ),
+            }, indent=2))]
+
         goal = get_goal_by_id(goal_id)
         if not goal:
             return [types.TextContent(type="text", text=json.dumps({
@@ -6652,7 +6670,9 @@ async def _handle_call_tool_inner(
         
         # Check for stalled goals
         for goal in goals:
-            if goal.get('goal_id'):
+            # A provisional goal's ID is generated; it can neither be linked to
+            # nor be shown to lack links, so it is never "stalled".
+            if goal.get('goal_id') and not goal.get('provisional'):
                 linked_priorities = find_linked_priorities(goal['goal_id'])
                 if len(linked_priorities) == 0:
                     warnings.append({
@@ -6711,7 +6731,7 @@ async def _handle_call_tool_inner(
         goals_with_no_priorities = []
         
         for goal in goals:
-            if goal.get('goal_id'):
+            if goal.get('goal_id') and not goal.get('provisional'):
                 linked_priorities = find_linked_priorities(goal['goal_id'])
                 if len(linked_priorities) == 0:
                     goals_with_no_priorities.append(goal)
@@ -7074,8 +7094,9 @@ async def _handle_call_tool_inner(
             heading = "each heading" if count > 1 else "its heading"
             recommendations.append(
                 f"{subject} no ID, so Dex cannot tell which weekly priorities or "
-                f"tasks {belong}: {names}. Add an ID like ^Qx-YYYY-goal-N to the end "
-                f"of {heading} in Quarter_Goals.md, or run migrate_quarterly_goals "
+                f"tasks {belong}: {names}. Add an ID like ^Qx-YYYY-goal-N "
+                f"straight after the bolded pillar in {heading} in "
+                "Quarter_Goals.md, or run migrate_quarterly_goals "
                 f"to add {'them all at once' if count > 1 else 'it'}."
             )
         if provisional_goals:

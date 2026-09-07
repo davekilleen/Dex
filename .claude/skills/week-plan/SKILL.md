@@ -56,8 +56,11 @@ Check for `00-Inbox/Weekly_Synthesis_[last-monday].md`:
 
 ```
 Use: get_quarterly_goals()
-Use: get_goal_status(goal_id) for each goal
+Use: get_goal_status(goal_id) for each goal that has a goal_id
 ```
+
+Skip `get_goal_status` for any goal whose `goal_id` is null — it has no ID to
+look up, and the call will tell you so rather than return a status.
 
 For each goal, get:
 - Current progress (concrete: "2 of 5 milestones complete")
@@ -65,7 +68,13 @@ For each goal, get:
 - Weeks since last activity
 - Stall warnings
 
-**Identify goals needing attention:**
+**Check `activity_known` before judging any goal.** When it is `false` — the
+goal was typed by hand with no ID, or recovered from a freeform list —
+`linked_priorities` and `linked_priorities_count` are `null`, meaning *not
+known*, never *none*. Never call such a goal orphaned or stalled on that basis.
+
+**Identify goals needing attention** (only among goals where `activity_known`
+is `true`):
 - Goals with no linked priorities (orphaned)
 - Goals with no activity in 2+ weeks (stalled)
 - Goals behind expected pace

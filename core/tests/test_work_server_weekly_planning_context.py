@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -407,5 +408,94 @@ def test_provisional_goals_claim_no_linked_priorities_anywhere(planning_vault):
 
     provisional = [g for g in result["goals"] if g.get("provisional")]
     assert provisional, "expected a recovered goal"
-    assert all(g["linked_priorities_count"] == 0 for g in provisional)
-    assert all(g["linked_priorities"] == [] for g in provisional)
+    # Unknown, not zero: a generated ID names nothing on disk.
+    assert all(g["linked_priorities_count"] is None for g in provisional)
+    assert all(g["linked_priorities"] is None for g in provisional)
+    assert all(g["activity_known"] is False for g in provisional)
+
+
+def test_goal_status_does_not_crash_on_a_goal_with_no_id(planning_vault):
+    """/week-plan calls get_goal_status per goal, so the reported crash still
+    reproduced one step before the handler this branch first fixed."""
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_goal_status", {"goal_id": None})
+
+    assert result["success"] is False
+    assert "no ID" in result["error"] or "not found" in result["error"].lower()
+
+
+def test_goal_status_still_works_for_a_real_goal(planning_vault):
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_goal_status", {"goal_id": ANCHORED_ID})
+
+    assert result["goal_id"] == ANCHORED_ID
+    assert result["linked_priorities_count"] == 1
+
+
+def test_quarterly_goals_marks_unreadable_links_as_unknown(planning_vault):
+    """/week-plan calls a goal with no linked priorities orphaned; it must not
+    do that to a goal whose links were never readable."""
+    _write_goals(planning_vault["goals"])
+    _write_priorities(planning_vault["priorities"])
+
+    result = _call_tool("get_quarterly_goals")
+
+    anchorless = next(g for g in result["goals"] if g["title"] == ANCHORLESS_TITLE)
+    assert anchorless["activity_known"] is False
+    assert anchorless["linked_priorities_count"] is None
+    anchored = next(g for g in result["goals"] if g["goal_id"] == ANCHORED_ID)
+    assert anchored["activity_known"] is True
+    assert anchored["linked_priorities_count"] == 1
+
+
+def test_work_summary_and_alignment_ignore_provisional_goals(planning_vault):
+    """A generated ID that collides with a real one must not inherit its work."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n- A recovered goal\n", encoding="utf-8"
+    )
+    # No goal references at all, so a provisional goal cannot be credited
+    # with someone else's priority and hide the false claim.
+    planning_vault["priorities"].write_text(
+        "# Week Priorities\n\n1. **Unrelated work** — Growth ^week-2026-W37-p1\n",
+        encoding="utf-8",
+    )
+
+    summary = _call_tool("get_work_summary")
+    stalled = [w for w in summary["warnings"] if w["type"] == "stalled_goal"]
+    assert stalled == []
+
+    alignment = _call_tool("check_goal_alignment")
+    assert alignment["goals_without_priorities"]["count"] == 0
+
+
+def test_migration_keeps_the_id_where_the_parser_can_read_it(planning_vault):
+    """The ID must sit directly after the pillar. Moving it after trailing
+    text makes the parser return None again - the original bug."""
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n### 1. Ship v2 — **Growth** (stretch)\n",
+        encoding="utf-8",
+    )
+
+    _call_tool("migrate_quarterly_goals")
+
+    heading = next(
+        line
+        for line in planning_vault["goals"].read_text(encoding="utf-8").split("\n")
+        if "Ship v2" in line
+    )
+    assert re.search(r"\*\*Growth\*\* \^Q\d+-\d{4}-goal-\d+ \(stretch\)", heading)
+    after = _call_tool("get_quarterly_goals")
+    assert all(g["goal_id"] for g in after["goals"])
+
+
+def test_missing_id_advice_says_where_the_id_goes(planning_vault):
+    """'the end of the heading' is wrong when the heading has trailing text."""
+    _write_goals(planning_vault["goals"])
+    result = _call_tool("get_weekly_planning_context")
+    rec = next(r for r in result["recommendations"] if "^Qx-YYYY-goal-N" in r)
+    assert "end of" not in rec
+    assert "pillar" in rec
