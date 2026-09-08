@@ -111,6 +111,7 @@ System/my-customizations.md
 !.claude/hooks/session-clock.sh
 !.claude/hooks/correction-capture.sh
 !.claude/hooks/correction-capture.py
+!.claude/hooks/observation-recorder.py
 !.claude/hooks/dex-core-orientation.sh
 !.claude/hooks/ensure-mcp-user-scope.cjs
 !.claude/hooks/connection-health-checker.cjs
