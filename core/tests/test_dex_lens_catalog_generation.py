@@ -726,7 +726,7 @@ def test_committed_enriched_example_is_generator_output_and_matches_released_sch
     jsonschema.Draft202012Validator(schema).validate(committed)
 
 
-def test_signed_enriched_release_path_emits_catalogue_version_six(
+def test_signed_enriched_release_path_emits_catalogue_version_seven(
     tmp_path: Path, signing_key_b64: str
 ) -> None:
     result = _generate_enriched_release(tmp_path, signing_key_b64)
