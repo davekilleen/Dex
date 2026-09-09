@@ -447,9 +447,14 @@ CAPABILITIES: dict[str, dict[str, object]] = {
             _room_skill_source(
                 "career",
                 "career-coach",
-                "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
-                36036,
+                "43596f024ad7e10320f425170437ddffb7205bb2d1c88fd74e46c0cdb6d60e8d",
+                36981,
                 previous_payloads=(
+                    (
+                        "v1.96.6",
+                        "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+                        36036,
+                    ),
                     (
                         "v1.95.2",
                         "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",

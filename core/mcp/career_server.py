@@ -478,8 +478,10 @@ async def handle_parse_ladder(arguments: dict) -> list[types.TextContent]:
             note="Run /career-setup to create your career ladder",
         )
     
-    # Parse the ladder
-    ladder_data = parse_ladder_file(LADDER_FILE)
+    # Parse the ladder, honoring an explicit structured target level
+    ladder_data = parse_ladder_file(
+        LADDER_FILE, target_level=arguments.get("target_level")
+    )
     
     if "error" in ladder_data:
         return _feature_response(
@@ -518,8 +520,10 @@ async def handle_analyze_coverage(arguments: dict) -> list[types.TextContent]:
             note="Run /career-setup to create your career ladder",
         )
     
-    # Parse ladder
-    ladder_data = parse_ladder_file(LADDER_FILE)
+    # Parse ladder, honoring an explicit structured target level
+    ladder_data = parse_ladder_file(
+        LADDER_FILE, target_level=arguments.get("target_level")
+    )
     if "error" in ladder_data or not ladder_data.get('competencies'):
         error = "Failed to parse career ladder or no competencies found"
         return _feature_response(
@@ -811,14 +815,16 @@ async def handle_scan_work_for_evidence(arguments: dict) -> list[types.TextConte
     )]
 
 
-def _required_skills_from_ladder() -> list[str]:
-    """Read required skills with the same ladder parser the rest of Dex uses."""
-    ladder_data = parse_ladder_file(LADDER_FILE)
+def _required_skills_from_ladder(target_level: str | None = None) -> list[str]:
+    """Read required skills from the structured target-level section."""
+    ladder_data = parse_ladder_file(LADDER_FILE, target_level=target_level)
     required_skills = []
     seen = set()
     for competency in ladder_data.get("competencies") or []:
         skill = competency.get("category")
         if not skill or skill in seen:
+            continue
+        if not competency.get("target_level_requirements"):
             continue
         seen.add(skill)
         required_skills.append(skill)
@@ -875,8 +881,8 @@ async def handle_skills_gap_analysis(arguments: dict) -> list[types.TextContent]
     lookback_days = arguments.get('lookback_days', 90)
     stale_threshold_days = arguments.get('stale_threshold_days', 42)
     
-    # 1. Parse career ladder to get required skills
-    required_skills = _required_skills_from_ladder()
+    # 1. Parse career ladder to get required skills from the structured target level
+    required_skills = _required_skills_from_ladder(target_level)
     
     # 2. Scan work data for skills being developed
     active_skills = {}
@@ -977,6 +983,7 @@ async def handle_skills_gap_analysis(arguments: dict) -> list[types.TextContent]
         'analysis_date': datetime.now().isoformat(),
         'target_level': target_level,
         'lookback_days': lookback_days,
+        'required_skills': required_skills,
         'required_skills_count': len(required_skills),
         'actively_developed': actively_developed,
         'actively_developed_count': len(actively_developed),
@@ -1174,7 +1181,7 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
     }
     
     # 3. Skills Coverage (0-25 points)
-    ladder_data = parse_ladder_file(LADDER_FILE)
+    ladder_data = parse_ladder_file(LADDER_FILE, target_level=target_level)
     competencies = ladder_data.get("competencies") or []
     coverage_analysis = analyze_competency_coverage(evidence_files, competencies) if competencies else {}
     skills_score = _score_skills_from_coverage(coverage_analysis, len(competencies))

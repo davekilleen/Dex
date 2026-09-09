@@ -59,6 +59,11 @@ def test_room_upgrade_ledger_preserves_all_published_payload_identities() -> Non
         },
         "career-coach": {
             (
+                "v1.96.6",
+                "ff1997a5eb4092b0993425d57b048d0c8dcf16c1d37d62b2df443eaa6f836a6c",
+                36036,
+            ),
+            (
                 "v1.95.2",
                 "356de976657e23a399c19bd09f580e429cc0c3fc7da4a79095345b6ce8c8d352",
                 29547,
