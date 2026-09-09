@@ -43,6 +43,7 @@ from analytics_helper import (
     get_visitor_info,
     is_analytics_enabled,
     load_user_profile,
+    mark_feature_used,
 )
 
 from core.utils.feature_status import feature_status
@@ -127,6 +128,31 @@ async def list_tools():
             }
         ),
         Tool(
+            name="mark_feature_used",
+            description=(
+                "Record that a Dex feature has been used, by ticking its box in "
+                "System/usage_log.md. Local bookkeeping only: this writes to the vault and "
+                "sends nothing, so it runs regardless of analytics consent. Call it when a "
+                "skill completes, so /dex-level-up recommends features the user has not yet "
+                "tried instead of ones they use daily."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "feature": {
+                        "type": "string",
+                        "description": (
+                            "The feature to mark, identified by its slash command without the "
+                            "leading slash (e.g. 'daily-plan'), or by its exact label in the log "
+                            "(e.g. 'Person page created'). Ambiguous names are reported back "
+                            "with the candidates rather than guessed at."
+                        )
+                    }
+                },
+                "required": ["feature"]
+            }
+        ),
+        Tool(
             name="test_connection",
             description="Test Pendo connection with a test event.",
             inputSchema={
@@ -154,6 +180,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         raise
 
 async def _call_tool_inner(name: str, arguments: dict) -> list[TextContent]:
+    if name == "mark_feature_used":
+        # Deliberately not consent-gated: nothing leaves the machine.
+        result = mark_feature_used(arguments["feature"])
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
     if name == "check_analytics_status":
         enabled = is_analytics_enabled()
         consent = check_consent()

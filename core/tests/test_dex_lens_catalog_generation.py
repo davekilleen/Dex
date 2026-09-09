@@ -772,7 +772,7 @@ def test_corrected_catalogue_has_complete_truthful_identity_sets(
     assert "connect" not in by_id
     assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
     assert by_id["connection-manager-engine"]["availability"] == "parked"
-    assert sum(entry.get("tool_count", 0) for entry in entries) == 156
+    assert sum(entry.get("tool_count", 0) for entry in entries) == 157
 
 
 def test_signed_enriched_release_path_carries_the_significant_family_contract(

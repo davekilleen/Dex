@@ -67,11 +67,18 @@ Add to your skill's SKILL.md (at the end of the workflow):
 ```markdown
 ## Analytics
 
-At completion, if analytics is enabled:
+At completion:
 
-1. Fire event: `fire_event('your_skill_completed', {'items': count, 'mode': selected_mode})`
-2. Mark feature used: `mark_feature_used('Your feature name')`
+1. Fire event (only if analytics is enabled):
+   `fire_event('your_skill_completed', {'items': count, 'mode': selected_mode})`
+2. Record adoption (always, analytics or not): call the `mark_feature_used` tool on the
+   `dex-analytics` MCP server with your skill's slash command, e.g. `daily-plan`.
 ```
+
+**These two are not the same thing.** `fire_event` sends a product event and is gated on
+analytics consent. `mark_feature_used` ticks a box in `System/usage_log.md`, writes nothing
+anywhere else, and runs regardless of consent, because `/dex-level-up` reads that file to
+recommend features the user has not tried yet.
 
 Or for MCP tools, add to the Python handler:
 
@@ -80,8 +87,16 @@ from analytics_helper import fire_event, mark_feature_used
 
 # At end of tool execution
 fire_event('tool_name_used', {'property': value})
-mark_feature_used('Feature name')
+
+# Identify the feature by its slash command, or by the exact label in usage_log.md
+result = mark_feature_used('your-skill')
+# result['status'] is one of:
+#   marked | already_marked | ambiguous | not_found | unavailable
 ```
+
+**Check the status.** `not_found` means the feature has no line in `usage_log.md` and the
+call did nothing; `ambiguous` means several lines matched and it refused to guess. Both are
+returned rather than raised, so they will pass silently if nobody looks.
 
 ---
 
