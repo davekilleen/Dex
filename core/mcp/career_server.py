@@ -113,6 +113,11 @@ CAREER_TRACKING_OFF_MESSAGE = (
 CAREER_ROOM_OFF_MESSAGE = (
     "The Career room is off. Turn it on with /manage-capabilities when you want it."
 )
+CAREER_LADDER_UNREADABLE_MESSAGE = (
+    "I couldn't read the target level on your career ladder, so I don't have a "
+    "real promotion score. The Target Level section needs competency headings "
+    "with requirements."
+)
 
 # Initialize the MCP server
 app = Server("dex-career-mcp")
@@ -811,18 +816,48 @@ async def handle_scan_work_for_evidence(arguments: dict) -> list[types.TextConte
     )]
 
 
-def _required_skills_from_ladder() -> list[str]:
-    """Read required skills with the same ladder parser the rest of Dex uses."""
-    ladder_data = parse_ladder_file(LADDER_FILE)
+def _skill_names_from_ladder_data(ladder_data: dict) -> list[str]:
+    """Competency headings from an already-parsed ladder."""
     required_skills = []
     seen = set()
     for competency in ladder_data.get("competencies") or []:
         skill = competency.get("category")
         if not skill or skill in seen:
             continue
+        if not competency.get("target_level_requirements"):
+            continue
         seen.add(skill)
         required_skills.append(skill)
     return required_skills
+
+
+def _required_skills_from_ladder(target_level: str | None = None) -> list[str]:
+    """Read required skills from the structured target-level section."""
+    return _skill_names_from_ladder_data(
+        parse_ladder_file(LADDER_FILE, target_level=target_level)
+    )
+
+
+def _ladder_for_score_tools(target_level: str | None = None):
+    """Return parsed ladder data, or an honest fail Maya can read.
+
+    A missing ladder stays an empty compute (score 0), which existing
+    download-path locks already require. A ladder that exists but cannot
+    be read must not come back as a dummy success.
+    """
+    if not LADDER_FILE.exists():
+        return {"competencies": []}, None
+    ladder_data = parse_ladder_file(LADDER_FILE, target_level=target_level)
+    if "error" in ladder_data or not ladder_data.get("competencies"):
+        error = ladder_data.get("error") or CAREER_LADDER_UNREADABLE_MESSAGE
+        return None, _feature_response(
+            CAREER_LADDER_FEATURE,
+            "broken",
+            error,
+            error=error,
+            target_level=target_level,
+        )
+    return ladder_data, None
 
 
 def _score_evidence_count(evidence_count: int) -> int:
@@ -875,8 +910,11 @@ async def handle_skills_gap_analysis(arguments: dict) -> list[types.TextContent]
     lookback_days = arguments.get('lookback_days', 90)
     stale_threshold_days = arguments.get('stale_threshold_days', 42)
     
-    # 1. Parse career ladder to get required skills
-    required_skills = _required_skills_from_ladder()
+    # 1. Parse career ladder to get required skills from the structured target level
+    ladder_data, ladder_fail = _ladder_for_score_tools(target_level)
+    if ladder_fail is not None:
+        return ladder_fail
+    required_skills = _skill_names_from_ladder_data(ladder_data)
     
     # 2. Scan work data for skills being developed
     active_skills = {}
@@ -977,6 +1015,7 @@ async def handle_skills_gap_analysis(arguments: dict) -> list[types.TextContent]
         'analysis_date': datetime.now().isoformat(),
         'target_level': target_level,
         'lookback_days': lookback_days,
+        'required_skills': required_skills,
         'required_skills_count': len(required_skills),
         'actively_developed': actively_developed,
         'actively_developed_count': len(actively_developed),
@@ -1174,7 +1213,9 @@ async def handle_promotion_readiness_score(arguments: dict) -> list[types.TextCo
     }
     
     # 3. Skills Coverage (0-25 points)
-    ladder_data = parse_ladder_file(LADDER_FILE)
+    ladder_data, ladder_fail = _ladder_for_score_tools(target_level)
+    if ladder_fail is not None:
+        return ladder_fail
     competencies = ladder_data.get("competencies") or []
     coverage_analysis = analyze_competency_coverage(evidence_files, competencies) if competencies else {}
     skills_score = _score_skills_from_coverage(coverage_analysis, len(competencies))
