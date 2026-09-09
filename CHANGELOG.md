@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.15] — (2026-09-09)
+
 ## [1.97.14] — (2026-09-09)
 
 ## [1.97.13] — (2026-09-07)
