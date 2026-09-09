@@ -19,6 +19,18 @@ Anything that makes Dex better for someone else:
 
 ---
 
+## Issues, Pull Requests, and `/feedback`
+
+Short split, so nobody has to guess:
+
+- **GitHub issues** — product defects, design, and anything another contributor should see. This is the public record.
+- **GitHub PRs** — a proposed change. Issues argue; PRs show the bytes.
+- **`/feedback`** — something that only showed up on your machine (a broken index, a Doctor lie, a missing file). Dex investigates locally, you approve what leaves.
+
+If the reporting channel is down, GitHub is the backstop.
+
+---
+
 ## How to Share Your Changes
 
 ### The simple version (recommended)
