@@ -175,6 +175,12 @@ class Transaction:
                     portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
                 )
             }
+        elif operation == "usage-log":
+            required_limit = {
+                portable_contract.USAGE_LOG_RELATIVE: (
+                    portable_contract.USAGE_LOG_TRANSACTION_MAX_BYTES
+                )
+            }
         elif operation == "automation-ownership":
             required_limit = {
                 portable_contract.AUTOMATION_OWNERSHIP_RELATIVE: (
@@ -803,6 +809,12 @@ class Transaction:
             required_limit = {
                 portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE: (
                     portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+                )
+            }
+        elif operation == "usage-log":
+            required_limit = {
+                portable_contract.USAGE_LOG_RELATIVE: (
+                    portable_contract.USAGE_LOG_TRANSACTION_MAX_BYTES
                 )
             }
         elif operation == "automation-ownership":

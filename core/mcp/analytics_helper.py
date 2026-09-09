@@ -21,7 +21,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -157,9 +157,26 @@ def get_analytics_transport() -> Dict[str, Any]:
     }
 
 
+# One definition of where the adoption log lives, so the reader and the writer
+# below can never disagree about the file they are talking about.
+USAGE_LOG_RELATIVE_PARTS = ('System', 'usage_log.md')
+
+# A feature line looks like "- [ ] Daily planning (`/daily-plan`)". Group 2 is the
+# only character this module ever rewrites.
+_CHECKBOX_RE = re.compile(r'^(\s*-\s+\[)([ xX])(\]\s+)(\S.*?)\s*$')
+
+# The slash-command inside a label, e.g. "(`/daily-plan`)" -> "daily-plan".
+_COMMAND_RE = re.compile(r'`/([a-z0-9][a-z0-9-]*)`', re.IGNORECASE)
+
+
+def get_usage_log_path() -> Path:
+    """Absolute path to the adoption log."""
+    return get_vault_path().joinpath(*USAGE_LOG_RELATIVE_PARTS)
+
+
 def load_usage_log() -> Dict[str, Any]:
     """Parse usage_log.md into structured data."""
-    usage_path = get_vault_path() / 'System' / 'usage_log.md'
+    usage_path = get_usage_log_path()
     if not usage_path.exists():
         return {}
     
@@ -195,6 +212,129 @@ def load_usage_log() -> Dict[str, Any]:
                 data['metadata'][key] = value
     
     return data
+
+
+def _rewrite_usage_log_safely(transform):
+    """Route every adoption-log write through the lifecycle transaction core.
+
+    Dex's vault-mutation contract requires vault writes to go through
+    `core/lifecycle/service.py`. Writing this file directly is unsafe against a
+    symlinked `System` directory, silently loosens a tightened file mode, and
+    lets a feature tick race a consent update. Imported lazily so the MCP
+    helper keeps starting on installs that do not carry the lifecycle package.
+    """
+    from core.lifecycle.service import rewrite_usage_log
+
+    return rewrite_usage_log(get_vault_path(), transform)
+
+
+def _match_feature_lines(lines: List[str], feature: str) -> List[int]:
+    """Line indexes whose checkbox label identifies `feature`.
+
+    Matching is deliberately narrow and ordered, so a caller either gets one
+    obvious line or an honest report that it could not tell them apart:
+
+    1. the slash-command in the label ("/daily-plan" matches "(`/daily-plan`)")
+    2. the whole label, case-insensitively
+    3. the label with its command stripped, case-insensitively
+
+    A broader fuzzy fallback is deliberately absent: silently marking the wrong
+    milestone is worse than reporting that the name was ambiguous.
+    """
+    wanted = feature.strip().lstrip('/').strip()
+    if not wanted:
+        return []
+    wanted_lower = wanted.lower()
+
+    by_command: List[int] = []
+    by_label: List[int] = []
+    for index, line in enumerate(lines):
+        match = _CHECKBOX_RE.match(line)
+        if not match:
+            continue
+        label = match.group(4).strip()
+        commands = [c.lower() for c in _COMMAND_RE.findall(label)]
+        if wanted_lower in commands:
+            by_command.append(index)
+            continue
+        bare = _COMMAND_RE.sub('', label).strip(' ()').strip()
+        if label.lower() == wanted_lower or bare.lower() == wanted_lower:
+            by_label.append(index)
+
+    return by_command or by_label
+
+
+def mark_feature_used(feature: str) -> Dict[str, Any]:
+    """Tick one adoption checkbox in usage_log.md.
+
+    Local bookkeeping only. This never sends anything, and it is deliberately
+    NOT gated on analytics consent: the log records which Dex features this
+    vault has used so `/dex-level-up` can recommend the ones it has not, which
+    is useful whether or not the user shares anything.
+
+    Returns a status rather than raising, so a caller can record the outcome
+    without a failure interrupting the work the user actually asked for:
+
+      marked          - a box was unticked and is now ticked
+      already_marked  - the box was already ticked, nothing written
+      ambiguous       - several boxes match; candidates returned, nothing written
+      not_found       - no box matches that feature
+      unavailable     - the log is missing or could not be read
+    """
+    usage_path = get_usage_log_path()
+    try:
+        content = usage_path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return {'status': 'unavailable', 'feature': feature, 'reason': 'usage log not found'}
+    except OSError as exc:
+        return {'status': 'unavailable', 'feature': feature, 'reason': str(exc)}
+
+    # Decide the outcome from a plain read first, so the caller gets the same
+    # statuses as before without opening a transaction for a no-op.
+    lines = content.splitlines(keepends=True)
+    matches = _match_feature_lines(lines, feature)
+
+    if not matches:
+        return {'status': 'not_found', 'feature': feature}
+
+    if len(matches) > 1:
+        candidates = [_CHECKBOX_RE.match(lines[i]).group(4).strip() for i in matches]
+        return {'status': 'ambiguous', 'feature': feature, 'candidates': candidates}
+
+    label = _CHECKBOX_RE.match(lines[matches[0]]).group(4).strip()
+    if _CHECKBOX_RE.match(lines[matches[0]]).group(2).lower() == 'x':
+        return {'status': 'already_marked', 'feature': feature, 'label': label}
+
+    def _tick(current: str) -> Optional[str]:
+        """Re-match against the text the transaction actually read.
+
+        This runs again on a stale retry, so it must not close over the
+        content read above: another writer may have ticked this very box.
+        """
+        rows = current.splitlines(keepends=True)
+        found = _match_feature_lines(rows, feature)
+        if len(found) != 1:
+            return None
+        index = found[0]
+        body = rows[index]
+        ending = ''
+        while body.endswith(('\n', '\r')):
+            ending = body[-1] + ending
+            body = body[:-1]
+        match = _CHECKBOX_RE.match(body)
+        if match is None or match.group(2).lower() == 'x':
+            return None
+        rows[index] = f"{match.group(1)}x{match.group(3)}{match.group(4)}{ending}"
+        return ''.join(rows)
+
+    try:
+        outcome = _rewrite_usage_log_safely(_tick)
+    except Exception as exc:  # the service refuses rather than writes unsafely
+        return {'status': 'unavailable', 'feature': feature, 'reason': str(exc)}
+
+    if outcome.get('status') == 'unchanged':
+        return {'status': 'already_marked', 'feature': feature, 'label': label}
+    return {'status': 'marked', 'feature': feature, 'label': label}
 
 
 def check_consent() -> str:
@@ -541,63 +681,42 @@ def fire_event(
 
 
 def update_consent(decision: str):
-    """
-    Update usage_log.md with consent decision.
-    
+    """Record a consent decision in usage_log.md.
+
+    Goes through the same lifecycle operation as a feature tick. That is what
+    makes the concurrency guarantee real: two direct writers to one file can
+    each read, modify and write a whole file and silently lose the other's
+    change, and consent is the half you least want to lose.
+
     Args:
         decision: 'opted-in' or 'opted-out'
     """
-    usage_path = get_vault_path() / 'System' / 'usage_log.md'
-    if not usage_path.exists():
-        return
-    
-    with open(usage_path, 'r') as f:
-        content = f.read()
-    
     today = datetime.now().strftime('%Y-%m-%d')
-    
-    # Update consent fields
-    content = re.sub(
-        r'\*\*Consent asked:\*\* \w+',
-        '**Consent asked:** true',
-        content
-    )
-    content = re.sub(
-        r'\*\*Consent decision:\*\* [\w-]+',
-        f'**Consent decision:** {decision}',
-        content
-    )
-    content = re.sub(
-        r'\*\*Consent date:\*\* .+',
-        f'**Consent date:** {today}',
-        content
-    )
-    
-    with open(usage_path, 'w') as f:
-        f.write(content)
 
+    def _apply(current: str) -> Optional[str]:
+        updated = re.sub(
+            r'\*\*Consent asked:\*\* \w+',
+            '**Consent asked:** true',
+            current,
+        )
+        updated = re.sub(
+            r'\*\*Consent decision:\*\* [\w-]+',
+            f'**Consent decision:** {decision}',
+            updated,
+        )
+        updated = re.sub(
+            r'\*\*Consent date:\*\* .+',
+            f'**Consent date:** {today}',
+            updated,
+        )
+        return updated
 
-def mark_feature_used(feature_name: str):
-    """Mark a feature as used in usage_log.md."""
-    usage_path = get_vault_path() / 'System' / 'usage_log.md'
-    if not usage_path.exists():
+    try:
+        _rewrite_usage_log_safely(_apply)
+    except Exception:
+        # Preserve the prior contract: this returned silently when the log was
+        # missing or unwritable, and callers do not check a result.
         return
-    
-    with open(usage_path, 'r') as f:
-        content = f.read()
-    
-    # Find and check the checkbox for this feature
-    # Pattern: - [ ] Feature name... → - [x] Feature name...
-    pattern = rf'- \[ \] ([^(\n]*{re.escape(feature_name)}[^(\n]*)'
-    
-    def replace_checkbox(match):
-        return f'- [x] {match.group(1)}'
-    
-    new_content = re.sub(pattern, replace_checkbox, content, flags=re.IGNORECASE)
-    
-    if new_content != content:
-        with open(usage_path, 'w') as f:
-            f.write(new_content)
 
 
 # Event name constants for consistency
