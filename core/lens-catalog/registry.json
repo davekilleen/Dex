@@ -1,6 +1,6 @@
 {
   "registry_version": 1,
-  "catalog_version": 5,
+  "catalog_version": 6,
   "jobs": [
     {
       "job_id": "capture-without-friction",

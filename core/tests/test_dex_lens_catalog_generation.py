@@ -741,7 +741,7 @@ def test_signed_enriched_release_path_emits_catalogue_version_six(
     ]
     assert sorted(path.name for path in tmp_path.iterdir()) == expected
     envelope = json.loads((tmp_path / "dex-lens-catalog-latest.json").read_text())
-    assert envelope["metadata"]["catalog_version"] == 6
+    assert envelope["metadata"]["catalog_version"] == 7
     assert envelope["metadata"]["producer"] == (
         f"Dex Core enriched release pipeline v{release_version}"
     )
@@ -767,7 +767,7 @@ def test_corrected_catalogue_has_complete_truthful_identity_sets(
     entries = envelope["catalogue"]["capabilities"]
     by_id = {entry["capability_id"]: entry for entry in entries}
 
-    assert envelope["metadata"]["catalog_version"] == 6
+    assert envelope["metadata"]["catalog_version"] == 7
     assert len(entries) == len(by_id) == 117
     assert "connect" not in by_id
     assert by_id["dex-pipedrive-mcp"]["tool_count"] == 15
@@ -1352,7 +1352,7 @@ def test_real_registry_annotates_the_complete_active_set_and_marks_dormant_entri
     active_entries = [entry for entry in registry["entries"] if entry["availability"] == "active"]
     dormant_entries = [entry for entry in registry["entries"] if entry["availability"] == "dormant"]
 
-    assert registry["catalog_version"] == 5
+    assert registry["catalog_version"] == 6
     assert tuple(job["job_id"] for job in registry["jobs"]) == CANONICAL_JOB_IDS
     assert len(registry["entries"]) == 96
     assert len(active_entries) == 67
@@ -1368,7 +1368,7 @@ def test_wave3_source_partition_is_exact_and_resolves_to_unique_targets() -> Non
     by_id = {entry["id"]: entry for entry in registry["entries"]}
     wave3 = [by_id[entry_id] for entry_id in WAVE3_IDS]
 
-    assert registry["catalog_version"] == 5
+    assert registry["catalog_version"] == 6
     assert len(registry["jobs"]) == 8
     assert len(registry["entries"]) == 96
     assert tuple(entry["id"] for entry in wave3) == WAVE3_IDS
