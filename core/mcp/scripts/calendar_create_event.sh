@@ -20,8 +20,13 @@ osascript << EOF
 tell application "Calendar"
     set targetCal to calendar "$CALENDAR_NAME"
     
-    -- Build the date
+    -- Build the date.
+    -- Set the day to 1 first. AppleScript dates overflow rather than clamp, so
+    -- setting the month while the day is still today's can roll into the month
+    -- after the one asked for: on the 31st, setting month to September gives
+    -- 1 October, and the following "set day" then lands in October.
     set startDate to current date
+    set day of startDate to 1
     set year of startDate to $YEAR
     set month of startDate to $MONTH
     set day of startDate to $DAY
