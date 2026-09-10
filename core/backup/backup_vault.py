@@ -319,6 +319,40 @@ def _add_runbook(tar: tarfile.TarFile, vault: Path,
     tar.addfile(info, io.BytesIO(payload))
 
 
+def _add_vault_tree(tar: tarfile.TarFile, vault: Path, escaping: list[str],
+                    unreadable: list[str]) -> int:
+    """Add the vault to the archive one entry at a time; return how many files went in.
+
+    `tar.add(vault)` walks the whole tree inside one call, so the first file the
+    process is not allowed to read raises out of it and the archive is
+    abandoned with everything else unwritten. Adding entry by entry turns that
+    one file into a recorded gap instead of a lost night. The exclusion filter
+    is applied per entry exactly as before, and excluded directories are not
+    descended.
+    """
+    apply = _collecting_tar_filter(escaping)
+    added = 0
+    tar.add(vault, arcname=ARCNAME, recursive=False, filter=apply)
+    for root, dirs, files in os.walk(vault):
+        rel_root = Path(root).relative_to(vault)
+        dirs.sort()
+        files.sort()
+        dirs[:] = [d for d in dirs
+                   if not excluded(str(PurePosixPath(*(rel_root / d).parts)))]
+        for name in dirs + files:
+            path = Path(root) / name
+            relative = PurePosixPath(*(rel_root / name).parts)
+            try:
+                tar.add(path, arcname=f"{ARCNAME}/{relative}", recursive=False,
+                        filter=apply)
+            except OSError:
+                unreadable.append(str(relative))
+                continue
+            if path.is_file() and not path.is_symlink():
+                added += 1
+    return added
+
+
 def build_artifacts(vault: Path, workdir: Path, stamp: str,
                     warnings: list[str] | None = None) -> list[Path]:
     """Build the archive, the verified git bundle, and the checksum sidecar.
@@ -328,12 +362,31 @@ def build_artifacts(vault: Path, workdir: Path, stamp: str,
     warning, instead of aborting the run and storing nothing at all: a vault
     whose git repository has no commits yet, or is damaged, would otherwise
     get no backup whatsoever. An unverified bundle is never shipped.
+
+    The same rule applies inside the archive. A single file the scheduled
+    process cannot read (a per-file access list on an image saved by a
+    sandboxed app was the real case) must cost that file, not the whole
+    night's backup: it is skipped, named in a recorded warning, and the run
+    still stores everything else. Only a vault with nothing readable at all
+    fails the run.
     """
     archive = workdir / f"{PREFIX}{stamp}.tar.gz"
     escaping: list[str] = []
+    unreadable: list[str] = []
     with tarfile.open(archive, "w:gz") as tar:
-        tar.add(vault, arcname=ARCNAME, filter=_collecting_tar_filter(escaping))
+        added = _add_vault_tree(tar, vault, escaping, unreadable)
         _add_runbook(tar, vault, warnings)
+    if added == 0:
+        raise RuntimeError(
+            "nothing in the vault could be read, so no archive was written"
+            + (f" ({len(unreadable)} entries refused)" if unreadable else ""))
+    if unreadable and warnings is not None:
+        shown = ", ".join(sorted(unreadable)[:5])
+        warnings.append(
+            f"{len(unreadable)} file(s) could not be read by the backup process "
+            f"and are missing from this set ({shown}); everything else is "
+            "backed up. Check the file's permissions, or whether macOS is "
+            "restricting the backup job's access to it")
     if escaping and warnings is not None:
         shown = ", ".join(sorted(escaping)[:5])
         warnings.append(

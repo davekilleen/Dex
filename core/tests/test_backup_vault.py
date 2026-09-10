@@ -4,6 +4,7 @@ All filesystem-only: no network, and every rclone interaction is mocked.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -470,6 +471,49 @@ def test_links_pointing_outside_the_vault_are_reported_at_backup_time(vault, tmp
     warnings = read_stamp(vault)["warnings"]
     assert any("point outside it" in warning for warning in warnings)
     assert any("linked.md" in warning for warning in warnings)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read anything")
+def test_one_unreadable_file_costs_that_file_not_the_backup(vault, tmp_path):
+    """A scheduled run that cannot read one file must still store the rest.
+
+    The real case: an image saved by a sandboxed app carried a per-file access
+    list, the launchd job got "Operation not permitted" on it, and because the
+    whole vault went in through one tar.add() the night stored nothing.
+    """
+    blocked = vault / "05-Areas" / "People" / "blocked.jpeg"
+    blocked.write_bytes(b"\xff\xd8")
+    blocked.chmod(0)
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    try:
+        assert backup_vault.run_backup(vault) == 0
+    finally:
+        blocked.chmod(0o644)
+
+    stamp = read_stamp(vault)
+    assert stamp["ok"] is True
+    assert any("could not be read" in w and "blocked.jpeg" in w
+               for w in stamp["warnings"])
+    with tarfile.open(dest / f"{backup_vault.PREFIX}{stamp['set']}.tar.gz") as tar:
+        names = tar.getnames()
+    assert f"{backup_vault.ARCNAME}/05-Areas/People/Ada_Lovelace.md" in names
+    assert f"{backup_vault.ARCNAME}/05-Areas/People/blocked.jpeg" not in names
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read anything")
+def test_a_vault_with_nothing_readable_fails_loudly(tmp_path):
+    root = tmp_path / "vault"
+    (root / "notes").mkdir(parents=True)
+    (root / "notes" / "a.md").write_text("a")
+    (root / "notes" / "a.md").chmod(0)
+    (root / "notes").chmod(0)
+    try:
+        with pytest.raises(RuntimeError, match="nothing in the vault could be read"):
+            backup_vault.build_artifacts(root, tmp_path, "20260711-020000", [])
+    finally:
+        (root / "notes").chmod(0o755)
+        (root / "notes" / "a.md").chmod(0o644)
 
 
 def test_a_vault_without_stray_links_records_no_warnings(vault, tmp_path):
