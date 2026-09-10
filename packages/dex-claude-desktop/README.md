@@ -1,7 +1,7 @@
 # Dex for Claude Desktop
 
-This source directory becomes the unreleased `dex-claude-desktop.mcpb` local
-extension. It exposes four read-only Dex MCP tools and asks the user to select
+This source directory builds the `dex-claude-desktop.mcpb` local extension
+distributed with v1.97.13. It exposes four read-only Dex MCP tools and asks the user to select
 their Dex folder during installation. Claude Desktop chat does not run lifecycle
 hooks, so this artifact makes no hook or automatic-safety claim.
 
@@ -22,4 +22,4 @@ artifact.
 
 To test the reviewed artifact without publishing it, open Claude Desktop and use
 **Settings > Extensions > Advanced settings > Install Extension**. Select the
-Dex folder when prompted. This developer-preview journey is not a release.
+Dex folder when prompted. Artifact publication is distinct from this still-unverified native install journey.

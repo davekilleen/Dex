@@ -1,5 +1,7 @@
 # Dex: Jobs to Be Done
 
+Your vault holds the durable work; your chosen AI app helps you use it. The outcomes below describe the full Dex setup, not a guarantee that every app can perform every step. See [app and vault choice](../../README.md) and [capability modes](../../docs/HARNESS-PORTABILITY.md#capability-truth). New-app install and workflow support remains unverified even though portable package files are distributed in v1.97.13.
+
 **What this system actually does, and why each piece exists.**
 
 This document explains the purpose behind your Dex system. If you're new to the system, start here to understand what problems it solves. As you customize and extend Dex, this document evolves with you.
@@ -12,13 +14,13 @@ This document explains the purpose behind your Dex system. If you're new to the 
 
 A personal knowledge system that handles the cognitive overhead of professional life. Notes find their home. Tasks don't slip through cracks. People stay tracked. Your days start focused and end with reflection.
 
-The AI (Claude) acts as your knowledge assistant - helping you capture, organize, and act on information without drowning in process.
+Your chosen AI assistant acts as your knowledge assistant - helping you capture, organize, and act on information without drowning in process.
 
 ### What Makes It Different
 
 Traditional note systems are passive filing cabinets. Dex is active:
 
-- **AI-augmented**: Claude helps process, organize, and surface information
+- **AI-augmented**: Dex helps process, organize, and surface information
 - **Workflow-driven**: Commands guide you through daily and weekly rhythms
 - **Task-aware**: MCP server ensures tasks are validated, deduplicated, and prioritized
 - **Adaptable**: Pillars and structure customize to your role and priorities
@@ -43,13 +45,13 @@ Each job represents something that needs to happen reliably. The system exists t
 
 | Component | What It Does |
 |-----------|--------------|
-| Conversational capture | Just tell Claude things naturally - "Sarah worried about timeline but interested in Q2 pilot" |
+| Conversational capture | Tell Dex things naturally - "Sarah worried about timeline but interested in Q2 pilot" |
 | Strategic routing | Uses your Week Priorities and Quarterly Goals to suggest routing in real-time |
-| Immediate suggestions | Claude: "Should I add this to Sarah's person page and Q2 Planning project?" |
+| Immediate suggestions | Dex: "Should I add this to Sarah's person page and Q2 Planning project?" |
 | Work MCP for tasks | "Create task to finalize pricing" → validates, checks duplicates, writes to Tasks.md |
 | `/triage` for cleanup | Finds orphaned files and scattered tasks, routes strategically |
 
-**Example Flow**: You mention "Sarah seemed worried about timeline but interested in Q2 pilot". Claude immediately suggests: "I see you have 'Sarah's team onboarding' and 'Q2 Planning' in your Week Priorities. Should I add this to Sarah's person page and the Q2 Planning project?" You approve, it's filed. One decision, instant routing.
+**Example Flow**: You mention "Sarah seemed worried about timeline but interested in Q2 pilot". Dex suggests: "I see you have 'Sarah's team onboarding' and 'Q2 Planning' in your Week Priorities. Should I add this to Sarah's person page and the Q2 Planning project?" You approve, it's filed. One decision, instant routing.
 
 ---
 
@@ -83,7 +85,7 @@ Each job represents something that needs to happen reliably. The system exists t
 |-----------|--------------|
 | `People/` folder | One page per person with aggregated context |
 | `Companies/` folder | Organization-level aggregation of people, meetings, tasks |
-| Person lookup skill | Claude checks People folder first before any search |
+| Person lookup skill | Dex checks the People folder first before any search |
 | Meeting capture | Identifies people mentioned, updates their pages |
 | `/meeting-prep` command | Surfaces context about attendees before calls |
 | `refresh_company` tool | Pulls all related context into company page |
@@ -127,16 +129,17 @@ For organization-level context, check company pages in `05-Areas/Companies/`. Sh
 |-----------|--------------|
 | `/journal` command | Morning, evening, or weekly reflection prompts |
 | `/review` command | End-of-day synthesis of what happened, captures learnings |
-| `/week` command | Weekly pattern recognition and planning |
-| Background changelog monitor | Checks every 6 hours for Claude updates, alerts you automatically |
+| `/week-review` command | Review accomplishments and patterns from the week |
+| `/week-plan` command | Set priorities for the week ahead |
+| Background changelog monitor | Installed macOS job checks every 6 hours for Claude Code updates; configured session hooks deliver the notice |
 | Learning review prompts | Daily check: when 5+ learnings pending, reminds you to review |
 | `Mistake_Patterns.md` | Logged mistakes become rules that prevent repetition |
 | `Working_Preferences.md` | Collaboration style captured and applied consistently |
-| Session learnings capture | Automatic logging in `System/Session_Learnings/` |
+| Session learnings capture | Logging in `System/Session_Learnings/` through configured Claude Code hooks; guided capture elsewhere |
 
 **v1.11.0**: Learning heartbeat now focused on operational knowledge only. Preferences are handled by Claude's built-in memory, so session learnings are cleaner and less noisy.
 
-**Example Flow**: Friday afternoon, run `/week`. Dex synthesizes the week: themes that emerged, energy patterns (what energized vs drained you), progress by project, questions that came up. You spot a pattern - every meeting with Team X drains energy. That's useful data for next week's planning.
+**Example Flow**: Friday afternoon, run `/week-review`. Dex synthesizes the week: themes that emerged, energy patterns (what energized vs drained you), progress by project, questions that came up. You spot a pattern - every meeting with Team X drains energy. That's useful data for next week's planning with `/week-plan`.
 
 During the week, you mentioned "I prefer summaries in bullet points." Dex captured this in Session_Learnings and now asks: "You've mentioned this preference 3 times. Add to Working_Preferences.md so all future summaries use bullets?"
 
@@ -333,7 +336,7 @@ This document evolves as your Dex grows. When you:
 - Build automations, document what job they address
 - Discover workflow gaps, that might be a job waiting to be served
 
-The Documentation Sync behavior in CLAUDE.md ensures this stays current.
+Maintainers keep this guide aligned with shipped behavior; app instructions do not prove automatic documentation updates.
 
 ---
 

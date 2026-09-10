@@ -1,5 +1,7 @@
 # Named Sessions
 
+**Claude Code-specific.** The `/rename` and `claude --resume` examples below use Claude Code's conversation store. They are not portable Dex commands. In another app, use that app's conversation controls; only work explicitly saved in the vault is shared. New-app session continuity remains unverified.
+
 Pick up exactly where you left off. Named sessions keep full conversation history so you never re-explain context.
 
 ---

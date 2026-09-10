@@ -1,5 +1,11 @@
 # Dex System Guide
 
+Dex is one personal system: your notes, priorities and saved work live in the vault; your AI app connects to it. Start with [choose your app and vault](../../README.md), then ask for one useful outcome: "Plan my day from my priorities and tasks; tell me which sources you can read."
+
+**Scope:** the complete workflows below describe the established full-vault setup, with Claude Code-specific automation named where used. Slash commands require the corresponding installed skill and tools. A portable skill file alone does not supply task writes, meeting follow-through, Doctor or updates. The v1.97.13 portable package is distributed; complete supported new-app journeys remain unverified. See [app capabilities](../../docs/HARNESS-PORTABILITY.md#capability-truth).
+
+Automatic means a configured, trusted event runs the behavior; on demand means you ask; guided means you complete explicit steps; unavailable means the surface cannot deliver it. Missing sources or services must be reported before claiming an outcome.
+
 **Personal Reference** — Full documentation for your Dex knowledge system.
 
 ---
@@ -8,7 +14,7 @@
 
 ```
 Morning    → Run /daily-plan for context-aware daily planning
-During day → Just tell Claude things - it routes them intelligently
+During day → Tell Dex things - it routes them intelligently
 After mtgs → Dex extracts action items and updates person pages
 As needed  → /triage finds orphaned files and scattered tasks
 End of day → Run /daily-review
@@ -29,13 +35,13 @@ End of week → Run /week-review
 
 **Conversational Capture:**
 
-Just tell Claude things naturally:
+Tell Dex things naturally:
 
 | What You Do | What Happens |
 |-------------|--------------|
-| "Sarah was worried about timeline but interested in Q2 pilot" | Claude suggests: "Add to Sarah's person page and Q2 Planning project?" |
+| "Sarah was worried about timeline but interested in Q2 pilot" | Dex suggests: "Add to Sarah's person page and Q2 Planning project?" |
 | "Create a task to finalize mobile app pricing" | Work MCP validates, checks duplicates, writes to Tasks.md |
-| "Random idea: could we automate weekly reports?" | Claude suggests where to file it based on your priorities |
+| "Random idea: could we automate weekly reports?" | Dex suggests where to file it based on your priorities |
 
 The system uses your Week Priorities and Quarterly Goals to route intelligently in real-time.
 
@@ -59,7 +65,7 @@ Creates reflection on:
 ### End of Week
 
 ```
-/week
+/week-review
 ```
 
 Creates weekly synthesis:
@@ -82,8 +88,8 @@ All skills are documented in detail in the **Skills System** section below. Here
 2. Optional: `/meeting-prep` — Prepare for first meeting
 
 **During Day:**
-- Tell Claude things naturally → it routes intelligently based on your priorities
-- "Sarah worried about timeline" → Claude suggests person page + project routing
+- Tell Dex things naturally → it routes intelligently based on your priorities
+- "Sarah worried about timeline" → Dex suggests person page + project routing
 - "Create task to finalize pricing" → Work MCP validates and adds to Tasks.md
 
 **End of Day:**
@@ -183,7 +189,7 @@ Triage is a cleanup tool that finds orphaned files and scattered tasks, then rou
 - Scattered `- [ ]` tasks across multiple notes
 - Periodic cleanup and routing
 
-**Note:** For most capture, just tell Claude things conversationally. Triage is for cleanup, not primary workflow.
+**Note:** For most capture, just tell Dex things conversationally. Triage is for cleanup, not primary workflow.
 
 ### How It Works
 
@@ -450,7 +456,7 @@ Dex checks if Anthropic has released new Claude Code features. When it finds som
 **Learning Review Prompts (daily at 5pm)**  
 As you work, Dex captures learnings in `System/Session_Learnings/`. When you accumulate 5+ learnings that haven't been reviewed yet, Dex reminds you: "📚 You have 7 pending learnings from this week. Worth reviewing?"
 
-Both happen automatically with no action from you. The system stays current on its own.
+These checks depend on the separately installed schedules and Claude Code notification hooks. A portable plugin installation starts neither; ask for a review where automatic delivery is unavailable.
 
 ### Learning Files
 
@@ -492,18 +498,18 @@ With automation, Dex nudges you at the right time. The system improves itself th
 
 **The Problem:** You're reading a meeting note that mentions "Sarah." Who is Sarah? What did you discuss last time? What's she working on?
 
-**What Dex Does:** Automatically loads relevant context in the background so you don't have to go hunting for it.
+**In configured Claude Code:** read hooks supply relevant context. Other surfaces can request person context on demand if that tool is registered; company injection is not part of the four-tool portable package.
 
 ### Smart Context Loading
 
 When you're reading any file that mentions people or companies, Dex quietly:
 - Looks up their person page or company page
 - Loads recent meeting history, action items, and relationship notes
-- Makes that information available to Claude in the background
+- Makes that information available to your assistant in the background
 
 This context comes from the real person and company pages in your vault. In Obsidian mode, names in meeting notes are linked to those pages using their actual paths, so a link always opens the page Dex found.
 
-You don't see any headers or popups - it just works. When you ask "What did Sarah and I discuss last week?", Claude already knows because it loaded her context automatically.
+You don't see any headers or popups - it just works. When you ask "What did Sarah and I discuss last week?", Dex can use the context supplied by the configured Claude Code hook.
 
 **Example:** You open a meeting note from a customer call. The note mentions "Acme Corp." Dex automatically loads the Acme Corp company page, sees you've had 5 meetings with them in the past month, notices there are 3 open action items, and uses that context to help you prepare better.
 
@@ -784,7 +790,7 @@ Skills are reusable AI workflows invoked with `/skill-name`. All skills follow t
 
 ### How Skills Work
 
-Skills define consistent behaviors Claude follows. When you type `/skill-name`, Claude reads the skill file at `.claude/skills/[skill-name]/SKILL.md` and follows its instructions.
+Skills define workflows for your assistant. Where slash commands are supported, your assistant loads the installed skill and follows its instructions. The canonical source is `.claude/skills/[skill-name]/SKILL.md`; generated copies serve other apps.
 
 ---
 
@@ -846,7 +852,7 @@ Meetings with attendees from these email domains will appear in Meeting History.
 
 ### How Skills Work
 
-Skills define consistent behaviors Claude follows. When a skill is relevant, Claude applies its protocol automatically.
+Skills define workflows for your assistant. Discovery and invocation depend on the app; confirm the skill and its required tools are available.
 
 ---
 
@@ -1170,7 +1176,7 @@ Complexity scales with your organization size (set during onboarding):
 
 ## Maintenance
 
-This guide stays current through the Documentation Sync behavior in CLAUDE.md. When significant system changes happen (new commands, behaviors, workflows), this guide updates automatically.
+Maintainers update this guide when shipped behavior changes and copy it byte-for-byte to the compatibility documentation tree. An instruction in CLAUDE.md is not evidence that documentation updated itself.
 
 **Rule of thumb**: If someone reading only this guide would miss something important about how to use the system, it needs updating.
 

@@ -1,5 +1,7 @@
 # Connect Google Calendar to Dex (Mac)
 
+**Execution boundary:** this route uses macOS Calendar permissions in the app/runtime that actually runs Dex. A plugin or folder grant alone does not grant calendar access. The portable read-only package does not bundle the calendar integration; new-app calendar journeys need their own verification.
+
 This guide is for **Mac users** who use **Google Calendar** and want Dex to show their real meetings—including recurring ones like weekly 1:1s—when they run `/daily-plan` or ask "what's on my calendar today?"
 
 **Windows users:** Calendar connection is supported on Mac via Apple Calendar. This repo doesn't include Windows instructions yet.

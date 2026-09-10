@@ -1,5 +1,7 @@
 # Dex Folder Structure (PARA Method)
 
+The vault layout is shared across apps. Open the existing vault when changing apps; do not recreate it. Product instructions such as `CLAUDE.md` belong to a specific app surface, while your notes, people, tasks and priorities remain yours. Automatic filing and scheduled work below require their configured full-vault services; a portable plugin alone does not enable them.
+
 Dex uses the PARA method for organization: **Projects**, **Areas**, **Resources**, and **Archives**.
 
 ## What is PARA?
@@ -165,7 +167,7 @@ Archives = historical record, rarely consulted
 
 ### Auto-Archiving
 
-Plans and reviews automatically move here:
+Configured archive workflows move plans and reviews here:
 - Daily reviews → after `/daily-review` runs
 - Weekly plans → after `/week-plan` runs
 - Weekly reviews → after `/week-review` runs
@@ -234,7 +236,7 @@ System/
 
 Most users won't edit this directly—Dex manages it. But when you want to adjust strategic direction or preferences, the key files are here.
 
-**Background automation:** Dex also includes scripts in `.scripts/` that run automatically:
+**Background automation:** Dex includes scripts in `.scripts/` that run after their operating-system jobs have been separately installed and enabled:
 - `meeting-intel/sync-from-granola.cjs` — Syncs meetings, records attendee emails and locations, creates or suggests eligible people and companies, and verifies entity coverage. In Obsidian mode, names link to their actual person pages.
 - `check-anthropic-changelog.cjs` — Checks for Claude updates every 6 hours
 - `learning-review-prompt.sh` — Daily 5pm check for pending learnings
