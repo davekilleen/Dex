@@ -19,6 +19,28 @@ else
     PYTHON="python3"
 fi
 
+# Make node discoverable, the same way PYTHON is resolved above.
+#
+# smoke.py syntax-checks Dex's .cjs hooks with node, and finds node by looking
+# on the inherited PATH. launchd hands a scheduled job a minimal PATH that does
+# not include either Homebrew prefix, so on a normal Mac node is invisible here
+# even though it works in every terminal. The hooks journey then reports
+# UNKNOWN rather than BROKEN, so nightly hook checking can be dead for months
+# without anything looking wrong.
+#
+# Appending is deliberate: anything already on PATH keeps priority, and the
+# validated-tool checks in core/utils/release_channel.py still decide what is
+# safe to use. This only widens where node may be found, never what is trusted.
+if ! command -v node >/dev/null 2>&1; then
+    for NODE_DIR in /opt/homebrew/bin /usr/local/bin; do
+        if [ -x "$NODE_DIR/node" ]; then
+            PATH="$PATH:$NODE_DIR"
+            export PATH
+            break
+        fi
+    done
+fi
+
 cd "$VAULT_PATH"
 set +e
 VAULT_PATH="$VAULT_PATH" "$PYTHON" core/utils/smoke.py --json --ledger
