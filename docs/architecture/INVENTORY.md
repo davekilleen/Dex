@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 077470ce94098fdff890e9ba12a1829b5899c70a988a877fe097dde53265bf29 -->
+<!-- Content SHA-256: e35c70deb42983c8277d558a0ffec641fe4cd32b08a56311ac5c97164ea74a99 -->
 
 # Architecture Inventory
 
@@ -116,7 +116,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `weekly-reflection` | `.claude/skills/weekly-reflection/SKILL.md` | A short guided reflection on what energized you, what drained you, and one change for next week. Use when the user wants to reflect on how work *felt*, not what got done — 'reflect on my week', 'what's draining me'. Not for progress-and-goals tracking; use `week-review`. | 271 | when |
 | `wispr-setup` | `.claude/skills/wispr-setup/SKILL.md` | Connect Wispr Flow so meeting captures arrive in your vault on their own. Use when the user says 'connect Wispr', 'set up Wispr Flow', 'my Wispr meetings aren't in Dex'. Not for Granola; use `granola-setup`. Not for processing meetings already in the vault; use `process-meetings`. | 281 | when |
 | `xray` | `.claude/skills/xray/SKILL.md` | Explain what just happened under the hood — the context, MCP tools, and hooks behind Dex's last response — as AI education. Use when the user says 'how did you do that', 'what just happened', 'explain the mechanics'. Not for a system health check; use `dex-doctor`. | 265 | when |
-| `zoom-setup` | `.claude/skills/zoom-setup/SKILL.md` | Connect Zoom for meeting recordings, scheduling and transcript context. Use when the user says 'connect Zoom', 'pull my Zoom recordings'. Not for Granola-sourced notes; use `granola-setup`. Not for Teams; use `ms-teams-setup`. | 226 | when |
+| `zoom-setup` | `.claude/skills/zoom-setup/SKILL.md` | Connect the official Zoom for Claude connector for meeting recordings, transcripts, AI summaries, cloud-recording lists and Zoom Chat/Canvas search. Use when the user says 'connect Zoom', 'pull my Zoom recordings', 'search my Zoom meetings'. Not for Granola-sourced notes; use `granola-setup`. Not for Teams; use `ms-teams-setup`. | 330 | when |
 
 ## MCP-to-skill connectedness
 
