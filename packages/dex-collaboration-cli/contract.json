@@ -1,0 +1,23 @@
+{
+  "schema": "dex-collaboration-cli-source/1",
+  "artifact_id": "dex-core-collaboration-cli",
+  "buzz_repository": "https://github.com/block/buzz.git",
+  "buzz_revision": "b2ac66cde81df7ce1afc50016e1571cb6e8b7779",
+  "commands": [
+    "identity create",
+    "rooms list",
+    "rooms create",
+    "post",
+    "timeline"
+  ],
+  "runtime_entries": [
+    "bin/core",
+    "libexec/buzz",
+    "libexec/buzz-admin"
+  ],
+  "service_boundary": {
+    "environment": "BUZZ_RELAY_URL",
+    "default": "ws://127.0.0.1:34000",
+    "provided_by": "the packaged Dex collaboration service"
+  }
+}

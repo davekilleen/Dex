@@ -1,0 +1,109 @@
+name: B5 Core collaboration artifact
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packages/dex-collaboration-cli/**
+      - .github/workflows/b5-core-collaboration-artifact.yml
+  push:
+    branches:
+      - main
+    paths:
+      - packages/dex-collaboration-cli/**
+      - .github/workflows/b5-core-collaboration-artifact.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b5-core-collaboration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: ${{ matrix.os }} native artifact
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: Dex
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - macos-14
+
+    steps:
+      - name: Check out Dex Core
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: Dex
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Check out pinned Buzz runtime source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: block/buzz
+          ref: b2ac66cde81df7ce1afc50016e1571cb6e8b7779
+          path: Buzz
+          persist-credentials: false
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Check source contract
+        shell: bash
+        env:
+          DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          DEX_TEST_BUZZ_LAUNCHER_SOURCE: ${{ github.workspace }}/Buzz
+        run: |
+          "$DEX_PYTHON" packages/dex-collaboration-cli/tests/test_artifact_contract.py
+          /bin/bash -n packages/dex-collaboration-cli/src/core
+          "$DEX_PYTHON" -m py_compile packages/dex-collaboration-cli/*.py
+
+      - name: Build pinned native artifact
+        id: build
+        shell: bash
+        env:
+          DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          output="$RUNNER_TEMP/dex-core-collaboration"
+          build_json="$("$DEX_PYTHON" packages/dex-collaboration-cli/build_artifact.py \
+            --buzz-source "$GITHUB_WORKSPACE/Buzz" \
+            --jobs 6 \
+            --output "$output")"
+          printf '%s\n' "$build_json"
+          artifact_dir="$("$DEX_PYTHON" -c \
+            'import json,sys; print(json.loads(sys.argv[1])["artifact_dir"])' \
+            "$build_json")"
+          archive="$("$DEX_PYTHON" -c \
+            'import json,sys; print(json.loads(sys.argv[1])["archive"])' \
+            "$build_json")"
+          printf 'artifact_dir=%s\n' "$artifact_dir" >> "$GITHUB_OUTPUT"
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Verify extracted artifact and archive
+        shell: bash
+        env:
+          DEX_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+          ARTIFACT_DIR: ${{ steps.build.outputs.artifact_dir }}
+          ARCHIVE: ${{ steps.build.outputs.archive }}
+        run: |
+          env PATH= "$DEX_PYTHON" packages/dex-collaboration-cli/verify_artifact.py "$ARTIFACT_DIR"
+          env PATH= "$DEX_PYTHON" packages/dex-collaboration-cli/verify_artifact.py "$ARCHIVE"
+
+      - name: Upload CI-only native artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dex-core-collaboration-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            ${{ steps.build.outputs.archive }}
+            ${{ steps.build.outputs.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 14
