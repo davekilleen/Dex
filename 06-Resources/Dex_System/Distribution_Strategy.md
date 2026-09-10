@@ -273,9 +273,9 @@ Since CLAUDE.md is central and users might customize it:
 
 **Recommended:**
 - Point users to override pattern (`CLAUDE-custom.md`)
-- During conflict, examine both versions
-- If user made significant changes, suggest moving them to `CLAUDE-custom.md`
-- Then accept upstream version of `CLAUDE.md`
+- Leave the live `CLAUDE.md` unchanged while the conflict is unresolved
+- Review the whole file through `/dex-update` Compare and conflict choices
+- Do not move individual differing lines or accept an upstream version directly
 
 This prevents future conflicts while preserving user customizations.
 

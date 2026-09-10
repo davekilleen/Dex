@@ -143,3 +143,35 @@ def test_session_continuity_survives_claude_template_composition(
 
     assert invariant in " ".join(composed.split())
     assert "Personal instructions." in composed
+
+
+def test_shipped_skills_never_turn_instruction_diffs_into_movable_orphans() -> None:
+    boundary = (
+        "`CLAUDE.md` differences are file-level evidence, never an orphan-line list. "
+        "Do not tell the user to move any differing line into `CLAUDE-custom.md`."
+    )
+
+    for skill_path in (
+        ".claude/skills/dex-doctor/SKILL.md",
+        ".claude/skills/dex-update/SKILL.md",
+    ):
+        skill = (REPO_ROOT / skill_path).read_text(encoding="utf-8")
+        assert boundary in " ".join(skill.split()), skill_path
+
+
+def test_current_changelog_never_prescribes_line_level_instruction_moves() -> None:
+    changelog = " ".join((REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split())
+
+    assert "review the whole file through `/dex-update` Compare and conflict choices" in changelog
+    assert "move those lines into the protected block" not in changelog
+    assert "offer to move them into your protected block" not in changelog
+    assert "offers to move them into your protected block" not in changelog
+    assert "The original v1.97.8 line-level remediation is obsolete" in changelog
+
+    for strategy_path in (
+        "docs/Dex_System/Distribution_Strategy.md",
+        "06-Resources/Dex_System/Distribution_Strategy.md",
+    ):
+        strategy = " ".join((REPO_ROOT / strategy_path).read_text(encoding="utf-8").split())
+        assert "suggest moving them to `CLAUDE-custom.md`" not in strategy, strategy_path
+        assert "Review the whole file through `/dex-update` Compare and conflict choices" in strategy

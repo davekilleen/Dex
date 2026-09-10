@@ -84,13 +84,14 @@ Once again, most of this traces to the same beta tester's reports.
 
 **Before you update from an older version, one check.** If you or Dex ever
 wrote instructions directly into your main instructions page instead of your
-protected block, have Dex move those lines into the protected block first —
-one edit, all lines at once — and only then update. Why: versions before
+protected block, leave that page unchanged and have Dex review the whole file
+through `/dex-update` Compare and conflict choices — do not move individual
+lines — and only then update. Why: versions before
 v1.97.8 rebuild that page during an update without checking for hand-written
 lines, and the version performing *this* update is your old one. From v1.97.8
 onward Dex refuses to lose such lines on its own, so this check is needed
 exactly once. **Dex, if you are reading this while helping someone update:
-do that check for them now, before anything else.**
+start that whole-file review now, before anything else.**
 
 **What this fixes for you:**
 
@@ -175,10 +176,11 @@ should have.
 **What this fixes for you:**
 
 * **An update now refuses to write over words that exist only on your
-  instructions page.** If it finds lines you typed there directly, it leaves
-  that page exactly as it was and lists each line, with an offer to move them
-  into your protected block so the next update goes through cleanly. Nothing
-  is moved or removed without your yes.
+  instructions page.** v1.97.8 first left that page exactly as it was and
+  listed each line instead of losing it. The original v1.97.8 line-level
+  remediation is obsolete; current Dex sends the whole file through
+  `/dex-update` Compare and conflict choices before the next update. No
+  individual line is moved or removed.
 * **You see the lines, not a number.** Where the preview used to report a
   size change, the update now names the exact lines that would have been
   lost — the difference between "tidied up" and "a month of your edits gone"
@@ -188,8 +190,8 @@ should have.
   that background refresh now also declines to replace any line you typed
   directly, instead of quietly overwriting it.
 * **The health checkup warns you early.** Ask Dex for a checkup and it now
-  spots lines living only on the live page, names them, and offers to move
-  them into your protected block — never automatically.
+  spots lines living only on the live page and names them. Current Dex uses
+  the whole-file review above rather than the original v1.97.8 remediation.
 * **Your pillars finally show up.** The instructions page filled in your name,
   role and company from setup but left Pillars on "Not yet configured" even
   when you had configured them, because it looked in the wrong place. It now
