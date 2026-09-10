@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.16] — (2026-09-10)
+
+**Connecting Zoom actually works now.** Before, turning Zoom on failed for everyone: setup told Dex to install a piece of software that was never published, so it could never finish.
+
+**What this fixes for you:**
+
+* **Zoom connects the official way — a one-time sign-in, nothing to install.** Dex now sends you to Zoom's own "Zoom for Claude" connection and you approve it once in your browser, the same simple sign-in you already use for Notion. The old path pointed at software that doesn't exist, so it always dead-ended.
+* **Dex stopped claiming it can schedule Zoom meetings.** The Zoom connection can't do that, so promising it was misleading. What it genuinely does: bring your recordings, transcripts, meeting summaries, and Zoom Chat and Canvas notes into your meeting prep and reviews.
+* **You'll know what you need upfront.** Setup now names the requirements in plain words — a licensed Zoom plan, and Zoom's AI recording and summary features switched on — instead of failing halfway with no explanation.
+
+Reported by @shaunwallace while setting up Dex.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
