@@ -248,13 +248,17 @@ def _chatgpt_work_mcp_roundtrip(plugin_root: Path, vault: Path) -> list[dict]:
             },
         )
     )
+    # This roundtrip models explicit per-request selection in an unbound host,
+    # independent of the test runner's own selected fixture vault.
+    env = {key: value for key, value in os.environ.items()
+           if key not in {"DEX_VAULT_PATH", "VAULT_PATH", "CLAUDE_PROJECT_DIR"}}
     completed = subprocess.run(
         [server["command"], *args],
         input=payload,
         text=True,
         capture_output=True,
         cwd=plugin_root,
-        env={**os.environ, "PYTHONNOUSERSITE": "1"},
+        env={**env, "PYTHONNOUSERSITE": "1"},
         check=True,
     )
     return [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]

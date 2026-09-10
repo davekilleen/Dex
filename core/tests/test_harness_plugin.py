@@ -12,6 +12,15 @@ import zipfile
 from pathlib import Path
 
 import jsonschema
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolated_vault_binding(monkeypatch):
+    # The suite bootstrap binds its own fixture; these tests select fresh vaults.
+    for key in ("DEX_VAULT_PATH", "VAULT_PATH", "CLAUDE_PROJECT_DIR"):
+        monkeypatch.delenv(key, raising=False)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "packages" / "dex-agent-plugin"
@@ -390,6 +399,7 @@ def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
         "core/context/__init__.py",
         "core/context/person_context.py",
         "core/context/session_boot.py",
+        "core/vault_selection.py",
         "core/gates/__init__.py",
         "core/gates/safety.py",
     ):

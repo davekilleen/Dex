@@ -9,7 +9,7 @@
     "preToolUse": [
       {
         "command": "node ./bin/dex-python.mjs hook --protocol cursor",
-        "matcher": "Shell|Write|Delete",
+        "matcher": ".*",
         "failClosed": true
       }
     ]
