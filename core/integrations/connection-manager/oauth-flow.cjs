@@ -151,6 +151,11 @@ function buildAuthorizationUrl(providerConfig, { clientId, scopes = [], redirect
   const allScopes = scopes.length ? scopes : providerConfig.defaultScopes || [];
   if (allScopes.length) params.set('scope', allScopes.join(providerConfig.scopeSeparator || ' '));
 
+  // RFC 8707. A remote MCP server checks that the token was issued FOR it. Omit
+  // this and the authorization server audiences the token to its own default
+  // client, and every call fails 401 holding a token that looks entirely valid.
+  if (providerConfig.resource) params.set('resource', providerConfig.resource);
+
   const state = base64url(crypto.randomBytes(16));
   params.set('state', state);
 
@@ -250,14 +255,69 @@ async function exchangeCodeForToken(providerConfig, { code, codeVerifier, client
     ...providerConfig.tokenParams,
   };
   if (codeVerifier) body.code_verifier = codeVerifier;
+  // The audience has to be asserted again here: binding the authorization
+  // request alone does not bind the token that comes back.
+  if (providerConfig.resource) body.resource = providerConfig.resource;
   const headers = buildTokenAuth(providerConfig, clientId, clientSecret, body);
   return normalizeToken(await postToken(providerConfig, body, headers), {}, providerConfig);
+}
+
+/**
+ * Register this installation as a public OAuth client (RFC 7591).
+ *
+ * Used by providers that issue no client secret, which is the honest shape for
+ * a locally installed application: a secret shipped to every copy is not a
+ * secret. The registration endpoint is pinned like any other origin, so
+ * registering decides who the client is and never where it may talk.
+ *
+ * The returned client id belongs to this vault and is stored with the token.
+ * Re-registering on every connect would leak client registrations, so callers
+ * should reuse a stored one when they have it.
+ */
+async function registerDynamicClient(providerConfig, { redirectUri, clientName = 'Dex', scopes = [] }) {
+  if (!providerConfig.registrationUrl) {
+    throw new Error(`Provider ${providerConfig.id} does not support dynamic client registration`);
+  }
+  if (providerConfig.id && isVetted(providerConfig.id)) {
+    assertPinnedOrigin(providerConfig.id, 'registration', providerConfig.registrationUrl);
+  }
+
+  const requested = scopes.length ? scopes : providerConfig.defaultScopes || [];
+  const payload = {
+    client_name: clientName,
+    redirect_uris: [redirectUri],
+    grant_types: providerConfig.registrationGrantTypes || ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    token_endpoint_auth_method: 'none',
+  };
+  if (requested.length) payload.scope = requested.join(providerConfig.scopeSeparator || ' ');
+
+  const response = await fetch(providerConfig.registrationUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Dynamic client registration failed (${response.status}): ${text.slice(0, 200)}`);
+  }
+  let registration;
+  try {
+    registration = JSON.parse(text);
+  } catch {
+    throw new Error('Dynamic client registration returned a non-JSON response');
+  }
+  if (!registration.client_id) {
+    throw new Error('Dynamic client registration returned no client_id');
+  }
+  return registration;
 }
 
 module.exports = {
   startCallbackServer,
   buildAuthorizationUrl,
   exchangeCodeForToken,
+  registerDynamicClient,
   makePkce,
   CALLBACK_PORTS,
 };
