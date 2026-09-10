@@ -113,7 +113,27 @@ events cannot identify the meeting safely.
 
 ## Process
 
-### Step 0: Gather Context (if needed)
+### Step 0: Refresh the meeting record
+
+Before reading anything, run `/process-meetings` so the brief is built on the freshest
+locally available record. It turns captures already sitting unprocessed in the local meeting
+folder into notes and updates the person and company pages from them. It does not reach out
+to an external meeting source, so anything not yet synced there stays out of reach either
+way; what this removes is the gap between a capture arriving locally and it being readable
+here.
+
+- If no new meetings are found, continue silently
+- If meetings are processed, use the extracted context in the brief below
+- Do NOT ask for a skill rating after this sub-step, save that for the end of the prep
+
+**Why this skill in particular needs it.** `/meeting-prep` is normally run minutes before a
+call, which is exactly when the most recent conversation with these attendees is most likely
+to have been captured but not yet processed. Step 3 below reads `00-Inbox/Meetings/`, and a
+brief built from an unprocessed folder does not look incomplete: it looks like there was
+nothing to report. Missing context and no context are indistinguishable in the output, which
+is why the refresh belongs before the read rather than being left to chance.
+
+### Step 0.5: Gather Context (if needed)
 
 **If $MEETING or $ATTENDEES are not provided, try the calendar before asking.** The user booked
 the meeting; the invite already holds the title and the attendee list, and asking them to retype
@@ -230,7 +250,10 @@ Extract:
 
 ### Step 3: Recent Context
 
-Search `00-Inbox/Meetings/` for recent meetings with these attendees:
+Search `00-Inbox/Meetings/` for recent meetings with these attendees. Step 0 processed this
+folder; without that, anything captured locally since the last processing run is invisible
+here.
+
 - What was discussed?
 - What was decided?
 - What follow-ups were committed?
