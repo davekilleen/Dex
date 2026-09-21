@@ -40,6 +40,22 @@ A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google 
 * **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
 * **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
 
+## [1.97.17] — A task from Todoist stays one task, even when Dex is busy (2026-09-21)
+
+Accepting a task from Todoist could still make a second copy in Todoist, and
+Dex could quietly forget which copy was the original. The leftover sat there
+forever.
+
+**What this fixes for you:**
+
+* **Dex writes down the original Todoist task first, before it can create
+  another.** Bringing a Todoist task into Dex records where it came from
+  before that task appears on your list, so a sync running at the same
+  moment cannot send it back as a new Todoist task.
+* **Dex will not replace that link with a different Todoist task.** If the
+  original is already recorded, Dex keeps it and says so, instead of
+  silently pointing at a new copy and leaving the old one behind.
+
 Creating a task on Windows works again.
 
 On Windows, adding a task could fail the moment Dex opened your notes. Everyday marks in those files — a notes symbol, a tick, a name with an accent — made the work tools stop, and nothing was added.
