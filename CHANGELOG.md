@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.16] — A task from Todoist stays one task, even when Dex is busy (2026-09-21)
+## [1.97.17] — A task from Todoist stays one task, even when Dex is busy (2026-09-21)
 
 Accepting a task from Todoist could still make a second copy in Todoist, and
 Dex could quietly forget which copy was the original. The leftover sat there
@@ -22,6 +22,18 @@ forever.
 * **Dex will not replace that link with a different Todoist task.** If the
   original is already recorded, Dex keeps it and says so, instead of
   silently pointing at a new copy and leaving the old one behind.
+
+## [1.97.16] — Meeting notes stay on real people, not other notes in People (2026-09-21)
+
+A reminder or other note sitting in your People folder was treated as a
+person just because of the folder. Meeting sync could write that meeting
+onto the wrong page.
+
+**What this fixes for you:**
+
+* **Only real person pages get meeting history.** A file in People counts
+  as a person when the page itself says so. Other notes in that folder
+  stay as you wrote them.
 
 ## [1.97.15] — (2026-09-09)
 
