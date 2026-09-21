@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.16] — Finished meetings stay finished (2026-09-21)
+Finished meetings stay finished.
 
 Meetings you had already handled could come back on the next session as if
 they still needed work. Dex kept its "already done" list in a file it
