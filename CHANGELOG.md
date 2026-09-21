@@ -31,6 +31,15 @@ of a session was too high and the same meetings were offered again.
 
 Thanks to Michelle Wright, who reported this.
 
+## [1.97.18] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
+
+A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google mail connector kept running in the background. Do that a few times and the leftover copies pile up — her machine ended up with dozens of them and became too slow to use. The only way out was to find and stop them by hand.
+
+**What this fixes for you:**
+
+* **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
+* **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
+
 Creating a task on Windows works again.
 
 On Windows, adding a task could fail the moment Dex opened your notes. Everyday marks in those files — a notes symbol, a tick, a name with an accent — made the work tools stop, and nothing was added.

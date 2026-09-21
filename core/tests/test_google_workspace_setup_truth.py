@@ -23,7 +23,8 @@ def test_google_workspace_setup_matches_the_connector_it_installs() -> None:
     ):
         assert required_step in instructions
 
-    assert '["-y", "google-workspace-mcp", "serve"]' in instructions
+    assert "{{VAULT_PATH}}/core/utils/mcp_session_lifecycle.py" in instructions
+    assert "`npx -y google-workspace-mcp serve`" in instructions
     assert "`npx -y google-workspace-mcp accounts add main`" in instructions
     assert "`~/.google-mcp/tokens/`" in instructions
     assert "fixed set of nine OAuth scopes" in instructions

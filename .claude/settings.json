@@ -30,6 +30,10 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\" --session-start"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py\" --sweep --vault \"$CLAUDE_PROJECT_DIR\""
           }
         ]
       }
@@ -126,6 +130,10 @@
     "SessionEnd": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py\" --hook --vault \"$CLAUDE_PROJECT_DIR\""
+          },
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-end.sh \"$transcript_path\""
