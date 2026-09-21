@@ -74,12 +74,12 @@ function parseFrontmatter(source) {
   };
 }
 
-function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
-  if (parsed?.fields.granola_id) return parsed.fields.granola_id;
+function scalarFrontmatterField(source, key, parsedValue) {
+  if (parsedValue) return parsedValue;
 
   const frontmatter = source.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|$)/);
   if (!frontmatter) return null;
-  const line = frontmatter[1].match(/(?:^|\r?\n)granola_id:[ \t]*([^\r\n]*)/);
+  const line = frontmatter[1].match(new RegExp(`(?:^|\\r?\\n)${key}:[ \\t]*([^\\r\\n]*)`));
   if (!line) return null;
 
   const raw = line[1].trim();
@@ -97,6 +97,10 @@ function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
     return value || null;
   }
   return raw;
+}
+
+function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
+  return scalarFrontmatterField(source, 'granola_id', parsed?.fields.granola_id);
 }
 
 function dayFromValue(value) {
@@ -171,7 +175,12 @@ function noteIsWaiting(filePath, fallbackDay, nowMilliseconds, existingGranolaId
       if (granolaId) existingGranolaIds.add(granolaId);
       return false;
     }
-    const waiting = parsed?.fields.ai_analyzed?.toLowerCase() === 'false'
+    const aiAnalyzed = scalarFrontmatterField(
+      source,
+      'ai_analyzed',
+      parsed?.fields.ai_analyzed,
+    );
+    const waiting = aiAnalyzed?.toLowerCase() === 'false'
       || hasUnextractedForMeItem(parsed ? parsed.body : source);
     const day = resolveNoteDay(filePath, parsed?.fields.date, fallbackDay);
     if (!isRecentDay(day, nowMilliseconds)) {
