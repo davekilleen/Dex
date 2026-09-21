@@ -28,7 +28,7 @@ _PEOPLE_EXTERNAL_REL = (PEOPLE_DIR / "External").relative_to(VAULT_ROOT).as_posi
 _PEOPLE_CPO_REL = (PEOPLE_DIR / "CPO_Network").relative_to(VAULT_ROOT).as_posix()
 _COMPANIES_REL = COMPANIES_DIR.relative_to(VAULT_ROOT).as_posix()
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 DEFAULT_DEBOUNCE_SECONDS = 0.25
 _DATABASE_RELATIVE_PATH = Path("System/.dex/entity-index/database.sqlite3")
 _PEOPLE_EXPORT_RELATIVE_PATH = Path("System/People_Index.json")
@@ -433,6 +433,7 @@ def _project_source(
     source = prepared.source
     parsed = prepared.parsed
     quarantined = bool(parsed.get("quarantined"))
+    indexable = quarantined or parsed.get("type") == source.entity_type
     connection.execute("DELETE FROM source_files WHERE path = ?", (source.relative_path,))
     connection.execute(
         """
@@ -445,11 +446,13 @@ def _project_source(
             prepared.fingerprint,
             source.size,
             source.mtime_ns,
-            source.entity_type,
+            source.entity_type if indexable else None,
             int(quarantined),
             indexed_at,
         ),
     )
+    if not indexable:
+        return
     if quarantined:
         name = unicodedata.normalize(
             "NFC",

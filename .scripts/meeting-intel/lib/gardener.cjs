@@ -244,6 +244,10 @@ async function gardenEntities({
         if (!dryRun && pendingPages.has(filePath)) continue;
         const entity = parseEntityPage(filePath);
         if (entity.quarantined) { result.skipped += 1; continue; }
+        if (entity.type !== 'person' || !identityForEntity(entity)) {
+          result.skipped += 1;
+          continue;
+        }
         const relativePath = path.relative(paths.VAULT_ROOT, filePath).split(path.sep).join('/');
         let pageText = fs.readFileSync(filePath, 'utf8');
         let currentOutput = machineRegion(pageText, REGION_SLUG);
