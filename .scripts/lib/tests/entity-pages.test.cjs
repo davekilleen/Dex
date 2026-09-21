@@ -22,6 +22,18 @@ const {
 
 const FIXTURES = path.resolve(__dirname, '../../../core/tests/fixtures/entity_pages');
 
+test('unmarked markdown under People is not inferred as a person', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-people-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const note = path.join(dir, '05-Areas', 'People', 'External', 'Team_Process.md');
+  fs.mkdirSync(path.dirname(note), { recursive: true });
+  fs.writeFileSync(note, '# Alex Smith\n\nStandup reminder, not a person record.\n');
+  const parsed = parseEntityPage(note);
+  assert.equal(parsed.type, null);
+  assert.equal(parsed.name, null);
+  assert.equal(parsed.declared_non_entity, false);
+});
+
 test('parse golden fixtures', () => {
   const pages = fs.readdirSync(FIXTURES).filter(name => /^\d\d-.*\.md$/.test(name)).sort();
   assert.ok(pages.length >= 10);
