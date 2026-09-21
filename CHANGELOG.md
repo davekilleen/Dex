@@ -11,7 +11,9 @@ All notable changes to Dex will be documented in this file.
 
 Starting Dex for the first time on a Mac could stop on the last setup step. The Mac's
 built-in Python is older than Dex needs, and that last step used it even when Dex
-had already created a working Python inside the vault.
+had already created a working Python inside the vault. The same day's meeting
+sync could also write a meeting onto a reminder or other note sitting in People,
+just because of the folder.
 
 **What this fixes for you:**
 
@@ -21,6 +23,9 @@ had already created a working Python inside the vault.
 * **If the only Python available is too old, Dex says so in plain words.** You get
   a clear "Dex needs a newer Python" message and what to do, instead of a
   technical crash.
+* **Only real person pages get meeting history.** A file in People counts as a
+  person when the page itself says so. Other notes in that folder stay as you
+  wrote them.
 
 ## [1.97.15] — (2026-09-09)
 

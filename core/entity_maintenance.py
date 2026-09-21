@@ -45,6 +45,10 @@ def normalize(*, dry_run: bool = False) -> dict[str, int]:
             if page.name.lower() == "readme.md":
                 counts["skipped"] += 1
                 continue
+            parsed = parse_entity_page(page)
+            if parsed.get("type") != entity_type and not parsed.get("quarantined"):
+                counts["skipped"] += 1
+                continue
             counts["scanned"] += 1
             fields, quarantined = _fields_for(page, entity_type)
             if quarantined:
