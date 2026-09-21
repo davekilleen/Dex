@@ -40,8 +40,9 @@ at once.
   asking for your quarterly goals answers for the quarter you are planning —
   and never replaces the goals you can see today with an empty page.
 
-Also in this release: every change to Dex itself now gets an automatic
-Claude review before it ships, replacing the previous review bot.
+Also in this release: Dave's own pull requests now get an automatic Claude
+review before they ship, replacing the previous review bot. Outside
+contributions keep the full test suite and Dave reviews them himself.
 
 ## [1.97.11] — The files Dex ships can finally prove themselves, and a guided repair when they can't (2026-09-07)
 

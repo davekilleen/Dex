@@ -5,6 +5,8 @@ on:
 
 jobs:
   review:
+    # Fork pull_request events do not receive an OIDC identity token, so the
+    # Claude action cannot start. Dex CI still runs for every pull request.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
