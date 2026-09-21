@@ -1,5 +1,9 @@
 # Dex Technical Guide
 
+**Scope, v1.97.13:** this guide describes the full Core/vault installation and retains Claude Code-specific examples. Portable package distribution is released; complete supported new-app journeys are unverified. The four-tool package does not include Work MCP mutation workflows, onboarding, Doctor, updates, feedback or session-end capture. [Exact surface limits](../../docs/HARNESS-PORTABILITY.md).
+
+Shared vault semantics, an app adapter and the model doing the reasoning are separate boundaries. An adapter translates selected-folder access, tool registration and verified events; it does not make every Core service available. Agent Skills syntax alone proves neither execution dependencies nor workflow results. OS jobs require separate installation; app hooks require their actual event, runtime and trust configuration.
+
 **Version:** 1.0  
 **Last Updated:** July 2026
 
@@ -21,7 +25,7 @@
 10. [Design Constraints](#design-constraints)
 
 **Related Guides:**
-- [Cursor Compatibility](Cursor_Compatibility.md) - Working with both Cursor and Claude Code
+- [App capability guide](../../docs/HARNESS-PORTABILITY.md) - Working with both Cursor and Claude Code
 
 ---
 
@@ -780,7 +784,7 @@ when it creates a task for you.
    - Person pages: Add meeting reference + action items
    - Career folder: If manager 1:1, save feedback to `05-Areas/Career/Evidence/`
 
-**User experience:** Meetings auto-sync. Dex notices waiting meetings at the start of a session — synced from Granola or captured by hand — and processes them in the background automatically. Nothing appears when there is nothing to do. You can still run `/process-meetings` directly whenever you want to review or triage meetings yourself.
+**User experience:** Configured meeting-sync jobs import meetings. The Claude Code session hook can announce waiting meetings; processing requires its skill, services and configured permissions. A queue notice is not proof of completed follow-ups. Run `/process-meetings` in the established full-vault setup to review or triage them. This workflow is not supplied by the portable read-only bridge.
 
 ### Why MCP for Integrations?
 
@@ -1193,7 +1197,7 @@ Understanding these constraints explains why Dex is designed the way it is.
 - `CLAUDE.md` - Main AI behavior instructions
 - `System/user-profile.yaml` - User preferences, company info, communication style
 - `System/pillars.yaml` - Strategic pillars (focus areas)
-- `.claude/settings.json` - Cursor settings (MCP server configs)
+- `.claude/settings.json` - Claude Code hook and permission settings
 
 ### Skills
 

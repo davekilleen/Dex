@@ -68,9 +68,6 @@ if [[ "${#PYTHON_CMD[@]}" -eq 0 ]]; then
 fi
 
 SAFETY_ARGS=(--hook)
-if [[ -n "$CLAUDE_PROJECT_DIR" ]]; then
-    SAFETY_ARGS+=(--vault "$CLAUDE_PROJECT_DIR")
-fi
 printf '%s' "$INPUT" | "${PYTHON_CMD[@]}" "$SAFETY_PY" "${SAFETY_ARGS[@]}"
 STATUS=$?
 if [[ "$STATUS" -eq 2 ]]; then
