@@ -644,8 +644,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "02110d2093e22aeb472ed3ef05ae97e2e4773ce18ccac6aa6f1888daf0ce88b9",
-        "byte_size": 17660
+        "sha256": "2c14f56b1dfc023f89e7474a7ec8647719f7ca89a3e91d4a2cc2f7bdfbf72da0",
+        "byte_size": 19031
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": [
