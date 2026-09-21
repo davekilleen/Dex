@@ -1,5 +1,6 @@
 """Path contract tests — every constant must map to a real directory or file."""
 
+import ast
 import json
 import subprocess
 import sys
@@ -226,3 +227,20 @@ class TestPathsJson:
     def test_export_json_contains_vault_root(self):
         data = paths.export_json()
         assert "VAULT_ROOT" in data
+
+
+def test_paths_module_is_importable_on_python_39_type_syntax() -> None:
+    """macOS system Python is 3.9; evaluating `str | Path` TypeErrors at import."""
+    source_path = Path(__file__).resolve().parents[1] / "paths.py"
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    statements = [
+        node
+        for node in tree.body
+        if not (
+            isinstance(node, ast.Expr)
+            and isinstance(getattr(node, "value", None), ast.Constant)
+        )
+    ]
+    assert isinstance(statements[0], ast.ImportFrom)
+    assert statements[0].module == "__future__"
+    assert any(alias.name == "annotations" for alias in statements[0].names)

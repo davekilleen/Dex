@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.16] — First-time setup can finish on a Mac (2026-09-21)
+
+Starting Dex for the first time on a Mac could stop on the last setup step. The Mac's
+built-in Python is older than Dex needs, and that last step used it even when Dex
+had already created a working Python inside the vault.
+
+**What this fixes for you:**
+
+* **Setup now uses the Python Dex already created for itself.** The last step no
+  longer switches to the Mac's older Python and dies halfway through creating
+  your vault.
+* **If the only Python available is too old, Dex says so in plain words.** You get
+  a clear "Dex needs a newer Python" message and what to do, instead of a
+  technical crash.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
