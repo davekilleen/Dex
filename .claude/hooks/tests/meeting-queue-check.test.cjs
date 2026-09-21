@@ -191,6 +191,47 @@ test('counts a recent day-directory Granola-style note with an unchecked For Me 
   assert.deepEqual(result, { count: 1, lines: expectedLines(1) });
 });
 
+test('does not count an analyzed note whose follow-ups are already tasks', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'already-extracted.md',
+    meetingNote({
+      granolaId: 'meeting-anchored',
+      aiAnalyzed: true,
+      body: '### For Me\n- [ ] Send the proposal ^task-20260727-001\n',
+    }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
+test('does not re-queue a completed note that still has open anchored follow-ups', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(
+    root,
+    TODAY,
+    'already-extracted.md',
+    meetingNote({
+      granolaId: 'meeting-1',
+      aiAnalyzed: true,
+      body: '### For Me\n- [ ] Send the proposal ^task-20260727-001\n',
+    }),
+  );
+  writeQueueMeeting(
+    root,
+    'meeting-1.json',
+    JSON.stringify({ id: 'meeting-1', title: 'Already extracted' }),
+  );
+
+  const result = checkMeetingQueue({ vaultRoot: root, now: NOW });
+
+  assert.deepEqual(result, { count: 0, lines: [] });
+});
+
 test('does not call an analyzed note with an open follow-up unprocessed', (t) => {
   const root = fixture(t);
   writeDayMeeting(

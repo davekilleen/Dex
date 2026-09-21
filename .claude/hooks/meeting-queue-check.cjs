@@ -134,7 +134,9 @@ function resolveNoteDay(filePath, frontmatterDate, fallbackDay) {
   return null;
 }
 
-function hasUncheckedForMeItem(source) {
+const TASK_ANCHOR = /\^task-\d{8}-\d{3,}\b/;
+
+function hasUnextractedForMeItem(source) {
   let underForMe = false;
   for (const line of source.split(/\r?\n/)) {
     if (/^###\s+For Me\s*$/i.test(line)) {
@@ -145,7 +147,13 @@ function hasUncheckedForMeItem(source) {
       underForMe = false;
       continue;
     }
-    if (underForMe && /^\s*-\s+\[ \](?:\s+|$)/.test(line)) return true;
+    if (
+      underForMe
+      && /^\s*-\s+\[ \](?:\s+|$)/.test(line)
+      && !TASK_ANCHOR.test(line)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -164,7 +172,7 @@ function noteIsWaiting(filePath, fallbackDay, nowMilliseconds, existingGranolaId
       return false;
     }
     const waiting = parsed?.fields.ai_analyzed?.toLowerCase() === 'false'
-      || hasUncheckedForMeItem(parsed ? parsed.body : source);
+      || hasUnextractedForMeItem(parsed ? parsed.body : source);
     const day = resolveNoteDay(filePath, parsed?.fields.date, fallbackDay);
     if (!isRecentDay(day, nowMilliseconds)) {
       if (!waiting && granolaId) existingGranolaIds.add(granolaId);

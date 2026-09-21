@@ -7,6 +7,30 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.16] — Finished meetings stay finished (2026-09-21)
+
+Meetings you had already handled could come back on the next session as if
+they still needed work. Dex kept its "already done" list in a file it
+replaces when it updates itself, so an update could forget that work and put
+those meetings back on the pile. Follow-ups you had already turned into
+tasks also kept looking like unprocessed meetings, so the count at the start
+of a session was too high and the same meetings were offered again.
+
+**What this fixes for you:**
+
+* **A meeting you already handled does not come back.** Dex now remembers
+  finished meetings in a place an update will not overwrite, and it also
+  looks at the meeting notes themselves. If the note is already there, later
+  background sync leaves it alone.
+* **The number at session start tells the truth.** Follow-ups that are
+  already on your task list no longer inflate the "meetings that may need
+  processing" count. Only notes that still need work, and incoming items
+  that do not have a note yet, are counted.
+* **Asking Dex to redo today's meetings still works.** The explicit
+  reprocess path is unchanged.
+
+Thanks to Michelle Wright, who reported this.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
