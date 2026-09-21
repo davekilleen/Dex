@@ -1371,3 +1371,53 @@ def test_commit_prunes_to_last_three_snapshots(tmp_path: Path) -> None:
     tx_root = vault / "System/.dex/tx"
     remaining = [p for p in tx_root.iterdir() if p.is_dir()]
     assert len(remaining) == 3
+
+
+def _committed_tx_operations(vault: Path) -> list[str | None]:
+    """The BEGIN operation of every surviving committed transaction, oldest first."""
+    operations: list[str | None] = []
+    for candidate in sorted((vault / "System" / ".dex" / "tx").iterdir()):
+        if not candidate.is_dir():
+            continue
+        entries = Journal(candidate / "journal.jsonl").read()
+        if not any(entry.event == "COMMITTED" for entry in entries):
+            continue
+        begin = next((entry for entry in entries if entry.event == "BEGIN"), None)
+        operations.append(begin.payload.get("operation") if begin else None)
+    return operations
+
+
+def test_bookkeeping_transactions_do_not_evict_rewindable_snapshots(tmp_path: Path) -> None:
+    """Retention is per class, so routine receipts cannot cost a user their undo.
+
+    ``analytics-receipt`` is written on every session start. Sharing one
+    keep-last-3 budget meant three ordinary session opens evicted an adoption
+    snapshot, after which ``rewind_adoption`` refuses with "no longer available
+    under keep-last-3 retention" through no action of the user's.
+    """
+    vault = _vault(tmp_path)
+    for index in range(3):
+        Transaction.begin(
+            vault,
+            [PlanEntry("System/.installed-files.manifest", f"manifest {index}\n".encode())],
+        ).run()
+    assert _committed_tx_operations(vault).count("update") == 3
+
+    receipt = portable_contract.ANALYTICS_ATTEMPT_RECEIPT_RELATIVE
+    for index in range(6):
+        Transaction.begin(
+            vault,
+            [PlanEntry(receipt, f"{{\"n\": {index}}}\n".encode())],
+            operation="analytics-receipt",
+            max_read_bytes_by_relative={
+                receipt: portable_contract.ANALYTICS_ATTEMPT_RECEIPT_TRANSACTION_MAX_BYTES
+            },
+        ).run()
+
+    surviving = _committed_tx_operations(vault)
+    assert surviving.count("update") == 3, (
+        "routine bookkeeping evicted a rewindable snapshot: " f"{surviving}"
+    )
+    assert surviving.count("analytics-receipt") == 3, (
+        "bookkeeping should keep its own newest three, not grow without bound: " f"{surviving}"
+    )

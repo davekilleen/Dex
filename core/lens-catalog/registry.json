@@ -6554,6 +6554,69 @@
       "changed_in": []
     },
     {
+      "id": "wispr-setup",
+      "capability_class": "active-skill",
+      "impact_tier": "high",
+      "availability": "active",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/wispr-setup/SKILL.md",
+        "sha256": "3204914ba11f57a85dae7f69f3a181538f192797b04b6a48366920c7b7a9b90e",
+        "byte_size": 4143
+      },
+      "value": "Connect Wispr Flow so meeting captures arrive in the vault on their own.",
+      "jobs_served": [
+        "capture-without-friction"
+      ],
+      "foundation_capabilities": [
+        "durable-memory-provenance",
+        "privacy-minimal-disclosure"
+      ],
+      "prerequisites": [
+        "An installed Dex release with its skills directory available.",
+        "Access to the relevant local app or external service, authorized by the person."
+      ],
+      "trade_offs": [
+        "Results depend on the current local data and permissions the skill can inspect.",
+        "External connections remain subject to the provider's availability and authorization."
+      ],
+      "evidence": [
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/wispr-setup/SKILL.md",
+          "summary": "The shipped Wispr Setup skill defines the workflow Lens is cataloguing."
+        }
+      ],
+      "brief": {
+        "goal": "Connect Wispr Flow so meeting captures arrive in the vault on their own.",
+        "method_outline": [
+          "Inspect the current local state and the person's request.",
+          "Run the Wispr Setup workflow within its documented safety boundary.",
+          "Verify the intended result and report anything still needing attention."
+        ],
+        "verification_checklist": [
+          "The workflow reports what it found or changed.",
+          "The person keeps control over any consequential action."
+        ],
+        "rollback_advice": "Disable or remove the skill if it is not useful; reverse any external configuration through the same provider-controlled setup path."
+      },
+      "compatibility": {
+        "host_requirements": [
+          "skills-directory"
+        ],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": [
+          "macos",
+          "linux",
+          "windows"
+        ]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.97.0",
+      "changed_in": []
+    },
+    {
       "id": "zoom-setup",
       "capability_class": "active-skill",
       "impact_tier": "high",
