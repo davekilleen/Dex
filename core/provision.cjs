@@ -853,7 +853,7 @@ function routeProvisionTransaction(
   }
 }
 
-function buildHarnessReceipt(overlay) {
+function buildHarnessReceipt(vaultRoot, overlay) {
   if (!Array.isArray(overlay.harnesses) || overlay.harnesses.length === 0) return null;
   const python = resolveStagePython(vaultRoot, 'DEX_HARNESS_PYTHON');
   const repoRoot = path.resolve(__dirname, '..');
@@ -1274,7 +1274,7 @@ function provision(options) {
     let transaction = null;
     try {
       const overlay = loadHarnessReceiptOverlay(options.profile);
-      const content = buildHarnessReceipt(overlay);
+      const content = buildHarnessReceipt(vaultRoot, overlay);
       if (content === null) throw new Error('Harness receipt authority returned no receipt');
       transaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
       writeIfChanged(
@@ -1579,7 +1579,7 @@ function provision(options) {
       provisionTransaction,
     );
 
-    const harnessReceiptContent = options.onboard ? buildHarnessReceipt(overlay) : null;
+    const harnessReceiptContent = options.onboard ? buildHarnessReceipt(vaultRoot, overlay) : null;
     if (harnessReceiptContent !== null) {
       writeIfChanged(
         path.join(vaultRoot, 'System', '.dex', 'harness-profile.json'),
