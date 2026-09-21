@@ -11,8 +11,6 @@ from typing import Any, Iterable, Mapping
 
 import yaml
 
-from core.paths import COMPANIES_DIR, PEOPLE_DIR
-
 PERSON_FIELDS = (
     "type",
     "name",
@@ -385,21 +383,13 @@ def _split_frontmatter(
         return None, body, True, True
 
 
-def _infer_type(path: Path, values: dict[str, Any]) -> str | None:
+def _infer_type(values: dict[str, Any]) -> str | None:
     if values.get("type") in {"person", "company"}:
         return values["type"]
     if values.get("declared_non_entity"):
         return None
-    try:
-        path.resolve().relative_to(PEOPLE_DIR.resolve())
-        return "person"
-    except ValueError:
-        pass
-    try:
-        path.resolve().relative_to(COMPANIES_DIR.resolve())
-        return "company"
-    except ValueError:
-        pass
+    # Folder location is not person-hood. A note under People/ stays a note
+    # unless the page itself declares a person/company record or fields.
     if any(
         values.get(key)
         for key in ("role", "company", "company_page", "emails", "last_interaction")
@@ -459,7 +449,7 @@ def parse_entity_page(path: str | Path) -> dict[str, Any]:
         if relationships is not None:
             result["relationships"] = relationships
 
-    result["type"] = _infer_type(page_path, result)
+    result["type"] = _infer_type(result)
     if result["type"] and not result["name"]:
         heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)
         result["name"] = (
@@ -570,7 +560,7 @@ def merge_frontmatter_text(
         effective_current["declared_non_entity"] = bool(
             declared and declared not in {"person", "company"}
         )
-    effective_current["type"] = _infer_type(page_path, effective_current)
+    effective_current["type"] = _infer_type(effective_current)
     if effective_current["type"] and not effective_current["name"]:
         heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)
         effective_current["name"] = (

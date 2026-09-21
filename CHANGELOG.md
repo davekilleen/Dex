@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.16] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
+## [1.97.17] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
 
 A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google mail connector kept running in the background. Do that a few times and the leftover copies pile up — her machine ended up with dozens of them and became too slow to use. The only way out was to find and stop them by hand.
 
@@ -15,6 +15,18 @@ A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google 
 
 * **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
 * **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
+
+## [1.97.16] — Meeting notes stay on real people, not other notes in People (2026-09-21)
+
+A reminder or other note sitting in your People folder was treated as a
+person just because of the folder. Meeting sync could write that meeting
+onto the wrong page.
+
+**What this fixes for you:**
+
+* **Only real person pages get meeting history.** A file in People counts
+  as a person when the page itself says so. Other notes in that folder
+  stay as you wrote them.
 
 ## [1.97.15] — (2026-09-09)
 
