@@ -212,6 +212,10 @@ counts, or promote an inferred edge to proved. Only each group's `surface` line 
 rephrased, in plain English: "lives in a location Dex updates can replace" or "lives in a
 location updates leave alone."
 
+`CLAUDE.md` differences are file-level evidence, never an orphan-line list. Do not tell the
+user to move any differing line into `CLAUDE-custom.md`. Show the modified file as needing
+review and route any comparison or resolution through `/dex-update`.
+
 If completeness is `UNKNOWN` with `partial: true`, the installed baseline was still
 verified. Render the observed count and record list explicitly as partial, followed
 by every exclusion path, reason, and guidance line. Never present the observed count

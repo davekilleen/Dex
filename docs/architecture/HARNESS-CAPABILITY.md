@@ -1,5 +1,9 @@
 # Harness capability contract
 
+**Release evidence:** v1.97.13 distributes the package, but complete new-host support remains unverified. Registry modes describe implementation intent; profile selection records configuration history. Neither proves the active host, loaded version, tool availability or successful journey. See [per-surface modes and limits](../HARNESS-PORTABILITY.md#capability-truth).
+
+The portable read-only bridge bundles only four tools. Registering or copying a skill does not provide Work MCP, lifecycle mutation operations, Doctor, feedback, update services or OS schedules. Each declared automatic mode needs a real trusted event in the named app and surface.
+
 Dex is a vault plus a set of tools. The assistant that sits in front of it
 (Claude Code, Cursor, Codex, Gemini CLI, or something else) is a **harness**.
 Which language model that harness uses is a separate question. This document
@@ -8,21 +12,21 @@ does not revive `/ai-setup`.
 
 | Axis | What it is | Cost |
 | --- | --- | --- |
-| **Harness agnosticism** | Packaging: skills, hooks, MCP config | Mostly a packaging problem |
+| **Harness agnosticism** | Shared services plus app-specific skills, events, permissions and tool registration | Requires complete dependencies and native workflow evidence |
 | **Model agnosticism** | Which LLM does the reasoning | Quality / instruction adherence. Not solved by a config flag. |
 
 Claude Code remains the **Tier 3 reference implementation** for Dex's complete,
 mature hook / injector / self-learning surface. The portable plugin now gives
-other hook-capable hosts a tested subset of automatic behavior from the same
-source modules. That is not a promise that every host has every Claude hook.
+other hook-capable hosts candidate adapters using the same source modules.
+Package/conformance tests do not prove automatic behavior in an installed host. That is not a promise that every host has every Claude hook.
 
 ## Capability tiers
 
 | Tier | Name | What it is | Who can run it |
 | --- | --- | --- | --- |
 | **Tier 0 Vault** | Markdown + PARA | Notes, people, projects, tasks as files. No agent required. | Any editor |
-| **Tier 1 Core** | MCP + scheduled jobs | Tasks, people index, meeting sync, search. Background jobs already run on a schedule. | Any MCP-capable harness |
-| **Tier 2 Skills** | Agent Skills + journeys | Named `/commands` generated into `.agents/skills/` from canonical `.claude/skills/`. | Any harness that reads Agent Skills / `AGENTS.md` |
+| **Tier 1 Core** | MCP + scheduled jobs | Tasks, people index, meeting sync, search. Background jobs already run on a schedule. | An app with the relevant Core services installed and registered |
+| **Tier 2 Skills** | Agent Skills + journeys | Named `/commands` generated into `.agents/skills/` from canonical `.claude/skills/`. | An app that reads the skill and supplies its execution dependencies |
 | **Tier 3 Full** | Hooks, injectors, self-learning | Session context, inject-on-read, pre-tool-use gates, mid-session health, session-end snapshot. | Claude Code is the complete reference; other native adapters expose named subsets only |
 
 Layers 1–2 of the repo (`core/`, MCP servers, `.scripts/`, including
@@ -129,7 +133,7 @@ The three-bucket inventory (scheduled / in-turn inject / gates), including
 session-end writers left out of those buckets, is in
 [`HOOK-INVENTORY.md`](./HOOK-INVENTORY.md).
 
-### Portable native slice: shared payloads, tools, and verified hooks
+### Portable native slice: shared payloads, tools, and candidate hooks
 
 Two in-turn context payloads now live in `core/context/`, and the destructive
 command/path decision lives in `core/gates/`. They are exposed as Work MCP
@@ -150,11 +154,11 @@ PreToolUse hook wiring. Codex and Claude hooks require user trust before they
 run. An MCP result alone is still not an interceptor: a host must verify that
 it invokes the check before the action and honours `refused=true`.
 
-OpenAI's package works in Codex CLI/desktop and supported ChatGPT surfaces, but
-not the Codex IDE extension. ChatGPT web and Cowork external connectors cannot
+The package declares Codex CLI/desktop and candidate local ChatGPT surfaces;
+complete native journeys are unverified. The Codex IDE extension is not a claimed route. ChatGPT web and Cowork external connectors cannot
 reach this local stdio server without a separately secured public endpoint.
 Pi uses its native Dex extension rather than pretending to be an MCP client.
-BB uses the separate read-only `bb-plugin-dex` package.
+BB has a separate read-only candidate package; its work is paused and no install is recommended.
 
 ### What this change does not do
 
