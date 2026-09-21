@@ -199,21 +199,23 @@ def reap_session(session_id: str) -> ReapResult:
 
 
 def reap_orphans(*, living_session_ids: Iterable[str] | None = None) -> ReapResult:
-    """Reap leftover connector pairs whose session is gone or parent is init."""
+    """Reap leftover connector pairs whose wrapper is gone or parent is init."""
 
-    living = set(living_session_ids or _living_session_ids())
+    _ = living_session_ids
     reaped: list[int] = []
     skipped: list[int] = []
 
     for lease in load_leases():
-        session_id = lease.get("session_id")
         wrapper_pid = _as_int(lease.get("wrapper_pid"))
-        session_gone = not isinstance(session_id, str) or session_id not in living
         wrapper_dead = wrapper_pid is None or not _pid_is_alive(wrapper_pid)
-        if session_gone or wrapper_dead:
-            result = _reap_lease(lease)
-            reaped.extend(result.reaped_pids)
-            skipped.extend(result.skipped_pids)
+        # A live wrapper is still this session's connector, even if the
+        # session-alive file was never written. Only reap_session() may
+        # take down a living wrapper.
+        if not wrapper_dead:
+            continue
+        result = _reap_lease(lease)
+        reaped.extend(result.reaped_pids)
+        skipped.extend(result.skipped_pids)
 
     leased_pgids = {
         _as_int(lease.get("pgid"))
@@ -299,6 +301,7 @@ def serve(
         )
         if child.stdin is None or child.stdout is None:
             return 1
+        mark_session_alive(resolved_session)
         lease_path = write_lease(
             resolved_session,
             wrapper_pid=os.getpid(),
