@@ -16,17 +16,25 @@ A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google 
 * **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
 * **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
 
-## [1.97.16] — Meeting notes stay on real people, not other notes in People (2026-09-21)
+## [1.97.16] — First-time setup can finish on a Mac (2026-09-21)
 
-A reminder or other note sitting in your People folder was treated as a
-person just because of the folder. Meeting sync could write that meeting
-onto the wrong page.
+Starting Dex for the first time on a Mac could stop on the last setup step. The Mac's
+built-in Python is older than Dex needs, and that last step used it even when Dex
+had already created a working Python inside the vault. The same day's meeting
+sync could also write a meeting onto a reminder or other note sitting in People,
+just because of the folder.
 
 **What this fixes for you:**
 
-* **Only real person pages get meeting history.** A file in People counts
-  as a person when the page itself says so. Other notes in that folder
-  stay as you wrote them.
+* **Setup now uses the Python Dex already created for itself.** The last step no
+  longer switches to the Mac's older Python and dies halfway through creating
+  your vault.
+* **If the only Python available is too old, Dex says so in plain words.** You get
+  a clear "Dex needs a newer Python" message and what to do, instead of a
+  technical crash.
+* **Only real person pages get meeting history.** A file in People counts as a
+  person when the page itself says so. Other notes in that folder stay as you
+  wrote them.
 
 ## [1.97.15] — (2026-09-09)
 
