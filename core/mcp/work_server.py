@@ -2511,6 +2511,58 @@ def _declared_planning_quarter(today: date) -> Optional[str]:
     return declared if declared in allowed else None
 
 
+# Bold labels that belong to the goal itself. Any other bold label that ends
+# with a colon, once a milestone has been seen, starts a new section (carried
+# work, notes, a side list). Checkboxes under that label are not milestones.
+_GOAL_FIELD_LABELS = frozenset({
+    "what success looks like",
+    "success criteria",
+    "key milestones",
+    "progress",
+    "career goal",
+    "skills developing",
+    "impact level",
+})
+_BOLD_LABEL_RE = re.compile(r'^\*\*([^*]+?)\*\*')
+_GOAL_HEADING_RE = re.compile(r'^#{1,6}(?:[ \t]+\S|[ \t]*$)')
+# A thematic break is three or more of the same marker, spaces allowed between.
+# Exactly "---" is the common case; "----", "***", "___", and "- - -" are too.
+_THEMATIC_BREAK_RE = re.compile(r'^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$')
+
+
+def _line_ends_goal_body(line: str) -> bool:
+    """True when this line starts a later section, not more of the goal.
+
+    A heading or a divider ends the goal, so a checklist below it cannot
+    become milestones of the goal above.
+    """
+    if line.endswith('\r'):
+        line = line[:-1]
+    if _GOAL_HEADING_RE.match(line):
+        return True
+    return _THEMATIC_BREAK_RE.match(line) is not None
+
+
+def _bold_section_label(line: str) -> str | None:
+    """Return a bold field label, such as ``Progress`` or ``Carried from last quarter``.
+
+    A one-word emphasis line (``**important**``) is not a section. A label ends
+    with a colon, which is how goal fields and trailing lists are written.
+    """
+    if line.endswith('\r'):
+        line = line[:-1]
+    match = _BOLD_LABEL_RE.match(line.strip())
+    if not match:
+        return None
+    raw = match.group(1).strip()
+    if not raw.endswith(':'):
+        return None
+    label = raw[:-1].strip()
+    if not label:
+        return None
+    return label.casefold()
+
+
 def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
     """Parse quarterly goals from 01-Quarter_Goals/Quarter_Goals.md"""
     if not filepath.exists():
@@ -2557,9 +2609,9 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
             impact_level = None
             
             j = i + 1
-            while j < len(lines) and not re.match(
-                r'^(?:##\s|###\s|---\s*$)', lines[j]
-            ):
+            saw_milestone = False
+            milestone_list_closed = False
+            while j < len(lines) and not _line_ends_goal_body(lines[j]):
                 if '**What success looks like:**' in lines[j]:
                     # Read next non-empty line
                     k = j + 1
@@ -2567,12 +2619,16 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                         success_criteria += lines[k].strip() + ' '
                         k += 1
                 elif lines[j].strip().startswith('- [ ]') or lines[j].strip().startswith('- [x]'):
-                    milestone_match = re.match(r'-\s*\[([x ])\]\s*(.+)', lines[j].strip())
-                    if milestone_match:
-                        milestones.append({
-                            'title': milestone_match.group(2).strip(),
-                            'completed': milestone_match.group(1) == 'x'
-                        })
+                    # A labelled section after the milestone list is not more
+                    # milestones, even when it sits in the same goal body.
+                    if not milestone_list_closed:
+                        milestone_match = re.match(r'-\s*\[([x ])\]\s*(.+)', lines[j].strip())
+                        if milestone_match:
+                            milestones.append({
+                                'title': milestone_match.group(2).strip(),
+                                'completed': milestone_match.group(1) == 'x'
+                            })
+                            saw_milestone = True
                 elif '**Progress:**' in lines[j]:
                     progress_match = re.search(r'(\d+)%', lines[j])
                     if progress_match:
@@ -2589,6 +2645,14 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                     impact_match = re.search(r'\*\*Impact level:\*\*\s*(low|medium|high)', lines[j])
                     if impact_match:
                         impact_level = impact_match.group(1)
+                label = _bold_section_label(lines[j])
+                if (
+                    saw_milestone
+                    and not milestone_list_closed
+                    and label
+                    and label not in _GOAL_FIELD_LABELS
+                ):
+                    milestone_list_closed = True
                 j += 1
             
             goals.append({

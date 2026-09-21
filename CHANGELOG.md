@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+The last goal on a quarterly plan could still pick up a to-do list from further
+down the page. A different heading, a longer divider, or a labelled list such
+as carried work sat outside the goal, and those boxes showed up as extra
+milestones. The goal then looked further along than it was.
+
+**What this fixes for you:**
+
+* **A section after the goal stays separate.** A heading, a line of dashes or
+  stars, or a labelled list now ends the milestones. Boxes in that later
+  section are no longer counted toward the goal. The milestones written with
+  the goal are unchanged.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
