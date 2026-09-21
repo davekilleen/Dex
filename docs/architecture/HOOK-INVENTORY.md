@@ -82,6 +82,7 @@ Session-end writers are neither inject nor gates nor scheduled work:
 | File | Event | Notes |
 | --- | --- | --- |
 | `session-end.sh` | `SessionEnd` | Session marker / transcript reference |
+| `mcp_session_lifecycle.py` | `SessionEnd` / `SessionStart` | Reap this session's `google-workspace-mcp` process pair; sweep orphans (`core/utils/`) |
 | `vault-autocommit.cjs` | `SessionEnd` | Optional local Git checkpoint |
 | `memory_mirror.py` | `SessionEnd` | Copy Claude Code project notes into the vault (`core/utils/`) |
 | `post-meeting-person-update.cjs` | skill-scoped `PostToolUse` | Updates person pages after a meeting note write |

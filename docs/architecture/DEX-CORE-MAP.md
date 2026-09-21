@@ -168,11 +168,12 @@ therefore remains false.
 ## 9. Hooks — SHIPPED wired subset / dead weight present
 
 **What it is.** Event-driven shell scripts. The **actually-wired set** (from `.claude/settings.json`) is small:
-- SessionStart → `session-start.sh` + `core/utils/update_verifier.py` (bounded release awareness).
+- SessionStart → `session-start.sh` + `core/utils/update_verifier.py` (bounded release awareness) + `mcp_session_lifecycle.py --sweep`.
 - PreToolUse/Read → `person-context-injector.cjs`, `company-context-injector.cjs`.
 - PreToolUse/Bash → `dex-safety-guard.sh`, `ensure-mcp-user-scope.cjs`.
 - PreToolUse/`mcp__.*` → `dex-safety-guard.sh`.
-- SessionEnd → `session-end.sh`, `vault-autocommit.cjs`.
+- SessionEnd → `mcp_session_lifecycle.py` (reap google-workspace-mcp), `session-end.sh`, `vault-autocommit.cjs`.
+- SessionStart also sweeps leftover google-workspace-mcp pairs via `mcp_session_lifecycle.py --sweep`.
 - Stop / Notification → a sound (`afplay`).
 
 **Dead weight / audit findings.**

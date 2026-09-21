@@ -117,6 +117,7 @@ timer, but the notice still has to land in a turn.
 | `feedback_sweep.py` | `SessionStart` | Once-daily feedback inbox |
 | `release_notes_sweep.py` | `SessionStart` | Once-daily what’s-new notice |
 | `session-end.sh` | `SessionEnd` | Session marker / transcript reference |
+| `mcp_session_lifecycle.py` | `SessionEnd` / `SessionStart` | Reap this session's Google Workspace connector pair; sweep leftovers |
 | `vault-autocommit.cjs` | `SessionEnd` | Optional local Git checkpoint of vault edits |
 
 `feedback_sweep`, `release_notes_sweep`, and `update_verifier` are already
