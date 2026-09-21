@@ -1,5 +1,7 @@
 # Guides
 
+For shared product help, start at [the canonical system guides](../../docs/Dex_System/README.md). This Claude-specific directory is not the user entry point or evidence that another app supports a workflow.
+
 **Purpose:** System documentation and conventions that explain how Dex works and how to use it effectively.
 
 > **Note (2026-07):** this folder is currently an empty tier — the documentation it
@@ -20,7 +22,7 @@ Documentation files that:
 
 Create a guide when:
 - **System-wide pattern** - Convention applies across multiple features
-- **Reference needed** - Users or Claude need to look up standards
+- **Reference needed** - Users or their assistant need to look up standards
 - **Onboarding material** - New users need to understand core concepts
 - **Architecture docs** - Explaining how major components work together
 
