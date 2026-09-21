@@ -1,5 +1,7 @@
 # Hook inventory (three buckets)
 
+**v1.97.13 evidence boundary:** portable files are released; a mapped event or passing protocol test is not proof that an installed app intercepts it. Complete native new-app journeys remain unverified. Keep each existing hook disposition below; session-end capture, other injectors and writers are not silently included in the portable subset. See [surface modes](../HARNESS-PORTABILITY.md#capability-truth).
+
 This is the #506 follow-up inventory. It classifies every file under
 `.claude/hooks/` so the next slices know what to move, what to wrap, and
 what to leave. **Do not mass-migrate hooks.**
@@ -65,7 +67,7 @@ this bucket is silently treated as portable.
 ## 3. Gates
 
 These block or redirect a call **before** it runs. The shared destructive-action
-gate is mapped to verified PreToolUse events in the Codex/Claude plugin; every
+gate is mapped to candidate PreToolUse adapters in the Codex/Claude plugin; every
 other gate still needs a host-specific equivalent before Dex can claim it.
 
 | File | Event | Why it is a gate |

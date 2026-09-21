@@ -54,7 +54,9 @@ for (const hookName of HOOK_PROGRAMS) {
       cwd: sandbox.vault,
       encoding: 'utf-8',
       env: minimalEnv(sandbox),
-      input: '{}\n',
+      input: hookName === 'dex-safety-guard.sh'
+        ? JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status --short' } })
+        : '{}\n',
       timeout: 10_000,
     });
 
@@ -98,7 +100,7 @@ test('safety guard uses its documented exit 2 contract for blocked commands', (t
     cwd: sandbox.vault,
     encoding: 'utf-8',
     env: minimalEnv(sandbox),
-    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }),
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }),
     timeout: 10_000,
   });
 
