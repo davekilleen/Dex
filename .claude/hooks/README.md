@@ -19,6 +19,7 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `SessionStart` | all | `bash .claude/hooks/session-start.sh` | Inject the current Dex session context, show the latest complete proactive-health status, and run the bounded smoke fallback when no clean check completed on the current local day. |
 | `SessionStart` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start` | Perform the bounded release-evidence check. |
 | `SessionStart` | all | `python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py" --session-start` | Record which skills were already on disk at startup or resume so a skill that lands mid-session can be injected without waiting for a restart. Compact, clear, and fork keep that baseline and ask the host to re-scan; they do not reset it. |
+| `SessionStart` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py" --sweep --vault "$CLAUDE_PROJECT_DIR"` | Sweep leftover Google Workspace connector copies from sessions that never closed cleanly. |
 | `UserPromptSubmit` | all | `python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py"` | If an update wrote a new `SKILL.md` after session start, inject it as additional context so it is usable this session even when the host slash list still omits it. |
 | `UserPromptSubmit` | all | `python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/soft-promise-detector.py"` | Detect soft commitments in the user's message and offer a one-time capture. |
 | `UserPromptSubmit` | all | `bash "$CLAUDE_PROJECT_DIR/.claude/hooks/health-pulse.sh"` | Mid-session health pulse: read the latest proactive-health snapshot's age and status (two file reads, never computes) and interject at most once per day when the checkup is stale or newly critical — so bad health news does not wait for the next fresh session. |
@@ -28,6 +29,7 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `SessionEnd` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py" --hook --vault "$CLAUDE_PROJECT_DIR"` | Shut down this session's Google Workspace connector pair so it cannot linger after the tab closes. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
 

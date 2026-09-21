@@ -51,8 +51,15 @@ def test_step3_prose_and_config_name_the_same_install_identity() -> None:
     config = json.loads(match.group(1))
     assert list(config) == [INSTALL_IDENTITY], config
     entry = config[INSTALL_IDENTITY]
-    assert entry["command"] == "npx", entry
-    assert entry["args"] == ["-y", INSTALL_IDENTITY, "serve"], entry["args"]
+    assert entry["command"] == "python3", entry
+    assert entry["args"] == [
+        "{{VAULT_PATH}}/core/utils/mcp_session_lifecycle.py",
+        "serve",
+    ], entry["args"]
+    assert "npx -y google-workspace-mcp serve" in step3
+    assert "session wrapper" in step3.lower()
+    assert "do not add a second server" in step3.lower()
+    assert "raw `npx`" in step3 or "raw npx" in step3.lower()
 
 
 def test_skill_never_names_the_underscore_package_as_the_install_target() -> None:
