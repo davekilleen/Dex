@@ -146,12 +146,13 @@ class _LegacyStore:
 class _WriteOnlyStore:
     """Store whose host app has macOS Add Events Only access."""
 
-    def __init__(self):
+    def __init__(self, granted=False):
         self.calls = []
+        self._granted = granted
 
     def requestFullAccessToEventsWithCompletion_(self, completion):
         self.calls.append("requestFullAccessToEventsWithCompletion_")
-        completion(False, None)
+        completion(self._granted, None)
 
 
 def test_request_calendar_access_prefers_modern_full_access_api(monkeypatch):
@@ -197,7 +198,29 @@ def test_list_calendars_explains_write_only_access(monkeypatch, capsys):
     message = json.loads(capsys.readouterr().out)["error"]
     assert "Add Events Only" in message
     assert "Full Access" in message
-    assert store.calls == []
+    assert store.calls == ["requestFullAccessToEventsWithCompletion_"]
+
+
+def test_write_only_status_is_usable_after_full_access_upgrade(monkeypatch, capsys):
+    """Status 4 must request full access and proceed when that upgrade is granted."""
+    store = _WriteOnlyStore(granted=True)
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 4,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(
+            EKEntityTypeEvent=0,
+            EKAuthorizationStatusWriteOnly=4,
+            EKEventStore=event_store,
+        ),
+    )
+
+    assert calendar_eventkit.ensure_calendar_access(store) is True
+    assert store.calls == ["requestFullAccessToEventsWithCompletion_"]
+    assert capsys.readouterr().out == ""
 
 
 def test_get_events_prints_json(monkeypatch, capsys):
