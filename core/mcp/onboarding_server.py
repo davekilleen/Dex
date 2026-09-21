@@ -26,6 +26,15 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+if sys.version_info < (3, 10):
+    sys.stderr.write(
+        "Dex setup needs Python 3.10 or newer. "
+        f"This copy is {sys.version.split()[0]} ({sys.executable}). "
+        "Point onboarding at the Python Dex already created in this vault, "
+        "then run /setup again.\n"
+    )
+    raise SystemExit(2)
+
 import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -608,6 +617,20 @@ def _capability_states(
     return states
 
 
+def _provision_python() -> str:
+    """Prefer the vault's own Python so first-time setup never uses system 3.9."""
+    if os.name == "nt":
+        candidate = Path(BASE_DIR) / ".venv" / "Scripts" / "python.exe"
+    else:
+        candidate = Path(BASE_DIR) / ".venv" / "bin" / "python"
+    try:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    except OSError:
+        pass
+    return sys.executable
+
+
 def _run_onboarding_provisioner(
     session: Dict,
     *,
@@ -652,6 +675,7 @@ def _run_onboarding_provisioner(
         if dry_run:
             command.append("--dry-run")
         command.append("--json")
+        provision_python = _provision_python()
         completed = subprocess.run(
             command,
             cwd=Path(__file__).parent.parent.parent,
@@ -661,10 +685,10 @@ def _run_onboarding_provisioner(
             check=False,
             env={
                 **os.environ,
-                "DEX_CAPABILITY_PYTHON": sys.executable,
-                "DEX_PROVISION_PYTHON": sys.executable,
-                "DEX_HARNESS_PYTHON": sys.executable,
-                "DEX_LIFECYCLE_PYTHON": sys.executable,
+                "DEX_CAPABILITY_PYTHON": provision_python,
+                "DEX_PROVISION_PYTHON": provision_python,
+                "DEX_HARNESS_PYTHON": provision_python,
+                "DEX_LIFECYCLE_PYTHON": provision_python,
             },
         )
         try:
@@ -720,6 +744,7 @@ def _run_harness_receipt_provisioner(
         if dry_run:
             command.append("--dry-run")
         command.append("--json")
+        provision_python = _provision_python()
         completed = subprocess.run(
             command,
             cwd=Path(__file__).parent.parent.parent,
@@ -729,8 +754,8 @@ def _run_harness_receipt_provisioner(
             check=False,
             env={
                 **os.environ,
-                "DEX_HARNESS_PYTHON": sys.executable,
-                "DEX_PROVISION_PYTHON": sys.executable,
+                "DEX_HARNESS_PYTHON": provision_python,
+                "DEX_PROVISION_PYTHON": provision_python,
             },
         )
         try:

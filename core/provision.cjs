@@ -711,13 +711,59 @@ function provisionMutationTargets(vaultRoot, options) {
   ) === index);
 }
 
+const SYSTEM_PYTHON_FALLBACK = process.platform === 'win32' ? 'python' : 'python3';
+const PYTHON_MIN_VERSION_PROBE = 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 2)';
+
+function isExecutablePython(candidate) {
+  if (!candidate || !path.isAbsolute(candidate)) return false;
+  try {
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return fs.statSync(candidate).isFile();
+  } catch (_) {
+    return false;
+  }
+}
+
+function vaultPython(vaultRoot) {
+  const relative = process.platform === 'win32'
+    ? path.join('.venv', 'Scripts', 'python.exe')
+    : path.join('.venv', 'bin', 'python');
+  const candidate = path.join(path.resolve(vaultRoot), relative);
+  return isExecutablePython(candidate) ? candidate : null;
+}
+
+function systemPythonTooOld(python) {
+  const probe = childProcess.spawnSync(
+    python,
+    ['-c', PYTHON_MIN_VERSION_PROBE],
+    { encoding: 'utf8', timeout: 5000 },
+  );
+  return !probe.error && probe.status === 2;
+}
+
+function refuseSystemPython(python) {
+  throw new Error(
+    `Dex setup needs Python 3.10 or newer. ${python} is too old `
+    + '(macOS still ships 3.9). Use the Python Dex already created in this vault, '
+    + 'or install Python 3.10+ and run setup again.',
+  );
+}
+
+function resolveStagePython(vaultRoot, envName) {
+  const configured = String(process.env[envName] || process.env.DEX_PYTHON || '').trim();
+  if (configured) return configured;
+  const venv = vaultPython(vaultRoot);
+  if (venv) return venv;
+  const fallback = SYSTEM_PYTHON_FALLBACK;
+  if (systemPythonTooOld(fallback)) refuseSystemPython(fallback);
+  return fallback;
+}
+
 function routeCapabilityAuthority(
   vaultRoot,
   { preflightOnly = true, mutationTargets = [], targetsOnly = false } = {},
 ) {
-  const python = process.env.DEX_CAPABILITY_PYTHON
-    || process.env.DEX_PYTHON
-    || (process.platform === 'win32' ? 'python' : 'python3');
+  const python = resolveStagePython(vaultRoot, 'DEX_CAPABILITY_PYTHON');
   const repoRoot = path.resolve(__dirname, '..');
   const separator = process.platform === 'win32' ? ';' : ':';
   const contractPath = process.env.DEX_CAPABILITY_CONTRACT_PATH
@@ -765,9 +811,7 @@ function routeProvisionTransaction(
   if (recoverOnly === (document !== null)) {
     throw new Error('Provision transaction route requires exactly one mode');
   }
-  const python = process.env.DEX_PROVISION_PYTHON
-    || process.env.DEX_PYTHON
-    || (process.platform === 'win32' ? 'python' : 'python3');
+  const python = resolveStagePython(vaultRoot, 'DEX_PROVISION_PYTHON');
   const repoRoot = path.resolve(__dirname, '..');
   const separator = process.platform === 'win32' ? ';' : ':';
   const args = [
@@ -809,11 +853,9 @@ function routeProvisionTransaction(
   }
 }
 
-function buildHarnessReceipt(overlay) {
+function buildHarnessReceipt(vaultRoot, overlay) {
   if (!Array.isArray(overlay.harnesses) || overlay.harnesses.length === 0) return null;
-  const python = process.env.DEX_HARNESS_PYTHON
-    || process.env.DEX_PYTHON
-    || (process.platform === 'win32' ? 'python' : 'python3');
+  const python = resolveStagePython(vaultRoot, 'DEX_HARNESS_PYTHON');
   const repoRoot = path.resolve(__dirname, '..');
   const separator = process.platform === 'win32' ? ';' : ':';
   const result = childProcess.spawnSync(
@@ -1016,9 +1058,7 @@ function routeAdoptionThroughLifecycleService(
   vaultRoot,
   { pinCompanies = true, previewOnly = false } = {},
 ) {
-  const python = process.env.DEX_LIFECYCLE_PYTHON
-    || process.env.DEX_PYTHON
-    || (process.platform === 'win32' ? 'python' : 'python3');
+  const python = resolveStagePython(vaultRoot, 'DEX_LIFECYCLE_PYTHON');
   const repoRoot = path.resolve(__dirname, '..');
   const separator = process.platform === 'win32' ? ';' : ':';
   const result = childProcess.spawnSync(
@@ -1234,7 +1274,7 @@ function provision(options) {
     let transaction = null;
     try {
       const overlay = loadHarnessReceiptOverlay(options.profile);
-      const content = buildHarnessReceipt(overlay);
+      const content = buildHarnessReceipt(vaultRoot, overlay);
       if (content === null) throw new Error('Harness receipt authority returned no receipt');
       transaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
       writeIfChanged(
@@ -1539,7 +1579,7 @@ function provision(options) {
       provisionTransaction,
     );
 
-    const harnessReceiptContent = options.onboard ? buildHarnessReceipt(overlay) : null;
+    const harnessReceiptContent = options.onboard ? buildHarnessReceipt(vaultRoot, overlay) : null;
     if (harnessReceiptContent !== null) {
       writeIfChanged(
         path.join(vaultRoot, 'System', '.dex', 'harness-profile.json'),
@@ -1696,6 +1736,8 @@ module.exports = {
   pathExports,
   provisionMutationTargets,
   provision,
+  resolveStagePython,
+  vaultPython,
   routeAdoptionThroughLifecycleService,
   routeCapabilityAuthority,
   reconcileCapabilities,

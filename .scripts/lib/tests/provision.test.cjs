@@ -10,7 +10,35 @@ const yaml = require('js-yaml');
 
 const repoRoot = path.resolve(__dirname, '../../..');
 const provisionScript = path.join(repoRoot, 'core', 'provision.cjs');
+const provisionLib = require(provisionScript);
 const contract = JSON.parse(fs.readFileSync(path.join(repoRoot, 'core', 'provision-contract.json'), 'utf8'));
+
+const PYTHON_ENV_KEYS = [
+  'DEX_PYTHON',
+  'DEX_PROVISION_PYTHON',
+  'DEX_CAPABILITY_PYTHON',
+  'DEX_HARNESS_PYTHON',
+  'DEX_LIFECYCLE_PYTHON',
+];
+
+function withoutPythonEnv(callback) {
+  const saved = Object.fromEntries(PYTHON_ENV_KEYS.map(key => [key, process.env[key]]));
+  for (const key of PYTHON_ENV_KEYS) delete process.env[key];
+  try {
+    return callback();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+function executable(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, '#!/bin/sh\nexit 0\n');
+  fs.chmodSync(filePath, 0o755);
+}
 
 function copy(source, target) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -476,6 +504,104 @@ test('dry-run reports all work and writes nothing', () => {
     assert.equal(result.summary.dry_run, true);
     assert.ok(result.summary.created.length > 0);
     assert.deepEqual(fileSnapshot(vault), before);
+  });
+});
+
+test('resolveStagePython honours an explicit DEX_PROVISION_PYTHON', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-provision-python-'));
+  try {
+    const configured = path.join(vault, 'pinned-python');
+    executable(configured);
+    executable(path.join(vault, '.venv', 'bin', 'python'));
+    process.env.DEX_PROVISION_PYTHON = configured;
+    try {
+      assert.equal(
+        provisionLib.resolveStagePython(vault, 'DEX_PROVISION_PYTHON'),
+        configured,
+      );
+    } finally {
+      delete process.env.DEX_PROVISION_PYTHON;
+    }
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('resolveStagePython uses the vault virtualenv before system python3', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-provision-python-'));
+  try {
+    const virtualenv = path.join(vault, '.venv', 'bin', 'python');
+    executable(virtualenv);
+    withoutPythonEnv(() => {
+      assert.equal(
+        provisionLib.resolveStagePython(vault, 'DEX_PROVISION_PYTHON'),
+        virtualenv,
+      );
+    });
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('resolveStagePython refuses a too-old system python in plain words', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-provision-python-'));
+  try {
+    const fakeBin = path.join(vault, 'fake-bin');
+    const oldPython = path.join(fakeBin, 'python3');
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(oldPython, '#!/bin/sh\nexit 2\n');
+    fs.chmodSync(oldPython, 0o755);
+    withoutPythonEnv(() => {
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${fakeBin}${path.delimiter}${previousPath}`;
+      try {
+        assert.throws(
+          () => provisionLib.resolveStagePython(vault, 'DEX_PROVISION_PYTHON'),
+          error => /Python 3\.10/.test(error.message) && /too old/.test(error.message),
+        );
+      } finally {
+        process.env.PATH = previousPath;
+      }
+    });
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('onboard provision transaction runs through the vault virtualenv python', () => {
+  withVault(vault => {
+    const hostPython = childProcess.execFileSync(
+      process.env.DEX_PYTHON || 'python3',
+      ['-c', 'import sys; print(sys.executable)'],
+      { encoding: 'utf8' },
+    ).trim();
+    const stamp = path.join(vault, 'used-python');
+    const venvPython = path.join(vault, '.venv', 'bin', 'python');
+    fs.mkdirSync(path.dirname(venvPython), { recursive: true });
+    fs.writeFileSync(
+      venvPython,
+      `#!/bin/sh\nprintf '%s\\n' "$0" >> ${JSON.stringify(stamp)}\nexec ${JSON.stringify(hostPython)} "$@"\n`,
+    );
+    fs.chmodSync(venvPython, 0o755);
+
+    const fakeBin = path.join(vault, 'fake-bin');
+    fs.mkdirSync(fakeBin);
+    fs.writeFileSync(
+      path.join(fakeBin, 'python3'),
+      '#!/bin/sh\necho "TypeError: unsupported operand type(s) for |: \'type\' and \'type\'" >&2\nexit 1\n',
+    );
+    fs.chmodSync(path.join(fakeBin, 'python3'), 0o755);
+
+    const result = runProvision(vault, [], {
+      PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
+      DEX_PYTHON: '',
+      DEX_PROVISION_PYTHON: '',
+      DEX_CAPABILITY_PYTHON: '',
+      DEX_HARNESS_PYTHON: '',
+      DEX_LIFECYCLE_PYTHON: '',
+    });
+    assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+    assert.match(fs.readFileSync(stamp, 'utf8'), new RegExp(venvPython.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   });
 });
 
