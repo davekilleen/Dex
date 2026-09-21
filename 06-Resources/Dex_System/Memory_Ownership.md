@@ -1,27 +1,19 @@
 # Memory Ownership Boundaries
 
-## Claude Auto-Memory (native)
-**Owns:** Preferences, style, communication patterns, formatting choices
-**Examples:** "User prefers bullet points", "Use neutral mermaid theme", "Direct communication style"
-**How it works:** Automatically captured by Claude. Persists across all sessions and harnesses.
-**Dex action:** Don't duplicate. Don't capture preferences in learning-heartbeat.
+Your saved Dex work belongs to the vault. An AI app's native memory, conversation history and model context are separate stores; changing apps does not automatically transfer them.
 
-## Agent Memory (frontmatter, `memory: project`)
-**Owns:** Per-agent operational state across sessions
-**Examples:** "deal-attention flagged Acme Corp 3 times", "cracks-detector: pricing follow-up resolved"
-**How it works:** Each agent reads/writes its own memory. Scoped to that agent.
-**Dex action:** Configured in Phase 1, WP-1.1.
+## App-native memory
 
-## Dex Session Memory (learning-heartbeat)
-**Owns:** Operational decisions, commitments, work patterns, system learnings
-**Examples:** "Agreed to deliver DACH deck by Friday", "Meeting-prep skill needs more account context"
-**How it works:** Captured at session Stop, stored in System/Session_Learnings/
-**Dex action:** Filter for operational only (WP-2.1).
+Claude Code auto-memory may retain preferences and project knowledge when enabled in that host. Its scope and availability are host-owned. It does not persist across all AI apps by virtue of installing Dex. Keep preferences you want Dex to reuse in your vault profile or an explicitly saved note.
 
-## Dex Vault Search (QMD)
-**Owns:** Semantic search across all vault content
-**Dex action:** Unchanged.
+Agent-specific `memory: project` is also a host feature. A copied skill or agent instruction does not establish equivalent memory elsewhere.
 
-## Dex Proactive Intelligence (Phase 4 — planned)
-**Owns:** Anticipation, pre-fetching, pattern prediction across agents
-**Dex action:** Future. Enhanced by agent memory providing richer signal.
+## Dex session learnings
+
+Operational decisions, commitments and reusable lessons can be saved in `System/Session_Learnings/` by the configured full-vault workflows. Claude Code has session-related capture hooks; the v1.97.13 portable package does not include a session-end capture adapter. In a new app, ask for a summary and confirm whether saving is available. Do not claim a memory was stored until the saved result is read back.
+
+## Search and context
+
+Vault search indexes existing content when its search service is configured. The portable `boot_today` and `get_person_context` tools read selected vault files; they do not record the current conversation. A missing index, ungranted folder or unavailable tool must be reported as such.
+
+Vault files are local, but an AI app may send the context it reads to its model provider. Folder access, connected-service permissions and feedback consent remain separate decisions. See [app limits](../../docs/HARNESS-PORTABILITY.md) and [the system guide](Dex_System_Guide.md).

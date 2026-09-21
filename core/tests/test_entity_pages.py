@@ -24,6 +24,19 @@ FIXTURES = Path(__file__).parent / "fixtures" / "entity_pages"
 ROOT = Path(__file__).parents[2]
 
 
+def test_unmarked_markdown_under_people_is_not_a_person(tmp_path: Path) -> None:
+    note = tmp_path / "05-Areas" / "People" / "External" / "Team_Process.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(
+        "# Alex Smith\n\nStandup reminder, not a person record.\n",
+        encoding="utf-8",
+    )
+    parsed = parse_entity_page(note)
+    assert parsed["type"] is None
+    assert parsed["name"] is None
+    assert parsed["declared_non_entity"] is False
+
+
 def test_parse_golden_fixtures() -> None:
     pages = sorted(FIXTURES.glob("[0-9][0-9]-*.md"))
     assert len(pages) >= 10
@@ -737,6 +750,10 @@ def test_normalize_walks_tmp_vault_and_reports_counts(tmp_path: Path, monkeypatc
     people.mkdir()
     companies.mkdir()
     (people / "README.md").write_text("# Docs\n", encoding="utf-8")
+    (people / "Team_Process.md").write_text(
+        "# Team Process\n\nStandup reminder, not a person record.\n",
+        encoding="utf-8",
+    )
     (people / "Legacy_Person.md").write_text(
         "# Legacy Person\n\n**Email:** PERSON@EXAMPLE.COM\n", encoding="utf-8"
     )
@@ -748,13 +765,16 @@ def test_normalize_walks_tmp_vault_and_reports_counts(tmp_path: Path, monkeypatc
     monkeypatch.setattr(entity_maintenance, "COMPANIES_DIR", companies)
 
     dry_run = entity_maintenance.normalize(dry_run=True)
-    assert dry_run == {"scanned": 3, "updated": 2, "unchanged": 0, "quarantined": 1, "skipped": 1}
+    assert dry_run == {"scanned": 3, "updated": 2, "unchanged": 0, "quarantined": 1, "skipped": 2}
     assert not (people / "Legacy_Person.md").read_text(encoding="utf-8").startswith("---")
+    assert not (people / "Team_Process.md").read_text(encoding="utf-8").startswith("---")
 
     result = entity_maintenance.normalize()
-    assert result == {"scanned": 3, "updated": 2, "unchanged": 0, "quarantined": 1, "skipped": 1}
+    assert result == {"scanned": 3, "updated": 2, "unchanged": 0, "quarantined": 1, "skipped": 2}
     assert parse_entity_page(people / "Legacy_Person.md")["emails"] == ["person@example.com"]
     assert parse_entity_page(companies / "Legacy_Co.md")["type"] == "company"
+    assert not (people / "Team_Process.md").read_text(encoding="utf-8").startswith("---")
     second = entity_maintenance.normalize()
     assert second["updated"] == 0
     assert second["unchanged"] == 2
+    assert second["skipped"] == 2

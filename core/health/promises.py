@@ -68,7 +68,7 @@ PROMISES: tuple[HealthPromise, ...] = (
         label="Meeting sync",
         cadence=timedelta(hours=48),
         receipt_kind="json-timestamp",
-        receipt_path=".scripts/meeting-intel/processed-meetings.json",
+        receipt_path="System/.dex/processed-meetings.json",
         receipt_key="lastSync",
     ),
     HealthPromise(
@@ -142,9 +142,24 @@ def promise_by_id(promise_id: str) -> HealthPromise | None:
     return None
 
 
+# Meeting sync used to write its receipt under a shipped folder that an update
+# replaces. Prefer the runtime path; still honour the older file so a vault
+# that has not synced since the move does not look like it never ran.
+LEGACY_MEETING_INTEL_RECEIPT = ".scripts/meeting-intel/processed-meetings.json"
+
+
+def _receipt_path(vault_root: str | Path, promise: HealthPromise) -> Path:
+    root = Path(vault_root)
+    primary = root / promise.receipt_path
+    if primary.is_file() or promise.id != "com.dex.meeting-intel":
+        return primary
+    legacy = root / LEGACY_MEETING_INTEL_RECEIPT
+    return legacy if legacy.is_file() else primary
+
+
 def read_receipt_timestamp(vault_root: str | Path, promise: HealthPromise) -> datetime | None:
     """Read the promise's receipt without trusting anything malformed."""
-    path = Path(vault_root) / promise.receipt_path
+    path = _receipt_path(vault_root, promise)
     if not path.is_file():
         return None
     if promise.receipt_kind != "json-timestamp":
@@ -186,6 +201,7 @@ __all__ = [
     "PROMISES",
     "HealthPromise",
     "PromiseAudit",
+    "LEGACY_MEETING_INTEL_RECEIPT",
     "audit_promise",
     "promise_by_id",
     "read_receipt_timestamp",

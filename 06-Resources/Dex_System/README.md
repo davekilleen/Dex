@@ -1,28 +1,23 @@
-# Dex System
+# Dex system guides
 
-Documentation about how Dex works and why.
+Start with the [system guide](Dex_System_Guide.md) for planning, meetings, people and tasks, or [jobs to be done](Dex_Jobs_to_Be_Done.md) for why those workflows exist. Dex is your durable personal system; the AI app is how you work with it.
 
-## What Goes Here
+For app choice, new or existing vault setup and the first useful result, use the [repository entry guide](../../README.md). Claude Code and Cursor retain their established full-vault routes. Portable files are distributed in v1.97.13; complete new-app journeys remain unverified. [Exact app limits](../../docs/HARNESS-PORTABILITY.md).
 
-- **Dex_Jobs_to_Be_Done.md** — Why the system exists, what problems it solves
-- **Dex_System_Guide.md** — Comprehensive guide to using Dex effectively
-- **Integrations/** — Setup guides for external tools (Granola, Pendo, etc.)
+[Updating and recovery](Updating_Dex.md) · [Background processing](Background_Processing_Guide.md) · [Memory ownership](Memory_Ownership.md) · [Obsidian](Obsidian_Guide.md).
 
-## Purpose
+## Documentation ownership
 
-This folder contains the "why" and "how" of Dex itself. When you forget how something works or want to understand the design philosophy, start here.
+`docs/Dex_System/` is the Brain-owned home for Dex's shipped system guides.
 
-## Key Documents
+For this transition release, the same guides remain under
+`06-Resources/Dex_System/` so existing links and combined-layout installs keep
+working. Those legacy copies are temporary bridge files; the updater flow will
+complete the physical move later without treating the rest of `06-Resources/`
+as Dex-owned.
 
-- **Jobs to Be Done** — Understand what problems Dex solves and when to use each feature
-- **System Guide** — Complete walkthrough of workflows, commands, and best practices
-- **Integration guides** — Connect external tools to enhance Dex
+Until that move lands:
 
-## Maintenance
-
-These docs are living documents:
-- Updated when the system changes
-- Refined based on user feedback
-- Expanded as new features are added
-
-If you find gaps or unclear sections, mention them and Dex will update the docs.
+- use `docs/Dex_System/` as the canonical shipped documentation tree;
+- keep `06-Resources/Dex_System/` in place for compatibility;
+- do not move personal notes from `06-Resources/` into this Brain-owned tree.
