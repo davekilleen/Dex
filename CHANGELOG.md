@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+Creating a task on Windows works again.
+
+On Windows, adding a task could fail the moment Dex opened your notes. Everyday marks in those files — a notes symbol, a tick, a name with an accent — made the work tools stop, and nothing was added.
+
+A previous update fixed this for the weekly list. The same problem was still sitting in the other work files, including the task list and the quarterly goals page, so creating a task could still fail.
+
+**What this fixes for you:**
+
+* **You can create and update tasks on Windows.** Dex now reads and writes your task, goal, people, and notes files the same way on every computer. Those everyday characters no longer block adding a task, ticking one off, or the rest of the work tools.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
