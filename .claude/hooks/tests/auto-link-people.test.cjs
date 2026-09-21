@@ -162,6 +162,38 @@ test('does not link a unique bare first name without document evidence', () => {
   assert.equal(autoLinkContent('Decision owned by Emma).', registry), 'Decision owned by Emma).');
 });
 
+test('DEX-180: a unique bare first name does not become an asserted person link', () => {
+  const { autoLinkContent } = loadScript();
+  const registry = makeRegistry({
+    fullNames: ['Jordan Hale'],
+    firstNames: [['Jordan', 'Jordan Hale']],
+    targets: [['Jordan Hale', 'Jordan_Hale']],
+  });
+
+  assert.equal(
+    autoLinkContent('Decision: Jordan owns the launch.', registry),
+    'Decision: Jordan owns the launch.',
+  );
+  assert.equal(
+    autoLinkContent('Jordan said yes. Follow up with Jordan next week.', registry),
+    'Jordan said yes. Follow up with Jordan next week.',
+  );
+});
+
+test('DEX-180: full name in the same note is the second signal that allows first-name links', () => {
+  const { autoLinkContent } = loadScript();
+  const registry = makeRegistry({
+    fullNames: ['Jordan Hale'],
+    firstNames: [['Jordan', 'Jordan Hale']],
+    targets: [['Jordan Hale', 'Jordan_Hale']],
+  });
+
+  assert.equal(
+    autoLinkContent('Jordan Hale joined. Jordan owns the launch.', registry),
+    '[[Jordan_Hale|Jordan Hale]] joined. [[Jordan_Hale|Jordan]] owns the launch.',
+  );
+});
+
 test('poisons a known first name when an unknown full name uses it', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({
@@ -391,6 +423,21 @@ test('buildRegistry scans every nested People directory and rejects ambiguous al
   assert.equal(registry.aliases.has('Saz'), false);
   assert.equal(registry.ownerName, 'Test User');
   assert.equal(registry.targetsByFullName.get('Sarah Chen'), 'Sarah_Chen');
+});
+
+test('DEX-180: CLI leaves a unique bare first name unlinked in a vault with one match', (t) => {
+  const fixture = createVault(t);
+  writePerson(fixture.peopleDir, 'Community', 'Jordan_Hale.md', '# Jordan Hale\n');
+  const notePath = path.join(fixture.vault, 'note.md');
+  const original = 'Decision: Jordan owns the launch.\n';
+  fs.writeFileSync(notePath, original);
+
+  const result = runCli(fixture.vault, [notePath]);
+
+  assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  assert.equal(fs.readFileSync(notePath, 'utf-8'), original);
+  assert.match(result.stdout, /no changes/);
+  assert.doesNotMatch(result.stdout, /Jordan_Hale/);
 });
 
 test('dry-run prints proposed links and writes nothing', (t) => {

@@ -11,7 +11,22 @@ All notable changes to Dex will be documented in this file.
 
 ## [1.97.14] — (2026-09-09)
 
-## [1.97.13] — (2026-09-07)
+## [1.97.13] — A first name is no longer enough to name someone (2026-09-07)
+
+If a note mentioned someone by first name only, Dex would turn that word into a
+link to the one person already on file with that first name — even when the note
+meant somebody else. The note then looked like a fact about the person Dex
+already knew.
+
+**What this fixes for you:**
+
+* **A first name by itself stays ordinary text.** Dex now makes a person link
+  from a first name only when that same note already uses the person's full
+  name (the meeting's attendee list counts). "Emma decided" no longer becomes
+  a claim about the Emma already in your system.
+* **Wrong person links stop spreading.** A mistaken link used to travel into
+  later notes that read it. New notes no longer create that kind of confident
+  guess.
 
 ## [1.97.12] — (2026-09-07)
 
