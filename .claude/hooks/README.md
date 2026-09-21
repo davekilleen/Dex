@@ -1,6 +1,6 @@
 # Claude Code hooks
 
-These hooks provide deterministic lifecycle behavior for Claude Code (**Tier 3 Full**). Cursor, Codex, and other Agent Skills harnesses do not run Claude Code hooks; they stop at **Tier 2 Skills**. Session boot and person context are also **Tier 1 Core** tools (`boot_today`, `get_person_context`) — Cursor/ChatGPT call them; these hooks auto-fire the same functions. The three-bucket inventory (scheduled / in-turn inject / gates) is in [`docs/architecture/HOOK-INVENTORY.md`](../../docs/architecture/HOOK-INVENTORY.md). Do not mass-migrate hooks.
+These are Claude Code-specific lifecycle hooks in the established full-vault setup. Other apps do not run `.claude/settings.json`. Portable adapters share selected context and safety code, but their events, trust and coverage must be proved in each installed app; complete new-app journeys remain unverified despite v1.97.13 package distribution. `boot_today` and `get_person_context` are on-demand tools when registered; they do not supply the whole hook suite. See [surface modes](../../docs/HARNESS-PORTABILITY.md#capability-truth) and [the hook inventory](../../docs/architecture/HOOK-INVENTORY.md). Do not mass-migrate hooks.
 
 The wiring sources of truth are:
 
