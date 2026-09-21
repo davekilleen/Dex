@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.17] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
+## [1.97.18] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
 
 A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google mail connector kept running in the background. Do that a few times and the leftover copies pile up — her machine ended up with dozens of them and became too slow to use. The only way out was to find and stop them by hand.
 
@@ -15,6 +15,16 @@ A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google 
 
 * **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
 * **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
+
+Creating a task on Windows works again.
+
+On Windows, adding a task could fail the moment Dex opened your notes. Everyday marks in those files — a notes symbol, a tick, a name with an accent — made the work tools stop, and nothing was added.
+
+A previous update fixed this for the weekly list. The same problem was still sitting in the other work files, including the task list and the quarterly goals page, so creating a task could still fail.
+
+**What this fixes for you:**
+
+* **You can create and update tasks on Windows.** Dex now reads and writes your task, goal, people, and notes files the same way on every computer. Those everyday characters no longer block adding a task, ticking one off, or the rest of the work tools.
 
 ## [1.97.16] — First-time setup can finish on a Mac (2026-09-21)
 
