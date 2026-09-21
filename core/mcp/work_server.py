@@ -874,6 +874,64 @@ def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
         return None
     return task_id
 
+def _target_checkbox_mark(status_code: str, completed: bool) -> str:
+    """Checkbox character that a successful status write must leave behind."""
+    if completed or status_code == 'd':
+        return 'x'
+    glyph = STATUS_CHECKBOXES.get(status_code, '- [ ]')
+    match = re.search(r'\[([^\]]*)\]', glyph)
+    return match.group(1) if match else ' '
+
+
+def _checkbox_matches_target(mark: str, target: str) -> bool:
+    if target == ' ':
+        return mark == ' '
+    return mark.casefold() == target.casefold()
+
+
+def _canonical_checkbox_marks(task_id: str) -> List[str] | None:
+    """Checkbox marks for this task in the main list.
+
+    None means the main list could not be read. An empty list means this
+    task has no checkbox line there.
+    """
+    path = get_tasks_file()
+    if not path.is_file():
+        return []
+    anchor = re.compile(r'\^' + re.escape(task_id) + r'(?!\d)')
+    try:
+        lines = path.read_text().split('\n')
+    except OSError:
+        return None
+    marks = []
+    for line in lines:
+        if not anchor.search(line):
+            continue
+        match = re.match(r'^\s*-\s*\[([^\]]*)\]', line)
+        if match:
+            marks.append(match.group(1))
+    return marks
+
+
+def _canonical_list_status_error(
+    task_id: str, status_code: str, completed: bool
+) -> Optional[str]:
+    """Error when the main task list does not show the status we just set."""
+    marks = _canonical_checkbox_marks(task_id)
+    if not marks:
+        if marks is None:
+            return "The main task list could not be read, so this status change did not stick."
+        return None
+    target = _target_checkbox_mark(status_code, completed)
+    if all(_checkbox_matches_target(mark, target) for mark in marks):
+        return None
+    if any(mark.lower() == 'b' for mark in marks) and target.lower() != 'b':
+        return (
+            "The main task list was not updated. The task is still blocked."
+        )
+    return "The main task list was not updated, so this status change did not stick."
+
+
 def update_task_status_everywhere(
     task_id: str, completed: str | bool
 ) -> Dict[str, Any]:
@@ -972,6 +1030,15 @@ def update_task_status_everywhere(
         result['error'] = (
             f"task updated in {len(updated_files)} of {len(instances)} locations; "
             f"failures: {failures}"
+        )
+
+    canonical_error = _canonical_list_status_error(task_id, status_code, completed)
+    if canonical_error:
+        result['success'] = False
+        result['error'] = (
+            f"{result['error']}; {canonical_error}"
+            if result.get('error')
+            else canonical_error
         )
 
     return result

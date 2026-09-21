@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+A blocked task now stays blocked on your main list.
+
+Marking a task blocked could look finished while the main task list never
+changed. Dex said the update worked, and the real line was left as it was.
+
+**What this fixes for you:**
+
+* **Blocked tasks reach the main list.** Marking a task blocked now updates
+  that list and the other places the task is written, instead of leaving the
+  main line open.
+* **Dex no longer says a status change worked when the main list was left
+  alone.** If the main list does not change, Dex says so. A task that is
+  still blocked is described that way.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
