@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent
 REGISTRY = ROOT / "metadata" / "harnesses" / "registry.json"
@@ -19,7 +18,8 @@ if str(RUNTIME) not in sys.path:
 
 from core.context.person_context import get_person_context  # noqa: E402
 from core.context.session_boot import build_session_boot  # noqa: E402
-from core.gates.safety import evaluate_safety_gate  # noqa: E402
+from core.gates.safety import evaluate_safety_gate, refusal  # noqa: E402
+from core.vault_selection import VaultSelectionError, select_vault  # noqa: E402
 
 
 def _load_registry() -> dict[str, Any]:
@@ -39,13 +39,9 @@ def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
 
 
 def _vault(arguments: dict[str, Any]) -> Path:
-    value = arguments.get("vault_path")
-    if not isinstance(value, str) or not value.strip():
-        value = os.environ.get("DEX_VAULT_PATH") or os.environ.get("VAULT_PATH")
-    try:
-        return Path(value).expanduser() if value else Path.cwd()
-    except (OSError, TypeError, ValueError):
-        return Path.cwd()
+    if "vault_path" in arguments and not isinstance(arguments["vault_path"], str):
+        raise VaultSelectionError("Blocked: invalid explicit vault selection.")
+    return select_vault(explicit=arguments.get("vault_path"))
 
 
 def _tool_result(request_id: Any, payload: Any) -> dict[str, Any]:
@@ -67,7 +63,7 @@ def _tools() -> list[dict[str, Any]]:
     vault = {
         "vault_path": {
             "type": "string",
-            "description": "Dex vault root; defaults to DEX_VAULT_PATH, VAULT_PATH, or cwd.",
+            "description": "Absolute selected Dex vault root; must agree with DEX_VAULT_PATH, VAULT_PATH, and CLAUDE_PROJECT_DIR when set.",
         }
     }
     return [
@@ -129,19 +125,26 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
         if name == "dex_harness_profiles":
             return _tool_result(request_id, _load_registry())
+        if name in {"boot_today", "get_person_context", "check_safety_gate"}:
+            if raw_arguments is not None and not isinstance(raw_arguments, dict):
+                return _tool_result(request_id, refusal("Blocked: tool arguments must be an object.").as_payload())
+            try:
+                selected_vault = _vault(arguments)
+            except VaultSelectionError as exc:
+                return _tool_result(request_id, refusal(str(exc), exc.code).as_payload())
         if name == "boot_today":
-            return _tool_result(request_id, build_session_boot(_vault(arguments)))
+            return _tool_result(request_id, build_session_boot(selected_vault))
         if name == "get_person_context":
             return _tool_result(
                 request_id,
-                get_person_context(_vault(arguments), arguments.get("name")),
+                get_person_context(selected_vault, arguments.get("name")),
             )
         if name == "check_safety_gate":
             decision = evaluate_safety_gate(
                 tool_name=arguments.get("tool_name"),
                 command=arguments.get("command"),
                 path=arguments.get("path"),
-                vault=_vault(arguments),
+                vault=selected_vault,
             )
             return _tool_result(request_id, decision.as_payload())
         return _error(request_id, -32602, f"unknown tool: {name}")

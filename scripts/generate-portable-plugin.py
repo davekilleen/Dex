@@ -29,6 +29,7 @@ RUNTIME_SOURCES = (
     Path("core/context/__init__.py"),
     Path("core/context/person_context.py"),
     Path("core/context/session_boot.py"),
+    Path("core/vault_selection.py"),
     Path("core/gates/__init__.py"),
     Path("core/gates/safety.py"),
 )
@@ -198,7 +199,7 @@ def _hooks_json() -> dict:
             ],
             "PreToolUse": [
                 {
-                    "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
+                    "matcher": "Bash|apply_patch|Write|Edit|MultiEdit|NotebookEdit|mcp__.*",
                     "hooks": [command],
                 }
             ],
@@ -222,7 +223,7 @@ def _codex_hooks_json() -> dict:
             ],
             "PreToolUse": [
                 {
-                    "matcher": "Bash|apply_patch|Write|Edit|MultiEdit",
+                    "matcher": "Bash|apply_patch|Write|Edit|MultiEdit|NotebookEdit|mcp__.*",
                     "hooks": [command],
                 }
             ],
@@ -239,7 +240,7 @@ def _cursor_hooks_json() -> dict:
             "preToolUse": [
                 {
                     "command": command,
-                    "matcher": "Shell|Write|Delete",
+                    "matcher": ".*",
                     "failClosed": True,
                 }
             ],
@@ -264,7 +265,7 @@ def _gemini_hooks_json() -> dict:
             ],
             "BeforeTool": [
                 {
-                    "matcher": "run_shell_command|write_file|replace",
+                    "matcher": ".*",
                     "hooks": [hook],
                 }
             ],

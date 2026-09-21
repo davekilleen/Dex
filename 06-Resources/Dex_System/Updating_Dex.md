@@ -1,5 +1,17 @@
 # Updating Dex — Explained Simply
 
+## Choose the update route for your installed setup
+
+Dex product files, your personal vault and the AI app's plugin have separate lifecycles. In an established full-vault setup, use `/dex-update` (or ask for the update preview) with the configured Dex lifecycle service. Start from the same vault you already use; do not create another vault to update or switch apps.
+
+The v1.97.13 portable package exposes four read-only/advisory tools; it does not bundle the installer, updater, Doctor or rollback service. A generated update skill does not supply those dependencies. Complete new-app update and removal journeys remain unverified. Use your existing working app for vault updates until [the app-specific route](../../docs/HARNESS-PORTABILITY.md) has native proof.
+
+Automatic release notices depend on configured Claude Code session hooks. Elsewhere, ask to check the release explicitly if that service is available. A notice is never approval to install.
+
+To leave an app, close its Dex session and disable its plugin or revoke its folder grant. Keep your vault to retain your notes. Independently installed jobs and connected accounts need separate controls; removing a plugin does not disable them. No new-app removal command is certified by this guide.
+
+The receipt-backed flow below applies when the full lifecycle service is available. Rewind requires an eligible receipt and successful safety checks; it is not an unconditional undo of every file or app change.
+
 **Last Updated:** July 26, 2026 (reflects the receipt-backed update system, v1.65+)
 
 This guide explains how Dex updates work, written for people who've never used

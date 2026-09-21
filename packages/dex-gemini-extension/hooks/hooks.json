@@ -37,7 +37,7 @@
     ],
     "BeforeTool": [
       {
-        "matcher": "run_shell_command|write_file|replace",
+        "matcher": ".*",
         "hooks": [
           {
             "name": "dex-context-and-safety",

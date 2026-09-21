@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "389ba90331048d0b80634ffb8f9b2c5f4d93e097354ab69e624f636c9ce73e7a",
-        "byte_size": 20437
+        "sha256": "d31dbaaa35dd02e86044d0f6e5a5b29c86f8852fded5683e7167f67e529d85f7",
+        "byte_size": 20690
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -4940,8 +4940,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "e7c79809a1fac3326894726f8f36ab369978b6c601e7134b1956f7eb919ee6eb",
-        "byte_size": 22694
+        "sha256": "33abce727780449277cae7e8fcd0b9b27321d53ecd01969f83e58792b22be28a",
+        "byte_size": 22915
       },
       "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
       "jobs_served": [

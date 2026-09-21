@@ -11,8 +11,8 @@
         "connection-manager"
       ],
       "fileCount": 21,
-      "totalBytes": 240227,
-      "treeHash": "e8283181e7c3a74e5b79fe540208ace69a31f76b0f653b4ca25d58011bbbb12f",
+      "totalBytes": 243651,
+      "treeHash": "f01c8f1157e5fe7e3bac20499d990d0d5997baa67223b957353fe73ae5ddd386",
       "files": [
         {
           "path": "auth-context.cjs",
@@ -96,13 +96,13 @@
         },
         {
           "path": "oauth-flow.cjs",
-          "bytes": 10679,
-          "sha256": "9e54745bbf65646de65b6942906436d068fda1f51c3e3b768f4b86ce9c90ee56"
+          "bytes": 13326,
+          "sha256": "34f2acb3b0bca6534d26b679aa3f5d975092bd5de05905d7a448e81cd00da886"
         },
         {
           "path": "pinned-providers.cjs",
-          "bytes": 3077,
-          "sha256": "e65ec1e95671fd31061b55fd957d34397176c89c257143522e056a8d8c578113"
+          "bytes": 3854,
+          "sha256": "76ff7893cd49257a06e6bb4823f4e1f0968c8dbe85b9a3459cdbc262449f858d"
         },
         {
           "path": "presence.cjs",
