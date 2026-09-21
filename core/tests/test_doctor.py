@@ -3341,6 +3341,37 @@ def test_customization_skills_are_ok_when_every_frontmatter_is_valid(context):
     assert "1 user customization" in result.detail
 
 
+def test_skills_custom_directory_counts_as_a_user_customization(context):
+    _write_skill(context, "daily-plan")
+    custom = context.vault_root / ".claude" / "skills-custom" / "board-update" / "SKILL.md"
+    custom.parent.mkdir(parents=True)
+    custom.write_text(
+        "---\nname: board-update\ndescription: Draft the board update.\n---\nBody.\n",
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Validated 1 user customization and 1 shipped skill"
+
+
+def test_invalid_skill_in_skills_custom_is_a_user_customization(context):
+    custom = context.vault_root / ".claude" / "skills-custom" / "board-update" / "SKILL.md"
+    custom.parent.mkdir(parents=True)
+    custom.write_text(
+        "---\nname: wrong-name\ndescription: Draft the board update.\n---\nBody.\n",
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_customization_skills(context)
+
+    relative = custom.relative_to(context.vault_root).as_posix()
+    assert result.verdict == "BROKEN"
+    assert f"user customization {relative}" in result.detail
+    assert "/dex-update" not in result.detail
+
+
 def test_customization_skills_ignore_empty_retired_skill_directories(context):
     _write_skill(context, "daily-plan")
     retired = context.vault_root / ".claude" / "skills" / "retired-shipped-skill"

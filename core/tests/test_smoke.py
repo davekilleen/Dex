@@ -566,6 +566,28 @@ def test_fresh_release_without_onboarding_or_python_packages_has_clean_verdicts(
     assert all("harness failed" not in journey["detail"] for journey in journeys.values())
 
 
+def test_skills_journey_counts_skills_custom_as_user_owned(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    shipped = vault / ".claude" / "skills" / "daily-plan" / "SKILL.md"
+    custom = vault / ".claude" / "skills-custom" / "board-update" / "SKILL.md"
+    for path, name, description in (
+        (shipped, "daily-plan", "Plan the day."),
+        (custom, "board-update", "Draft the board update."),
+    ):
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            f"---\nname: {name}\ndescription: {description}\n---\nBody.\n",
+            encoding="utf-8",
+        )
+
+    result = smoke._journey_skills(vault, vault)
+
+    assert result == {
+        "verdict": "OK",
+        "detail": "validated 2 skills (1 user, 1 shipped)",
+    }
+
+
 def test_ambient_tmpdir_inside_vault_is_never_used(monkeypatch, tmp_path: Path) -> None:
     vault = _write_valid_vault(tmp_path)
     monkeypatch.setenv("TMPDIR", str(vault))

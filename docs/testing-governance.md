@@ -84,7 +84,7 @@ with a temporary vault and home directory. Its release journeys are:
 - `mcp_startup` -> handshake pristine Dex-owned local Python servers plus exact user-blessed
   custom local Python snapshots; validate all other entries structurally without executing
   them
-- `skills` -> validate shipped and `-custom` skill frontmatter
+- `skills` -> validate shipped skill frontmatter, legacy `-custom` skills, and skills under `.claude/skills-custom/`
 - `hooks` -> check presence, executable bits, and syntax without running hooks
 
 The runner has a 30-second global budget, writes only to temporary copies, and executes no
@@ -149,8 +149,9 @@ does not guess at a cause.
 
 The quick doctor adds three always-visible checks:
 
-- `customizations.skills` validates every skill and identifies user-owned `-custom`
-  failures separately from shipped failures.
+- `customizations.skills` validates every skill and identifies user-owned failures
+  (legacy `-custom` folders and anything under `.claude/skills-custom/`) separately
+  from shipped failures.
 - `customizations.mcp` validates MCP structure, unresolved placeholders, custom Python
   syntax, and the same registry name/path/hash state without launching custom commands.
 - `core.drift` compares shipped files with the installed release while excluding

@@ -4443,8 +4443,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/create-skill/SKILL.md",
-        "sha256": "0a5a30e105ab6dac24db145bc4b56250bdc0862c6f866cdb3f9d2ffa23991152",
-        "byte_size": 9435
+        "sha256": "d0157df8f8b00d9a6a88e3ec72733a467a91319061135ed76e80189cf22fc653",
+        "byte_size": 10042
       },
       "value": "Author a new Dex skill.",
       "jobs_served": [

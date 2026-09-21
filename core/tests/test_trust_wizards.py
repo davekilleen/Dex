@@ -85,5 +85,12 @@ def test_create_skill_v2_collision_check_and_core_hard_gate() -> None:
     assert "85" in text
     assert "coached, never block" in text
 
-    # Origin-aware: user skills keep the -custom protection.
-    assert "-custom" in text
+    # Origin-aware: user skills are written in the vault-owned custom directory.
+    assert ".claude/skills-custom/{name}/" in text
+    assert "Edit: .claude/skills-custom/{name}/SKILL.md" in text
+    assert ".claude/skills/{name}-custom/SKILL.md" not in text
+    standard = (
+        ROOT / ".claude/skills/create-skill/references/dex-skill-standard.md"
+    ).read_text(encoding="utf-8")
+    assert ".claude/skills-custom/{name}/" in standard
+    assert "never author a user skill inside `.claude/skills/`" in standard
