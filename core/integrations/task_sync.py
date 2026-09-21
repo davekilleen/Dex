@@ -98,6 +98,63 @@ def _write_state(state: dict[str, Any]) -> None:
     _write_json_atomic(TASK_SYNC_STATE_FILE, state)
 
 
+def _merge_recorded_mappings(service: str, service_state: dict[str, Any]) -> list[str]:
+    """Adopt mappings already written by another operation; never replace a different ID."""
+    errors: list[str] = []
+    disk_state = _load_state().get(service)
+    if not isinstance(disk_state, dict):
+        return errors
+    disk_map = disk_state.get("map")
+    if not isinstance(disk_map, dict):
+        return errors
+    mapping = service_state["map"]
+    for task_id, external_id in disk_map.items():
+        key = str(task_id)
+        incoming = str(external_id)
+        current = mapping.get(key)
+        if current is None:
+            mapping[key] = incoming
+            continue
+        if str(current) != incoming:
+            mapping[key] = incoming
+            errors.append(
+                f"refusing to replace the existing {service} ID for {key}"
+            )
+    return errors
+
+
+def snapshot_sync_files() -> dict[str, bytes | None]:
+    """Capture mapping files so a failed Dex task write can roll them back."""
+    return {
+        "state": (
+            TASK_SYNC_STATE_FILE.read_bytes()
+            if TASK_SYNC_STATE_FILE.exists()
+            else None
+        ),
+        "inbound": (
+            INBOUND_TASKS_FILE.read_bytes()
+            if INBOUND_TASKS_FILE.exists()
+            else None
+        ),
+    }
+
+
+def restore_sync_files(snapshot: dict[str, bytes | None]) -> None:
+    """Restore mapping files captured by snapshot_sync_files()."""
+    pairs = (
+        ("state", TASK_SYNC_STATE_FILE),
+        ("inbound", INBOUND_TASKS_FILE),
+    )
+    for key, path in pairs:
+        data = snapshot.get(key)
+        if data is None:
+            if path.exists():
+                path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+
 def _normalize_service_state(value: object) -> dict[str, Any]:
     if not isinstance(value, dict):
         return _new_service_state()
@@ -403,25 +460,39 @@ def sync_external_tasks(
             baseline_date = _sync_cursor_date(previous_cursor)
             mapping = service_state["map"]
             completed_pushed = set(str(value) for value in service_state["completed_pushed"])
+            report["errors"].extend(_merge_recorded_mappings(service, service_state))
 
             for task in tasks:
                 task_id = task.get("task_id")
                 task_date = _task_id_date(task_id)
+                mapped_id = str(task_id) if task_id is not None else ""
                 if (
                     task.get("completed")
                     or task_id is None
                     or task_date is None
                     or task_date < baseline_date
+                    or mapped_id in mapping
                     or task_id in mapping
                 ):
                     continue
                 if dry_run:
                     report["pushed_creates"] += 1
                     continue
+                report["errors"].extend(_merge_recorded_mappings(service, service_state))
+                if mapped_id in mapping or task_id in mapping:
+                    continue
                 external_id = _run_adapter(service, "create", runtime_settings, task)
                 if external_id is None:
                     raise RuntimeError(f"{service} create returned no external ID")
-                mapping[str(task_id)] = str(external_id)
+                report["errors"].extend(_merge_recorded_mappings(service, service_state))
+                existing_external_id = mapping.get(mapped_id, mapping.get(task_id))
+                if existing_external_id is not None:
+                    if str(existing_external_id) != str(external_id):
+                        report["errors"].append(
+                            f"refusing to replace the existing {service} ID for {mapped_id}"
+                        )
+                    continue
+                mapping[mapped_id] = str(external_id)
                 _write_state(state)
                 report["pushed_creates"] += 1
 
@@ -521,6 +592,7 @@ def sync_external_tasks(
                     _write_state(state)
 
             if not dry_run:
+                report["errors"].extend(_merge_recorded_mappings(service, service_state))
                 service_state["last_sync"] = cycle_cursor
                 _write_state(state)
         except Exception as error:
@@ -533,18 +605,27 @@ def record_external_task_mapping(
     task_id: str,
     service: str,
     external_id: str,
+    *,
+    require_canonical: bool = True,
 ) -> dict[str, object]:
-    """Record an adopted inbound task's external mapping and dequeue it."""
-    canonical = {
-        str(task.get("task_id"))
-        for task in _canonical_tasks()
-        if task.get("task_id")
-    }
-    if task_id not in canonical:
-        return {
-            "success": False,
-            "error": f"Canonical task not found: {task_id}",
+    """Record an adopted inbound task's external mapping and dequeue it.
+
+    Refuses to replace an existing mapping with a different external ID.
+    When ``require_canonical`` is false, the Dex task may not be on disk yet
+    so inbound adoption can record the originating ID before any outbound
+    create can see the new task.
+    """
+    if require_canonical:
+        canonical = {
+            str(task.get("task_id"))
+            for task in _canonical_tasks()
+            if task.get("task_id")
         }
+        if task_id not in canonical:
+            return {
+                "success": False,
+                "error": f"Canonical task not found: {task_id}",
+            }
     if not _SERVICE_PATTERN.fullmatch(service):
         return {"success": False, "error": f"Invalid service name: {service}"}
     if not external_id:
@@ -555,7 +636,30 @@ def record_external_task_mapping(
         state.get(service, _new_service_state())
     )
     state[service] = service_state
-    service_state["map"][task_id] = str(external_id)
+    mapping = service_state["map"]
+    existing = mapping.get(task_id, mapping.get(str(task_id)))
+    if existing is not None and str(existing) != str(external_id):
+        return {
+            "success": False,
+            "error": (
+                f"Task {task_id} is already mapped to a different {service} ID"
+            ),
+            "existing_external_id": str(existing),
+        }
+    for mapped_task_id, mapped_external_id in mapping.items():
+        if (
+            str(mapped_external_id) == str(external_id)
+            and str(mapped_task_id) != str(task_id)
+        ):
+            return {
+                "success": False,
+                "error": (
+                    f"{service} ID is already mapped to a different Dex task"
+                ),
+                "existing_task_id": str(mapped_task_id),
+            }
+
+    mapping[str(task_id)] = str(external_id)
     _write_state(state)
 
     inbound = _load_inbound()

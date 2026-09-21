@@ -4531,7 +4531,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="record_external_task_mapping",
-            description="Record the external ID for a canonical Dex task and remove its inbound queue item.",
+            description="Record the external ID for a canonical Dex task and remove its inbound queue item. Refuses to replace an existing mapping with a different external ID.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -5555,6 +5555,30 @@ async def _handle_call_tool_inner(
             if source and stamp_source_line
             else None
         ) or generate_task_id()
+
+        # Record the inbound identity before the Dex task is visible on disk so a
+        # concurrent sync cannot push it back as a second external task.
+        external_mapping = None
+        sync_snapshot = None
+        if external_service:
+            from core.integrations import task_sync
+
+            sync_snapshot = task_sync.snapshot_sync_files()
+            external_mapping = task_sync.record_external_task_mapping(
+                task_id=task_id,
+                service=external_service,
+                external_id=external_id,
+                require_canonical=False,
+            )
+            if not external_mapping.get("success"):
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": str(
+                        external_mapping.get("error")
+                        or "External task mapping failed"
+                    ),
+                    "external_mapping": external_mapping,
+                }, indent=2))]
         
         # Build file references for account/people
         file_refs = []
@@ -5621,21 +5645,14 @@ async def _handle_call_tool_inner(
             lines.insert(insert_idx, f"\n{section_header}\n{task_entry}\n")
             new_content = '\n'.join(lines)
         
-        get_tasks_file().write_text(new_content)
+        try:
+            get_tasks_file().write_text(new_content)
+        except Exception:
+            if sync_snapshot is not None:
+                from core.integrations import task_sync
 
-        external_mapping = None
-        if external_service:
-            from core.integrations import task_sync
-
-            external_mapping = task_sync.record_external_task_mapping(
-                task_id=task_id,
-                service=external_service,
-                external_id=external_id,
-            )
-            if not external_mapping.get("success"):
-                raise RuntimeError(
-                    str(external_mapping.get("error") or "External task mapping failed")
-                )
+                task_sync.restore_sync_files(sync_snapshot)
+            raise
 
         if stamp_source_line and source:
             try:

@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.16] — A task from Todoist stays one task, even when Dex is busy (2026-09-21)
+
+Accepting a task from Todoist could still make a second copy in Todoist, and
+Dex could quietly forget which copy was the original. The leftover sat there
+forever.
+
+**What this fixes for you:**
+
+* **Dex writes down the original Todoist task first, before it can create
+  another.** Bringing a Todoist task into Dex records where it came from
+  before that task appears on your list, so a sync running at the same
+  moment cannot send it back as a new Todoist task.
+* **Dex will not replace that link with a different Todoist task.** If the
+  original is already recorded, Dex keeps it and says so, instead of
+  silently pointing at a new copy and leaving the old one behind.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
