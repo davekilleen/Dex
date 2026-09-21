@@ -739,7 +739,14 @@ async def handle_scan_work_for_evidence(arguments: dict) -> list[types.TextConte
             
             for i, line in enumerate(lines):
                 # Match goal headers like ### 1. Launch Product v2.0 — **Growth** ^Q1-2026-goal-1
-                goal_match = re.match(r'###\s+(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*(?:\s+\^(Q\d+-\d{4}-goal-\d+))?', line)
+                # Calendar (Q3-2026) and fiscal (FY27-Q2) quarters both occur.
+                # Matching only the first silently drops the goal ID; see
+                # GOAL_ID_PATTERN in work_server.py.
+                goal_match = re.match(
+                    r'###\s+(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*'
+                    r'(?:\s+\^((?:Q\d+-\d{4}|FY\d{2,4}-Q\d+)-goal-\d+))?',
+                    line,
+                )
                 if goal_match:
                     if current_goal:
                         evidence_candidates.append(current_goal)
