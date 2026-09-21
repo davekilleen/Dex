@@ -411,8 +411,9 @@ test('enabled hook keeps protected and unread copy distinct when nothing else sa
 test('settings wires the opt-in hook after session-end and the shipped profile defaults off', () => {
   const settings = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.claude', 'settings.json'), 'utf8'));
   const commands = settings.hooks.SessionEnd[0].hooks.map((entry) => entry.command);
-  assert.match(commands[0], /session-end\.sh/);
-  assert.match(commands[1], /vault-autocommit\.cjs/);
+  assert.match(commands[0], /mcp_session_lifecycle\.py/);
+  assert.match(commands[1], /session-end\.sh/);
+  assert.match(commands[2], /vault-autocommit\.cjs/);
   const profile = fs.readFileSync(path.join(REPO_ROOT, 'System', 'user-profile-template.yaml'), 'utf8');
   assert.match(profile, /^vault:\n  auto_commit: false$/m);
 });

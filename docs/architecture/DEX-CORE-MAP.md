@@ -4,7 +4,7 @@
 >
 > **Status vocabulary.** `SHIPPED` = in a released version tag. `LOCAL` = merged on `main`, not yet in a release tag. `PROTOTYPE` = built, not verified against live/real use. `PLANNED` = designed, not built.
 >
-> **Ground truth as of** `upstream/main` at `fd335640`, latest release tag **v1.97.0** (2026-08-13). Dex Everywhere portability remains unreleased on this branch; exact-head native macOS/Windows acceptance is green, while the mandatory Fable reviews and live release-candidate installs are still pending.
+> **Portability release truth, 7 September 2026:** current release **v1.97.13**, baseline `a7f3c782`. Portable package distribution is released. Complete native new-app install, workflow, update and removal acceptance remains unverified; protocol CI is not host support. See [the maintained surface guide](../HARNESS-PORTABILITY.md). Subsystem history below retains its own dated evidence.
 >
 > **Don't duplicate generated files.** Tool lists, skill lists, ownership-class path tables, and MCP↔skill wiring live in the auto-generated `docs/architecture/INVENTORY.md`. This map cross-references it; it does not restate it.
 >
@@ -168,11 +168,12 @@ therefore remains false.
 ## 9. Hooks — SHIPPED wired subset / dead weight present
 
 **What it is.** Event-driven shell scripts. The **actually-wired set** (from `.claude/settings.json`) is small:
-- SessionStart → `session-start.sh` + `core/utils/update_verifier.py` (bounded release awareness).
+- SessionStart → `session-start.sh` + `core/utils/update_verifier.py` (bounded release awareness) + `mcp_session_lifecycle.py --sweep`.
 - PreToolUse/Read → `person-context-injector.cjs`, `company-context-injector.cjs`.
 - PreToolUse/Bash → `dex-safety-guard.sh`, `ensure-mcp-user-scope.cjs`.
 - PreToolUse/`mcp__.*` → `dex-safety-guard.sh`.
-- SessionEnd → `session-end.sh`, `vault-autocommit.cjs`.
+- SessionEnd → `mcp_session_lifecycle.py` (reap google-workspace-mcp), `session-end.sh`, `vault-autocommit.cjs`.
+- SessionStart also sweeps leftover google-workspace-mcp pairs via `mcp_session_lifecycle.py --sweep`.
 - Stop / Notification → a sound (`afplay`).
 
 **Dead weight / audit findings.**
