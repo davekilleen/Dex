@@ -7,9 +7,9 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.19] — Connecting Zoom actually works now (2026-09-21)
+Connecting Zoom actually works now.
 
-**Connecting Zoom actually works now.** Before, turning Zoom on failed for everyone: setup told Dex to install a piece of software that was never published, so it could never finish.
+Before, turning Zoom on failed for everyone: setup told Dex to install a piece of software that was never published, so it could never finish.
 
 **What this fixes for you:**
 
