@@ -299,6 +299,7 @@
 .claude/hooks/maintenance.cjs
 .claude/hooks/meeting-cache-builder.cjs
 .claude/hooks/meeting-queue-check.cjs
+.claude/hooks/observation-recorder.py
 .claude/hooks/paths.cjs
 .claude/hooks/person-context-injector.cjs
 .claude/hooks/post-meeting-person-update.cjs
@@ -1026,6 +1027,8 @@ System/Templates/README.md
 System/claude-code-state.json
 System/integrations/config.yaml
 System/integrations/pipedrive.yaml.example
+System/knowledge-half-life.example.yaml
+System/knowledge-half-life.yaml
 System/pillars.example.yaml
 System/pillars.yaml
 System/trusted-mcps.example.yaml
@@ -1454,6 +1457,7 @@ core/tests/test_first_run_trigger.py
 core/tests/test_fiscal_year_goal_anchors.py
 core/tests/test_fixture_vault.py
 core/tests/test_founder_content_gate.py
+core/tests/test_freshness.py
 core/tests/test_fuzz_properties.py
 core/tests/test_fuzzy_person_match_guard.py
 core/tests/test_golden_journeys.py
@@ -1494,6 +1498,7 @@ core/tests/test_launch_agents.py
 core/tests/test_learning_automation.py
 core/tests/test_learning_capture_command_name.py
 core/tests/test_learning_review_prompt.py
+core/tests/test_learning_routing.py
 core/tests/test_lens_catalog_ci_trigger.py
 core/tests/test_lens_catalog_discovery.py
 core/tests/test_lens_catalog_enriched_discovery.py
@@ -1647,11 +1652,13 @@ core/utils/doctor.py
 core/utils/entity_pages.py
 core/utils/feature_status.py
 core/utils/feedback_sweep.py
+core/utils/freshness.py
 core/utils/health_session.py
 core/utils/health_telemetry.py
 core/utils/history_hygiene.py
 core/utils/integration_credentials.py
 core/utils/launch_agents.py
+core/utils/learning_routing.py
 core/utils/local_git.py
 core/utils/manifest.py
 core/utils/mcp_handshake.py

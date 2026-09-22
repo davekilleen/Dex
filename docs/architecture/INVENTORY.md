@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 876cb7b06d780344f3f7151525cda7091c23a2df0792a6acf082b82cf19797cf -->
+<!-- Content SHA-256: c70cc94e433d6ae8e6e850304cbac560c975c6fe0024c048277883bfac601e9c -->
 
 # Architecture Inventory
 
@@ -154,7 +154,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | Class | Rule count | Update action |
 | --- | ---: | --- |
 | `brain` | 46 | `replace` |
-| `seed` | 38 | `write-if-absent` |
+| `seed` | 40 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
@@ -210,7 +210,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>seed</code> declared paths (38)</summary>
+<details><summary><code>seed</code> declared paths (40)</summary>
 
 - `00-Inbox/Daily_Plans/README.md` (file; `seed-inbox-daily-plans-readme`)
 - `00-Inbox/Ideas/README.md` (file; `seed-inbox-ideas-readme`)
@@ -243,6 +243,8 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/Session_Learnings/README.md` (file; `seed-session-learnings-readme`)
 - `System/Templates` (dir; `seed-templates`)
 - `System/integrations` (dir; `seed-integrations`)
+- `System/knowledge-half-life.example.yaml` (file; `seed-half-life-example`)
+- `System/knowledge-half-life.yaml` (file; `seed-half-life-live`)
 - `System/pillars.example.yaml` (file; `seed-pillars-example`)
 - `System/pillars.yaml` (file; `seed-pillars-live`)
 - `System/trusted-mcps.example.yaml` (file; `seed-trusted-mcps-example`)
