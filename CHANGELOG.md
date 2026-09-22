@@ -7,6 +7,37 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+A blocked task now stays blocked on your main list.
+
+Marking a task blocked could look finished while the main task list never
+changed. Dex said the update worked, and the real line was left as it was.
+
+**What this fixes for you:**
+
+* **Blocked tasks reach the main list.** Marking a task blocked now updates
+  that list and the other places the task is written, instead of leaving the
+  main line open.
+* **Dex no longer says a status change worked when the main list was left
+  alone.** If the main list does not change, Dex says so. A task that is
+  still blocked is described that way.
+
+Setup and the switch for usage tracking could sound like counts were already
+being shared. On a normal install there is nowhere for them to go, so they
+stay on your machine.
+
+**What this fixes for you:**
+
+* **Setup says nothing is shared yet.** Dex can remember that you are willing
+  to help later. It no longer sounds like that help has already started, and
+  it no longer talks as if you need to switch off something that is already
+  running.
+* **Saying yes does not mean counts are going out.** If you turn usage
+  tracking on and there is still nowhere to send it, Dex says your preference
+  is saved and nothing is sent. It only says counts will be shared once there
+  is actually a place for them to go.
+* **Saying no no longer implies it had been sending.** Dex says usage tracking
+  stays off and nothing will be sent.
+
 Finished meetings stay finished.
 
 Meetings you had already handled could come back on the next session as if

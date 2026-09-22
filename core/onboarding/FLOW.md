@@ -707,7 +707,7 @@ Want to connect Granola now with `/granola-setup`, then set up manual or automat
 
 **This is shown for ALL new users during onboarding.**
 
-Say: "One last thing: Dex can record anonymous feature-usage counts—things like 'ran /daily-plan' or 'created a task'—to help improve the product. New installs do not send that data yet because no usage relay is configured. No content, names, notes, or conversations are sent. You can keep it off by saying 'turn off Dex analytics'."
+Say: "One last thing: Dex can save a preference to share anonymous feature-usage counts later — things like 'ran /daily-plan' or 'created a task'. Nothing is sent, because no usage relay is configured. Names, notes, and conversations are never part of those counts. Say 'turn off Dex analytics' if you do not want that preference saved."
 
 Then:
 1. Update `System/usage_log.md`:
@@ -721,8 +721,10 @@ Then:
      anonymous: true
    ```
 
-Do not emit an analytics consent event from this default setting. A default-on
-state is not an affirmative consent action.
+Do not emit an analytics consent event from this default setting. Saving this
+preference is not consent to send, and it is not a claim that anything is sent.
+Do not tell the user that improvement counts are being shared or that sharing
+has already started. A missing usage relay means nothing leaves the machine.
 
 ---
 

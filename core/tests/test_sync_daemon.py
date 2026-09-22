@@ -304,6 +304,32 @@ def test_repeated_failure_uses_the_session_start_error_queue(
     assert task_id in preflight.format_errors()
 
 
+def test_blocked_marker_in_a_note_updates_the_canonical_list(
+    tmp_path, monkeypatch, sync_daemon
+):
+    """A note changed to the blocked checkbox must rewrite the main list.
+
+    The sync used to only see open and done boxes, so a blocked mark never
+    reached update_task_status and the main list stayed open.
+    """
+    from core.mcp import work_server
+
+    task_id = "task-20260921-163"
+    canonical_file = tmp_path / "03-Tasks" / "Tasks.md"
+    note_file = tmp_path / "meeting.md"
+    canonical_file.parent.mkdir(parents=True)
+    canonical_file.write_text(f"# Tasks\n- [ ] Ship the brief ^{task_id}\n")
+    note_file.write_text(f"- [ ] Ship the brief ^{task_id}\n")
+    monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: canonical_file)
+
+    handler = sync_daemon.DexSyncHandler(tmp_path)
+    note_file.write_text(f"- [b] Ship the brief ^{task_id}\n")
+    handler.sync_file_tasks(note_file)
+
+    assert f"- [b] Ship the brief ^{task_id}" in canonical_file.read_text()
+
+
 def test_direct_edit_to_canonical_tasks_file_propagates(
     tmp_path, monkeypatch, sync_daemon
 ):

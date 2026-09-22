@@ -324,35 +324,7 @@ def test_calendar_read_empty_results_remain_healthy(
     assert payload[empty_field] == ([] if empty_field == "events" else None)
 
 
-def test_attendee_resolution_ignores_email_mentions_outside_person_fields(
-    monkeypatch,
-    tmp_path,
-):
-    vault = tmp_path / "vault"
-    people = vault / "05-Areas" / "People"
-    incidental = people / "Internal" / "Incidental_Contact.md"
-    actual = people / "External" / "Actual_Attendee.md"
-    incidental.parent.mkdir(parents=True)
-    actual.parent.mkdir(parents=True)
-    incidental.write_text(
-        "---\nname: Incidental Contact\nemails: [incidental@example.com]\n---\n"
-        "Meeting note: follow up with actual.attendee@example.com next week.\n"
-    )
-    actual.write_text(
-        "---\nname: Actual Attendee\nemails: [actual.attendee@example.com]\n---\n"
-    )
-    events = [
-        {
-            "title": "Customer call",
-            "attendees": [
-                {
-                    "name": "Calendar Display Name",
-                    "email": "actual.attendee@example.com",
-                    "status": "accepted",
-                }
-            ],
-        }
-    ]
+def _attendee_resolution_payload(monkeypatch, vault, people, events):
     monkeypatch.setattr(calendar_server, "VAULT_PATH", vault)
     monkeypatch.setattr(calendar_server, "PEOPLE_DIR", people)
     monkeypatch.setattr(
@@ -360,8 +332,7 @@ def test_attendee_resolution_ignores_email_mentions_outside_person_fields(
         "run_shell_script",
         lambda *args: (True, json.dumps(events)),
     )
-
-    payload = _decode_tool_result(
+    return _decode_tool_result(
         asyncio.run(
             calendar_server._handle_call_tool_inner(
                 "calendar_get_events_with_attendees",
@@ -374,8 +345,117 @@ def test_attendee_resolution_ignores_email_mentions_outside_person_fields(
         )
     )
 
+
+def _calendar_attendee(email, name="Calendar Display Name"):
+    return {
+        "title": "Customer call",
+        "attendees": [
+            {
+                "name": name,
+                "email": email,
+                "status": "accepted",
+            }
+        ],
+    }
+
+
+def test_attendee_resolution_ignores_email_mentions_outside_person_fields(
+    monkeypatch,
+    tmp_path,
+):
+    """DEX-166 / GS-UNSTALL-20260921.
+
+    The page that actually owns the address does not resemble the attendee
+    name or the mailbox, so a filename guess cannot satisfy this test. A
+    different person page only mentions that address in its notes.
+    """
+    vault = tmp_path / "vault"
+    people = vault / "05-Areas" / "People"
+    incidental = people / "Internal" / "Incidental_Contact.md"
+    actual = people / "External" / "Buyer_Contact.md"
+    incidental.parent.mkdir(parents=True)
+    actual.parent.mkdir(parents=True)
+    incidental.write_text(
+        "---\nname: Incidental Contact\nemails: [incidental@example.com]\n---\n"
+        "Meeting note: follow up with actual.attendee@example.com next week.\n"
+    )
+    actual.write_text(
+        "---\nname: Buyer Contact\nemails: [actual.attendee@example.com]\n---\n"
+    )
+
+    payload = _attendee_resolution_payload(
+        monkeypatch,
+        vault,
+        people,
+        [_calendar_attendee("actual.attendee@example.com")],
+    )
+
     attendee = payload["events"][0]["attendees"][0]
     assert attendee["has_person_page"] is True
     assert attendee["person_page"] == (
-        "05-Areas/People/External/Actual_Attendee.md"
+        "05-Areas/People/External/Buyer_Contact.md"
+    )
+
+
+def test_attendee_resolution_ignores_a_body_only_email_mention(
+    monkeypatch,
+    tmp_path,
+):
+    """A person page that never recorded the address is not a match."""
+    vault = tmp_path / "vault"
+    people = vault / "05-Areas" / "People"
+    incidental = people / "Internal" / "Incidental_Contact.md"
+    incidental.parent.mkdir(parents=True)
+    incidental.write_text(
+        "---\nname: Incidental Contact\nnotes: see actual.attendee@example.com\n---\n"
+        "Meeting note: follow up with actual.attendee@example.com next week.\n"
+    )
+
+    payload = _attendee_resolution_payload(
+        monkeypatch,
+        vault,
+        people,
+        [_calendar_attendee("actual.attendee@example.com")],
+    )
+
+    attendee = payload["events"][0]["attendees"][0]
+    assert attendee["has_person_page"] is False
+    assert "person_page" not in attendee
+
+
+def test_attendee_resolution_matches_legacy_email_field_not_a_longer_address(
+    monkeypatch,
+    tmp_path,
+):
+    """Structured email fields count. A longer address that merely contains
+    the attendee mailbox as text does not."""
+    vault = tmp_path / "vault"
+    people = vault / "05-Areas" / "People"
+    decoy = people / "Internal" / "Decoy_Contact.md"
+    legacy = people / "External" / "Legacy_Record.md"
+    decoy.parent.mkdir(parents=True)
+    legacy.parent.mkdir(parents=True)
+    decoy.write_text(
+        "---\nname: Decoy Contact\n"
+        "emails: [not-actual.attendee@example.com]\n---\n"
+        "Also saw actual.attendee@example.com in a thread.\n"
+    )
+    legacy.write_text(
+        "# Legacy Record\n\n"
+        "| Field | Value |\n"
+        "|-------|-------|\n"
+        "| **Email** | ACTUAL.ATTENDEE@example.com |\n"
+    )
+
+    payload = _attendee_resolution_payload(
+        monkeypatch,
+        vault,
+        people,
+        [_calendar_attendee("actual.attendee@example.com")],
+    )
+
+    attendee = payload["events"][0]["attendees"][0]
+    assert attendee["has_person_page"] is True
+    assert attendee["person_page"] == (
+        "05-Areas/People/External/Legacy_Record.md"
     )

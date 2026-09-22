@@ -35,7 +35,9 @@ from typing import Iterable, Mapping, Sequence
 
 SERVER_NAME = "google-workspace-mcp"
 SERVER_TOKEN = "google-workspace-mcp"
-WRAPPER_TOKEN = "mcp_session_lifecycle.py"
+# Path fragment of the wrapper — not the test module name, which also
+# contains "mcp_session_lifecycle.py" and would match a pytest command.
+WRAPPER_TOKEN = "utils/mcp_session_lifecycle.py"
 ONESHOT_TOKENS = (" accounts ", " test-permissions", " setup", " status")
 DEFAULT_CHILD = ("npx", "-y", "google-workspace-mcp", "serve")
 LEASE_DIRNAME = "leases"
@@ -467,16 +469,43 @@ def _list_ps() -> list[ProcessRecord]:
     return records
 
 
+def _pid_is_zombie(pid: int) -> bool:
+    """True when the PID is still in the table but cannot be signaled further."""
+
+    proc = Path("/proc") / str(pid) / "stat"
+    try:
+        text = proc.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    if text:
+        close = text.rfind(")")
+        if close != -1:
+            fields = text[close + 2 :].split()
+            if fields:
+                return fields[0] == "Z"
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "state="],
+            capture_output=True,
+            timeout=1,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    stdout = result.stdout.decode("utf-8", "replace") if isinstance(result.stdout, bytes) else result.stdout
+    return stdout.strip().upper().startswith("Z")
+
+
 def _pid_is_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
+        return not _pid_is_zombie(pid)
     except OSError:
         return False
-    return True
+    return not _pid_is_zombie(pid)
 
 
 def _process_group_id(pid: int) -> int:
@@ -508,6 +537,8 @@ def _reap_lease(lease: Mapping[str, object]) -> ReapResult:
     for pid in dict.fromkeys(targets):
         record = _refresh_record(pid)
         if record is None:
+            if not _pid_is_alive(pid):
+                reaped.append(pid)
             continue
         if not is_managed_cmdline(record.cmdline):
             skipped.append(pid)
@@ -528,7 +559,7 @@ def _reap_lease(lease: Mapping[str, object]) -> ReapResult:
 def _reap_record(record: ProcessRecord, *, pgid: int | None = None) -> bool:
     current = _refresh_record(record.pid)
     if current is None:
-        return False
+        return not _pid_is_alive(record.pid)
     if current.pid in {os.getpid(), os.getppid()}:
         return False
     if not is_managed_cmdline(current.cmdline):
@@ -537,16 +568,16 @@ def _reap_record(record: ProcessRecord, *, pgid: int | None = None) -> bool:
     _signal_group(group, signal.SIGTERM)
     deadline = time.time() + TERM_WAIT_SECONDS
     while time.time() < deadline:
-        if _refresh_record(current.pid) is None:
+        if not _pid_is_alive(current.pid):
             return True
         time.sleep(0.05)
     _signal_group(group, signal.SIGKILL)
     deadline = time.time() + KILL_WAIT_SECONDS
     while time.time() < deadline:
-        if _refresh_record(current.pid) is None:
+        if not _pid_is_alive(current.pid):
             return True
         time.sleep(0.05)
-    return _refresh_record(current.pid) is None
+    return not _pid_is_alive(current.pid)
 
 
 def _signal_group(pgid: int, signum: int) -> None:

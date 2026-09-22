@@ -30,7 +30,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TASK_PATTERN = re.compile(r'- \[([ xX])\].*?\^(task-\d{8}-\d{3,})')
+# Blocked (`b`/`B`) must stay distinct from an open checkbox. Collapsing it
+# to "not done" drops the marker and never writes the main task list.
+TASK_PATTERN = re.compile(r'- \[([ xXbB])\].*?\^(task-\d{8}-\d{3,})')
+
+
+def _checkbox_token(checkbox: str):
+    """Status token accepted by update_task_status_everywhere.
+
+    Done stays a boolean so existing sync callers keep their contract.
+    Blocked stays the status code ``b`` so it is not treated as not-started.
+    """
+    mark = checkbox.lower()
+    if mark == 'x':
+        return True
+    if mark == 'b':
+        return 'b'
+    return False
+
+
+def _canonical_status_token(task: dict):
+    """Same token shape as ``_checkbox_token`` for a parsed canonical task."""
+    if task.get('status') == 'b':
+        return 'b'
+    return bool(task.get('completed'))
 
 
 class DexSyncHandler(FileSystemEventHandler):
@@ -48,7 +71,7 @@ class DexSyncHandler(FileSystemEventHandler):
     def _read_task_states(file_path: Path):
         content = file_path.read_text()
         return [
-            (task_id, checkbox_state.lower() == 'x')
+            (task_id, _checkbox_token(checkbox_state))
             for checkbox_state, task_id in TASK_PATTERN.findall(content)
         ]
 
@@ -128,7 +151,7 @@ class DexSyncHandler(FileSystemEventHandler):
 
         if canonical_states is None:
             canonical_states = {
-                task['task_id']: task['completed']
+                task['task_id']: _canonical_status_token(task)
                 for task in work_server.parse_tasks_file(work_server.get_tasks_file())
                 if task.get('task_id')
             }
@@ -159,16 +182,17 @@ class DexSyncHandler(FileSystemEventHandler):
                 self._clear_sync_failure(task_id)
                 continue
 
-            status = 'd' if completed else 'n'
-            # Call Work MCP update_task_status
-            # This updates the task everywhere (Tasks.md, person pages, etc.)
+            # Call Work MCP update_task_status.
+            # This updates the task everywhere (Tasks.md, person pages, etc.).
+            # `completed` is True, False, or 'b' — 'b' must be passed through
+            # so a blocked marker is written instead of cleared.
             try:
                 result = work_server.update_task_status_everywhere(task_id, completed)
                 if result['success']:
                     self.last_seen_states[state_key] = completed
                     canonical_states[task_id] = completed
                     self._clear_sync_failure(task_id)
-                    logger.info(f"Synced {task_id} → {status}")
+                    logger.info(f"Synced {task_id} → {completed}")
                 else:
                     error = result.get('error', 'unknown error')
                     logger.error(f"Failed to sync {task_id}: {error}")

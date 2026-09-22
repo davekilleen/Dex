@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 MCP Server for Dex Session Memory System
-Exposes conversation intelligence from the dex-app SQLite DB to Cursor/CLI.
+Exposes conversation intelligence from the local sessions SQLite DB to Cursor/CLI.
 
 Read-only access to:
 - Sessions (search, context, summaries)
@@ -9,7 +9,9 @@ Read-only access to:
 - Observations (tool-use history, decisions, insights)
 - Progressive disclosure (3-layer token-efficient retrieval)
 
-DB location: System/.dex-sessions.db (shared with dex-app via WAL mode)
+DB location: System/.dex-sessions.db (WAL mode). Starting the server, or the
+first tool call, creates the database and schema when the file is not already
+there.
 """
 
 import json
@@ -39,14 +41,174 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
 DB_PATH = BASE_DIR / 'System' / '.dex-sessions.db'
 
+# Columns match the SELECT lists in the query helpers below. FTS rowids follow
+# the content tables so the existing JOIN ... ON rowid lookups keep working.
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    status TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    pillar TEXT,
+    summary TEXT,
+    entities TEXT,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT,
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    role TEXT,
+    content TEXT,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS observations (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    type TEXT,
+    summary TEXT,
+    entities TEXT,
+    tool_name TEXT,
+    timestamp TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_observations_session_id ON observations(session_id);
+CREATE INDEX IF NOT EXISTS idx_observations_type_timestamp ON observations(type, timestamp);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
+    name, summary, entities,
+    content='sessions',
+    content_rowid='rowid'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    content,
+    content='messages',
+    content_rowid='rowid'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
+    summary, entities,
+    content='observations',
+    content_rowid='rowid'
+);
+
+CREATE TRIGGER IF NOT EXISTS sessions_ai AFTER INSERT ON sessions BEGIN
+    INSERT INTO sessions_fts(rowid, name, summary, entities)
+    VALUES (new.rowid, new.name, new.summary, new.entities);
+END;
+CREATE TRIGGER IF NOT EXISTS sessions_ad AFTER DELETE ON sessions BEGIN
+    INSERT INTO sessions_fts(sessions_fts, rowid, name, summary, entities)
+    VALUES ('delete', old.rowid, old.name, old.summary, old.entities);
+END;
+CREATE TRIGGER IF NOT EXISTS sessions_au AFTER UPDATE ON sessions BEGIN
+    INSERT INTO sessions_fts(sessions_fts, rowid, name, summary, entities)
+    VALUES ('delete', old.rowid, old.name, old.summary, old.entities);
+    INSERT INTO sessions_fts(rowid, name, summary, entities)
+    VALUES (new.rowid, new.name, new.summary, new.entities);
+END;
+
+CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, content)
+    VALUES ('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+    INSERT INTO messages_fts(messages_fts, rowid, content)
+    VALUES ('delete', old.rowid, old.content);
+    INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS observations_ai AFTER INSERT ON observations BEGIN
+    INSERT INTO observations_fts(rowid, summary, entities)
+    VALUES (new.rowid, new.summary, new.entities);
+END;
+CREATE TRIGGER IF NOT EXISTS observations_ad AFTER DELETE ON observations BEGIN
+    INSERT INTO observations_fts(observations_fts, rowid, summary, entities)
+    VALUES ('delete', old.rowid, old.summary, old.entities);
+END;
+CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
+    INSERT INTO observations_fts(observations_fts, rowid, summary, entities)
+    VALUES ('delete', old.rowid, old.summary, old.entities);
+    INSERT INTO observations_fts(rowid, summary, entities)
+    VALUES (new.rowid, new.summary, new.entities);
+END;
+"""
+
 # ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
 
+def _remove_incomplete_database() -> None:
+    for suffix in ("", "-wal", "-shm"):
+        candidate = Path(f"{DB_PATH}{suffix}")
+        try:
+            candidate.unlink()
+        except OSError:
+            pass
+
+
+def ensure_database() -> None:
+    """Create the sessions database and schema the first time it is needed.
+
+    A file that is already present is left untouched, including a database
+    written earlier with its own rows. The new file is created exclusively so
+    a failure cannot delete a database another process just wrote.
+    """
+    if DB_PATH.exists():
+        return
+
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(DB_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return
+    except OSError as exc:
+        raise FileNotFoundError(
+            f"Sessions DB not found at {DB_PATH}. Could not create it."
+        ) from exc
+    os.close(descriptor)
+
+    connection = None
+    try:
+        connection = sqlite3.connect(DB_PATH)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.executescript(SCHEMA)
+        connection.commit()
+    except (OSError, sqlite3.Error) as exc:
+        if connection is not None:
+            connection.close()
+            connection = None
+        _remove_incomplete_database()
+        raise FileNotFoundError(
+            f"Sessions DB not found at {DB_PATH}. Could not create it."
+        ) from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+    try:
+        connection = sqlite3.connect(DB_PATH)
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        connection.close()
+    except sqlite3.Error:
+        pass
+
+
 def get_db() -> sqlite3.Connection:
-    """Open a read-only WAL-mode connection to the sessions DB."""
+    """Open a read-only WAL-mode connection, creating the database on first use."""
+    ensure_database()
     if not DB_PATH.exists():
-        raise FileNotFoundError(f"Sessions DB not found at {DB_PATH}. Start the Dex app first to create it.")
+        raise FileNotFoundError(
+            f"Sessions DB not found at {DB_PATH}. Could not create it."
+        )
 
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -736,7 +898,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
     except FileNotFoundError as e:
-        hint = "The Dex app creates this database. Start the app and have at least one conversation first."
+        hint = "Dex could not create the session memory database in this vault."
         payload = feature_status(
             "Session memory",
             "not_installed",
@@ -756,6 +918,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
 async def _main():
     logger.info("Starting Dex Session Memory MCP Server")
+    try:
+        ensure_database()
+    except FileNotFoundError as exc:
+        logger.info("%s", exc)
     logger.info(f"Vault path: {BASE_DIR}")
     logger.info(f"DB path: {DB_PATH}")
     logger.info(f"DB exists: {DB_PATH.exists()}")
