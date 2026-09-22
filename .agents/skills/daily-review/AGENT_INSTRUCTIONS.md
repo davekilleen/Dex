@@ -11,6 +11,16 @@ any section gracefully if a tool fails; never error out.
 **Note:** PostToolUse hooks from the parent skill do not fire in this subagent
 context. Do not rely on hook-driven side effects for any write you make.
 
+**Issue the steps in batches, each as one turn of parallel tool calls.** Step 0
+runs first because it changes the notes the rest reads. After it, everything in
+Steps 1 through 3 and 5 through 6 is independent: the file discovery, the task
+file read, `get_week_progress()` and `get_week_priorities()`, the meeting note
+reads, `calendar_get_today()`, the Reminders calls, the email check, today's
+plan file, and tomorrow's calendar all go out in one turn. Step 2.4's semantic
+queries follow in a second turn once you know today's tasks and meetings. Then
+write. Running the steps one after another is what made this brief slow; each
+step's own rules and gates still apply exactly as written.
+
 ---
 
 ## Step 0: Meeting Catch-Up (not same-day only)
@@ -32,10 +42,14 @@ Why the window matters: a same-day filter loses meetings permanently on any day
 the review does not run.
 
 Process local candidates following the process-meetings instructions, including
-provider-neutral discovery and updating person pages directly rather than
-counting on a hook. Note the actual path of every meeting processed. If the
-profile is missing or malformed, report that once and use the safe local
-fallback. If nothing is unprocessed, skip silently.
+its batching rules, provider-neutral discovery and updating person pages
+directly rather than counting on a hook. Note the actual path of every meeting
+processed. If the profile is missing or malformed, report that once and use the
+safe local fallback. If nothing is unprocessed, skip silently.
+
+This is the only meeting pass of the evening. The main conversation no longer
+runs `/process-meetings` itself, so a meeting you skip here is not caught later
+today; the catch-up window above is what makes that safe.
 
 ---
 

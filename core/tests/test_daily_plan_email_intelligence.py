@@ -23,3 +23,18 @@ def test_daily_plan_headline_unread_count_uses_the_attention_inbox() -> None:
 
     skill = (DAILY_PLAN / "SKILL.md").read_text(encoding="utf-8")
     assert '"Email: [X] unread in Primary/Inbox' in skill
+
+
+def test_daily_plan_probes_only_apple_mail_health_not_the_whole_deep_checkup() -> None:
+    """The morning plan asks Doctor one question, not for every live probe.
+
+    A full ``--deep`` run before the email step ran smoke journeys, the search
+    index, and every connected tool each morning. The plan needs one answer:
+    is Apple Mail search usable. Google Workspace carries its own status.
+    """
+    for path in EMAIL_INSTRUCTION_PATHS:
+        text = path.read_text(encoding="utf-8")
+        contract = " ".join(text.split())
+        assert "python3 core/utils/doctor.py --deep --only mail.apple-search" in contract, path
+        assert "python3 core/utils/doctor.py --deep`" not in contract, path
+        assert "Google Workspace needs no local probe" in contract, path

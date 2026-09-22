@@ -35,8 +35,11 @@ Agent tool, using the self-contained prompt in this skill's
 1. Read `.claude/skills/daily-plan/AGENT_INSTRUCTIONS.md`.
 2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{TARGET_DATE_PLUS_1}}`,
    `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`).
-3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
-   a short description.
+3. Call the Agent tool with `subagent_type: "general-purpose"`,
+   `model: "sonnet"`, that prompt, and a short description. The brief is
+   mechanical gathering, so it runs on the fast tier declared by this skill's
+   `model_routing.steps.data-gathering`; the judgement calls stay in this
+   conversation on the default model.
 4. Verify it wrote the draft plan to `00-Inbox/Daily_Plans/YYYY-MM-DD.md`, then run
    the remaining interactive steps from its findings and present the plan.
 5. **Close out every `<!-- NEEDS TASK -->` line in the draft.** The subagent
@@ -99,13 +102,29 @@ Before executing this command, read `System/user-profile.yaml` → `communicatio
 
 ---
 
-## Step 0: Process Unprocessed Meetings
+## Step 0: Process Unprocessed Meetings (only when something is waiting)
 
-Before gathering context, ensure recent meetings are in the vault by running `/process-meetings`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the daily plan has complete data from yesterday and any earlier gaps.
+Before gathering context, ask the session-start sweep how many meeting records
+are still waiting, without re-scanning the vault yourself. The count mode
+prints one integer, bypasses the sweep's once-per-30-minutes notice throttle,
+and writes nothing, so it is safe to call every morning:
 
-- If no new meetings are found, continue silently
-- If meetings are processed, note the count and use the extracted context in the plan
-- Do NOT ask for a skill rating after this sub-step — save that for the end of the full plan
+```bash
+node .claude/hooks/meeting-queue-check.cjs --count
+```
+
+Branch on the answer:
+
+- **`0`:** skip this step entirely and say nothing. Yesterday evening's review
+  already ran the catch-up pass, so on most mornings this is the answer, and
+  re-running a full seven-day `/process-meetings` here found nothing new while
+  costing minutes.
+- **Above `0`:** run `/process-meetings`. This creates meeting notes, updates
+  person/company pages, and extracts tasks, so the plan has complete data.
+  Note the count and use the extracted context in the plan. Do NOT ask for a
+  skill rating after this sub-step — save that for the end of the full plan.
+- **The command fails or prints nothing:** treat that as unknown, not as zero:
+  run `/process-meetings` as before.
 
 ## Step 0.5: Dex Inbox Check (Phone Captures)
 
@@ -350,9 +369,12 @@ For each completed item:
 ### 5.8 Email Intelligence (if connected)
 
 Check `System/integrations/config.yaml` for `google-workspace.enabled: true`. Also treat a
-registered `apple-mail-mcp` server as a connected source. Before querying a connected email
-source, run `python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
-`mail.apple-search` check reports `OK` / `feature_status: ok`.
+registered `apple-mail-mcp` server as a connected source. Before querying Apple Mail, run
+`python3 core/utils/doctor.py --deep --only mail.apple-search`; Apple Mail search is usable
+only when the `mail.apple-search` check reports `OK` / `feature_status: ok`. `--only` runs
+that one probe instead of the whole live checkup (smoke journeys, search index, connected
+tools), which is what a full `--deep` run does and what made this step slow every morning.
+Google Workspace needs no local probe: its own tool response carries the health status.
 
 If connected and healthy:
 1. Use an attention-inbox count for the headline, never a provider-wide unread total.

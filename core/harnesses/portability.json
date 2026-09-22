@@ -245,10 +245,14 @@
         {
           "pattern": "\\.claude/settings\\.json",
           "replacement": "the host's lifecycle settings"
+        },
+        {
+          "pattern": "(?ms)^```bash\\nnode \\.claude/hooks/meeting-queue-check\\.cjs --count\\n```[ \\t]*$",
+          "replacement": "Ask the host for its count of waiting meeting records if it keeps one; if it does not, treat the count as unknown and run the meeting pass."
         }
       ],
       "classification": "portable",
-      "reason": "Claude settings mention is explanatory only and has a host-neutral wording"
+      "reason": "Claude settings mention is explanatory only and has a host-neutral wording; the waiting-meetings count command has a portable fallback"
     },
     "daily-review": {
       "body_replacements": [

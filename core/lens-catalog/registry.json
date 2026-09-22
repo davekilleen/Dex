@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "1269beb481343b7d15437b1d454bd269e22a3295aef086fd2f640051513a73fd",
-        "byte_size": 33593
+        "sha256": "cd015e214ecdd0b34b3c71caeadaf7ade8096c7a8c077bee7d58e85f271b0824",
+        "byte_size": 34631
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "85d29ad3157ce18d15a8f39df0ee8da80e26f39ab87b0ebc43bbc5ebb1008e7f",
-        "byte_size": 21878
+        "sha256": "87459ac0371e53ca5b7fb3ccb9634f46f29f4cb4e6e0e585e5fed9227ac251b3",
+        "byte_size": 22510
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "bdaa24a66374f77568bcab0ba35c1e78dd163bc97bae53bc49cf7290c0854c0b",
-        "byte_size": 19259
+        "sha256": "d724c4193c8e67d73d8385fb37716b8e4c4d6805daedf66ba563a1e812398be0",
+        "byte_size": 19664
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": [

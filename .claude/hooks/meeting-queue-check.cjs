@@ -277,11 +277,19 @@ function noticeLines(count) {
   ];
 }
 
+// `countOnly` answers "how many meeting records are waiting?" for a skill that
+// is about to decide whether to run a meeting pass at all (daily-plan Step 0).
+// It bypasses the 30-minute notice throttle and never writes the throttle
+// marker: the throttle exists so concurrent sessions do not pile on the same
+// notice, and a count is not a notice. Without this, a skill asking right after
+// session start would always be told zero, because session start had just
+// spent the throttle window.
 function checkMeetingQueue(options = {}) {
   try {
     const {
       vaultRoot = process.cwd(),
       now = Date.now(),
+      countOnly = false,
     } = options || {};
     const nowMilliseconds = Number(now);
     if (typeof vaultRoot !== 'string' || !Number.isFinite(nowMilliseconds)) {
@@ -293,7 +301,7 @@ function checkMeetingQueue(options = {}) {
 
     const markerPath = path.join(paths.systemDir, '.last-meeting-queue-notice');
     const nowSeconds = Math.floor(nowMilliseconds / 1000);
-    if (isThrottled(markerPath, nowSeconds)) return emptyResult();
+    if (!countOnly && isThrottled(markerPath, nowSeconds)) return emptyResult();
 
     let meetingsDirectory;
     try {
@@ -310,6 +318,7 @@ function checkMeetingQueue(options = {}) {
       existingGranolaIds,
     ) + countQueueFiles(paths.meetingsDir, existingGranolaIds);
     if (count === 0) return emptyResult();
+    if (countOnly) return { count, lines: [] };
 
     try {
       fs.mkdirSync(paths.systemDir, { recursive: true });
@@ -328,10 +337,18 @@ module.exports = { checkMeetingQueue };
 
 if (require.main === module) {
   try {
-    const result = checkMeetingQueue({ vaultRoot: process.argv[2] || process.cwd() });
-    if (result.count > 0) process.stdout.write(`${result.lines.join('\n')}\n`);
+    const args = process.argv.slice(2);
+    const countOnly = args.includes('--count');
+    const vaultRoot = args.find((arg) => !arg.startsWith('--')) || process.cwd();
+    const result = checkMeetingQueue({ vaultRoot, countOnly });
+    if (countOnly) {
+      // One integer, always, so a skill can branch on it without parsing prose.
+      process.stdout.write(`${result.count}\n`);
+    } else if (result.count > 0) {
+      process.stdout.write(`${result.lines.join('\n')}\n`);
+    }
   } catch (error) {
-    // Silent by design.
+    // Silent by design. In --count mode the caller treats no output as unknown.
   }
   process.exitCode = 0;
 }

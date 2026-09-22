@@ -1893,6 +1893,48 @@ def test_main_deep_flag_runs_the_deep_registry(monkeypatch, context, capsys):
     assert [check["id"] for check in report["checks"]] == QUICK_IDS + DEEP_IDS
 
 
+def test_main_only_flag_narrows_the_registry_to_the_named_check(monkeypatch, context, capsys):
+    """``--deep --only mail.apple-search`` answers one question, not every probe.
+
+    The morning plan needs to know whether Apple Mail search is usable. Running
+    the whole deep registry for that answer cost smoke journeys, the search
+    index, and every connected tool each morning.
+    """
+    _stub_probes(monkeypatch)
+    published = []
+    monkeypatch.setattr(doctor, "_publish_health_snapshot", lambda report, ctx: published.append(report))
+
+    assert doctor.main(["--deep", "--only", "mail.apple-search"], context=context) == 0
+    report = json.loads(capsys.readouterr().out)
+
+    assert report["mode"] == "deep"
+    # Registry order is kept: the quick list (ending in doctor.self) precedes the deep list.
+    assert [check["id"] for check in report["checks"]] == ["doctor.self", "mail.apple-search"]
+    assert report["instruments"]["attempted"] == 2
+    assert published == [], "a narrowed run must not replace the whole-system health snapshot"
+
+
+def test_main_only_flag_accepts_several_checks_in_registry_order(monkeypatch, context, capsys):
+    _stub_probes(monkeypatch)
+
+    assert doctor.main(["--only", QUICK_IDS[2], "--only", QUICK_IDS[0]], context=context) == 0
+    report = json.loads(capsys.readouterr().out)
+
+    assert [check["id"] for check in report["checks"]] == [QUICK_IDS[0], QUICK_IDS[2], "doctor.self"]
+
+
+def test_main_only_flag_rejects_an_unknown_or_out_of_registry_check(monkeypatch, context, capsys):
+    _stub_probes(monkeypatch)
+
+    assert doctor.main(["--only", "mail.apple-search"], context=context) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unknown check id(s) for the quick registry: mail.apple-search" in captured.err
+
+    assert doctor.main(["--deep", "--only", "no.such-check"], context=context) == 1
+    assert "no.such-check" in capsys.readouterr().err
+
+
 def test_cli_still_emits_json_when_yaml_is_not_importable(tmp_path):
     vault = tmp_path / "vault-without-yaml"
     (vault / "System").mkdir(parents=True)

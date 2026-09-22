@@ -17,6 +17,24 @@ hook does also run, because both skip a page that already lists the meeting.
 - `--people-only`: only update person/company pages (skip tasks)
 - `--no-todos`: create notes but do not extract tasks
 
+**Work in batches, not one meeting at a time.** Every step below is written per
+meeting for clarity, but the tool calls are independent across meetings, so
+issue them together:
+
+1. **Read everything first, in one turn:** the profile, the state file, the
+   directory listings, and every candidate note. Do not read one note, process
+   it, then read the next.
+2. **Look up everyone at once:** one turn of `lookup_person` calls covering
+   every participant across every meeting, plus the calendar fetches (one per
+   date) and `detect_soft_commitments` for every meeting.
+3. **Then write:** person and company page updates, `create_task` calls, and
+   markers. Writes to the same file stay sequential; writes to different files
+   can share a turn.
+
+Sequential per-meeting processing is what made this brief take minutes for a
+handful of meetings. The verification rules in Step 6 are unchanged: batching
+changes when calls are issued, never whether their results are checked.
+
 ---
 
 ## Step 1: Resolve the Local Meeting Sources
@@ -331,8 +349,18 @@ Processing complete.
 |------|---------|---------|--------------|
 | ... | ... | ... | ... |
 
+### Touched
+
+- Tasks created: [every `task-YYYYMMDD-XXX` ID returned by `create_task`, or none]
+- Notes stamped: [every vault-relative note path you appended the marker to, or none]
+- Pages created: [every vault-relative person or company page path you created, or none]
+
 [Any warnings or issues encountered]
 ```
+
+The `Touched` block is what the conversation verifies before repeating your
+counts, so it must list every item exactly, one targeted check each. A count
+without a matching `Touched` entry is treated as unverified.
 
 ---
 
