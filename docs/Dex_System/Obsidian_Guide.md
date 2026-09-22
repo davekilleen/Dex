@@ -1,5 +1,7 @@
 # Using Dex with Obsidian
 
+Obsidian reads the same local vault independently of your AI app. Wiki-link migration and cross-file task sync are separate Dex services: they require setup and are not enabled merely by opening the folder or installing a portable plugin. See [app limits](../../docs/HARNESS-PORTABILITY.md).
+
 Obsidian is a free markdown editor with powerful graph visualization. It's completely optional, but many users love seeing their knowledge as a connected graph.
 
 **New to Obsidian?** Watch this [beginner's guide (5 min)](https://www.youtube.com/watch?v=gafuqdKwD_U) to see what it can do.
@@ -23,7 +25,7 @@ Obsidian is a free markdown editor with powerful graph visualization. It's compl
 
 1. Download Obsidian (free): https://obsidian.md
 2. Open your Dex vault: File → Open Folder → Select your Dex directory
-3. Enable Obsidian mode: Run `/dex-obsidian-setup` in Cursor/Claude
+3. Enable Obsidian mode: Run `/dex-obsidian-setup` in your established Cursor or Claude Code setup
 
 ## Obsidian vs Terminal/Cursor
 
@@ -37,7 +39,7 @@ Both are first-class experiences:
 | AI integration | ❌ Limited | ✅ Native |
 | Speed | ⚡ Fast | ⚡⚡ Faster |
 
-**Recommendation:** Use both! Obsidian for visual navigation and reading, Cursor/Claude for AI-powered workflows.
+**Recommendation:** Use both! Obsidian for visual navigation and reading, your configured AI app for Dex workflows.
 
 ## Setting Up Later
 

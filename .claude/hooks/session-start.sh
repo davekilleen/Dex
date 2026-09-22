@@ -377,6 +377,16 @@ if [[ -f "$ONBOARDING_MARKER" ]]; then
     fi
 fi
 
+# Keep the meeting-sync receipt on the runtime path an update will not replace.
+# Older installs wrote it under .scripts/; copy once so the staleness table
+# and Doctor keep seeing the last successful run.
+LEGACY_MEETING_INTEL_STATE="$CLAUDE_DIR/.scripts/meeting-intel/processed-meetings.json"
+RUNTIME_MEETING_INTEL_STATE="$CLAUDE_DIR/System/.dex/processed-meetings.json"
+if [[ ! -f "$RUNTIME_MEETING_INTEL_STATE" && -f "$LEGACY_MEETING_INTEL_STATE" ]]; then
+    mkdir -p "$CLAUDE_DIR/System/.dex"
+    cp "$LEGACY_MEETING_INTEL_STATE" "$RUNTIME_MEETING_INTEL_STATE" 2>/dev/null || true
+fi
+
 # Background job staleness — keep in sync with the health promise register
 # (core/health/promises.py), which Doctor and Proactive Health audit.
 {
@@ -440,7 +450,7 @@ fi
         fi
     done <<'EOF'
 com.dex.smoke-nightly|.scripts/logs/smoke-nightly.log|93600|26 hours|Nightly smoke|mtime-success
-com.dex.meeting-intel|.scripts/meeting-intel/processed-meetings.json|172800|2 days|Meeting sync|json:lastSync
+com.dex.meeting-intel|System/.dex/processed-meetings.json|172800|2 days|Meeting sync|json:lastSync
 com.dex.changelog-checker|.scripts/logs/changelog-checker.log|604800|7 days|Claude update watcher|mtime
 com.dex.learning-review|.scripts/logs/learning-review.log|604800|7 days|Learning review|mtime
 EOF

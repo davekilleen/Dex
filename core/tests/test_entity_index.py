@@ -851,6 +851,46 @@ def test_quarantined_page_is_findable_without_trusting_frontmatter(
     assert result["matches"][0]["emails"] == []
 
 
+def test_people_scan_skips_unmarked_markdown_under_people(
+    entity_vault: dict[str, Path],
+) -> None:
+    person = _write_person(entity_vault)
+    note = entity_vault["people"] / "External" / "Team_Process.md"
+    note.write_text(
+        "# Weekly Standup\n\nStandup reminder, not a person record.\n",
+        encoding="utf-8",
+    )
+    typed_note = entity_vault["people"] / "External" / "Playbook.md"
+    typed_note.write_text(
+        "---\ntype: note\nname: Weekly Standup\n---\n# Playbook\n",
+        encoding="utf-8",
+    )
+
+    entity_index.build_from_vault(entity_vault["root"], **_kwargs(entity_vault))
+
+    people = entity_index.people_index_data(
+        entity_vault["root"], **_kwargs(entity_vault)
+    )
+    assert [entry["name"] for entry in people["people"]] == ["Alice Smith"]
+    assert people["total"] == 1
+    lookup = entity_index.lookup_person(
+        entity_vault["root"], "Weekly Standup", **_kwargs(entity_vault)
+    )
+    assert lookup["matches"] == []
+    with entity_index.connect(
+        entity_index.database_path(entity_vault["root"])
+    ) as connection:
+        stored = {
+            row[0]: row[1]
+            for row in connection.execute(
+                "SELECT path, entity_type FROM source_files"
+            )
+        }
+    assert stored[person.relative_to(entity_vault["root"]).as_posix()] == "person"
+    assert stored[note.relative_to(entity_vault["root"]).as_posix()] is None
+    assert stored[typed_note.relative_to(entity_vault["root"]).as_posix()] is None
+
+
 def test_people_scan_skips_nested_archive_and_stray_root_pages(
     entity_vault: dict[str, Path],
 ) -> None:

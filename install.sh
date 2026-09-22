@@ -175,7 +175,7 @@ PROVISION_ARGS=(--path "$(pwd)" --install-config-only --json)
 if command -v qmd &> /dev/null; then
     PROVISION_ARGS+=(--enable-qmd)
 fi
-node core/provision.cjs "${PROVISION_ARGS[@]}" >/dev/null
+DEX_CAPABILITY_PYTHON="$PYTHON_CMD" DEX_PROVISION_PYTHON="$PYTHON_CMD" DEX_HARNESS_PYTHON="$PYTHON_CMD" DEX_LIFECYCLE_PYTHON="$PYTHON_CMD" node core/provision.cjs "${PROVISION_ARGS[@]}" >/dev/null
 if command -v qmd &> /dev/null; then
     echo "   qmd MCP server added when configuration was absent"
 else
@@ -312,7 +312,7 @@ DEX_ADOPTION_PYTHON="$PYTHON_CMD"
 if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
     DEX_ADOPTION_PYTHON="$VENV_PYTHON"
 fi
-DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
+DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" DEX_PROVISION_PYTHON="$DEX_ADOPTION_PYTHON" DEX_CAPABILITY_PYTHON="$DEX_ADOPTION_PYTHON" DEX_HARNESS_PYTHON="$DEX_ADOPTION_PYTHON" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
 
 # Detect likely agent harnesses through the same capability registry onboarding and
 # Doctor use. This is a suggestion only: /setup shows the capability preview and lets
