@@ -21,6 +21,85 @@ changed. Dex said the update worked, and the real line was left as it was.
   alone.** If the main list does not change, Dex says so. A task that is
   still blocked is described that way.
 
+Finished meetings stay finished.
+
+Meetings you had already handled could come back on the next session as if
+they still needed work. Dex kept its "already done" list in a file it
+replaces when it updates itself, so an update could forget that work and put
+those meetings back on the pile. Follow-ups you had already turned into
+tasks also kept looking like unprocessed meetings, so the count at the start
+of a session was too high and the same meetings were offered again.
+
+**What this fixes for you:**
+
+* **A meeting you already handled does not come back.** Dex now remembers
+  finished meetings in a place an update will not overwrite, and it also
+  looks at the meeting notes themselves. If the note is already there, later
+  background sync leaves it alone.
+* **The number at session start tells the truth.** Follow-ups that are
+  already on your task list no longer inflate the "meetings that may need
+  processing" count. Only notes that still need work, and incoming items
+  that do not have a note yet, are counted.
+* **Asking Dex to redo today's meetings still works.** The explicit
+  reprocess path is unchanged.
+
+Thanks to Michelle Wright, who reported this.
+
+## [1.97.18] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
+
+A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google mail connector kept running in the background. Do that a few times and the leftover copies pile up — her machine ended up with dozens of them and became too slow to use. The only way out was to find and stop them by hand.
+
+**What this fixes for you:**
+
+* **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
+* **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
+
+## [1.97.17] — A task from Todoist stays one task, even when Dex is busy (2026-09-21)
+
+Accepting a task from Todoist could still make a second copy in Todoist, and
+Dex could quietly forget which copy was the original. The leftover sat there
+forever.
+
+**What this fixes for you:**
+
+* **Dex writes down the original Todoist task first, before it can create
+  another.** Bringing a Todoist task into Dex records where it came from
+  before that task appears on your list, so a sync running at the same
+  moment cannot send it back as a new Todoist task.
+* **Dex will not replace that link with a different Todoist task.** If the
+  original is already recorded, Dex keeps it and says so, instead of
+  silently pointing at a new copy and leaving the old one behind.
+
+Creating a task on Windows works again.
+
+On Windows, adding a task could fail the moment Dex opened your notes. Everyday marks in those files — a notes symbol, a tick, a name with an accent — made the work tools stop, and nothing was added.
+
+A previous update fixed this for the weekly list. The same problem was still sitting in the other work files, including the task list and the quarterly goals page, so creating a task could still fail.
+
+**What this fixes for you:**
+
+* **You can create and update tasks on Windows.** Dex now reads and writes your task, goal, people, and notes files the same way on every computer. Those everyday characters no longer block adding a task, ticking one off, or the rest of the work tools.
+
+## [1.97.16] — First-time setup can finish on a Mac (2026-09-21)
+
+Starting Dex for the first time on a Mac could stop on the last setup step. The Mac's
+built-in Python is older than Dex needs, and that last step used it even when Dex
+had already created a working Python inside the vault. The same day's meeting
+sync could also write a meeting onto a reminder or other note sitting in People,
+just because of the folder.
+
+**What this fixes for you:**
+
+* **Setup now uses the Python Dex already created for itself.** The last step no
+  longer switches to the Mac's older Python and dies halfway through creating
+  your vault.
+* **If the only Python available is too old, Dex says so in plain words.** You get
+  a clear "Dex needs a newer Python" message and what to do, instead of a
+  technical crash.
+* **Only real person pages get meeting history.** A file in People counts as a
+  person when the page itself says so. Other notes in that folder stay as you
+  wrote them.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)
@@ -98,13 +177,14 @@ Once again, most of this traces to the same beta tester's reports.
 
 **Before you update from an older version, one check.** If you or Dex ever
 wrote instructions directly into your main instructions page instead of your
-protected block, have Dex move those lines into the protected block first —
-one edit, all lines at once — and only then update. Why: versions before
+protected block, leave that page unchanged and have Dex review the whole file
+through `/dex-update` Compare and conflict choices — do not move individual
+lines — and only then update. Why: versions before
 v1.97.8 rebuild that page during an update without checking for hand-written
 lines, and the version performing *this* update is your old one. From v1.97.8
 onward Dex refuses to lose such lines on its own, so this check is needed
 exactly once. **Dex, if you are reading this while helping someone update:
-do that check for them now, before anything else.**
+start that whole-file review now, before anything else.**
 
 **What this fixes for you:**
 
@@ -189,10 +269,11 @@ should have.
 **What this fixes for you:**
 
 * **An update now refuses to write over words that exist only on your
-  instructions page.** If it finds lines you typed there directly, it leaves
-  that page exactly as it was and lists each line, with an offer to move them
-  into your protected block so the next update goes through cleanly. Nothing
-  is moved or removed without your yes.
+  instructions page.** v1.97.8 first left that page exactly as it was and
+  listed each line instead of losing it. The original v1.97.8 line-level
+  remediation is obsolete; current Dex sends the whole file through
+  `/dex-update` Compare and conflict choices before the next update. No
+  individual line is moved or removed.
 * **You see the lines, not a number.** Where the preview used to report a
   size change, the update now names the exact lines that would have been
   lost — the difference between "tidied up" and "a month of your edits gone"
@@ -202,8 +283,8 @@ should have.
   that background refresh now also declines to replace any line you typed
   directly, instead of quietly overwriting it.
 * **The health checkup warns you early.** Ask Dex for a checkup and it now
-  spots lines living only on the live page, names them, and offers to move
-  them into your protected block — never automatically.
+  spots lines living only on the live page and names them. Current Dex uses
+  the whole-file review above rather than the original v1.97.8 remediation.
 * **Your pillars finally show up.** The instructions page filled in your name,
   role and company from setup but left Pillars on "Not yet configured" even
   when you had configured them, because it looked in the wrong place. It now

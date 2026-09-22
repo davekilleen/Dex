@@ -87,7 +87,8 @@ function getGranolaApiKey() {
   return readGranolaApiKey({ vaultRoot: VAULT_ROOT });
 }
 
-const STATE_FILE = path.join(__dirname, 'processed-meetings.json');
+const LEGACY_STATE_REL = path.join('.scripts', 'meeting-intel', 'processed-meetings.json');
+const RUNTIME_STATE_REL = path.join('System', '.dex', 'processed-meetings.json');
 const MEETINGS_DIR = path.join(VAULT_ROOT, '00-Inbox', 'Meetings');
 const QUEUE_FILE = path.join(MEETINGS_DIR, 'queue.md');
 const LOG_DIR = path.join(VAULT_ROOT, '.scripts', 'logs');
@@ -183,25 +184,97 @@ function loadUserProfile() {
 // STATE MANAGEMENT
 // ============================================================================
 
-function loadState() {
-  if (!fs.existsSync(STATE_FILE)) {
+function processedMeetingsPaths(vaultRoot = VAULT_ROOT) {
+  return {
+    runtime: path.join(vaultRoot, RUNTIME_STATE_REL),
+    legacy: path.join(vaultRoot, LEGACY_STATE_REL),
+  };
+}
+
+function resolveProcessedMeetingsFile(vaultRoot = VAULT_ROOT) {
+  const { runtime, legacy } = processedMeetingsPaths(vaultRoot);
+  if (fs.existsSync(runtime)) return runtime;
+  if (fs.existsSync(legacy)) return legacy;
+  return runtime;
+}
+
+function collectExistingMeetingIds(meetingsDir = MEETINGS_DIR) {
+  const ids = new Set();
+
+  function addFromNote(filePath) {
+    const granolaId = readGranolaId(filePath);
+    if (granolaId) ids.add(granolaId);
+  }
+
+  function addFromQueue(filePath) {
+    try {
+      const queued = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const queuedId = queued?.id;
+      if (queuedId === undefined || queuedId === null) return;
+      const trimmed = String(queuedId).trim();
+      if (trimmed) ids.add(trimmed);
+    } catch (error) {
+      // Unreadable queue items stay visible to the session-start count.
+    }
+  }
+
+  let entries;
+  try {
+    entries = fs.readdirSync(meetingsDir, { withFileTypes: true });
+  } catch (error) {
+    return ids;
+  }
+
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.endsWith('.md')) {
+      addFromNote(path.join(meetingsDir, entry.name));
+    }
+  }
+
+  for (const dayDirectory of entries) {
+    if (!dayDirectory.isDirectory()) continue;
+    const directoryPath = path.join(meetingsDir, dayDirectory.name);
+    let files;
+    try {
+      files = fs.readdirSync(directoryPath, { withFileTypes: true });
+    } catch (error) {
+      continue;
+    }
+    for (const file of files) {
+      if (!file.isFile()) continue;
+      const filePath = path.join(directoryPath, file.name);
+      if (file.name.endsWith('.md')) addFromNote(filePath);
+      if (dayDirectory.name === 'queue' && file.name.endsWith('.json')) {
+        addFromQueue(filePath);
+      }
+    }
+  }
+
+  return ids;
+}
+
+function loadState(vaultRoot = VAULT_ROOT) {
+  const stateFile = resolveProcessedMeetingsFile(vaultRoot);
+  if (!fs.existsSync(stateFile)) {
     return { processedMeetings: {}, lastSync: null };
   }
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    return JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
   } catch (e) {
     log(`Warning: Could not read state file: ${e.message}`);
     return { processedMeetings: {}, lastSync: null };
   }
 }
 
-function saveState(state) {
+function saveState(state, vaultRoot = VAULT_ROOT) {
   state.lastSync = new Date().toISOString();
-  persistState(state);
+  persistState(state, vaultRoot);
 }
 
-function persistState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+function persistState(state, vaultRoot = VAULT_ROOT) {
+  const { runtime } = processedMeetingsPaths(vaultRoot);
+  fs.mkdirSync(path.dirname(runtime), { recursive: true });
+  fs.writeFileSync(runtime, JSON.stringify(state, null, 2));
 }
 
 function retryPendingEntityWork(state, profile, now = new Date()) {
@@ -461,7 +534,7 @@ function captureIdentityFromDetail(detail) {
  * Returns an array of meeting objects (possibly empty), or null if the API
  * was unavailable / auth was rejected so the caller can exit cleanly.
  */
-async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile = {}) {
+async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile = {}, options = {}) {
   const lookbackDays = deriveLookbackDays(state);
   const listed = await listGranolaNotes(apiKey, lookbackDays);
   if (listed === null) return null; // auth/network failure already logged
@@ -471,6 +544,8 @@ async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const today = new Date().toISOString().split('T')[0];
+  const meetingsDir = options.meetingsDir || MEETINGS_DIR;
+  const existingIds = collectExistingMeetingIds(meetingsDir);
 
   // Decide which listed notes are new and in-window before paying for detail fetches.
   const toFetch = [];
@@ -478,9 +553,14 @@ async function getNewMeetingsFromApi(apiKey, state, forceToday = false, profile 
     if (!note || !note.id) continue;
 
     const noteDate = note.created_at ? note.created_at.split('T')[0] : '';
+    const alreadyKnown = Boolean(
+      state.processedMeetings[note.id]
+      || state.queuedMeetings?.[note.id]
+      || existingIds.has(String(note.id).trim()),
+    );
     if (forceToday && noteDate === today) {
       // Allow reprocessing today's meetings.
-    } else if (state.processedMeetings[note.id] || state.queuedMeetings?.[note.id]) {
+    } else if (alreadyKnown) {
       continue;
     }
 
@@ -1361,4 +1441,9 @@ module.exports = {
   refreshEntityRelationshipsFeed,
   retryDeadLetteredEntityWork,
   retryPendingEntityWork,
+  collectExistingMeetingIds,
+  processedMeetingsPaths,
+  resolveProcessedMeetingsFile,
+  loadState,
+  persistState,
 };

@@ -1526,6 +1526,50 @@ class TestCapabilityStep:
         ):
             assert captured[variable] == sys.executable
 
+    def test_onboarding_provisioner_forwards_vault_venv_python(
+        self, tmp_path, monkeypatch
+    ):
+        captured = {}
+        session = {"data": {}}
+        monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+        monkeypatch.setattr(
+            onboarding_server,
+            "_approved_profile_session_data",
+            lambda _session: {"pillars": []},
+        )
+        monkeypatch.setattr(
+            onboarding_server,
+            "_capability_states",
+            lambda _selected: {
+                room: False for room in onboarding_server.capability_rooms.room_ids()
+            },
+        )
+        venv_python = tmp_path / ".venv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True)
+        venv_python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        venv_python.chmod(0o755)
+
+        def fake_run(command, **kwargs):
+            captured.update(kwargs["env"])
+            return onboarding_server.subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='{"ok": true}\n',
+                stderr="",
+            )
+
+        monkeypatch.setattr(onboarding_server.subprocess, "run", fake_run)
+
+        onboarding_server._run_onboarding_provisioner(session, dry_run=True)
+
+        for variable in (
+            "DEX_CAPABILITY_PYTHON",
+            "DEX_PROVISION_PYTHON",
+            "DEX_HARNESS_PYTHON",
+            "DEX_LIFECYCLE_PYTHON",
+        ):
+            assert captured[variable] == str(venv_python)
+
     def test_omitted_room_answers_use_contract_defaults(self, tmp_path, monkeypatch):
         session_file = tmp_path / "System/.onboarding-session.json"
         monkeypatch.setattr(onboarding_server, "SESSION_FILE", session_file)

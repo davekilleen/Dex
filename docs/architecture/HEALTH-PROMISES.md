@@ -11,7 +11,7 @@ not health; only receipts count, and activity-only entries say so.
 
 | Job | Promise | Cadence | Receipt | Proves |
 | --- | --- | --- | --- | --- |
-| `com.dex.meeting-intel` | Meeting sync | every 48 h | `.scripts/meeting-intel/processed-meetings.json` → `lastSync` | a completed run |
+| `com.dex.meeting-intel` | Meeting sync | every 48 h | `System/.dex/processed-meetings.json` → `lastSync` | a completed run |
 | `com.dex.smoke-nightly` | Nightly smoke | every 26 h | `.scripts/logs/smoke-nightly.log` | a completed run |
 | `com.dex.changelog-checker` | Claude update watcher | every 168 h | `.scripts/logs/changelog-checker.log` | activity only |
 | `com.dex.learning-review` | Learning review | every 168 h | `.scripts/logs/learning-review.log` | activity only |

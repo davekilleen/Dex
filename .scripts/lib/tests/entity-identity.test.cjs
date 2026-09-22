@@ -178,6 +178,26 @@ test('an explicit non-person type is not inferred from the People path', (t) => 
   }), null);
 });
 
+test('unmarked markdown under People is not a person', (t) => {
+  const vault = makeVault(t);
+  writeMarkedNote(vault, ['External', 'Alex_Smith.md'], '');
+  const notePath = path.join(
+    vault,
+    '05-Areas',
+    'People',
+    'External',
+    'Team_Process.md',
+  );
+  fs.mkdirSync(path.dirname(notePath), { recursive: true });
+  fs.writeFileSync(notePath, '# Alex Smith\n\nStandup reminder, not a person record.\n');
+
+  assert.equal(resolveEntityPath(vault, {
+    kind: 'person',
+    name: 'Alex Smith',
+    emails: [],
+  }), null);
+});
+
 test('two live namesakes cannot be resolved by name alone', (t) => {
   const vault = makeVault(t);
   writePerson(

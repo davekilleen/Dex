@@ -1,40 +1,24 @@
 # Background Processing Guide
 
-Some skills take minutes, not seconds. Background processing lets you keep working while heavy operations run.
+Dex can do work during a conversation or through a separately installed job. The app you use determines whether a conversational workflow can continue in the background.
 
-## How It Works
+## Conversation work
 
-### Claude Code CLI
-Background agents run in a separate process. The skill acknowledges immediately and processes in the background. You get a notification when done.
+Claude Code supports background agents; use them only when the workflow and permissions permit it. In other apps, ask for progress in the current conversation unless background execution has been verified. A skill file does not create that execution capability.
 
-### Cursor
-Background execution works differently — skills provide progress updates during execution and break large batches into smaller chunks with intermediate output.
+The portable package distributed in v1.97.13 has read-only context tools and limited hook adapters. It does not install a meeting processor, task writer, session-end recorder or background service. Complete new-app journeys remain unverified; see [app capabilities](../../docs/HARNESS-PORTABILITY.md).
 
-## Candidate Skills
+## Scheduled work
 
-| Skill | Why Background | Typical Duration |
-|-------|---------------|-----------------|
-| `/process-meetings` | Heavy I/O, no interaction needed | 2-5 min for 5+ meetings |
-| `/review-article` | 22 parallel subagents | 3-8 min |
-| Intel pipelines (YouTube, Newsletter) | External API calls | 1-3 min each |
+Existing macOS jobs, such as meeting sync and optional Obsidian sync, run through the operating system after separate setup. They are independent of whether a chat is open. Installing or removing an app plugin does not start or stop those jobs. Check their configured schedule and health before expecting automatic results.
 
-## Design Pattern
+## What to expect
 
-All background-capable skills follow this pattern:
+- **Automatic:** a configured schedule or trusted app event runs the action. Identify which one.
+- **On demand:** request a workflow using its available skill and tools.
+- **Guided:** follow explicit steps where the app cannot complete the operation.
+- **Unavailable:** the current app or runtime cannot perform it; retain the existing working route.
 
-1. **Acknowledge** — Tell the user what's happening and how long to expect
-2. **Process** — Do the work silently
-3. **Summarize** — Report what was done with key metrics
+Syncing a meeting into the vault and processing its follow-ups are separate steps. A notification that meetings are waiting is not proof that tasks or person pages were updated. Ask for the saved result and check which sources were used.
 
-## When NOT to Use Background
-
-- Interactive skills that need user input mid-flow
-- Quick operations (<30 seconds)
-- Skills where the user needs to review output immediately
-
-## Implementation Notes
-
-- Skills declare background capability in their prompt
-- The harness (Claude Code / Cursor) decides execution model
-- Progress can be written to a status file for polling
-- Background skills should be idempotent — safe to re-run if interrupted
+See [the hook inventory](../../docs/architecture/HOOK-INVENTORY.md) for the exact separation between schedules, in-chat events and file writers.

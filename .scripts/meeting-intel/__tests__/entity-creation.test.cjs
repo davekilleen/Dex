@@ -332,6 +332,39 @@ test('auto mode creates a canonical company page from two observed contacts', ()
   assert.match(lines.join('\n'), /Created company page:/);
 }));
 
+test('meeting sync does not attach an email-less attendee to unmarked People markdown', () => withVault(vault => {
+  const notePath = path.join(vault, '05-Areas', 'People', 'External', 'Alex_Smith.md');
+  fs.mkdirSync(path.dirname(notePath), { recursive: true });
+  const original = [
+    '# Alex Smith',
+    '',
+    'Standup reminder, not a person record.',
+    '',
+  ].join('\n');
+  fs.writeFileSync(notePath, original);
+
+  const result = processEntityCreation([
+    {
+      id: 'vendor-review',
+      title: 'Vendor review',
+      createdAt: '2026-08-28T10:00:00Z',
+      transcript: '',
+      filteredAttendees: [{ name: 'Alex Smith', location: 'external' }],
+    },
+    {
+      id: 'vendor-review-2',
+      title: 'Vendor review follow-up',
+      createdAt: '2026-08-28T11:00:00Z',
+      transcript: '',
+      filteredAttendees: [{ name: 'Alex Smith', location: 'external' }],
+    },
+  ], { entity_creation: { mode: 'auto' } });
+
+  assert.deepEqual(result.created, []);
+  assert.equal(fs.readFileSync(notePath, 'utf8'), original);
+  assert.equal(parseEntityPage(notePath).type, null);
+}));
+
 test('meeting sync does not attach an email-less attendee to a never-match People note', () => withVault(vault => {
   const notePath = path.join(vault, '05-Areas', 'People', 'Personal', 'Alex_Smith.md');
   fs.mkdirSync(path.dirname(notePath), { recursive: true });

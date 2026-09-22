@@ -1,6 +1,8 @@
 # Dex portable agent plugin
 
-One unreleased package carries Dex's generated work skills, read-only context
+**Distribution is released; complete host support remains unverified.** The v1.97.13 artifacts establish package availability, not a successful install, trust, workflow, update or removal journey in a particular app. See [the maintained app guide](../../docs/HARNESS-PORTABILITY.md). The tools below do not include task writes, full meeting preparation, Doctor, feedback, onboarding, updates or session-end capture.
+
+The package distributed with Dex v1.97.13 carries Dex's generated work skills, read-only context
 tools, and shared safety gate into several agent harnesses. It keeps the Agent
 Plugins v1 root contract and also includes native manifests for:
 
@@ -26,12 +28,14 @@ Plugins v1 root contract and also includes native manifests for:
 The MCP bridge exposes `boot_today`, `get_person_context`,
 `check_safety_gate`, and `dex_harness_profiles`. It is dependency-free,
 relocatable, read-only, and uses the same vendored source modules as dex-core.
-The safety MCP tool is advisory unless the host calls it before acting; the
-native Codex/Claude `PreToolUse` hook can actively refuse known-dangerous work.
+The safety MCP tool is advisory; only a trusted interceptor that runs before
+the action and honors the refusal can enforce it. The
+native Codex/Claude `PreToolUse` adapter expresses a refusal, whose actual host
+interception and tool coverage still require native verification.
 
 ## Release platforms
 
-This unreleased build requires Node 20+ and Python 3.11+. Its Node launcher
+This package requires Node 20+ and Python 3.11+. Its Node launcher
 selects `python3`/`python` on macOS and `py -3`/`python` on Windows without
 invoking a shell, so installed paths containing spaces remain one argument.
 
@@ -44,13 +48,11 @@ invoking a shell, so installed paths containing spaces remain one argument.
 The versioned source of truth is `metadata/harnesses/registry.json`. Doctor
 reports the current platform boundary alongside the saved harness receipt.
 
-ChatGPT Work desktop can load this same local plugin after a person copies it
-into `~/.codex/plugins/dex`, lists it from `~/.agents/plugins/marketplace.json`
-with `source.path` `./.codex/plugins/dex`, restarts the ChatGPT desktop app,
-installs Dex from that local source, starts Work locally, and grants the Dex
-vault folder. That desktop journey has not been recorded yet. ChatGPT web
-needs a separately hosted HTTPS MCP service before it can reach a local Dex
-vault; this repository does not claim that remote bridge.
+The candidate ChatGPT Work desktop recipe is documented in the maintained app
+guide. A real desktop must prove local execution, folder access and the required
+runtime; a shared plugin cache is not that evidence. ChatGPT web needs a
+separately hosted HTTPS MCP service before it can reach a local Dex vault;
+this package does not provide that remote bridge.
 
 Regenerate and verify it from the repository root:
 

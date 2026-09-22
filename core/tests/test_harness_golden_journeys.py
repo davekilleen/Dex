@@ -82,7 +82,16 @@ def test_each_harness_has_one_real_surface_and_one_explicit_boundary() -> None:
     assert "vault" in chatgpt_limits
     assert "person" in chatgpt_limits
     guide = (REPO_ROOT / "docs" / "HARNESS-PORTABILITY.md").read_text(encoding="utf-8")
-    assert "only leftover that still needs Dave is granting the Dex vault folder" in guide
+    chatgpt_journey = next(
+        line for line in guide.splitlines() if line.startswith("| ChatGPT Work desktop |")
+    )
+    assert "grant the Dex vault folder" in chatgpt_journey
+    assert "shared plugin cache on disk is not ChatGPT Work proof" in chatgpt_journey
+    assert (
+        "Folder access, installed runtime dependencies, workflows, permission refusals "
+        "and update/removal still need native proof."
+    ) in chatgpt_journey
+    assert "only leftover that still needs Dave is granting the Dex vault folder" not in guide
 
     claude = _rows("claude-code")
     assert claude["hooks"]["status"] == "native"
@@ -227,13 +236,25 @@ def test_developer_preview_guide_names_every_supported_profile_and_stop_line() -
         "BB",
     ):
         assert label in guide
-    assert "Unreleased build" in guide
-    assert "have not been merged, published" in guide
+    # Distribution is released; new-host acceptance remains a separate gate.
+    prose = " ".join(line.removeprefix("> ").strip() for line in guide.splitlines())
+    assert "Distribution baseline: v1.97.13" in prose
+    assert "Portable package files are present in the released vault bundle" in prose
+    assert "separate Claude Desktop and Gemini artifacts are also published" in prose
+    assert (
+        "Complete supported install, trust, workflow, update and removal journeys "
+        "in new apps remain **unverified**."
+    ) in prose
+    assert "unverified developer-preview recipes, not supported customer install instructions" in guide
+    assert "supported new-app install CTA remains withheld until native acceptance" in guide
+    assert "`dex-unreleased` are literal candidate identifiers" in guide
+    assert "Unreleased build" not in guide
+    assert "have not been merged, published" not in guide
     assert "Do not run an actual destructive command" in guide
-    assert "`codex/harness-portable-dex-resume`" in guide
     assert "**Branch:** `codex/harness-portable-dex-resume`" in plan
     assert "| macOS | Native CI required on each review head |" in guide
     assert "| Windows | Native CI required on each review head |" in guide
-    assert "Exact-commit native evidence belongs to the draft pull request" in guide
+    assert "Exact-commit CI evidence belongs to the pull request and release record" in guide
+    assert "CI protocol checks do not certify a complete user journey in the installed app" in guide
     assert "| macOS | Release-ready |" not in guide
     assert "| Windows | Release-ready |" not in guide
