@@ -41,11 +41,17 @@ def test_day_is_reset_before_the_month_is_set():
 @pytest.mark.skipif(sys.platform != "darwin", reason="AppleScript is macOS only")
 def test_applescript_overflows_without_the_reset():
     """Prove the mechanic the ordering defends against, so the guard above is
-    not mistaken for style."""
+    not mistaken for style.
+
+    Start from 31 August, not current date. Setting day to 31 first on a
+    30-day month (Apr/Jun/Sep/Nov) rolls into the next month before the
+    September assignment, so the overflow never happens and the test fails.
+    """
     script = """
     set d to current date
-    set day of d to 31
     set year of d to 2026
+    set month of d to August
+    set day of d to 31
     set month of d to September
     return month of d as string
     """
