@@ -479,3 +479,61 @@ test('an unreadable meetings directory returns zero without throwing', (t) => {
   }
   assert.deepEqual(result, { count: 0, lines: [] });
 });
+
+test('countOnly reports the waiting count even inside the notice throttle window', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(root, TODAY, 'manual-notes.md', meetingNote());
+  const marker = path.join(root, 'System', '.last-meeting-queue-notice');
+  fs.mkdirSync(path.dirname(marker), { recursive: true });
+  fs.writeFileSync(marker, `${Math.floor(NOW / 1000) - 60}\n`);
+
+  const throttled = checkMeetingQueue({ vaultRoot: root, now: NOW });
+  const counted = checkMeetingQueue({ vaultRoot: root, now: NOW, countOnly: true });
+
+  assert.deepEqual(throttled, { count: 0, lines: [] });
+  assert.deepEqual(counted, { count: 1, lines: [] });
+});
+
+test('countOnly never writes the notice marker', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(root, TODAY, 'manual-notes.md', meetingNote());
+  const marker = path.join(root, 'System', '.last-meeting-queue-notice');
+
+  const counted = checkMeetingQueue({ vaultRoot: root, now: NOW, countOnly: true });
+
+  assert.equal(counted.count, 1);
+  assert.equal(fs.existsSync(marker), false, 'a count is not a notice, so it must not spend the throttle');
+
+  const notice = checkMeetingQueue({ vaultRoot: root, now: NOW });
+  assert.equal(notice.count, 1, 'the notice still fires after a count-only read');
+  assert.equal(fs.existsSync(marker), true);
+});
+
+test('countOnly returns zero, not a notice, when nothing is waiting', (t) => {
+  const root = fixture(t);
+  writeDayMeeting(root, TODAY, 'done.md', meetingNote({ tasksExtracted: true }));
+
+  assert.deepEqual(
+    checkMeetingQueue({ vaultRoot: root, now: NOW, countOnly: true }),
+    { count: 0, lines: [] },
+  );
+});
+
+test('--count on the command line prints one integer and nothing else', (t) => {
+  const { execFileSync } = require('node:child_process');
+  const root = fixture(t);
+  // The CLI uses the real clock, so these notes must be dated today for real.
+  const realToday = new Date().toISOString().slice(0, 10);
+  writeDayMeeting(root, realToday, 'a.md', meetingNote({ day: realToday }));
+  writeDayMeeting(root, realToday, 'b.md', meetingNote({ day: realToday }));
+
+  const output = execFileSync(process.execPath, [HOOK_PATH, '--count', root], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(output, '2\n');
+  assert.equal(
+    fs.existsSync(path.join(root, 'System', '.last-meeting-queue-notice')),
+    false,
+  );
+});

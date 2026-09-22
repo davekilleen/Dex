@@ -36,8 +36,10 @@ Agent tool, using the self-contained prompt in this skill's
 1. Read `.claude/skills/daily-review/AGENT_INSTRUCTIONS.md`.
 2. Substitute its placeholders (`{{TARGET_DATE}}`, `{{TOMORROW_DATE}}`,
    `{{TOMORROW_DATE_PLUS_1}}`, `{{DAY_NAME}}`, `{{MONTH}}`, `{{DD}}`, `{{YYYY}}`).
-3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
-   a short description.
+3. Call the Agent tool with `subagent_type: "general-purpose"`,
+   `model: "sonnet"`, that prompt, and a short description. The brief is
+   mechanical gathering, so it runs on the fast tier; the judgement calls stay
+   in this conversation on the default model.
 4. Verify it wrote the draft to `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md`,
    then run the interactive steps from its findings and complete the placeholder
    sections.
@@ -91,13 +93,20 @@ find . -type f -name "*.md" -newermt "$TODAY 00:00:00" ! -newermt "$TODAY 23:59:
 
 ---
 
-## Step 1.5: Process Today's Meetings
+## Step 1.5: Today's Meetings Are Already Processed
 
-Before gathering context, ensure today's meetings are in the vault by running `/process-meetings today`. This pulls any unprocessed meetings from the meeting source (Otter.ai, Granola, etc.), creates meeting notes, updates person/company pages, and extracts tasks — so the rest of the review has complete data.
+Meeting catch-up happens once, inside the gathering helper (its Step 0 processes
+every unprocessed meeting since the last one that was, following
+`process-meetings/AGENT_INSTRUCTIONS.md`). Do NOT also run `/process-meetings`
+from this conversation: that ran the whole meeting pass twice per evening, and
+the second pass found nothing new.
 
-- If no new meetings are found, continue silently
-- If meetings are processed, note the count for the review summary
-- Do NOT ask for a skill rating after this sub-step — save that for the end of the full review
+- Read the helper's "Meetings processed in catch-up" line and carry the count
+  into the review summary
+- If the helper reported meetings left unstamped or an older backlog, surface
+  those lines; do not re-run the pass to check them
+- Only if the helper failed and the inline fallback is running does this
+  conversation process meetings itself, following the same brief
 
 ---
 
@@ -549,7 +558,7 @@ Add one line at the end of the review output:
 
 | Integration | MCP Server | Tools Used |
 |-------------|------------|------------|
-| Meetings | Meeting source MCP (via `/process-meetings today`) | Fetches and processes unprocessed meetings |
+| Meetings | Local meeting notes (helper Step 0 catch-up, following `process-meetings/AGENT_INSTRUCTIONS.md`) | Processes unprocessed meetings once per review |
 | Work | work-mcp | `list_tasks`, `get_week_progress`, `get_commitments_due`, `analyze_calendar_capacity` |
 | Calendar | calendar-mcp | `calendar_get_today` |
 | Reminders | calendar-mcp | `reminders_list_completed`, `reminders_find_and_complete`, `reminders_clear_completed`, `reminders_list_items` |

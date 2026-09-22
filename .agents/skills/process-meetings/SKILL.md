@@ -28,8 +28,11 @@ subagent via the Agent tool, using the self-contained prompt in this skill's
 
 1. Read `.agents/skills/process-meetings/AGENT_INSTRUCTIONS.md`.
 2. Substitute its placeholders (`{{ARGS}}`, the arguments passed to this skill).
-3. Call the Agent tool with `subagent_type: "general-purpose"`, that prompt, and
-   a short description.
+3. Call the Agent tool with `subagent_type: "general-purpose"`,
+   `model: "sonnet"`, that prompt, and a short description. The brief is
+   mechanical processing with its own verification steps, so it runs on the
+   fast tier; anything that needs a judgement call comes back to this
+   conversation.
 4. Display its summary report.
 
 The subagent inherits MCP connections, runs in its own context, and that context
@@ -71,13 +74,21 @@ until someone resolves it.
 
 **The report is a claim, not evidence — check it before repeating it.** This
 subagent writes to the vault, and its summary states counts the user will act
-on. Before displaying it, verify the claims cheaply against the vault:
+on. Its report ends with a `Touched` block naming every task ID it created,
+every note it stamped, and every page it created. Verify exactly those items,
+and nothing wider:
 
-- Every task it says it created: confirm the ID appears in `03-Tasks/Tasks.md`
-  (`list_tasks`, or read the file).
-- Every meeting it says it stamped: confirm the `tasks-extracted` marker is
-  actually in that note.
-- Every person or company page it says it created: confirm the file exists.
+- Each listed task ID: confirm it appears in `03-Tasks/Tasks.md` with one
+  targeted search per ID (`grep`, or `list_tasks` filtered to that ID). Do not
+  read the whole task file.
+- Each listed stamped note: confirm the `tasks-extracted` marker is actually in
+  that one file.
+- Each listed created page: confirm the file exists.
+
+Do not re-read every meeting note or the full task list to look for claims the
+report did not make; the full sweep was what made this step slow, and it never
+found anything the `Touched` block did not name. If the report has no `Touched`
+block, treat every count in it as unverified and say so.
 
 If a claim does not hold, say so plainly in the summary you present and treat
 that meeting as unprocessed. Never pass an unverified count to the user as fact,

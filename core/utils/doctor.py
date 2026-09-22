@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterator, Mapping, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -1103,10 +1103,32 @@ def collect(
     heal: bool = False,
     progress: bool = False,
     context: DoctorContext | None = None,
+    only: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Run the selected registry and return its JSON-serializable report."""
+    """Run the selected registry and return its JSON-serializable report.
+
+    ``only`` narrows the registry to the named check ids (``doctor.self`` is
+    always kept). A skill that needs one live answer, such as whether Apple
+    Mail search is usable before the morning plan reads mail, asks for that
+    check alone instead of paying for every live probe. An unknown id is an
+    error rather than a silently empty report.
+    """
     context = context or DoctorContext.from_environment()
     definitions = [*QUICK_CHECKS, *DEEP_CHECKS] if deep else list(QUICK_CHECKS)
+    if only:
+        wanted = set(only)
+        known = {definition.id for definition in definitions}
+        unknown = sorted(wanted - known)
+        if unknown:
+            registry = "deep" if deep else "quick"
+            raise ValueError(
+                f"unknown check id(s) for the {registry} registry: {', '.join(unknown)}"
+            )
+        definitions = [
+            definition
+            for definition in definitions
+            if definition.id in wanted or definition.id == "doctor.self"
+        ]
     results: dict[str, ProbeResult] = {}
     failed: list[dict[str, str]] = []
 
@@ -6328,6 +6350,15 @@ def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
 def main(argv: list[str] | None = None, *, context: DoctorContext | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deep", action="store_true", help="Run live service probes.")
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="CHECK_ID",
+        help=(
+            "Run only this check id (repeatable), e.g. --deep --only mail.apple-search. "
+            "A narrowed run never replaces the saved health snapshot."
+        ),
+    )
     parser.add_argument("--heal", action="store_true", help="Apply safe Tier-1 repairs before checking.")
     parser.add_argument("--credential-scan", action="store_true", help="Run the bounded local credential scan.")
     parser.add_argument("--credential-migrate", action="store_true", help="Run safe local credential migration.")
@@ -6358,13 +6389,16 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
             heal=args.heal,
             progress=True,
             context=context,
+            only=args.only,
         )
         output = json.dumps(report, indent=2)
     except Exception as error:
         print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)
         return 1
 
-    if args.deep:
+    # A narrowed run answers one question; it must not overwrite the whole-system
+    # snapshot that the health pulse and Doctor's summary read.
+    if args.deep and not args.only:
         _publish_health_snapshot(report, context)
     print(output)
     return 0

@@ -19,9 +19,27 @@ context. Do not rely on hook-driven side effects for any write you make.
 
 ## Phase 1: Context Gathering
 
-Gather ALL of the following, in parallel where possible. If any source fails or
-an optional integration is not set up, skip it silently and note the skipped
-source in your final report. Never error to the user.
+Gather ALL of the following. If any source fails or an optional integration is
+not set up, skip it silently and note the skipped source in your final report.
+Never error to the user.
+
+**Issue the steps in three batches, each as one turn of parallel tool calls.**
+The numbered steps below are a checklist, not an order of execution. Running
+them one after another is what made this brief take minutes; nothing in batch
+A depends on anything else in batch A.
+
+- **Batch A (independent reads, one turn):** 1.1 week progress, 1.2 calendar,
+  1.4 commitments and feeds, 1.5 tasks, 1.6 work summary, 1.7 completed
+  reminders, 1.8 Dex Inbox, 1.9 email connection check, 1.10 chat connection
+  check, 1.12 ideas, and the profile read plus note listing for 1.13.
+- **Batch B (needs batch A's results, one turn):** 1.3 meeting context for
+  every meeting, 1.9 and 1.10 queries for connected sources, 1.11 semantic
+  queries, and the `lookup_person` calls for 1.13.
+- **Batch C (writes):** the 1.7 task status updates, the 1.13 person-page
+  updates, then Phase 3.
+
+Every step's own rules, gates, and post-conditions still apply exactly as
+written; batching changes when a call is issued, never whether it is made.
 
 ### 1.1 Week Progress
 
@@ -133,9 +151,12 @@ from them; triage is an interactive step in the main conversation.
 ### 1.9 Email Intelligence (if connected)
 
 Check `System/integrations/config.yaml`. Also treat a registered `apple-mail-mcp`
-server as connected. Before querying any connected email source, run
-`python3 core/utils/doctor.py --deep`; Apple Mail search is usable only when the
-`mail.apple-search` check reports `OK` / `feature_status: ok`.
+server as connected. Before querying Apple Mail, run
+`python3 core/utils/doctor.py --deep --only mail.apple-search`; Apple Mail search
+is usable only when the `mail.apple-search` check reports `OK` /
+`feature_status: ok`. `--only` runs that one probe, not the whole live checkup.
+Google Workspace needs no local probe: its own tool response carries the health
+status.
 
 If the source is connected and healthy:
 
