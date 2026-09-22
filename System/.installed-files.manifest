@@ -271,6 +271,7 @@
 .agents/skills/week-review/AGENT_INSTRUCTIONS.md
 .agents/skills/week-review/SKILL.md
 .agents/skills/weekly-reflection/SKILL.md
+.agents/skills/wispr-setup/SKILL.md
 .agents/skills/zoom-setup/SKILL.md
 .ci/test-durations.json
 .claude/flows/README.md
@@ -287,6 +288,8 @@
 .claude/hooks/claude-composition-refresh.sh
 .claude/hooks/company-context-injector.cjs
 .claude/hooks/connection-health-checker.cjs
+.claude/hooks/correction-capture.py
+.claude/hooks/correction-capture.sh
 .claude/hooks/daily-plan-quick-ref.cjs
 .claude/hooks/dex-core-orientation.sh
 .claude/hooks/dex-safety-guard.sh
@@ -299,6 +302,7 @@
 .claude/hooks/paths.cjs
 .claude/hooks/person-context-injector.cjs
 .claude/hooks/post-meeting-person-update.cjs
+.claude/hooks/session-clock.sh
 .claude/hooks/session-end.sh
 .claude/hooks/session-start.sh
 .claude/hooks/skill-freshness.py
@@ -309,6 +313,7 @@
 .claude/hooks/tests/career-evidence-capture.test.cjs
 .claude/hooks/tests/connection-health-checker.test.cjs
 .claude/hooks/tests/context-injectors.test.cjs
+.claude/hooks/tests/correction-capture.test.cjs
 .claude/hooks/tests/daily-plan-quick-ref.test.cjs
 .claude/hooks/tests/data-safety-instructions.test.cjs
 .claude/hooks/tests/first-run-directive.test.cjs
@@ -320,6 +325,8 @@
 .claude/hooks/tests/meeting-queue-check.test.cjs
 .claude/hooks/tests/post-meeting-person-update.test.cjs
 .claude/hooks/tests/safety-guard-settings.test.cjs
+.claude/hooks/tests/session-clock.test.cjs
+.claude/hooks/tests/session-end-record.test.cjs
 .claude/hooks/tests/session-staleness.test.cjs
 .claude/hooks/tests/things-adapter.test.cjs
 .claude/hooks/tests/todoist-adapter.test.cjs
@@ -885,6 +892,7 @@
 .claude/skills/week-review/AGENT_INSTRUCTIONS.md
 .claude/skills/week-review/SKILL.md
 .claude/skills/weekly-reflection/SKILL.md
+.claude/skills/wispr-setup/SKILL.md
 .claude/skills/xray/SKILL.md
 .claude/skills/zoom-setup/SKILL.md
 .cursor/rules/search-routing.mdc
@@ -1133,6 +1141,7 @@ core/integrations/connection-manager/lib/oauth-refresh.js
 core/integrations/connection-manager/lib/rate-limit.js
 core/integrations/connection-manager/lifted-conformance.test.cjs
 core/integrations/connection-manager/oauth-flow.cjs
+core/integrations/connection-manager/oauth-remote-mcp.test.cjs
 core/integrations/connection-manager/pinned-providers.cjs
 core/integrations/connection-manager/presence-approve-preload.test.cjs
 core/integrations/connection-manager/presence.cjs
@@ -1215,6 +1224,17 @@ core/mcp/tests/test_onboarding_server.py
 core/mcp/update_checker.py
 core/mcp/work_server.py
 core/meeting_capture_match.py
+core/meeting_sources/__init__.py
+core/meeting_sources/attribution.py
+core/meeting_sources/calendar_lookup.py
+core/meeting_sources/granola_adapter.py
+core/meeting_sources/landing_zone.py
+core/meeting_sources/record.py
+core/meeting_sources/wispr_adapter.py
+core/meeting_sources/wispr_auth.py
+core/meeting_sources/wispr_client.py
+core/meeting_sources/wispr_setup.py
+core/meeting_sources/wispr_sync.py
 core/migrations/README.md
 core/migrations/__init__.py
 core/migrations/migrate_v1_to_v2.py
@@ -1295,6 +1315,7 @@ core/tests/fixtures/entity_pages/render-company.expected.md
 core/tests/fixtures/entity_pages/render-company.input.json
 core/tests/fixtures/entity_pages/render-person.expected.md
 core/tests/fixtures/entity_pages/render-person.input.json
+core/tests/fixtures/google_workspace_mcp_pair.py
 core/tests/fixtures/release-catalog-v1.96.2-historic-shape.json
 core/tests/fixtures/release-catalog-v1.96.2-installed-files.manifest
 core/tests/fixtures/release-catalog-v1.96.2-tag-split.json
@@ -1364,7 +1385,9 @@ core/tests/test_architecture_inventory.py
 core/tests/test_automation_ownership_contract.py
 core/tests/test_backup_vault.py
 core/tests/test_branch_protection_script.py
+core/tests/test_calendar_create_event_month_end.py
 core/tests/test_calendar_eventkit_script.py
+core/tests/test_calendar_lookup.py
 core/tests/test_calendar_provider_routing_instruction_contract.py
 core/tests/test_calendar_server.py
 core/tests/test_calendar_skill_degradation_instruction_contract.py
@@ -1428,9 +1451,11 @@ core/tests/test_feedback_client_script.py
 core/tests/test_feedback_sweep.py
 core/tests/test_feedback_trigger_routing.py
 core/tests/test_first_run_trigger.py
+core/tests/test_fiscal_year_goal_anchors.py
 core/tests/test_fixture_vault.py
 core/tests/test_founder_content_gate.py
 core/tests/test_fuzz_properties.py
+core/tests/test_fuzzy_person_match_guard.py
 core/tests/test_golden_journeys.py
 core/tests/test_google_workspace_setup_instruction_contract.py
 core/tests/test_google_workspace_setup_truth.py
@@ -1442,6 +1467,7 @@ core/tests/test_harness_plugin.py
 core/tests/test_harness_portability.py
 core/tests/test_harness_registry.py
 core/tests/test_harness_safety_gates.py
+core/tests/test_harness_safety_parity.py
 core/tests/test_harness_session_context.py
 core/tests/test_health_compatibility.py
 core/tests/test_health_doctor_ref.py
@@ -1483,11 +1509,14 @@ core/tests/test_manifest_lifecycle_paths.py
 core/tests/test_manual_note_match.py
 core/tests/test_mcp_registration_lifecycle.py
 core/tests/test_mcp_servers.py
+core/tests/test_mcp_session_lifecycle.py
 core/tests/test_mcp_stdio_startup.py
 core/tests/test_mcp_tool_behavior.py
+core/tests/test_meeting_attribution.py
 core/tests/test_meeting_capture_calendar_match.py
 core/tests/test_meeting_closeout_skill.py
 core/tests/test_meeting_prep_calendar_journey.py
+core/tests/test_meeting_record_contract.py
 core/tests/test_meeting_source_instruction_contract.py
 core/tests/test_messy_vault_parsers.py
 core/tests/test_no_deprecated_models.py
@@ -1510,6 +1539,7 @@ core/tests/test_process_meetings_capture_calendar_wiring.py
 core/tests/test_process_meetings_soft_commitment_wiring.py
 core/tests/test_product_agents_bootstrap.py
 core/tests/test_provision_parity.py
+core/tests/test_provision_python_selection.py
 core/tests/test_provision_transaction.py
 core/tests/test_qmd_query_grep_fallback.py
 core/tests/test_reanchor_cli.py
@@ -1555,6 +1585,7 @@ core/tests/test_soft_promise_detection.py
 core/tests/test_soft_promise_hook.py
 core/tests/test_split_probe_regression.py
 core/tests/test_sync_daemon.py
+core/tests/test_task_id_not_reused_after_archive.py
 core/tests/test_task_id_rollover.py
 core/tests/test_task_sync.py
 core/tests/test_temperature.py
@@ -1573,6 +1604,10 @@ core/tests/test_update_rollback_journey.py
 core/tests/test_wave3_mature_skill_amendments.py
 core/tests/test_wave3_role_skill_contracts.py
 core/tests/test_week_review_clear_completed_tasks_instruction_contract.py
+core/tests/test_wispr_auth.py
+core/tests/test_wispr_client.py
+core/tests/test_wispr_pipeline.py
+core/tests/test_wispr_setup.py
 core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
 core/tests/test_work_server_meeting_context.py
@@ -1620,6 +1655,7 @@ core/utils/launch_agents.py
 core/utils/local_git.py
 core/utils/manifest.py
 core/utils/mcp_handshake.py
+core/utils/mcp_session_lifecycle.py
 core/utils/nudge_calendar.py
 core/utils/page_generators.py
 core/utils/preflight.py
@@ -1640,6 +1676,7 @@ core/utils/trust_registry.py
 core/utils/update_verifier.py
 core/utils/validators.py
 core/utils/working_week.py
+core/vault_selection.py
 docs/Dex_System/Background_Processing_Guide.md
 docs/Dex_System/Calendar_Setup.md
 docs/Dex_System/Dex_Jobs_to_Be_Done.md
@@ -1675,7 +1712,9 @@ docs/dexdiff-runtime-boundary.md
 docs/examples/dex-lens-catalog-enriched-preview.json
 docs/feedback-loop-contract.md
 docs/gate-omission-audit-2026-08-11.md
+docs/harness-safety-vault-contract.md
 docs/health-telemetry.md
+docs/meeting-sources.md
 docs/merge-gates.md
 docs/plans/2026-07-23-brain-vault-existing-user-readiness.md
 docs/plans/2026-07-23-pr141-reconciliation.md
@@ -1759,6 +1798,7 @@ packages/dex-agent-plugin/runtime/core/gates/__init__.py
 packages/dex-agent-plugin/runtime/core/gates/safety.py
 packages/dex-agent-plugin/runtime/core/path_safety.py
 packages/dex-agent-plugin/runtime/core/paths.py
+packages/dex-agent-plugin/runtime/core/vault_selection.py
 packages/dex-agent-plugin/server.py
 packages/dex-agent-plugin/skills/_available/capabilities/career/skills/career-coach/SKILL.md
 packages/dex-agent-plugin/skills/_available/capabilities/career/skills/career-setup/SKILL.md
@@ -2031,6 +2071,7 @@ packages/dex-agent-plugin/skills/week-plan/SKILL.md
 packages/dex-agent-plugin/skills/week-review/AGENT_INSTRUCTIONS.md
 packages/dex-agent-plugin/skills/week-review/SKILL.md
 packages/dex-agent-plugin/skills/weekly-reflection/SKILL.md
+packages/dex-agent-plugin/skills/wispr-setup/SKILL.md
 packages/dex-agent-plugin/skills/zoom-setup/SKILL.md
 packages/dex-claude-desktop/README.md
 packages/dex-claude-desktop/manifest.json

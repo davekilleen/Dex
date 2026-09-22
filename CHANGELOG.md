@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.19] — Your morning plan and evening review stop doing the same work twice (2026-09-22)
+
+Your morning plan and evening review had been getting slower for weeks. One user timed a day: about fifteen minutes of reading and processing before Dex asked a single question, with the evening the worst of it. When we traced where the time went, most of it was Dex doing the same work twice, or asking for far more than it needed. Thanks to Michelle for the timings that made this visible.
+
+**What this fixes for you:**
+
+* **Your meetings are processed once an evening, not twice.** The evening review used to run the whole meeting pass itself and then send its helper off to run it again. The second pass never found anything new. Now the helper's catch-up is the only pass, and it still covers every meeting since the last one that was processed, so nothing is lost on a day you skip the review.
+* **Mornings skip the meeting pass when nothing is waiting.** The plan ran a full seven-day sweep of your meetings every morning, even though the previous evening had just done it. It now asks the same check Dex already runs at the start of every session how many meetings are waiting, and only runs the pass when the answer is above zero.
+* **The reading runs on Dex's fast tier.** The helper that gathers your calendar, tasks, notes and mail is doing mechanical reading, so it now runs on the faster model. The parts that need judgement, and every question Dex asks you, stay on the full model in your conversation.
+* **The reading happens all at once instead of one source at a time.** The helper's instructions listed a dozen sources in a row, and it read them in a row. They are now grouped so everything independent is fetched together.
+* **Dex checks its own work by name, not by re-reading everything.** After processing meetings, Dex used to re-read your whole task list and every meeting note to confirm what its helper had done. The helper now names exactly what it created and stamped, and Dex checks those items only.
+* **The morning mail check asks one question instead of running a full checkup.** Before reading Apple Mail, the plan ran Dex's entire live health checkup: smoke tests, the search index, every connected tool. It now runs the one Apple Mail check it needs, and Google Workspace users skip the probe altogether. `/dex-doctor` gained the same ability to run a single named check.
+
+Being honest about what is measured: the time saved has not yet been timed side by side. The next release adds the timing line that will make that routine.
+
 Connecting Zoom actually works now.
 
 Before, turning Zoom on failed for everyone: setup told Dex to install a piece of software that was never published, so it could never finish.
