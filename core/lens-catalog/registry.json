@@ -6624,8 +6624,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/zoom-setup/SKILL.md",
-        "sha256": "f2f533fd4a76d6fd8fc40f9291a1a568b296d577318416cb01e5860cad074f96",
-        "byte_size": 11063
+        "sha256": "419f99c8b40598539bdd0694706567b58e1131be18a858c65c66924a6a3b435b",
+        "byte_size": 13014
       },
       "value": "Connect Zoom for meeting recordings, scheduling and transcript context.",
       "jobs_served": [

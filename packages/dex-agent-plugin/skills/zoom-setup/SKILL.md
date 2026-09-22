@@ -217,7 +217,7 @@ zoom:
 
 Set `zoom_transcripts` / `zoom_summaries` from the permission flags you actually observed in
 Step 4 — not optimistically. If the file already exists, only update the `zoom:` section and
-preserve other integration configs. Do **not** write an `mcp_server` key or any local token path
+preserve other integration configs. Do **not** write an MCP-server field or any local token path
 — there is neither.
 
 ### Step 6: Confirm with Capability Cascade
