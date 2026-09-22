@@ -74,12 +74,12 @@ function parseFrontmatter(source) {
   };
 }
 
-function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
-  if (parsed?.fields.granola_id) return parsed.fields.granola_id;
+function scalarFrontmatterField(source, key, parsedValue) {
+  if (parsedValue) return parsedValue;
 
   const frontmatter = source.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:[ \t]*\r?\n|$)/);
   if (!frontmatter) return null;
-  const line = frontmatter[1].match(/(?:^|\r?\n)granola_id:[ \t]*([^\r\n]*)/);
+  const line = frontmatter[1].match(new RegExp(`(?:^|\\r?\\n)${key}:[ \\t]*([^\\r\\n]*)`));
   if (!line) return null;
 
   const raw = line[1].trim();
@@ -97,6 +97,10 @@ function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
     return value || null;
   }
   return raw;
+}
+
+function granolaIdFromFrontmatter(source, parsed = parseFrontmatter(source)) {
+  return scalarFrontmatterField(source, 'granola_id', parsed?.fields.granola_id);
 }
 
 function dayFromValue(value) {
@@ -134,7 +138,9 @@ function resolveNoteDay(filePath, frontmatterDate, fallbackDay) {
   return null;
 }
 
-function hasUncheckedForMeItem(source) {
+const TASK_ANCHOR = /\^task-\d{8}-\d{3,}\b/;
+
+function hasUnextractedForMeItem(source) {
   let underForMe = false;
   for (const line of source.split(/\r?\n/)) {
     if (/^###\s+For Me\s*$/i.test(line)) {
@@ -145,7 +151,13 @@ function hasUncheckedForMeItem(source) {
       underForMe = false;
       continue;
     }
-    if (underForMe && /^\s*-\s+\[ \](?:\s+|$)/.test(line)) return true;
+    if (
+      underForMe
+      && /^\s*-\s+\[ \](?:\s+|$)/.test(line)
+      && !TASK_ANCHOR.test(line)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -163,8 +175,13 @@ function noteIsWaiting(filePath, fallbackDay, nowMilliseconds, existingGranolaId
       if (granolaId) existingGranolaIds.add(granolaId);
       return false;
     }
-    const waiting = parsed?.fields.ai_analyzed?.toLowerCase() === 'false'
-      || hasUncheckedForMeItem(parsed ? parsed.body : source);
+    const aiAnalyzed = scalarFrontmatterField(
+      source,
+      'ai_analyzed',
+      parsed?.fields.ai_analyzed,
+    );
+    const waiting = aiAnalyzed?.toLowerCase() === 'false'
+      || hasUnextractedForMeItem(parsed ? parsed.body : source);
     const day = resolveNoteDay(filePath, parsed?.fields.date, fallbackDay);
     if (!isRecentDay(day, nowMilliseconds)) {
       if (!waiting && granolaId) existingGranolaIds.add(granolaId);

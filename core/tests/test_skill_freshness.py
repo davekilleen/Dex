@@ -109,6 +109,43 @@ def test_new_skill_on_disk_is_injected_this_session_without_restart(tmp_path: Pa
     assert "restart first" in context
 
 
+def test_new_user_skill_under_skills_custom_is_injected(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    state = tmp_path / "state"
+    _write_skill(vault, "daily-plan", "Plan the day.")
+    start = _run_hook(
+        json.dumps({"hook_event_name": "SessionStart", "session_id": "s-custom"}),
+        vault,
+        state,
+        extra_args=["--session-start"],
+    )
+    assert start.returncode == 0
+
+    custom = vault / ".claude" / "skills-custom" / "board-update" / "SKILL.md"
+    custom.parent.mkdir(parents=True)
+    custom.write_text(
+        "---\nname: board-update\ndescription: Draft the board update.\n---\n\n# Board\n",
+        encoding="utf-8",
+    )
+
+    hello = _run_hook(
+        json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "s-custom",
+                "prompt": "what's next",
+            }
+        ),
+        vault,
+        state,
+    )
+    assert hello.returncode == 0
+    context = json.loads(hello.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "/board-update" in context
+    assert ".claude/skills-custom/board-update/SKILL.md" in context
+    assert "/daily-plan" not in context
+
+
 def test_named_slash_skill_is_injected_when_missing_from_session_snapshot(
     tmp_path: Path,
 ) -> None:

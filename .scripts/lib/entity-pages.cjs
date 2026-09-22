@@ -239,12 +239,11 @@ function legacyFields(body) {
   return { pipe, inline, formats };
 }
 
-function inferType(filePath, values) {
+function inferType(_filePath, values) {
   if (values.type === 'person' || values.type === 'company') return values.type;
   if (values.declared_non_entity) return null;
-  const parts = filePath.split(path.sep).map(part => part.toLowerCase());
-  if (parts.includes('people')) return 'person';
-  if (parts.includes('companies')) return 'company';
+  // Folder location is not person-hood. A note under People/ stays a note
+  // unless the page itself declares a person/company record or fields.
   if (['role', 'company', 'company_page', 'emails', 'last_interaction'].some(key => values[key] && values[key].length !== 0)) return 'person';
   if (['domains', 'website', 'status'].some(key => values[key] && values[key].length !== 0)) return 'company';
   return null;

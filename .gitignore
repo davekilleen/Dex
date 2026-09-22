@@ -108,6 +108,7 @@ System/my-customizations.md
 !.claude/hooks/skill-freshness.py
 !.claude/hooks/soft-promise-detector.py
 !.claude/hooks/claude-composition-refresh.sh
+!.claude/hooks/session-clock.sh
 !.claude/hooks/dex-core-orientation.sh
 !.claude/hooks/ensure-mcp-user-scope.cjs
 !.claude/hooks/connection-health-checker.cjs

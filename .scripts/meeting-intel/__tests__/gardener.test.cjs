@@ -69,6 +69,21 @@ function readState(vault) {
   return JSON.parse(fs.readFileSync(statePath(vault), 'utf8'));
 }
 
+test('skips unmarked markdown under People', () => withVault(async vault => {
+  const notePath = path.join(vault, '05-Areas', 'People', 'External', 'Team_Process.md');
+  fs.mkdirSync(path.dirname(notePath), { recursive: true });
+  const original = '# Team Process\n\nStandup reminder, not a person record.\n';
+  fs.writeFileSync(notePath, original);
+  let calls = 0;
+  const result = await gardenEntities({
+    generate: async () => { calls += 1; return BULLETS; },
+    now: NOW,
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.gardened.length, 0);
+  assert.equal(fs.readFileSync(notePath, 'utf8'), original);
+}));
+
 test('creates the summary region under Key Context and uses meeting signal', () => withVault(async vault => {
   const page = writePerson(vault);
   writeMeeting(vault);

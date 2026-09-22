@@ -7,6 +7,140 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+Connecting Zoom actually works now.
+
+Before, turning Zoom on failed for everyone: setup told Dex to install a piece of software that was never published, so it could never finish.
+
+**What this fixes for you:**
+
+* **Zoom connects the official way — a one-time sign-in, nothing to install.** Dex now sends you to Zoom's own "Zoom for Claude" connection and you approve it once in your browser, the same simple sign-in you already use for Notion. The old path pointed at software that doesn't exist, so it always dead-ended.
+* **Dex stopped claiming it can schedule Zoom meetings.** The Zoom connection can't do that, so promising it was misleading. What it genuinely does: bring your recordings, transcripts, meeting summaries, and Zoom Chat and Canvas notes into your meeting prep and reviews.
+* **You'll know what you need upfront.** Setup now names the requirements in plain words — a licensed Zoom plan, and Zoom's AI recording and summary features switched on — instead of failing halfway with no explanation.
+
+Reported by @shaunwallace while setting up Dex.
+
+The last goal on a quarterly plan could still pick up a to-do list from further
+down the page. A different heading, a longer divider, or a labelled list such
+as carried work sat outside the goal, and those boxes showed up as extra
+milestones. The goal then looked further along than it was.
+
+**What this fixes for you:**
+
+* **A section after the goal stays separate.** A heading, a line of dashes or
+  stars, or a labelled list now ends the milestones. Boxes in that later
+  section are no longer counted toward the goal. The milestones written with
+  the goal are unchanged.
+
+A blocked task now stays blocked on your main list.
+
+Marking a task blocked could look finished while the main task list never
+changed. Dex said the update worked, and the real line was left as it was.
+
+**What this fixes for you:**
+
+* **Blocked tasks reach the main list.** Marking a task blocked now updates
+  that list and the other places the task is written, instead of leaving the
+  main line open.
+* **Dex no longer says a status change worked when the main list was left
+  alone.** If the main list does not change, Dex says so. A task that is
+  still blocked is described that way.
+
+Setup and the switch for usage tracking could sound like counts were already
+being shared. On a normal install there is nowhere for them to go, so they
+stay on your machine.
+
+**What this fixes for you:**
+
+* **Setup says nothing is shared yet.** Dex can remember that you are willing
+  to help later. It no longer sounds like that help has already started, and
+  it no longer talks as if you need to switch off something that is already
+  running.
+* **Saying yes does not mean counts are going out.** If you turn usage
+  tracking on and there is still nowhere to send it, Dex says your preference
+  is saved and nothing is sent. It only says counts will be shared once there
+  is actually a place for them to go.
+* **Saying no no longer implies it had been sending.** Dex says usage tracking
+  stays off and nothing will be sent.
+
+Finished meetings stay finished.
+
+Meetings you had already handled could come back on the next session as if
+they still needed work. Dex kept its "already done" list in a file it
+replaces when it updates itself, so an update could forget that work and put
+those meetings back on the pile. Follow-ups you had already turned into
+tasks also kept looking like unprocessed meetings, so the count at the start
+of a session was too high and the same meetings were offered again.
+
+**What this fixes for you:**
+
+* **A meeting you already handled does not come back.** Dex now remembers
+  finished meetings in a place an update will not overwrite, and it also
+  looks at the meeting notes themselves. If the note is already there, later
+  background sync leaves it alone.
+* **The number at session start tells the truth.** Follow-ups that are
+  already on your task list no longer inflate the "meetings that may need
+  processing" count. Only notes that still need work, and incoming items
+  that do not have a note yet, are counted.
+* **Asking Dex to redo today's meetings still works.** The explicit
+  reprocess path is unchanged.
+
+Thanks to Michelle Wright, who reported this.
+
+## [1.97.18] — Closing a Dex session no longer leaves Google mail running in the background (2026-09-21)
+
+A beta tester, Michelle Wright, closed Dex tabs the ordinary way and the Google mail connector kept running in the background. Do that a few times and the leftover copies pile up — her machine ended up with dozens of them and became too slow to use. The only way out was to find and stop them by hand.
+
+**What this fixes for you:**
+
+* **Closing a tab now shuts the Google connector down with it.** Dex starts that connector so it notices when the session ends, and it clears any leftover copies when a new session begins. You can open and close Dex sessions without the computer getting slower each time.
+* **Already connected stays connected.** If Google mail already works, Dex does not add a second copy. The next time you run the Google setup, it points the existing connection at the safer start path.
+
+## [1.97.17] — A task from Todoist stays one task, even when Dex is busy (2026-09-21)
+
+Accepting a task from Todoist could still make a second copy in Todoist, and
+Dex could quietly forget which copy was the original. The leftover sat there
+forever.
+
+**What this fixes for you:**
+
+* **Dex writes down the original Todoist task first, before it can create
+  another.** Bringing a Todoist task into Dex records where it came from
+  before that task appears on your list, so a sync running at the same
+  moment cannot send it back as a new Todoist task.
+* **Dex will not replace that link with a different Todoist task.** If the
+  original is already recorded, Dex keeps it and says so, instead of
+  silently pointing at a new copy and leaving the old one behind.
+
+Creating a task on Windows works again.
+
+On Windows, adding a task could fail the moment Dex opened your notes. Everyday marks in those files — a notes symbol, a tick, a name with an accent — made the work tools stop, and nothing was added.
+
+A previous update fixed this for the weekly list. The same problem was still sitting in the other work files, including the task list and the quarterly goals page, so creating a task could still fail.
+
+**What this fixes for you:**
+
+* **You can create and update tasks on Windows.** Dex now reads and writes your task, goal, people, and notes files the same way on every computer. Those everyday characters no longer block adding a task, ticking one off, or the rest of the work tools.
+
+## [1.97.16] — First-time setup can finish on a Mac (2026-09-21)
+
+Starting Dex for the first time on a Mac could stop on the last setup step. The Mac's
+built-in Python is older than Dex needs, and that last step used it even when Dex
+had already created a working Python inside the vault. The same day's meeting
+sync could also write a meeting onto a reminder or other note sitting in People,
+just because of the folder.
+
+**What this fixes for you:**
+
+* **Setup now uses the Python Dex already created for itself.** The last step no
+  longer switches to the Mac's older Python and dies halfway through creating
+  your vault.
+* **If the only Python available is too old, Dex says so in plain words.** You get
+  a clear "Dex needs a newer Python" message and what to do, instead of a
+  technical crash.
+* **Only real person pages get meeting history.** A file in People counts as a
+  person when the page itself says so. Other notes in that folder stay as you
+  wrote them.
+
 ## [1.97.15] — (2026-09-09)
 
 ## [1.97.14] — (2026-09-09)

@@ -48,18 +48,8 @@ def request_calendar_access(store, completion):
         store.requestAccessToEntityType_completion_(EventKit.EKEntityTypeEvent, completion)
 
 
-def ensure_calendar_access(store):
-    """Request calendar access if needed; wait for user to grant. Required to see all calendars (e.g. Google)."""
-    status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
-    # 3 = FullAccess, 2 = Denied, 0 = NotDetermined, 1 = Restricted, 4 = WriteOnly
-    if status == 3:
-        return True
-    if status == 2:
-        return False
-    if status == getattr(EventKit, "EKAuthorizationStatusWriteOnly", 4):
-        print(json.dumps({"error": CALENDAR_ACCESS_WRITE_ONLY}))
-        sys.exit(1)
-    # NotDetermined or Restricted: request access
+def _wait_for_calendar_access(store):
+    """Prompt for calendar access and wait for the system dialog."""
     done = threading.Event()
     result = [None]
 
@@ -71,6 +61,28 @@ def ensure_calendar_access(store):
     # Wait up to 60s for user to respond to the system dialog
     done.wait(timeout=60)
     return result[0] is True
+
+
+def ensure_calendar_access(store):
+    """Request calendar access if needed; wait for user to grant. Required to see all calendars (e.g. Google)."""
+    status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
+    # 3 = FullAccess, 2 = Denied, 0 = NotDetermined, 1 = Restricted, 4 = WriteOnly
+    if status == 3:
+        return True
+    if status == 2:
+        return False
+    # macOS 14+ WriteOnly (4) is a real grant, not a denial. Reads need full
+    # access, and Apple's upgrade path is requestFullAccessToEvents — it
+    # prompts when the app has never asked for full access, and returns
+    # granted when full access is already held. Only a refused upgrade
+    # stays write-only.
+    if status == getattr(EventKit, "EKAuthorizationStatusWriteOnly", 4):
+        if _wait_for_calendar_access(store):
+            return True
+        print(json.dumps({"error": CALENDAR_ACCESS_WRITE_ONLY}))
+        sys.exit(1)
+    # NotDetermined or Restricted: request access
+    return _wait_for_calendar_access(store)
 
 
 def list_calendars():

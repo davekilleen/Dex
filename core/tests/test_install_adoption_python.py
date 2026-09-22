@@ -21,7 +21,28 @@ def test_install_adoption_uses_the_venv_python_when_available() -> None:
 
     assert len(adoption_lines) == 1
     assert 'DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON"' in adoption_lines[0]
+    assert 'DEX_PROVISION_PYTHON="$DEX_ADOPTION_PYTHON"' in adoption_lines[0]
     assert 'DEX_LIFECYCLE_PYTHON="$PYTHON_CMD"' not in adoption_lines[0]
     assert 'DEX_ADOPTION_PYTHON="$PYTHON_CMD"' in installer
     assert '[ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]' in installer
     assert 'DEX_ADOPTION_PYTHON="$VENV_PYTHON"' in installer
+
+
+def test_install_bootstrap_forwards_the_checked_python_into_provision() -> None:
+    installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    bootstrap_lines = [
+        line
+        for line in installer.splitlines()
+        if "core/provision.cjs" in line and "--install-config-only" not in line
+        and "PROVISION_ARGS" in line
+    ]
+    if not bootstrap_lines:
+        bootstrap_lines = [
+            line
+            for line in installer.splitlines()
+            if "core/provision.cjs" in line and "PROVISION_ARGS" in line
+        ]
+
+    assert len(bootstrap_lines) == 1
+    assert 'DEX_PROVISION_PYTHON="$PYTHON_CMD"' in bootstrap_lines[0]
+    assert 'DEX_CAPABILITY_PYTHON="$PYTHON_CMD"' in bootstrap_lines[0]

@@ -926,6 +926,256 @@ def test_create_task_adopts_inbound_external_task_before_the_next_sync(
     assert create_calls == []
 
 
+def test_inbound_adoption_maps_before_a_racing_sync_can_create(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    task_sync._write_state(_state(todoist=_service_state()))
+    sync_vault["inbound"].write_text(
+        json.dumps(
+            [
+                {
+                    "service": "todoist",
+                    "external_id": "originating-todoist-id",
+                    "title": "Adopt inbound task",
+                    "raw": {"pillar": "pillar_1", "priority": "P1"},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        work_server, "generate_task_id", lambda: "task-20260712-010"
+    )
+    monkeypatch.setattr(work_server, "refresh_search_index", lambda: None)
+    monkeypatch.setattr(work_server, "_fire_analytics_event", lambda *_args, **_kwargs: None)
+    create_calls = []
+    race_syncs = []
+
+    def run_adapter(_service, operation, _config, args):
+        if operation == "create":
+            create_calls.append(args)
+            return "duplicate-todoist-id"
+        if operation == "get_changes":
+            return []
+        raise AssertionError(operation)
+
+    monkeypatch.setattr(task_sync, "_run_adapter", run_adapter)
+
+    real_write = Path.write_text
+
+    def write_and_sync(self, data, *args, **kwargs):
+        result = real_write(self, data, *args, **kwargs)
+        if self.resolve() == sync_vault["tasks"].resolve():
+            race_syncs.append(task_sync.sync_external_tasks(services=["todoist"]))
+        return result
+
+    monkeypatch.setattr(Path, "write_text", write_and_sync)
+
+    created = _decode_tool_result(
+        asyncio.run(
+            work_server.handle_call_tool(
+                "create_task",
+                {
+                    "title": "Adopt inbound task",
+                    "pillar": "pillar_1",
+                    "priority": "P1",
+                    "on_duplicate": "fail",
+                    "external_service": "todoist",
+                    "external_id": "originating-todoist-id",
+                },
+            )
+        )
+    )
+
+    assert created["success"] is True
+    assert created["task"]["task_id"] == "task-20260712-010"
+    assert task_sync._load_state()["todoist"]["map"] == {
+        "task-20260712-010": "originating-todoist-id"
+    }
+    assert race_syncs
+    assert race_syncs[0]["todoist"]["pushed_creates"] == 0
+    assert create_calls == []
+
+
+def test_record_mapping_refuses_overwrite_to_a_different_external_id(sync_vault):
+    task_id = "task-20260712-007"
+    _write_tasks(sync_vault["tasks"], f"- [ ] Keep original inbound ^{task_id}")
+    service_state = _service_state()
+    service_state["map"][task_id] = "originating-todoist-id"
+    task_sync._write_state(_state(todoist=service_state))
+    inbound = [
+        {
+            "service": "todoist",
+            "external_id": "originating-todoist-id",
+            "title": "Keep original inbound",
+            "raw": {},
+        },
+        {
+            "service": "todoist",
+            "external_id": "duplicate-todoist-id",
+            "title": "Leftover copy",
+            "raw": {},
+        },
+    ]
+    sync_vault["inbound"].write_text(json.dumps(inbound), encoding="utf-8")
+    before_state = sync_vault["state"].read_bytes()
+    before_inbound = sync_vault["inbound"].read_bytes()
+
+    result = task_sync.record_external_task_mapping(
+        task_id, "todoist", "duplicate-todoist-id"
+    )
+
+    assert result["success"] is False
+    assert "already mapped" in result["error"]
+    assert result["existing_external_id"] == "originating-todoist-id"
+    assert sync_vault["state"].read_bytes() == before_state
+    assert sync_vault["inbound"].read_bytes() == before_inbound
+    assert task_sync._load_state()["todoist"]["map"][task_id] == "originating-todoist-id"
+
+
+def test_record_mapping_refuses_when_external_id_belongs_to_another_task(sync_vault):
+    first_id = "task-20260712-007"
+    second_id = "task-20260712-008"
+    _write_tasks(
+        sync_vault["tasks"],
+        f"- [ ] First inbound ^{first_id}",
+        f"- [ ] Second inbound ^{second_id}",
+    )
+    service_state = _service_state()
+    service_state["map"][first_id] = "originating-todoist-id"
+    task_sync._write_state(_state(todoist=service_state))
+    before_state = sync_vault["state"].read_bytes()
+
+    result = task_sync.record_external_task_mapping(
+        second_id, "todoist", "originating-todoist-id"
+    )
+
+    assert result["success"] is False
+    assert "already mapped to a different Dex task" in result["error"]
+    assert result["existing_task_id"] == first_id
+    assert sync_vault["state"].read_bytes() == before_state
+
+
+def test_record_mapping_same_external_id_is_idempotent_and_dequeues(sync_vault):
+    task_id = "task-20260712-007"
+    _write_tasks(sync_vault["tasks"], f"- [ ] Keep original inbound ^{task_id}")
+    service_state = _service_state()
+    service_state["map"][task_id] = "originating-todoist-id"
+    task_sync._write_state(_state(todoist=service_state))
+    sync_vault["inbound"].write_text(
+        json.dumps(
+            [
+                {
+                    "service": "todoist",
+                    "external_id": "originating-todoist-id",
+                    "title": "Keep original inbound",
+                    "raw": {},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = task_sync.record_external_task_mapping(
+        task_id, "todoist", "originating-todoist-id"
+    )
+
+    assert result["success"] is True
+    assert result["removed_from_inbound"] == 1
+    assert task_sync._load_state()["todoist"]["map"][task_id] == "originating-todoist-id"
+    assert json.loads(sync_vault["inbound"].read_text(encoding="utf-8")) == []
+
+
+def test_create_task_refuses_mapping_overwrite_without_writing_the_task(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    task_id = "task-20260712-011"
+    service_state = _service_state()
+    service_state["map"][task_id] = "originating-todoist-id"
+    task_sync._write_state(_state(todoist=service_state))
+    monkeypatch.setattr(work_server, "generate_task_id", lambda: task_id)
+    monkeypatch.setattr(work_server, "refresh_search_index", lambda: None)
+    before_tasks = sync_vault["tasks"].read_bytes()
+    before_state = sync_vault["state"].read_bytes()
+
+    created = _decode_tool_result(
+        asyncio.run(
+            work_server.handle_call_tool(
+                "create_task",
+                {
+                    "title": "Would become a duplicate",
+                    "pillar": "pillar_1",
+                    "priority": "P1",
+                    "on_duplicate": "force",
+                    "external_service": "todoist",
+                    "external_id": "duplicate-todoist-id",
+                },
+            )
+        )
+    )
+
+    assert created["success"] is False
+    assert "already mapped" in created["error"]
+    assert sync_vault["tasks"].read_bytes() == before_tasks
+    assert sync_vault["state"].read_bytes() == before_state
+
+
+def test_create_task_rolls_back_mapping_when_task_write_fails(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    task_sync._write_state(_state(todoist=_service_state()))
+    sync_vault["inbound"].write_text(
+        json.dumps(
+            [
+                {
+                    "service": "todoist",
+                    "external_id": "originating-todoist-id",
+                    "title": "Adopt inbound task",
+                    "raw": {},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        work_server, "generate_task_id", lambda: "task-20260712-012"
+    )
+    before_state = sync_vault["state"].read_bytes()
+    before_inbound = sync_vault["inbound"].read_bytes()
+    before_tasks = sync_vault["tasks"].read_bytes()
+
+    real_write = Path.write_text
+
+    def fail_write(self, data, *args, **kwargs):
+        if self.resolve() == sync_vault["tasks"].resolve():
+            raise OSError("disk full")
+        return real_write(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_write)
+
+    with pytest.raises(OSError, match="disk full"):
+        asyncio.run(
+            work_server.handle_call_tool(
+                "create_task",
+                {
+                    "title": "Adopt inbound task",
+                    "pillar": "pillar_1",
+                    "priority": "P1",
+                    "on_duplicate": "fail",
+                    "external_service": "todoist",
+                    "external_id": "originating-todoist-id",
+                },
+            )
+        )
+
+    assert sync_vault["state"].read_bytes() == before_state
+    assert sync_vault["inbound"].read_bytes() == before_inbound
+    assert sync_vault["tasks"].read_bytes() == before_tasks
+
+
 @pytest.mark.parametrize(
     "external_identity",
     [

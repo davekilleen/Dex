@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "23fc59af24aa10eea9c67a98f2a206c7cac1743fbc9c6d5dd44d5345545d8eac",
-        "byte_size": 21731
+        "sha256": "85d29ad3157ce18d15a8f39df0ee8da80e26f39ab87b0ebc43bbc5ebb1008e7f",
+        "byte_size": 21878
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [
@@ -644,8 +644,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "02110d2093e22aeb472ed3ef05ae97e2e4773ce18ccac6aa6f1888daf0ce88b9",
-        "byte_size": 17660
+        "sha256": "2c14f56b1dfc023f89e7474a7ec8647719f7ca89a3e91d4a2cc2f7bdfbf72da0",
+        "byte_size": 19031
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": [
@@ -4443,8 +4443,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/create-skill/SKILL.md",
-        "sha256": "0a5a30e105ab6dac24db145bc4b56250bdc0862c6f866cdb3f9d2ffa23991152",
-        "byte_size": 9435
+        "sha256": "d0157df8f8b00d9a6a88e3ec72733a467a91319061135ed76e80189cf22fc653",
+        "byte_size": 10042
       },
       "value": "Author a new Dex skill.",
       "jobs_served": [
@@ -5560,8 +5560,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/google-workspace-setup/SKILL.md",
-        "sha256": "e95e0d399ee2347d867b90a4e45d0d269a3ddba2b1edb9bc1d3c40ec8866fab3",
-        "byte_size": 16331
+        "sha256": "3a4a727558dfce1c5eecb832964deb38d8c806e7f4007908ee1fd707eae060d0",
+        "byte_size": 17086
       },
       "value": "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep.",
       "jobs_served": [
@@ -6554,6 +6554,69 @@
       "changed_in": []
     },
     {
+      "id": "wispr-setup",
+      "capability_class": "active-skill",
+      "impact_tier": "high",
+      "availability": "active",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/wispr-setup/SKILL.md",
+        "sha256": "3204914ba11f57a85dae7f69f3a181538f192797b04b6a48366920c7b7a9b90e",
+        "byte_size": 4143
+      },
+      "value": "Connect Wispr Flow so meeting captures arrive in the vault on their own.",
+      "jobs_served": [
+        "capture-without-friction"
+      ],
+      "foundation_capabilities": [
+        "durable-memory-provenance",
+        "privacy-minimal-disclosure"
+      ],
+      "prerequisites": [
+        "An installed Dex release with its skills directory available.",
+        "Access to the relevant local app or external service, authorized by the person."
+      ],
+      "trade_offs": [
+        "Results depend on the current local data and permissions the skill can inspect.",
+        "External connections remain subject to the provider's availability and authorization."
+      ],
+      "evidence": [
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/wispr-setup/SKILL.md",
+          "summary": "The shipped Wispr Setup skill defines the workflow Lens is cataloguing."
+        }
+      ],
+      "brief": {
+        "goal": "Connect Wispr Flow so meeting captures arrive in the vault on their own.",
+        "method_outline": [
+          "Inspect the current local state and the person's request.",
+          "Run the Wispr Setup workflow within its documented safety boundary.",
+          "Verify the intended result and report anything still needing attention."
+        ],
+        "verification_checklist": [
+          "The workflow reports what it found or changed.",
+          "The person keeps control over any consequential action."
+        ],
+        "rollback_advice": "Disable or remove the skill if it is not useful; reverse any external configuration through the same provider-controlled setup path."
+      },
+      "compatibility": {
+        "host_requirements": [
+          "skills-directory"
+        ],
+        "needs_hooks": false,
+        "needs_mcp": true,
+        "platforms": [
+          "macos",
+          "linux",
+          "windows"
+        ]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.97.0",
+      "changed_in": []
+    },
+    {
       "id": "zoom-setup",
       "capability_class": "active-skill",
       "impact_tier": "high",
@@ -6561,8 +6624,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/zoom-setup/SKILL.md",
-        "sha256": "f2f533fd4a76d6fd8fc40f9291a1a568b296d577318416cb01e5860cad074f96",
-        "byte_size": 11063
+        "sha256": "419f99c8b40598539bdd0694706567b58e1131be18a858c65c66924a6a3b435b",
+        "byte_size": 13014
       },
       "value": "Connect Zoom for meeting recordings, scheduling and transcript context.",
       "jobs_served": [

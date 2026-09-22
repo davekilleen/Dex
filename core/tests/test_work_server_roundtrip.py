@@ -36,6 +36,29 @@ def _call_tool(name: str, arguments: dict | None = None) -> dict:
     )
 
 
+def _force_windows_cp1252(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make locale-default text opens behave like Windows cp1252."""
+    original_open = io.open
+
+    def windows_default_open(
+        file,
+        mode="r",
+        buffering=-1,
+        encoding=None,
+        errors=None,
+        newline=None,
+        closefd=True,
+        opener=None,
+    ):
+        if "b" not in mode and encoding in (None, "locale"):
+            encoding = "cp1252"
+        return original_open(
+            file, mode, buffering, encoding, errors, newline, closefd, opener
+        )
+
+    monkeypatch.setattr(io, "open", windows_default_open)
+
+
 @pytest.fixture
 def task_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     tasks_file = tmp_path / "03-Tasks" / "Tasks.md"
@@ -219,31 +242,66 @@ def test_week_progress_reads_utf8_priority_with_windows_default(
         "## 📝 Notes\n",
         encoding="utf-8",
     )
-    original_open = io.open
-
-    def windows_default_open(
-        file,
-        mode="r",
-        buffering=-1,
-        encoding=None,
-        errors=None,
-        newline=None,
-        closefd=True,
-        opener=None,
-    ):
-        if "b" not in mode and encoding in (None, "locale"):
-            encoding = "cp1252"
-        return original_open(
-            file, mode, buffering, encoding, errors, newline, closefd, opener
-        )
-
-    monkeypatch.setattr(io, "open", windows_default_open)
+    _force_windows_cp1252(monkeypatch)
 
     progress = _call_tool("get_week_progress")
 
     assert [priority["title"] for priority in progress["priorities"]] == [
         "Ship customer launch"
     ]
+
+
+def test_create_task_reads_utf8_vault_files_with_windows_default(
+    task_vault, monkeypatch
+):
+    task_vault["tasks"].write_text(
+        "# Tasks\n\n## 📝 Notes\n\n## Next Week\n",
+        encoding="utf-8",
+    )
+    task_vault["goals"].write_text(
+        "# Quarter Goals\n\n## 📊 Pillar Alignment\n",
+        encoding="utf-8",
+    )
+    _force_windows_cp1252(monkeypatch)
+
+    created = _call_tool(
+        "create_task",
+        {
+            "title": "Draft customer launch briefing document",
+            "pillar": "pillar_1",
+        },
+    )
+
+    assert created["success"] is True
+    written = task_vault["tasks"].read_text(encoding="utf-8")
+    assert "Draft customer launch briefing document" in written
+    assert "📝" in written
+    assert "📊" in task_vault["goals"].read_text(encoding="utf-8")
+
+
+def test_work_server_vault_text_io_never_uses_locale_codec():
+    source = Path(work_server.__file__).read_text(encoding="utf-8")
+    leftover = []
+    in_helper = False
+    for lineno, line in enumerate(source.splitlines(), 1):
+        if line.startswith("def read_vault_text(") or line.startswith(
+            "def write_vault_text("
+        ) or line.startswith("def open_vault_text("):
+            in_helper = True
+            continue
+        if in_helper:
+            if line and not line[0].isspace():
+                in_helper = False
+            else:
+                continue
+        if (
+            ".read_text(" in line
+            or ".write_text(" in line
+            or ".open(" in line
+            or ("open(" in line and "open_vault_text(" not in line)
+        ):
+            leftover.append(f"{lineno}:{line.strip()}")
+    assert leftover == []
 
 
 def test_public_week_progress_counts_completed_task_named_in_success_criteria(
