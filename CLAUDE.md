@@ -491,7 +491,7 @@ Person and company context hooks run automatically when reading files:
 
 ### Analytics (Opt-Out Model)
 
-Analytics is **not active** on new installs until a usage relay is configured. Consent may still be recorded as opted-in so it can turn on later; users can say "turn off Dex analytics" to keep it off. No prompting needed.
+Analytics is **not active** on new installs until a usage relay is configured. A preference may still be recorded as opted-in so sharing can start later, after a relay exists. While that relay is missing, nothing is sent. Users can say "turn off Dex analytics" to decline. No prompting needed.
 
 **Do nothing unless the user explicitly asks to opt out or opt in.**
 
@@ -506,7 +506,7 @@ When user says anything like:
 **Your response:**
 1. Update `System/user-profile.yaml` → `analytics.enabled: false`
 2. Update `System/usage_log.md` → `Consent decision: opted-out`
-3. Say: "Done! Analytics is now off. No more usage data will be sent. You can turn it back on anytime by saying 'turn on Dex analytics'."
+3. Say: "Done. Analytics stays off, and nothing will be sent. You can save the preference again anytime by saying 'turn on Dex analytics'."
 
 When user says anything like:
 - "Turn on Dex analytics"
@@ -516,7 +516,10 @@ When user says anything like:
 **Your response:**
 1. Update `System/user-profile.yaml` → `analytics.enabled: true`
 2. Update `System/usage_log.md` → `Consent decision: opted-in`
-3. Say: "Done! Analytics is back on. Thanks for helping improve Dex!"
+3. Check whether a usage relay is configured. It is configured only when `DEX_ANALYTICS_ENDPOINT` is a real address, or `check_analytics_status` reports `transport_configured: true`. The shipped blank endpoint is not configured.
+   - Relay configured: say "Done. Analytics is on. Anonymous feature-usage counts will be sent. Names, notes, and conversations are not included."
+   - Relay missing: say "Done. Your preference is saved. Nothing is sent until a usage relay is configured."
+   Never tell an opted-in user that usage data is being sent when the endpoint is missing.
 
 ### Health Telemetry Opt-In/Out (Anytime)
 

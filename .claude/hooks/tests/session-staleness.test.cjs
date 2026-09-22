@@ -8,7 +8,8 @@ const path = require('node:path');
 
 const HOOK_PATH = path.resolve(__dirname, '..', 'session-start.sh');
 const MEETING_INTEL_PLIST = 'com.dex.meeting-intel.plist';
-const MEETING_INTEL_STATE = '.scripts/meeting-intel/processed-meetings.json';
+const MEETING_INTEL_STATE = 'System/.dex/processed-meetings.json';
+const LEGACY_MEETING_INTEL_STATE = '.scripts/meeting-intel/processed-meetings.json';
 
 function createSandbox(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-session-staleness-'));
@@ -161,6 +162,29 @@ function runSessionStart(sandbox) {
   assert.ok(fs.existsSync(sandbox.dedupFile), 'session-start.sh must use the sandbox dedup file');
   return result.stdout;
 }
+
+test('session start still sees a stale receipt left on the old shipped path', (t) => {
+  const sandbox = createSandbox(t);
+  installMeetingIntel(sandbox);
+  const legacyPath = path.join(sandbox.vault, LEGACY_MEETING_INTEL_STATE);
+  fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+  fs.writeFileSync(
+    legacyPath,
+    `${JSON.stringify({
+      processedIds: [],
+      lastSync: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    })}\n`,
+  );
+
+  const stdout = runSessionStart(sandbox);
+  const runtimePath = path.join(sandbox.vault, MEETING_INTEL_STATE);
+
+  assert.match(
+    stdout,
+    /⏰ Meeting sync last completed successfully 3 days ago \(expected every 2 days\) — run \/dex-doctor to investigate\./,
+  );
+  assert.equal(fs.existsSync(runtimePath), true);
+});
 
 test('session start warns when an installed meeting sync last succeeded 3 days ago', (t) => {
   const sandbox = createSandbox(t);

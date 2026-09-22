@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 22eef7706719b0675e319e1ddb5a8e56e1511a02fc05d8bf509ebb94ae32341e -->
+<!-- Content SHA-256: 077470ce94098fdff890e9ba12a1829b5899c70a988a877fe097dde53265bf29 -->
 
 # Architecture Inventory
 
@@ -26,7 +26,7 @@ This inventory is derived only from repository code and shipped skill files.
 
 ## Skills
 
-**Skill count:** 83<br>
+**Skill count:** 84<br>
 **Discoverability-risk count:** 3
 
 A description has a trigger when its frontmatter contains the word `when` or `whenever` (case-insensitive). Length is measured in characters.
@@ -114,6 +114,7 @@ A description has a trigger when its frontmatter contains the word `when` or `wh
 | `week-plan` | `.claude/skills/week-plan/SKILL.md` | Set the week's priorities against goals, calendar shape and task effort. Use when the user says 'plan my week', 'what should I focus on this week', or on their first working day. Also use proactively at the first session of a new week. Not for reviewing the week just past; use `week-review`. | 292 | when |
 | `week-review` | `.claude/skills/week-review/SKILL.md` | Review the week with concrete accomplishments (not fake percentages), pattern detection and goal tracking. Use when the user says 'how was my week', 'week review', or it's their last working day. Also use proactively when a week's priorities are largely resolved. Not for planning the coming week; use `week-plan`. | 314 | when |
 | `weekly-reflection` | `.claude/skills/weekly-reflection/SKILL.md` | A short guided reflection on what energized you, what drained you, and one change for next week. Use when the user wants to reflect on how work *felt*, not what got done — 'reflect on my week', 'what's draining me'. Not for progress-and-goals tracking; use `week-review`. | 271 | when |
+| `wispr-setup` | `.claude/skills/wispr-setup/SKILL.md` | Connect Wispr Flow so meeting captures arrive in your vault on their own. Use when the user says 'connect Wispr', 'set up Wispr Flow', 'my Wispr meetings aren't in Dex'. Not for Granola; use `granola-setup`. Not for processing meetings already in the vault; use `process-meetings`. | 281 | when |
 | `xray` | `.claude/skills/xray/SKILL.md` | Explain what just happened under the hood — the context, MCP tools, and hooks behind Dex's last response — as AI education. Use when the user says 'how did you do that', 'what just happened', 'explain the mechanics'. Not for a system health check; use `dex-doctor`. | 265 | when |
 | `zoom-setup` | `.claude/skills/zoom-setup/SKILL.md` | Connect Zoom for meeting recordings, scheduling and transcript context. Use when the user says 'connect Zoom', 'pull my Zoom recordings'. Not for Granola-sourced notes; use `granola-setup`. Not for Teams; use `ms-teams-setup`. | 226 | when |
 

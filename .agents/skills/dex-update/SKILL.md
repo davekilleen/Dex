@@ -157,6 +157,10 @@ State plainly which customizations are in `update-replaceable-location` and whic
 `update-untouched-location`. Do not rename those groups or claim that a location predicts an
 automatic rebuild.
 
+`CLAUDE.md` differences are file-level evidence, never an orphan-line list. Do not tell the
+user to move any differing line into `CLAUDE-custom.md`. Use Compare and the lifecycle
+conflict choices without raw file edits.
+
 ### Propose the rebuild
 
 Read the Capsule evidence only through the registered MCP. Use

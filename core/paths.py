@@ -10,6 +10,8 @@ Usage (generate JSON for CJS/TS consumers):
     # Writes core/paths.json
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os

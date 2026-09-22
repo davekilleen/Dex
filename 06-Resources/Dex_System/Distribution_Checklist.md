@@ -1,5 +1,17 @@
 # Dex Distribution Checklist
 
+## App support evidence (v1.97.13 baseline)
+
+Portable package files are distributed in v1.97.13. Distribution does not certify a host. Before adding a supported app CTA to GitHub or heydex.ai, retain exact version, artifact checksum, app/surface and OS evidence for:
+
+- New and existing/customized vault install, prerequisites and folder grants.
+- First useful plan, person/meeting context, task create/complete and meeting follow-through; missing optional integrations must be explicit.
+- Actual hook trust, denied permissions, conflicting roots, offline behavior and guided fallbacks.
+- Feedback preview/submission, update/rewind, disable/remove and preserved vault content.
+- Required CI and reviews, plus a real installed native app journey. A subprocess protocol test alone is insufficient.
+
+Keep GitHub and website install/help routes consistent. Verify the served artifact separately from local source. Complete new-app support evidence is pending; do not convert candidate registry modes into support badges.
+
 **Last Updated:** 2026-07-26 (v1.75.2)
 
 Maintainer reference for how Dex ships and what to check when cutting a release.
@@ -27,7 +39,7 @@ authoritative, CI-drift-gated list (names, tool counts, exact tools) is
 `docs/architecture/INVENTORY.md` § "MCP engines" — don't hand-copy it here.
 
 External MCPs (browser automation, user-installed integrations, hosted vendor
-MCPs) are not part of Dex; users add them via their own Claude settings.
+MCPs) are not part of Dex; users add them through their chosen app's supported integration settings.
 
 Optional companions degrade gracefully:
 - **Granola** — meeting sync uses Granola's official public API with
