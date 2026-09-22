@@ -1,6 +1,6 @@
 ---
 name: create-skill
-description: "Author a new Dex skill — a reusable `/command` — that actually fires and passes the quality bar. Runs a collision check, classifies the shape, writes a router-grade description, generates the real package (SKILL.md + evals), and grades it with `skill-score` before calling it done. Use when the user says 'make a skill', 'I want a /command for X', 'turn this into a skill'. A skill the user builds for themselves is saved as `-custom` (protected from updates) and coached, never blocked; a first-party skill is held to the hard gate. Not for connecting an external tool; use `create-mcp`. Not for grading a skill that already exists; use `skill-score`."
+description: "Author a new Dex skill — a reusable `/command` — that actually fires and passes the quality bar. Runs a collision check, classifies the shape, writes a router-grade description, generates the real package (SKILL.md + evals), and grades it with `skill-score` before calling it done. Use when the user says 'make a skill', 'I want a /command for X', 'turn this into a skill'. A skill the user builds for themselves is saved under `.claude/skills-custom/` (protected from updates) and coached, never blocked; a first-party skill is held to the hard gate. Not for connecting an external tool; use `create-mcp`. Not for grading a skill that already exists; use `skill-score`."
 ---
 
 # Create a Skill
@@ -27,8 +27,8 @@ Point 3 is not optional — it is the raw material for the WHEN trigger. If the 
 
 ## Step 2 — Determine origin
 
-- **User skill** (the default in an end-user vault): the user is building this for themselves. It is authored under `{name}-custom/` and is **coached, never blocked**. Do NOT let the user add `-custom` themselves — you append it automatically.
-- **First-party / Core skill** (authoring inside the Dex repo, to ship to everyone): authored under its real `{name}/` and **held to the hard gate** (`skill-score ≥ 85`).
+- **User skill** (the default in an end-user vault): the user is building this for themselves. Write it at `.claude/skills-custom/{name}/`. That directory is vault-owned, so updates never overwrite it. The skill is **coached, never blocked**. Do not put it under `.claude/skills/`, and do not add `-custom` to the folder name unless `{name}` already belongs to a shipped skill.
+- **First-party / Core skill** (authoring inside the Dex repo, to ship to everyone): authored under `.claude/skills/{name}/` and **held to the hard gate** (`skill-score ≥ 85`).
 
 Infer from context; if genuinely unsure, ask one line: "Is this just for you, or something Dex should ship to everyone?"
 
@@ -39,10 +39,10 @@ The most common failure is a skill the router can't tell apart from one that alr
 Read the `routing collisions` list and find the nearest neighbor to the intended job. Then decide:
 
 - **This is a genuinely new job** → note the nearest neighbor; its name goes in the anti-trigger (Step 5).
-- **A skill with this exact job already exists** → do NOT create a duplicate. Either **edit that skill in place** (overwrite its `SKILL.md`, keep its name — never a `-name-2` or `-v2` fork) or, if it's a Core skill the user wants to customize, save the user's version as `{name}-custom` alongside it (both stay invocable) and hand off to the conflict-resolution flow. A suffixed fork of a job that already exists fragments discoverability and is not allowed.
+- **A skill with this exact job already exists** → do NOT create a duplicate. Either **edit that skill in place** (overwrite its `SKILL.md`, keep its name — never a `-name-2` or `-v2` fork) or, if it's a Core skill the user wants to customize, save the user's version at `.claude/skills-custom/{name}-custom/` so both stay invocable, and hand off to the conflict-resolution flow. A suffixed fork of a job that already exists fragments discoverability and is not allowed.
 - **A near neighbor exists but the jobs are distinct** → sharpen this skill's outcome and add an anti-trigger naming that neighbor so the router can disambiguate.
 
-If the scorer can't run (no `python3`), fall back to reading the descriptions in `.claude/skills/*/SKILL.md` by hand and say you did so — never skip the collision check silently.
+If the scorer can't run (no `python3`), fall back to reading the descriptions in `.claude/skills/*/SKILL.md` and `.claude/skills-custom/*/SKILL.md` by hand and say you did so — never skip the collision check silently.
 
 ## Step 4 — Classify the shape
 
@@ -65,7 +65,7 @@ This is the highest-leverage line in the whole package. Follow the template in `
 
 ## Step 6 — Generate the package
 
-Create the folder — `{name}-custom/` for a user skill, `{name}/` for a first-party skill — and write:
+Create the folder — `.claude/skills-custom/{name}/` for a user skill (`.claude/skills-custom/{name}-custom/` only when the bare name collides with a shipped skill), `.claude/skills/{name}/` for a first-party skill — and write:
 
 - **`SKILL.md`** — the description from Step 5 + a **thin body**: a router + contract, not a reference essay. Name the quality bar and at least one anti-pattern. Push long procedural detail into `references/`. Soft cap ~200 lines.
 - **`evals/trigger-cases.yaml`** — the standard fixture every skill carries: 3 positive paraphrases (must fire), 2 negative/collision (must route to the named neighbor), 1 ambiguous (ask), 1 missing-prerequisite (degrade honestly), 1 failure-recovery (never claim false success). Copy the shape from `.claude/skills/skill-score/evals/trigger-cases.yaml`.
@@ -89,10 +89,11 @@ Read the files you just wrote back before claiming success — confirm the front
 
 **User skill:**
 ```
-✅ Created /{name}-custom  (score: NN/100 — {verdict})
-Try it: /{name}-custom
-Protected from updates — the -custom suffix means Dex updates never overwrite it.
-Edit: .claude/skills/{name}-custom/SKILL.md
+✅ Created /{name}  (score: NN/100 — {verdict})
+Try it: /{name}
+Protected from updates — it lives in .claude/skills-custom/, which Dex updates never overwrite.
+Edit: .claude/skills-custom/{name}/SKILL.md
+{if the bare name collided: the command is /{name}-custom and the file is .claude/skills-custom/{name}-custom/SKILL.md}
 {if <85: the one change that would make it fire more reliably}
 ```
 
@@ -111,7 +112,8 @@ A good run leaves behind a skill that **fires on the user's real phrasing, route
 
 ## Anti-patterns (do not do these)
 
-- **Appending `-custom` to a first-party skill**, or authoring a user skill under its bare name. Origin decides the suffix.
+- **Writing a user skill under `.claude/skills/`**, including a `{name}-custom` folder there. User skills go in `.claude/skills-custom/`. Origin decides the directory.
+- **Appending `-custom` to a first-party skill**, or using a `-custom` folder name when the bare name is free.
 - **Skipping the collision check** and shipping a skill the router can't tell from an existing one.
 - **Forking an existing job** into `{name}-2` / `{name}-v2` instead of editing it in place.
 - **Writing the description as a mechanism** ("runs the MCP that…") instead of the outcome.

@@ -46,13 +46,15 @@ Also use proactively when {situation}. Not for {adjacent job}; use `{neighbor-sk
 
 | | User skill | First-party / Core skill |
 |---|---|---|
-| Folder | `{name}-custom/` | `{name}/` |
+| Folder | `.claude/skills-custom/{name}/` | `.claude/skills/{name}/` |
 | Update behavior | protected — never overwritten | shipped + maintained |
 | `skill-score` | **advisory — coach, never block** | **hard gate — must score ≥ 85** |
 | On a low score | show the one fix, create it anyway if they want | fix and re-score until it clears |
 
-Never append `-custom` to a first-party skill, and never author a user skill under its
-bare name. If you're unsure which it is, ask one line.
+A user skill uses a `.claude/skills-custom/{name}-custom/` folder only when `{name}`
+already belongs to a shipped skill, so both stay invocable. Never append `-custom` to a
+first-party skill, and never author a user skill inside `.claude/skills/`. If you're
+unsure which it is, ask one line.
 
 ## 4. Every skill carries `evals/trigger-cases.yaml`
 

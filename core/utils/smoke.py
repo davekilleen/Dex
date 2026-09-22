@@ -2409,8 +2409,23 @@ def _plan_entries_for_never_spawned(
     return overlay_entries
 
 
+def _installed_skill_files(vault: Path) -> list[Path]:
+    skills: list[Path] = []
+    for relative in (Path(".claude") / "skills", Path(".claude") / "skills-custom"):
+        root = vault / relative
+        if root.is_dir():
+            skills.extend(root.glob("*/SKILL.md"))
+    return sorted(skills)
+
+
+def _skill_owner(skill: Path) -> str:
+    if skill.parent.parent.name == "skills-custom" or skill.parent.name.endswith("-custom"):
+        return "user"
+    return "shipped"
+
+
 def _journey_skills(vault: Path, _release_root: Path) -> dict[str, str]:
-    skills = sorted((vault / ".claude" / "skills").glob("*/SKILL.md"))
+    skills = _installed_skill_files(vault)
     if not skills:
         return {"verdict": "OFF", "detail": "no skills are installed"}
     expected_validator = _validator_path()
@@ -2429,14 +2444,14 @@ def _journey_skills(vault: Path, _release_root: Path) -> dict[str, str]:
     errors = []
     for skill in skills:
         label = skill.relative_to(vault).as_posix()
-        owner = "user" if skill.parent.name.endswith("-custom") else "shipped"
+        owner = _skill_owner(skill)
         errors.extend(
             f"{label} ({owner}): {error}"
             for error in validators.validate_skill_frontmatter(skill)
         )
     if errors:
         return {"verdict": "BROKEN", "detail": "; ".join(errors)}
-    user_count = sum(skill.parent.name.endswith("-custom") for skill in skills)
+    user_count = sum(_skill_owner(skill) == "user" for skill in skills)
     return {
         "verdict": "OK",
         "detail": f"validated {len(skills)} skills ({user_count} user, {len(skills) - user_count} shipped)",
