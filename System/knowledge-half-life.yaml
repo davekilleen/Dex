@@ -1,0 +1,50 @@
+# How long an observation stays trustworthy, per source.
+#
+# Context carries no freshness. Everything an assistant holds presents with
+# equal authority whether it was observed a minute ago or yesterday, and in a
+# long session that is how a stale calendar read, an unchecked inbox, or
+# yesterday's date get used as though fresh.
+#
+# This file makes the decay assumption explicit and per-vault, because
+# volatility is personal: one person's pipeline moves weekly, another's task
+# list moves hourly. Shipped as a seed, so your tuning is never overwritten by
+# an update.
+#
+# Durations accept s, m, h, d. `never` means the observation does not decay --
+# use it for things that are superseded rather than aged out.
+
+sources:
+  # World state, cheap to re-observe, expensive to be wrong about.
+  clock:            {half_life: 5m,  note: "re-stated every prompt by the session-clock hook"}
+  calendar:         {half_life: 30m}
+  email:            {half_life: 30m}
+  ci:               {half_life: 10m, note: "pull request and build state"}
+  meetings:         {half_life: 1h,  note: "whether new captures exist"}
+  transcripts:      {half_life: never, note: "a finalised capture is a record of what was said; superseded by a later meeting, never aged out"}
+  tasks:            {half_life: 4h}
+  timesheet:        {half_life: 8h}
+
+  # Vault content: changes on a human cadence.
+  week_priorities:  {half_life: 2d}
+  people:           {half_life: 14d}
+  accounts:         {half_life: 7d,  note: "deal state moves faster than the person behind it"}
+  pipeline:         {half_life: 2d}
+  quarter_goals:    {half_life: 14d}
+  pillars:          {half_life: 90d}
+
+  # Not observations. These are superseded, never stale.
+  user_decisions:   {half_life: never}
+  user_corrections: {half_life: never}
+
+# What a given output must have freshly observed before it is written.
+#
+# This is the half that can actually be enforced. An assistant cannot reliably
+# audit its own memory for staleness, but "this artefact requires a calendar
+# read newer than its half-life" is checkable from the outside.
+artefacts:
+  daily-plan:    {requires_fresh: [clock, calendar, email, tasks, week_priorities]}
+  daily-review:  {requires_fresh: [clock, calendar, email, tasks, meetings]}
+  week-plan:     {requires_fresh: [clock, calendar, tasks, week_priorities, quarter_goals]}
+  week-review:   {requires_fresh: [clock, tasks, week_priorities, quarter_goals]}
+  meeting-prep:  {requires_fresh: [clock, calendar, people, accounts]}
+  pipeline-sync: {requires_fresh: [clock, pipeline, accounts]}
