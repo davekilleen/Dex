@@ -19,7 +19,13 @@ PAIR_FIXTURE = REPO_ROOT / "core/tests/fixtures/google_workspace_mcp_pair.py"
 MODULE = REPO_ROOT / "core/utils/mcp_session_lifecycle.py"
 SETTINGS = REPO_ROOT / ".claude/settings.json"
 
-pytestmark = pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX")
+pytestmark = [
+    pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX"),
+    # These tests scan and reap real connector pairs. CI's --dist loadgroup
+    # otherwise runs them on different workers, so one SessionEnd sweep can
+    # take down another test's pair.
+    pytest.mark.xdist_group("mcp_session_lifecycle"),
+]
 
 
 def _wait_until(predicate, *, timeout: float = 5.0) -> bool:
@@ -38,11 +44,7 @@ def _read_pair(marker: Path) -> tuple[int, int]:
 
 
 def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+    return lifecycle._pid_is_alive(pid)
 
 
 def _child_command(marker: Path) -> str:
@@ -92,15 +94,22 @@ def isolated_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("DEX_MCP_LIFECYCLE_DIR", str(tmp_path / "lifecycle"))
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
     yield tmp_path
+    own_pgid = os.getpgrp()
     for record in lifecycle.list_managed_processes():
-        if str(tmp_path) in record.cmdline or str(PAIR_FIXTURE) in record.cmdline:
-            try:
+        # Only this test's vault/marker paths — matching the shared pair
+        # fixture path would SIGKILL another worker's connector pair.
+        if str(tmp_path) not in record.cmdline:
+            continue
+        try:
+            if record.pgid == own_pgid:
+                os.kill(record.pid, signal.SIGKILL)
+            else:
                 os.killpg(record.pgid, signal.SIGKILL)
+        except OSError:
+            try:
+                os.kill(record.pid, signal.SIGKILL)
             except OSError:
-                try:
-                    os.kill(record.pid, signal.SIGKILL)
-                except OSError:
-                    pass
+                pass
 
 
 def test_stdin_close_reaps_the_process_pair(isolated_lifecycle: Path) -> None:
@@ -168,8 +177,8 @@ def test_session_end_reaps_only_that_session_pair(isolated_lifecycle: Path) -> N
             {"hook_event_name": "SessionEnd", "session_id": "session-a"},
             mode="hook",
         )
-        assert first_parent in result.reaped_pids or not _alive(first_parent)
         assert _wait_until(lambda: not _alive(first_parent) and not _alive(first_child))
+        assert first_parent in result.reaped_pids or not _alive(first_parent)
         assert not _alive(first_parent)
         assert not _alive(first_child)
         assert _alive(second_parent)
@@ -215,6 +224,34 @@ def test_orphan_sweep_reaps_reparented_pair_and_leaves_live_session(
                         os.kill(pid, signal.SIGKILL)
                     except OSError:
                         pass
+
+
+def test_zombie_pid_is_not_treated_as_alive() -> None:
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os, time\n"
+                "pid = os.fork()\n"
+                "if pid == 0:\n"
+                "    os._exit(0)\n"
+                "print(pid, flush=True)\n"
+                "time.sleep(30)\n"
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert holder.stdout is not None
+    zombie = int(holder.stdout.readline())
+    try:
+        assert _wait_until(lambda: not lifecycle._pid_is_alive(zombie))
+        assert not lifecycle._pid_is_alive(zombie)
+        assert lifecycle._pid_is_zombie(zombie) or not _alive(zombie)
+    finally:
+        holder.kill()
+        holder.wait(timeout=3)
 
 
 def test_pid_reuse_does_not_kill_unrelated_process(isolated_lifecycle: Path) -> None:

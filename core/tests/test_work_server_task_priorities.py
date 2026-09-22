@@ -265,6 +265,37 @@ def test_update_task_status_everywhere_reports_partial_write_failure(tmp_path, m
     )
 
 
+def test_skipped_canonical_write_is_not_reported_as_success(tmp_path, monkeypatch):
+    """A no-op write of the main list must not come back as success.
+
+    The blocked line stays blocked on disk. Copies can still change. Callers
+    have to see an error instead of a success payload.
+    """
+    task_id = "task-20260921-163"
+    tasks_file = tmp_path / "03-Tasks" / "Tasks.md"
+    note_file = tmp_path / "note.md"
+    tasks_file.parent.mkdir(parents=True)
+    tasks_file.write_text(f"# Tasks\n- [b] Ship the brief ^{task_id}\n", encoding="utf-8")
+    note_file.write_text(f"- [ ] Ship the brief ^{task_id}\n", encoding="utf-8")
+    monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: tasks_file)
+
+    original_write_text = Path.write_text
+
+    def skip_canonical_write(path, content, *args, **kwargs):
+        if Path(path) == tasks_file:
+            return 0
+        return original_write_text(path, content, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", skip_canonical_write)
+
+    result = work_server.update_task_status_everywhere(task_id, "d")
+
+    assert result["success"] is False
+    assert "still blocked" in result["error"].lower()
+    assert "- [b] Ship the brief" in tasks_file.read_text(encoding="utf-8")
+
+
 def test_update_task_status_tool_surfaces_title_match_write_failure(monkeypatch):
     failure = {
         "success": False,

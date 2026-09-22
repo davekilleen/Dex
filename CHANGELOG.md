@@ -19,6 +19,20 @@ milestones. The goal then looked further along than it was.
   section are no longer counted toward the goal. The milestones written with
   the goal are unchanged.
 
+A blocked task now stays blocked on your main list.
+
+Marking a task blocked could look finished while the main task list never
+changed. Dex said the update worked, and the real line was left as it was.
+
+**What this fixes for you:**
+
+* **Blocked tasks reach the main list.** Marking a task blocked now updates
+  that list and the other places the task is written, instead of leaving the
+  main line open.
+* **Dex no longer says a status change worked when the main list was left
+  alone.** If the main list does not change, Dex says so. A task that is
+  still blocked is described that way.
+
 Setup and the switch for usage tracking could sound like counts were already
 being shared. On a normal install there is nowhere for them to go, so they
 stay on your machine.
