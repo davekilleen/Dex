@@ -187,8 +187,8 @@ integrations:
   pendo_mcp_enabled: false  # optional external product-analytics MCP (OAuth via your AI client)
 
 # Analytics Configuration
-# Controls anonymous feature usage tracking to help the Dex maintainers improve Dex
-# Only Dex built-in features are tracked, never content or what you do with features
+# A saved preference for anonymous feature-usage counts. Nothing is sent until a usage relay is configured.
+# If sharing starts later, only Dex built-in feature counts are included — never content.
 analytics:
-  # Willingness to send usage analytics. Sending is not active until a usage relay is configured. Say "turn off Dex analytics" to keep it off.
+  # Preference only. Nothing is sent until a usage relay is configured. Say "turn off Dex analytics" to decline.
   enabled: true

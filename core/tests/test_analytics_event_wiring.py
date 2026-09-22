@@ -293,22 +293,37 @@ def test_meeting_skill_uses_the_declared_singular_event_name() -> None:
 
 def test_onboarding_never_treats_a_default_as_analytics_consent() -> None:
     flow = ONBOARDING_FLOW.read_text(encoding="utf-8")
+    notice = flow.split("### Analytics Notice (Inform, Don't Ask):", 1)[1].split(
+        "### External MCP Setup", 1
+    )[0]
 
-    assert "### Analytics Notice (Inform, Don't Ask):" in flow
-    assert "Consent decision: opted-in" in flow
-    assert "enabled: true" in flow
+    assert "Consent decision: opted-in" in notice
+    assert "enabled: true" in notice
     assert "analytics_consent_given" not in flow
     assert "Dex collects anonymous feature usage data" not in flow
-    assert "no usage relay is configured" in flow
+    assert "Nothing is sent, because no usage relay is configured." in notice
+    assert "are sent" not in notice
+    assert "keep it off" not in notice.lower()
+    assert "analytics is on" not in notice.lower()
 
 
 def test_new_installs_do_not_claim_analytics_is_active() -> None:
     claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
     usage = (REPO_ROOT / "System/usage_log.md").read_text(encoding="utf-8")
+    profile = (REPO_ROOT / "System/user-profile-template.yaml").read_text(encoding="utf-8")
+    analytics = claude.split("### Analytics (Opt-Out Model)", 1)[1].split(
+        "### Health Telemetry Opt-In/Out (Anytime)", 1
+    )[0]
 
     assert "Analytics is **on by default**" not in claude
     assert "Analytics active (default for new installs)" not in usage
     assert "not active" in claude.lower() or "usage relay" in claude.lower()
+    assert "Analytics is back on" not in analytics
+    assert "No more usage data will be sent" not in analytics
+    assert "Nothing is sent until a usage relay is configured." in analytics
+    assert "when the endpoint is missing" in analytics
+    assert "Nothing is sent until a usage relay is configured." in usage
+    assert "to keep it off" not in profile
 
 
 def test_no_tracked_source_declares_the_retired_consent_event() -> None:
