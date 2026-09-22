@@ -119,7 +119,29 @@ def expected_manifest(repo_root: Path = ROOT) -> dict:
                         {"pattern": r"AskUserQuestion", "replacement": "prompt_user"},
                     ],
                 }
-            elif key in {"daily-plan", "daily-review", "meeting-prep", "week-review"}:
+            elif key == "daily-plan":
+                # daily-plan asks the session-start sweep for its waiting-meetings
+                # count before deciding whether to run a meeting pass. Hosts
+                # without that hook fall back to the pass itself, which is the
+                # pre-count behaviour and always safe.
+                entry = {
+                    "classification": "portable",
+                    "reason": (
+                        "Claude settings mention is explanatory only and has a host-neutral wording; "
+                        "the waiting-meetings count command has a portable fallback"
+                    ),
+                    "body_replacements": [
+                        {"pattern": r"\.claude/settings\.json", "replacement": "the host's lifecycle settings"},
+                        {
+                            "pattern": r"(?ms)^```bash\nnode \.claude/hooks/meeting-queue-check\.cjs --count\n```[ \t]*$",
+                            "replacement": (
+                                "Ask the host for its count of waiting meeting records if it keeps one; "
+                                "if it does not, treat the count as unknown and run the meeting pass."
+                            ),
+                        },
+                    ],
+                }
+            elif key in {"daily-review", "meeting-prep", "week-review"}:
                 entry = {
                     "classification": "portable",
                     "reason": "Claude settings mention is explanatory only and has a host-neutral wording",
