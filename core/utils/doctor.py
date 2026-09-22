@@ -3667,29 +3667,49 @@ def _unsafe_customization_path(context: DoctorContext, path: Path) -> str | None
     return None
 
 
+def _customization_skill_directories(context: DoctorContext) -> tuple[list[tuple[Path, bool]], str | None]:
+    """Skill directories plus whether each one is user-owned.
+
+    ``.claude/skills/*-custom`` stays the legacy user convention. New user
+    skills from ``/create-skill`` live under ``.claude/skills-custom/`` and
+    are user-owned even when the folder name has no suffix. Returns an
+    error string when a root itself is unsafe to read.
+    """
+    roots = (
+        (context.vault_root / ".claude" / "skills", False),
+        (context.vault_root / ".claude" / "skills-custom", True),
+    )
+    found: list[tuple[Path, bool]] = []
+    for skills_root, force_user in roots:
+        if not skills_root.exists() and not skills_root.is_symlink():
+            continue
+        root_safety = _unsafe_customization_path(context, skills_root)
+        if root_safety:
+            relative = _display_vault_path(context, skills_root)
+            return [], (
+                f"{relative} {root_safety} and was not read for safety; "
+                f"fix or remove {relative}"
+            )
+        if not skills_root.is_dir():
+            continue
+        for path in sorted(skills_root.iterdir(), key=lambda item: item.name):
+            if path.name in KNOWN_SKILL_CONTAINER_DIRECTORIES:
+                continue
+            try:
+                populated = path.is_symlink() or (path.is_dir() and any(path.iterdir()))
+            except OSError:
+                populated = False
+            if populated:
+                found.append((path, force_user or path.name.endswith("-custom")))
+    return found, None
+
+
 def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
     from core.utils.validators import validate_skill_frontmatter
 
-    skills_root = context.vault_root / ".claude" / "skills"
-    root_safety = _unsafe_customization_path(context, skills_root)
-    if root_safety:
-        relative = _display_vault_path(context, skills_root)
-        return ProbeResult(
-            "UNKNOWN",
-            f"{relative} {root_safety} and was not read for safety; fix or remove {relative}",
-        )
-    skill_directories = sorted(
-        (
-            path
-            for path in skills_root.iterdir()
-            if path.name not in KNOWN_SKILL_CONTAINER_DIRECTORIES
-            and (
-                path.is_symlink()
-                or (path.is_dir() and any(path.iterdir()))
-            )
-        ),
-        key=lambda path: path.name,
-    ) if skills_root.is_dir() else []
+    skill_directories, root_error = _customization_skill_directories(context)
+    if root_error:
+        return ProbeResult("UNKNOWN", root_error)
     catalogued_paths: frozenset[str] | None = None
     catalog_path = _release_catalog_path(context)
     if catalog_path.is_file():
@@ -3706,10 +3726,9 @@ def _probe_customization_skills(context: DoctorContext) -> ProbeResult:
     failures = []
     safety_findings = []
     custom_count = 0
-    for skill_directory in skill_directories:
+    for skill_directory, is_custom in skill_directories:
         skill_path = skill_directory / "SKILL.md"
         relative = _display_vault_path(context, skill_path)
-        is_custom = skill_directory.name.endswith("-custom")
         custom_count += int(is_custom)
         release_carries_skill = catalogued_paths is None or relative in catalogued_paths
         shipped_label = "shipped skill" if release_carries_skill else "skill"
@@ -6162,13 +6181,19 @@ def _smoke_attribution_paths(context: DoctorContext) -> list[Path]:
         context.vault_root / ".mcp.json",
     ]
     paths_to_check.extend(sorted((system / "integrations").glob("*.yaml")))
-    custom_skills = context.vault_root / ".claude" / "skills"
-    paths_to_check.extend(
-        path
-        for root in sorted(custom_skills.glob("*-custom"))
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-    )
+    legacy_custom = context.vault_root / ".claude" / "skills"
+    if legacy_custom.is_dir():
+        paths_to_check.extend(
+            path
+            for root in sorted(legacy_custom.glob("*-custom"))
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        )
+    contract_custom = context.vault_root / ".claude" / "skills-custom"
+    if contract_custom.is_dir():
+        paths_to_check.extend(
+            path for path in sorted(contract_custom.rglob("*")) if path.is_file()
+        )
     return paths_to_check
 
 

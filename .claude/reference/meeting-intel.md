@@ -188,7 +188,7 @@ node .scripts/meeting-intel/sync-from-granola.cjs --force
 ┌─────────────────────────────────────────────────────┐
 │ Vault Files                                          │
 │  - 00-Inbox/Meetings/YYYY-MM-DD/slug.md             │
-│  - processed-meetings.json (state)                  │
+│  - System/.dex/processed-meetings.json (state)      │
 │  - System/.dex/contacts.json + verification         │
 │  - Person/company pages or suggestions              │
 └──────────────────────┬──────────────────────────────┘

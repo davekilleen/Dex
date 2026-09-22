@@ -5,7 +5,8 @@ refreshes it: `.claude/settings.json` wires SessionStart, UserPromptSubmit,
 PreToolUse, Stop, Notification, and SessionEnd only. CLAUDE.md recomposition
 (`.claude/hooks/claude-composition-refresh.sh`) keeps personal instructions
 live; it does not republish the slash-skill list. After an update writes a
-new `.claude/skills/<name>/SKILL.md`, the slash menu can still omit it until
+new `.claude/skills/<name>/SKILL.md`, or `/create-skill` writes a user skill
+under `.claude/skills-custom/<name>/`, the slash menu can still omit it until
 the next session.
 
 This module is the Dex-owned path. SessionStart records which skills were
@@ -39,7 +40,10 @@ HOST_SLASH_LIST_REFRESHABLE = False
 BASELINE_SESSION_SOURCES = frozenset({"startup", "resume"})
 KEEP_BASELINE_SESSION_SOURCES = frozenset({"compact", "clear", "fork"})
 
-SKILLS_RELATIVE = Path(".claude") / "skills"
+SKILL_ROOTS = (
+    Path(".claude") / "skills",
+    Path(".claude") / "skills-custom",
+)
 SKILL_FILENAME = "SKILL.md"
 FRONTMATTER_DESCRIPTION = re.compile(
     r"^description:\s*(?P<value>.+?)\s*$",
@@ -71,25 +75,32 @@ def snapshot_path(vault: Path, session_id: str = "default") -> Path:
 
 
 def list_installed_skills(vault: Path) -> dict[str, Path]:
-    """Map skill directory name → SKILL.md for installed, non-hidden skills."""
-    root = vault / SKILLS_RELATIVE
+    """Map skill directory name → SKILL.md for installed, non-hidden skills.
+
+    Shipped skills live under ``.claude/skills``. User skills from
+    ``/create-skill`` live under ``.claude/skills-custom``. A name already
+    claimed by a shipped skill stays there; the authoring skill uses a
+    ``-custom`` folder name only when the bare name would collide.
+    """
     skills: dict[str, Path] = {}
-    if not root.is_dir():
-        return skills
-    try:
-        children = list(root.iterdir())
-    except OSError:
-        return skills
-    for child in children:
-        name = child.name
-        if name.startswith("_") or name.startswith("."):
+    for relative in SKILL_ROOTS:
+        root = vault / relative
+        if not root.is_dir():
             continue
-        skill_md = child / SKILL_FILENAME
         try:
-            if child.is_dir() and skill_md.is_file():
-                skills[name] = skill_md
+            children = list(root.iterdir())
         except OSError:
             continue
+        for child in children:
+            name = child.name
+            if name.startswith("_") or name.startswith(".") or name in skills:
+                continue
+            skill_md = child / SKILL_FILENAME
+            try:
+                if child.is_dir() and skill_md.is_file():
+                    skills[name] = skill_md
+            except OSError:
+                continue
     return skills
 
 

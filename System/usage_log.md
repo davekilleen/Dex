@@ -100,7 +100,7 @@
 
 ## Analytics Consent
 
-Tracks anonymous feature usage tracking to help improve Dex.
+Records a preference to share anonymous feature-usage counts. Nothing is sent until a usage relay is configured.
 
 - **Consent asked:** true
 - **Consent decision:** opted-in

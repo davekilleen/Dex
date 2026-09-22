@@ -62,12 +62,14 @@ malformed YAML, not an object, `meeting_sources` is not an object, or `primary`
 is not one of the supported values, report the configuration problem and use
 the same safe fallback. Never guess a path from malformed configuration.
 
-The Granola state file (`.scripts/meeting-intel/processed-meetings.json`) is
-optional bookkeeping for Granola sync, not a gate on local notes. Read it when
-it exists. If it is absent and `primary` is `granola`, report that background
-sync is not set up so the conversation can offer `--setup`; still continue with
-any local meeting notes. Its absence must never stop an exported-folder, Zoom,
-Teams, manual-note, or provider-neutral local pass.
+The Granola state file (`System/.dex/processed-meetings.json`, with a
+fallback at `.scripts/meeting-intel/processed-meetings.json` on older
+installs) is optional bookkeeping for Granola sync, not a gate on local
+notes. Read it when it exists. If it is absent and `primary` is `granola`,
+report that background sync is not set up so the conversation can offer
+`--setup`; still continue with any local meeting notes. Its absence must
+never stop an exported-folder, Zoom, Teams, manual-note, or
+provider-neutral local pass.
 
 ---
 
@@ -76,7 +78,8 @@ Teams, manual-note, or provider-neutral local pass.
 Read the processed meetings state:
 
 ```bash
-cat .scripts/meeting-intel/processed-meetings.json
+cat System/.dex/processed-meetings.json \
+  || cat .scripts/meeting-intel/processed-meetings.json
 ```
 
 Search candidate folders in this order:
@@ -286,10 +289,10 @@ For each meeting with unextracted tasks:
 5. **Only after every action item is verified**, append the marker to the note:
    `<!-- tasks-extracted: YYYY-MM-DDTHH:MM:SSZ -->`
 
-   **The marker is a one-way door.** The session-start sweep uses it to decide a
-   meeting is done, so stamping a note whose tasks failed to create loses those
-   action items permanently and silently. When in doubt, leave it unstamped and
-   report it.
+**The marker is a one-way door.** The session-start sweep also treats a
+`^task-` anchor on every remaining For Me item as done, so stamping a note
+whose tasks failed to create still loses those action items silently. When
+in doubt, leave it unstamped and report it.
 
 6. **Also stamp meetings with nothing to extract.** A note with no action items
    still gets the same marker once you have processed it; an unstamped note

@@ -149,8 +149,10 @@ primary does not grant access to an external service. Then check whether
 Granola background sync has left its optional state file:
 
 ```bash
-# Check for state file (indicates sync has run)
-ls .scripts/meeting-intel/processed-meetings.json
+# Check for state file (indicates sync has run). The runtime copy survives
+# an update; older installs may still have the shipped-folder copy.
+ls System/.dex/processed-meetings.json \
+  || ls .scripts/meeting-intel/processed-meetings.json
 ```
 
 **If the state file exists:** Granola background sync has run. Continue to Step 2.
@@ -182,7 +184,7 @@ cd .scripts/meeting-intel && ./install-automation.sh
 
 Read the processed meetings state when it exists:
 ```javascript
-const state = JSON.parse(fs.readFileSync('.scripts/meeting-intel/processed-meetings.json'));
+const state = JSON.parse(fs.readFileSync('System/.dex/processed-meetings.json'));
 ```
 
 Search the valid configured folder first, then `00-Inbox/Meetings/`. If neither
@@ -433,8 +435,8 @@ For each meeting with unextracted tasks:
    **Also stamp meetings with nothing to extract.** If a meeting note has no
    action items (or you just added AI analysis to a basic note and found none),
    add the same `tasks-extracted` comment once processing is complete. The
-   session-start check uses this marker to know a meeting is done — an
-   unstamped note keeps being flagged as waiting.
+   session-start check treats that marker, or a `^task-` anchor on every
+   remaining For Me item, as the durable sign the meeting is done.
 
 ### Step 6: Auto-link People in Processed Notes
 

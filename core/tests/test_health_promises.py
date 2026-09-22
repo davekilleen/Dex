@@ -38,6 +38,24 @@ def test_every_promise_is_well_formed() -> None:
             assert not promise.activity_only
 
 
+def test_meeting_intel_receipt_lives_on_the_runtime_path() -> None:
+    promise = promises.promise_by_id("com.dex.meeting-intel")
+    assert promise is not None
+    assert promise.receipt_path == "System/.dex/processed-meetings.json"
+
+
+def test_meeting_intel_audit_still_reads_the_legacy_receipt(tmp_path: Path) -> None:
+    promise = promises.promise_by_id("com.dex.meeting-intel")
+    assert promise is not None
+    legacy = tmp_path / promises.LEGACY_MEETING_INTEL_RECEIPT
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        json.dumps({"lastSync": (NOW - timedelta(hours=1)).isoformat()}),
+        encoding="utf-8",
+    )
+    assert promises.audit_promise(tmp_path, promise, now=NOW).state == "kept"
+
+
 def test_json_timestamp_audit_distinguishes_never_broken_and_kept(tmp_path: Path) -> None:
     promise = promises.promise_by_id("com.dex.meeting-intel")
     assert promise is not None

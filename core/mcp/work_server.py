@@ -88,6 +88,30 @@ GOAL_ID_PATTERN = GOAL_ID_QUARTER_PATTERN + r'-goal-\d+'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Vault notes are UTF-8 everywhere. On Windows, Python's default text codec is
+# often cp1252; leaving encoding unset makes ordinary vault characters (notes
+# marks, accents, dashes) raise UnicodeDecodeError and block Work tools.
+VAULT_TEXT_ENCODING = "utf-8"
+
+
+def read_vault_text(path: Path) -> str:
+    """Read vault text as UTF-8 so Windows never uses the locale decoder."""
+    return path.read_text(encoding=VAULT_TEXT_ENCODING)
+
+
+def write_vault_text(path: Path, data: str, **kwargs) -> int:
+    """Write vault text as UTF-8 so Windows never uses the locale encoder."""
+    kwargs.setdefault("encoding", VAULT_TEXT_ENCODING)
+    return path.write_text(data, **kwargs)
+
+
+def open_vault_text(path: Path, mode: str = "r", **kwargs):
+    """Open vault text as UTF-8 so Windows never uses the locale codec."""
+    if "b" not in mode:
+        kwargs.setdefault("encoding", VAULT_TEXT_ENCODING)
+    return path.open(mode, **kwargs)
+
+
 _LEAKED_TOOL_CALL_DELIMITER_RE = re.compile(
     r'</context\s*>|<parameter\s+name\s*=',
     re.IGNORECASE,
@@ -318,7 +342,7 @@ def load_pillars_from_yaml() -> Dict[str, Dict]:
         return DEFAULT_PILLARS
     
     try:
-        content = get_pillars_file().read_text()
+        content = read_vault_text(get_pillars_file())
         data = yaml.safe_load(content)
         
         if not data or 'pillars' not in data:
@@ -356,7 +380,7 @@ def load_priority_limits_from_yaml() -> Dict[str, int]:
         return DEFAULT_PRIORITY_LIMITS
     
     try:
-        content = get_pillars_file().read_text()
+        content = read_vault_text(get_pillars_file())
         data = yaml.safe_load(content)
         
         if data and 'priority_limits' in data:
@@ -579,7 +603,7 @@ def generate_task_id() -> str:
             continue
         for md_file in folder.rglob('*.md'):
             try:
-                content = md_file.read_text()
+                content = read_vault_text(md_file)
                 pattern = r'\^task-\d{8}-(\d{3,})'
                 matches = re.findall(pattern, content)
                 existing_ids.extend([int(m) for m in matches])
@@ -750,7 +774,7 @@ def stamp_task_source_line(source: str, source_line: str,
         }
 
     try:
-        content = source_path.read_text()
+        content = read_vault_text(source_path)
         lines = content.splitlines(keepends=True)
         target = source_line.strip()
         exact_matches = []
@@ -784,7 +808,7 @@ def stamp_task_source_line(source: str, source_line: str,
 
             line_ending = lines[match_index][len(matched_line):]
             lines[match_index] = f'{matched_line} ^{task_id}{line_ending}'
-            source_path.write_text(''.join(lines))
+            write_vault_text(source_path, ''.join(lines))
             return {'attempted': True, 'stamped': True}
 
         if len(anchored_matches) == 1:
@@ -813,7 +837,7 @@ def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
 
     for md_file in BASE_DIR.rglob('*.md'):
         try:
-            content = md_file.read_text()
+            content = read_vault_text(md_file)
             lines = content.split('\n')
 
             for i, line in enumerate(lines):
@@ -849,7 +873,7 @@ def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
         target = source_line.strip()
         matching_lines = [
             line.strip()
-            for line in source_path.read_text().splitlines()
+            for line in read_vault_text(source_path).splitlines()
             if line.strip() == target
             and re.match(r'^-\s*\[[ bBsSxX/]\]', line.strip())
         ]
@@ -873,6 +897,64 @@ def reusable_source_task_id(source: str, source_line: str) -> Optional[str]:
     if not same_source or instance['line_content'].strip() != target:
         return None
     return task_id
+
+def _target_checkbox_mark(status_code: str, completed: bool) -> str:
+    """Checkbox character that a successful status write must leave behind."""
+    if completed or status_code == 'd':
+        return 'x'
+    glyph = STATUS_CHECKBOXES.get(status_code, '- [ ]')
+    match = re.search(r'\[([^\]]*)\]', glyph)
+    return match.group(1) if match else ' '
+
+
+def _checkbox_matches_target(mark: str, target: str) -> bool:
+    if target == ' ':
+        return mark == ' '
+    return mark.casefold() == target.casefold()
+
+
+def _canonical_checkbox_marks(task_id: str) -> List[str] | None:
+    """Checkbox marks for this task in the main list.
+
+    None means the main list could not be read. An empty list means this
+    task has no checkbox line there.
+    """
+    path = get_tasks_file()
+    if not path.is_file():
+        return []
+    anchor = re.compile(r'\^' + re.escape(task_id) + r'(?!\d)')
+    try:
+        lines = read_vault_text(path).split('\n')
+    except OSError:
+        return None
+    marks = []
+    for line in lines:
+        if not anchor.search(line):
+            continue
+        match = re.match(r'^\s*-\s*\[([^\]]*)\]', line)
+        if match:
+            marks.append(match.group(1))
+    return marks
+
+
+def _canonical_list_status_error(
+    task_id: str, status_code: str, completed: bool
+) -> Optional[str]:
+    """Error when the main task list does not show the status we just set."""
+    marks = _canonical_checkbox_marks(task_id)
+    if not marks:
+        if marks is None:
+            return "The main task list could not be read, so this status change did not stick."
+        return None
+    target = _target_checkbox_mark(status_code, completed)
+    if all(_checkbox_matches_target(mark, target) for mark in marks):
+        return None
+    if any(mark.lower() == 'b' for mark in marks) and target.lower() != 'b':
+        return (
+            "The main task list was not updated. The task is still blocked."
+        )
+    return "The main task list was not updated, so this status change did not stick."
+
 
 def update_task_status_everywhere(
     task_id: str, completed: str | bool
@@ -899,7 +981,7 @@ def update_task_status_everywhere(
     for instance in instances:
         try:
             filepath = Path(instance['file'])
-            content = filepath.read_text()
+            content = read_vault_text(filepath)
             lines = content.split('\n')
             
             line_idx = instance['line_number'] - 1
@@ -936,7 +1018,7 @@ def update_task_status_everywhere(
             
             if new_line != old_line:
                 lines[line_idx] = new_line
-                filepath.write_text('\n'.join(lines))
+                write_vault_text(filepath, '\n'.join(lines))
                 updated_files.append({
                     'file': str(filepath),
                     'line': instance['line_number']
@@ -972,6 +1054,15 @@ def update_task_status_everywhere(
         result['error'] = (
             f"task updated in {len(updated_files)} of {len(instances)} locations; "
             f"failures: {failures}"
+        )
+
+    canonical_error = _canonical_list_status_error(task_id, status_code, completed)
+    if canonical_error:
+        result['success'] = False
+        result['error'] = (
+            f"{result['error']}; {canonical_error}"
+            if result.get('error')
+            else canonical_error
         )
 
     return result
@@ -1075,7 +1166,7 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
     if not get_tasks_file().exists():
         return []
     
-    content = get_tasks_file().read_text()
+    content = read_vault_text(get_tasks_file())
     lines = content.split('\n')
     
     # Normalize page path for matching
@@ -1148,7 +1239,7 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
         logger.warning("Page is missing or outside the vault: %s", page_path)
         return False
     
-    content = filepath.read_text()
+    content = read_vault_text(filepath)
     timestamp = _tz_now().strftime('%Y-%m-%d %H:%M')
     
     # Build the new Related Tasks section
@@ -1183,7 +1274,7 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
         lines.insert(insert_idx, '\n' + section_content)
         new_content = '\n'.join(lines)
     
-    filepath.write_text(new_content)
+    write_vault_text(filepath, new_content)
     return True
 
 def sync_task_refs_for_page(page_path: str) -> Dict[str, Any]:
@@ -1207,7 +1298,7 @@ def propagate_task_status_to_refs(task_title: str, completed: bool) -> List[str]
     if not get_tasks_file().exists():
         return updated_pages
     
-    content = get_tasks_file().read_text()
+    content = read_vault_text(get_tasks_file())
     
     # Find the task line
     for line in content.split('\n'):
@@ -1681,7 +1772,7 @@ def _profile_email_domains() -> set[str]:
     if yaml is None or not USER_PROFILE_FILE.exists():
         return set()
     try:
-        profile = yaml.safe_load(USER_PROFILE_FILE.read_text()) or {}
+        profile = yaml.safe_load(read_vault_text(USER_PROFILE_FILE)) or {}
     except (OSError, yaml.YAMLError):
         return set()
     configured = profile.get('email_domain') or ''
@@ -1848,7 +1939,7 @@ def load_meeting_cache() -> Optional[Dict[str, Any]]:
     if not MEETING_CACHE_FILE.exists():
         return None
     try:
-        return json.loads(MEETING_CACHE_FILE.read_text())
+        return json.loads(read_vault_text(MEETING_CACHE_FILE))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -1974,7 +2065,7 @@ def rebuild_meeting_cache_data() -> Dict[str, Any]:
             continue
 
         try:
-            content = filepath.read_text()
+            content = read_vault_text(filepath)
             entry = _parse_meeting_file_python(content, filepath.name, rel_path)
 
             idx = existing_by_source.get(rel_path)
@@ -1999,7 +2090,7 @@ def rebuild_meeting_cache_data() -> Dict[str, Any]:
     # Save
     cache['last_updated'] = datetime.now().isoformat()
     MEETING_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    MEETING_CACHE_FILE.write_text(json.dumps(cache, indent=2) + '\n')
+    write_vault_text(MEETING_CACHE_FILE, json.dumps(cache, indent=2) + '\n')
 
     return {
         'success': True,
@@ -2095,7 +2186,7 @@ def find_meetings_for_company(company_name: str, domains: List[str]) -> List[Dic
     company_name_lower = company_name.lower()
     
     for meeting_file in get_meetings_dir().glob('*.md'):
-        content = meeting_file.read_text()
+        content = read_vault_text(meeting_file)
         content_lower = content.lower()
         
         # Check if company name or any domain appears in meeting
@@ -2140,7 +2231,7 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
             'error': f'Company page not found: {filepath}'
         }
     
-    content = filepath.read_text()
+    content = read_vault_text(filepath)
     company_name = filepath.stem.replace('_', ' ')
     
     # Get domains for meeting matching
@@ -2216,7 +2307,7 @@ def refresh_company_page(company_path: str) -> Dict[str, Any]:
     # Update the Updated timestamp at the bottom
     content = re.sub(r'\*Updated: .*?\*', f'*Updated: {timestamp}*', content)
     
-    filepath.write_text(content)
+    write_vault_text(filepath, content)
     
     return {
         'success': True,
@@ -2235,7 +2326,7 @@ def list_companies() -> List[Dict[str, Any]]:
         return companies
     
     for company_file in COMPANIES_DIR.glob('*.md'):
-        content = company_file.read_text()
+        content = read_vault_text(company_file)
         entity = parse_entity_page(company_file)
         
         # Canonical pages keep status in frontmatter; parse_entity_page also
@@ -2359,7 +2450,7 @@ def get_quarter_info(quarter_date: Optional[date] = None) -> Dict[str, Any]:
     q1_start_month = 1  # Default to January
     if USER_PROFILE_FILE.exists() and yaml:
         try:
-            content = USER_PROFILE_FILE.read_text()
+            content = read_vault_text(USER_PROFILE_FILE)
             data = yaml.safe_load(content)
             if data and 'quarterly_planning' in data:
                 q1_start_month = data['quarterly_planning'].get('q1_start_month', 1)
@@ -2470,7 +2561,7 @@ def _declared_planning_quarter(today: date) -> Optional[str]:
     if not (USER_PROFILE_FILE.exists() and yaml):
         return None
     try:
-        data = yaml.safe_load(USER_PROFILE_FILE.read_text())
+        data = yaml.safe_load(read_vault_text(USER_PROFILE_FILE))
     except Exception as e:
         logger.error(f"Error reading quarterly_planning: {e}")
         return None
@@ -2511,12 +2602,64 @@ def _declared_planning_quarter(today: date) -> Optional[str]:
     return declared if declared in allowed else None
 
 
+# Bold labels that belong to the goal itself. Any other bold label that ends
+# with a colon, once a milestone has been seen, starts a new section (carried
+# work, notes, a side list). Checkboxes under that label are not milestones.
+_GOAL_FIELD_LABELS = frozenset({
+    "what success looks like",
+    "success criteria",
+    "key milestones",
+    "progress",
+    "career goal",
+    "skills developing",
+    "impact level",
+})
+_BOLD_LABEL_RE = re.compile(r'^\*\*([^*]+?)\*\*')
+_GOAL_HEADING_RE = re.compile(r'^#{1,6}(?:[ \t]+\S|[ \t]*$)')
+# A thematic break is three or more of the same marker, spaces allowed between.
+# Exactly "---" is the common case; "----", "***", "___", and "- - -" are too.
+_THEMATIC_BREAK_RE = re.compile(r'^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$')
+
+
+def _line_ends_goal_body(line: str) -> bool:
+    """True when this line starts a later section, not more of the goal.
+
+    A heading or a divider ends the goal, so a checklist below it cannot
+    become milestones of the goal above.
+    """
+    if line.endswith('\r'):
+        line = line[:-1]
+    if _GOAL_HEADING_RE.match(line):
+        return True
+    return _THEMATIC_BREAK_RE.match(line) is not None
+
+
+def _bold_section_label(line: str) -> str | None:
+    """Return a bold field label, such as ``Progress`` or ``Carried from last quarter``.
+
+    A one-word emphasis line (``**important**``) is not a section. A label ends
+    with a colon, which is how goal fields and trailing lists are written.
+    """
+    if line.endswith('\r'):
+        line = line[:-1]
+    match = _BOLD_LABEL_RE.match(line.strip())
+    if not match:
+        return None
+    raw = match.group(1).strip()
+    if not raw.endswith(':'):
+        return None
+    label = raw[:-1].strip()
+    if not label:
+        return None
+    return label.casefold()
+
+
 def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
     """Parse quarterly goals from 01-Quarter_Goals/Quarter_Goals.md"""
     if not filepath.exists():
         return []
     
-    content = filepath.read_text()
+    content = read_vault_text(filepath)
     goals = []
     
     # Parse frontmatter if present
@@ -2557,9 +2700,9 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
             impact_level = None
             
             j = i + 1
-            while j < len(lines) and not re.match(
-                r'^(?:##\s|###\s|---\s*$)', lines[j]
-            ):
+            saw_milestone = False
+            milestone_list_closed = False
+            while j < len(lines) and not _line_ends_goal_body(lines[j]):
                 if '**What success looks like:**' in lines[j]:
                     # Read next non-empty line
                     k = j + 1
@@ -2567,12 +2710,16 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                         success_criteria += lines[k].strip() + ' '
                         k += 1
                 elif lines[j].strip().startswith('- [ ]') or lines[j].strip().startswith('- [x]'):
-                    milestone_match = re.match(r'-\s*\[([x ])\]\s*(.+)', lines[j].strip())
-                    if milestone_match:
-                        milestones.append({
-                            'title': milestone_match.group(2).strip(),
-                            'completed': milestone_match.group(1) == 'x'
-                        })
+                    # A labelled section after the milestone list is not more
+                    # milestones, even when it sits in the same goal body.
+                    if not milestone_list_closed:
+                        milestone_match = re.match(r'-\s*\[([x ])\]\s*(.+)', lines[j].strip())
+                        if milestone_match:
+                            milestones.append({
+                                'title': milestone_match.group(2).strip(),
+                                'completed': milestone_match.group(1) == 'x'
+                            })
+                            saw_milestone = True
                 elif '**Progress:**' in lines[j]:
                     progress_match = re.search(r'(\d+)%', lines[j])
                     if progress_match:
@@ -2589,6 +2736,14 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                     impact_match = re.search(r'\*\*Impact level:\*\*\s*(low|medium|high)', lines[j])
                     if impact_match:
                         impact_level = impact_match.group(1)
+                label = _bold_section_label(lines[j])
+                if (
+                    saw_milestone
+                    and not milestone_list_closed
+                    and label
+                    and label not in _GOAL_FIELD_LABELS
+                ):
+                    milestone_list_closed = True
                 j += 1
             
             goals.append({
@@ -2705,7 +2860,7 @@ def find_linked_priorities(goal_id: str) -> List[Dict[str, Any]]:
     if not priorities_file.exists():
         return []
     
-    content = priorities_file.read_text()
+    content = read_vault_text(priorities_file)
     lines = content.split('\n')
     
     goal_reference = re.compile(
@@ -2798,7 +2953,7 @@ def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
     if not goals_file.exists():
         return False
     
-    content = goals_file.read_text()
+    content = read_vault_text(goals_file)
     lines = content.split('\n')
     
     # Find the goal
@@ -2823,7 +2978,7 @@ def update_goal_in_file(goal_id: str, updates: Dict[str, Any]) -> bool:
                 break
     
     # Write back
-    goals_file.write_text('\n'.join(lines))
+    write_vault_text(goals_file, '\n'.join(lines))
     return True
 
 def create_quarterly_goal_in_file(goal_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -2857,7 +3012,7 @@ created: {_tz_now().strftime('%Y-%m-%d')}
 ## 🎯 Quarter Objectives
 
 """
-        goals_file.write_text(content)
+        write_vault_text(goals_file, content)
     
     # Read existing goals to generate ID
     existing_goals = parse_quarterly_goals(goals_file)
@@ -2897,7 +3052,7 @@ created: {_tz_now().strftime('%Y-%m-%d')}
     goal_section += "\n---\n"
     
     # Insert before "## 📊 Pillar Alignment" or at end
-    content = goals_file.read_text()
+    content = read_vault_text(goals_file)
     
     insert_marker = "## 📊 Pillar Alignment"
     if insert_marker in content:
@@ -2905,7 +3060,7 @@ created: {_tz_now().strftime('%Y-%m-%d')}
     else:
         content += goal_section
     
-    goals_file.write_text(content)
+    write_vault_text(goals_file, content)
     
     return {
         'success': True,
@@ -2946,7 +3101,7 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
         return []
     
-    content = filepath.read_text(encoding="utf-8")
+    content = read_vault_text(filepath)
     priorities = []
     
     lines = content.split('\n')
@@ -2997,7 +3152,7 @@ def _task_ids_named_in_priority_success_criteria(priority_id: str) -> set[str]:
     if not priorities_file.exists():
         return set()
 
-    lines = priorities_file.read_text(encoding="utf-8").split('\n')
+    lines = read_vault_text(priorities_file).split('\n')
     priority_index = next(
         (
             index
@@ -3038,7 +3193,7 @@ def find_linked_tasks(priority_id: str) -> List[Dict[str, Any]]:
     if not tasks_file.exists():
         return []
     
-    content = tasks_file.read_text(encoding="utf-8")
+    content = read_vault_text(tasks_file)
     lines = content.split('\n')
     
     referenced_task_ids = _task_ids_named_in_priority_success_criteria(priority_id)
@@ -3224,7 +3379,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     if not filepath.exists():
         return tasks
     
-    content = filepath.read_text(encoding="utf-8")
+    content = read_vault_text(filepath)
     lines = content.split('\n')
     
     current_section = None
@@ -3405,7 +3560,7 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
             'message': 'No 01-Quarter_Goals/Quarter_Goals.md file found'
         }
     
-    content = goals_file.read_text()
+    content = read_vault_text(goals_file)
     lines = content.split('\n')
     
     # Parse existing goals
@@ -3475,7 +3630,7 @@ def migrate_quarterly_goals() -> Dict[str, Any]:
         goals_updated += 1
     
     if goals_updated > 0:
-        goals_file.write_text('\n'.join(lines))
+        write_vault_text(goals_file, '\n'.join(lines))
     
     result = {
         'success': True,
@@ -3500,7 +3655,7 @@ def migrate_weekly_priorities() -> Dict[str, Any]:
             'message': 'No Week Priorities file found'
         }
     
-    content = priorities_file.read_text()
+    content = read_vault_text(priorities_file)
     lines = content.split('\n')
     
     # Determine week date
@@ -3531,7 +3686,7 @@ def migrate_weekly_priorities() -> Dict[str, Any]:
             priorities_updated += 1
     
     if priorities_updated > 0:
-        priorities_file.write_text('\n'.join(lines))
+        write_vault_text(priorities_file, '\n'.join(lines))
     
     return {
         'success': True,
@@ -3705,7 +3860,7 @@ def find_project_for_meeting(attendees: List[str], meeting_title: str) -> Option
             continue
             
         try:
-            content = project_file.read_text()
+            content = read_vault_text(project_file)
             content_lower = content.lower()
             
             score = 0
@@ -3937,7 +4092,7 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
 
     tasks_file = get_tasks_file()
     if tasks_file.exists():
-        content = tasks_file.read_text()
+        content = read_vault_text(tasks_file)
         for attendee in attendees:
             attendee_key = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
             for line in content.split('\n'):
@@ -3954,7 +4109,7 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
     for attendee, person_files in attendee_pages.items():
         for person_file in person_files:
             try:
-                person_content = person_file.read_text()
+                person_content = read_vault_text(person_file)
             except OSError:
                 continue
             for line in person_content.splitlines():
@@ -4065,7 +4220,7 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
                     if (today - meeting_date).days > 14:
                         continue
                 
-                content = meeting_file.read_text()
+                content = read_vault_text(meeting_file)
                 commitments = extract_commitments_from_text(
                     content, 
                     source=str(meeting_file.relative_to(BASE_DIR)),
@@ -4098,7 +4253,7 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
         
         for person_file in people_subdir.glob('*.md'):
             try:
-                content = person_file.read_text()
+                content = read_vault_text(person_file)
                 
                 # Look for "Open Items" or "Action Items" sections
                 open_items_match = re.search(r'(?:## Open Items|## Action Items|## Follow-?ups?)\n(.*?)(?:\n##|\Z)', content, re.DOTALL)
@@ -4531,7 +4686,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="record_external_task_mapping",
-            description="Record the external ID for a canonical Dex task and remove its inbound queue item.",
+            description="Record the external ID for a canonical Dex task and remove its inbound queue item. Refuses to replace an existing mapping with a different external ID.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -5342,7 +5497,7 @@ async def _handle_call_tool_inner(
 
         if not section:
             existing_content = (
-                get_tasks_file().read_text() if get_tasks_file().exists() else ''
+                read_vault_text(get_tasks_file()) if get_tasks_file().exists() else ''
             )
             section = (
                 default_section_for_priority(priority, existing_content)
@@ -5555,6 +5710,30 @@ async def _handle_call_tool_inner(
             if source and stamp_source_line
             else None
         ) or generate_task_id()
+
+        # Record the inbound identity before the Dex task is visible on disk so a
+        # concurrent sync cannot push it back as a second external task.
+        external_mapping = None
+        sync_snapshot = None
+        if external_service:
+            from core.integrations import task_sync
+
+            sync_snapshot = task_sync.snapshot_sync_files()
+            external_mapping = task_sync.record_external_task_mapping(
+                task_id=task_id,
+                service=external_service,
+                external_id=external_id,
+                require_canonical=False,
+            )
+            if not external_mapping.get("success"):
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": str(
+                        external_mapping.get("error")
+                        or "External task mapping failed"
+                    ),
+                    "external_mapping": external_mapping,
+                }, indent=2))]
         
         # Build file references for account/people
         file_refs = []
@@ -5591,7 +5770,7 @@ async def _handle_call_tool_inner(
         
         # Add to 03-Tasks/Tasks.md under the appropriate section
         if get_tasks_file().exists():
-            content = get_tasks_file().read_text()
+            content = read_vault_text(get_tasks_file())
         else:
             content = "# Tasks\n\n"
         
@@ -5621,21 +5800,14 @@ async def _handle_call_tool_inner(
             lines.insert(insert_idx, f"\n{section_header}\n{task_entry}\n")
             new_content = '\n'.join(lines)
         
-        get_tasks_file().write_text(new_content)
+        try:
+            write_vault_text(get_tasks_file(), new_content)
+        except Exception:
+            if sync_snapshot is not None:
+                from core.integrations import task_sync
 
-        external_mapping = None
-        if external_service:
-            from core.integrations import task_sync
-
-            external_mapping = task_sync.record_external_task_mapping(
-                task_id=task_id,
-                service=external_service,
-                external_id=external_id,
-            )
-            if not external_mapping.get("success"):
-                raise RuntimeError(
-                    str(external_mapping.get("error") or "External task mapping failed")
-                )
+                task_sync.restore_sync_files(sync_snapshot)
+            raise
 
         if stamp_source_line and source:
             try:
@@ -5726,7 +5898,7 @@ async def _handle_call_tool_inner(
                 "error": "task not found",
             }))]
 
-        lines = tasks_file.read_text().split("\n")
+        lines = read_vault_text(tasks_file).split("\n")
         task_anchor = re.compile(rf"\^{re.escape(task_id)}(?![A-Za-z0-9_-])")
         task_index = next(
             (
@@ -5826,7 +5998,7 @@ async def _handle_call_tool_inner(
                 "goal_id": goal_id,
             }
 
-        tasks_file.write_text("\n".join(lines))
+        write_vault_text(tasks_file, "\n".join(lines))
         return [types.TextContent(type="text", text=json.dumps(result))]
 
     elif name == "set_task_next_up":
@@ -5848,7 +6020,7 @@ async def _handle_call_tool_inner(
                 "error": "task not found",
             }))]
 
-        lines = tasks_file.read_text().split("\n")
+        lines = read_vault_text(tasks_file).split("\n")
         task_anchor = re.compile(rf"\^{re.escape(task_id)}(?![A-Za-z0-9_-])")
         task_index = next(
             (
@@ -5926,7 +6098,7 @@ async def _handle_call_tool_inner(
             lines.insert(insert_at, f"{leading}\t- Next up: {next_up}")
 
         if changed:
-            tasks_file.write_text("\n".join(lines))
+            write_vault_text(tasks_file, "\n".join(lines))
 
         result = {
             "success": True,
@@ -6019,7 +6191,7 @@ async def _handle_call_tool_inner(
             # Legacy support: task without ID, update only in source file
             else:
                 filepath = Path(task['source_file'])
-                with filepath.open('r', encoding='utf-8', newline='') as file:
+                with open_vault_text(filepath, 'r', newline='') as file:
                     content = file.read()
                 lines = content.split('\n')
                 
@@ -6036,7 +6208,7 @@ async def _handle_call_tool_inner(
                 )
                 
                 lines[line_idx] = new_line
-                with filepath.open('w', encoding='utf-8', newline='') as file:
+                with open_vault_text(filepath, 'w', newline='') as file:
                     file.write('\n'.join(lines))
                 
                 # Propagate status change to referenced pages
@@ -6640,7 +6812,7 @@ async def _handle_call_tool_inner(
         
         # Add to Week Priorities.md
         if priorities_file.exists():
-            content = priorities_file.read_text()
+            content = read_vault_text(priorities_file)
         else:
             # Create new file
             priorities_file.parent.mkdir(parents=True, exist_ok=True)
@@ -6664,7 +6836,7 @@ async def _handle_call_tool_inner(
             content += "\n" + priority_entry + "\n"
             new_content = content
         
-        priorities_file.write_text(new_content)
+        write_vault_text(priorities_file, new_content)
         
         result = {
             "success": True,
@@ -7547,7 +7719,7 @@ async def _handle_call_tool_inner(
         if note:
             entry["note"] = note
 
-        with open(SKILL_RATINGS_FILE, 'a') as f:
+        with open_vault_text(SKILL_RATINGS_FILE, 'a') as f:
             f.write(json.dumps(entry) + '\n')
 
         result = {
@@ -7573,7 +7745,7 @@ async def _handle_call_tool_inner(
             return [types.TextContent(type="text", text=json.dumps({"ratings": {}, "message": "No ratings captured yet"}))]
 
         ratings_by_skill = {}
-        for line in SKILL_RATINGS_FILE.read_text().strip().split('\n'):
+        for line in read_vault_text(SKILL_RATINGS_FILE).strip().split('\n'):
             if not line.strip():
                 continue
             try:
