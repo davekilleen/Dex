@@ -50,3 +50,12 @@ memory/
 
 # This file itself
 .distignore
+
+# Knowledge half-life (#744) is a proposal that no skill reads yet. Its two seed
+# files are the first shipped paths added since the pinned update foundation, and
+# every installed contract before #744 refuses them as unclassified, so a release
+# carrying them cannot be installed by any existing vault. Hold them back until
+# installed contracts know the paths; core/utils/freshness.py reads a missing
+# config as UNAVAILABLE by design.
+System/knowledge-half-life.yaml
+System/knowledge-half-life.example.yaml
