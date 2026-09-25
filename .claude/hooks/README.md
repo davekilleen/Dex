@@ -29,11 +29,16 @@ These commands are wired in `.claude/settings.json` and run independently of any
 | `PreToolUse` | `Bash` | `bash .claude/hooks/dex-safety-guard.sh` | Block unsafe shell commands and redirect disallowed MCP usage. |
 | `PreToolUse` | `Bash` | `node .claude/hooks/ensure-mcp-user-scope.cjs` | Require an explicit scope for `claude mcp add`. |
 | `PreToolUse` | `mcp__.*` | `bash .claude/hooks/dex-safety-guard.sh` | Apply the MCP safety rules before MCP calls. |
+| `PreToolUse` | `Skill` | `python3 "$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true` | Ritual clock: note the moment a skill such as `/daily-plan` starts, with the Dex version and the skill file's checksum, so a slow run can later be tied to a release or a local edit. |
+| `PreToolUse` | `mcp__.*__track_event` | `python3 "$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true` | Ritual clock: the rituals end by firing their `*_completed` analytics event; when that call arrives it closes the timed run as completed. It is a bonus, not a requirement: a run with no completion event still ends, marked inferred, when the next skill starts in the session or the session ends. |
+| `Stop` | all | `python3 "$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true` | Ritual clock: each hand-back to the user closes a working stretch; the first one after a start is the time to the first hand-back, which is what a slow morning actually feels like. From here until the next prompt Dex is idle, so that time is recorded as waiting and never judged. |
+| `UserPromptSubmit` | all | `python3 "$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true` | Ritual clock: the person replied, so Dex is working again; a new working stretch starts for every open run. |
 | `SessionEnd` | all | `python3 "$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py" --hook --vault "$CLAUDE_PROJECT_DIR"` | Shut down this session's Google Workspace connector pair so it cannot linger after the tab closes. |
 | `SessionEnd` | all | `"$CLAUDE_PROJECT_DIR"/.claude/hooks/session-end.sh "$transcript_path"` | Record the session-end marker and transcript reference. |
 | `SessionEnd` | all | `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/vault-autocommit.cjs` | Safely checkpoint eligible vault changes when no mutation is active. |
+| `SessionEnd` | all | `python3 "$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true` | Ritual clock: close every open run. One that handed back at least once keeps its reading (marked inferred); one cut off before any hand-back is abandoned and never judged. Everything lands in `System/.dex/ritual-timings.jsonl` for `/dex-doctor` (`rituals.duration`); nothing leaves the vault. |
 
-Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Those entries do not invoke repository hook files.
+Settings also uses the macOS system ping for `Stop` and permission/elicitation `Notification` events. Apart from the ritual clock above, those entries do not invoke repository hook files.
 
 ## Skill-scoped wiring
 

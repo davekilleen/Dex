@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
+
+The last release made the morning plan and evening review do less work. It could not say how much less, because Dex had no clock on them: the only timings anyone had were one user's, taken by hand with a stopwatch. That same user had forty open tasks, twelve marked top priority, and most of them had come out of meeting notes. Every "think about pricing" and "look into the vendor" said in a meeting had become a task. This release fixes both. Thanks again to Michelle for the numbers.
+
+**What this fixes for you:**
+
+* **Dex keeps a clock on its daily rituals.** Every time `/daily-plan`, `/daily-review` or `/process-meetings` runs, Dex notes when it started, how long it worked before first handing the conversation back to you, and how long it worked in total. Time you spend away from the keyboard, or thinking about an answer, is kept separately and never counts against Dex, so a plan you start at eight and finish after lunch is not a slow plan. The record stays in your vault and is never sent anywhere on its own.
+* **Doctor tells you when a ritual has slowed down, and which release did it.** `/dex-doctor` compares this week's runs with the four weeks before. It speaks up only when a ritual has both crossed two minutes and grown by half or more; a ritual that has always taken six minutes is a design question, not a regression. When it does speak, it names the week the slowdown arrived, the Dex version before and after, and whether the ritual's instructions are still the ones Dex shipped or were edited on your machine.
+* **Reporting a slowdown takes one word.** If the ritual is unchanged from what Dex shipped, Doctor says plainly that this is Dex's to fix and offers `/feedback`. The timing history goes with the report; nothing from your notes does. If you had edited the ritual yourself, Doctor points at the edit first.
+* **A remark in a meeting is no longer a task.** Dex now creates a task from a meeting only when the action item has a when (a date or timeframe), a who (something you owe a named person), or is flagged urgent or blocking. Everything else stays in the meeting note exactly as written and is listed under "Left in the note" in the processing summary. Say "track it" to promote one.
+* **Meeting summaries are stricter at the source.** The automatic analysis that writes your meeting notes now lists only what someone actually committed to as an action item. Ideas and topics that were merely raised go under the discussion points instead.
+
+Being honest about the first week: Doctor needs a few runs in the week and a few before it before it can judge anything, so until then it reports "no finished runs recorded yet" and nothing more. A run has a reading as soon as Dex has handed the conversation back once; a session that closes before that happens is recorded but never judged.
+
 ## [1.97.19] — Your morning plan and evening review stop doing the same work twice (2026-09-22)
 
 Your morning plan and evening review had been getting slower for weeks. One user timed a day: about fifteen minutes of reading and processing before Dex asked a single question, with the evening the worst of it. When we traced where the time went, most of it was Dex doing the same work twice, or asking for far more than it needed. Thanks to Michelle for the timings that made this visible.

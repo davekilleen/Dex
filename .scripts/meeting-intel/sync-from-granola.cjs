@@ -676,10 +676,12 @@ Generate a structured analysis in this exact markdown format:
 ## Action Items
 
 ### For Me
-- [ ] [Specific task] - by [timeframe if mentioned]
+- [ ] [Something this person committed to doing] - by [timeframe if mentioned]
 
 ### For Others
-- [ ] @[Person]: [Specific task]
+- [ ] @[Person]: [Something they committed to doing]
+
+Only list an action item that someone actually committed to. Ideas, things to "consider" or "think about", and topics that were merely raised belong under Key Discussion Points, not here. Keep the timeframe when one was said.
 
 ${intelSection}
 

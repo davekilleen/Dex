@@ -89,6 +89,8 @@ LIFECYCLE_DIR = DEX_RUNTIME_DIR / 'lifecycle'
 LEDGER_DIR = LIFECYCLE_DIR / 'ledger'
 LEDGER_EVENTS_DIR = LEDGER_DIR / 'events'
 LIFECYCLE_STATE_FILE = LIFECYCLE_DIR / 'state.json'
+RITUAL_TIMING_EVENTS_FILE = DEX_RUNTIME_DIR / 'ritual-timings.jsonl'
+RITUAL_TIMING_ACTIVE_FILE = DEX_RUNTIME_DIR / 'ritual-timing-active.json'
 
 
 HISTORY_BACKUPS_RELATIVE_PARTS = ('System', '.dex', 'adoption', 'history-backups')

@@ -400,7 +400,24 @@ For each meeting with unextracted tasks:
    - Preserve the exact source checkbox line text for `stamp_source_line`
    - Let `create_task` generate the task ID and stamp it back onto that line
 
-3. **Create task** using Work MCP:
+3. **Decide whether the item is a task at all.** A tracked task is a promise
+   the user has to keep, not a note that something came up. Create a task only
+   when the item passes at least one of these tests:
+   - **It has a when:** a date, day or timeframe ("by Friday", "before the
+     QBR", "next week")
+   - **It has a who:** something the user owes a named person or team ("send
+     Sarah the deck", "answer Acme's security questions")
+   - **It is urgent or blocking:** flagged urgent, or another decision or
+     meeting waits on it
+
+   Items that pass none of these ("think about pricing", "look into the new
+   vendor", "consider a follow-up") **stay in the meeting note exactly as they
+   are**: no task, no rewording, checkbox kept. List them in the summary under
+   "Left in the note" so the user can promote one with a word. The
+   `tasks-extracted` marker still goes on the note once the tracked items are
+   verified; the note itself remains the record of everything else.
+
+4. **Create task** using Work MCP:
    ```
    create_task(
      title: "Task description",
@@ -417,7 +434,7 @@ For each meeting with unextracted tasks:
    participant name is available, pass that name unchanged and let `create_task`
    resolve it. Never construct or guess a person page path.
 
-4. **Verify every result before marking the meeting extracted:**
+5. **Verify every result before marking the meeting extracted:**
    - Require `success: true` for every `create_task` call.
    - Require either `stamp.stamped: true`, or `reason: "already_anchored"`
      with the exact source line's existing anchor equal to the returned
@@ -477,7 +494,11 @@ If `ENTITY_SUGGESTIONS_FILE` contains suggested people, list them and ask: "Want
 - Created: 1 new (Acme Corp)
 - Updated: 2 existing
 
-**Tasks extracted:** 7 items added to 03-Tasks/Tasks.md
+**Tasks extracted:** 3 items added to 03-Tasks/Tasks.md
+**Left in the note (not tracked):** 4 items with no date, owner or urgency —
+say "track it" to promote any of them
+- Product Review: "Think about the pricing page copy"
+- Strategy Call: "Look into the new analytics vendor"
 
 ### Recent Meetings
 

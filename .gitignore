@@ -109,6 +109,7 @@ System/my-customizations.md
 !.claude/hooks/soft-promise-detector.py
 !.claude/hooks/claude-composition-refresh.sh
 !.claude/hooks/session-clock.sh
+!.claude/hooks/ritual-timing.py
 !.claude/hooks/correction-capture.sh
 !.claude/hooks/correction-capture.py
 !.claude/hooks/observation-recorder.py

@@ -50,6 +50,8 @@
     "RESOURCES_DIR": "06-Resources",
     "RESUME_DIR": "05-Areas/Career/Resume",
     "RITUAL_INTELLIGENCE_DB_FILE": "System/.dex/ritual-intelligence.db",
+    "RITUAL_TIMING_ACTIVE_FILE": "System/.dex/ritual-timing-active.json",
+    "RITUAL_TIMING_EVENTS_FILE": "System/.dex/ritual-timings.jsonl",
     "SESSIONS_DIR": "05-Areas/Career/Resume/Sessions",
     "SESSION_FILE": "System/.onboarding-session.json",
     "SESSION_MEMORY_DB_FILE": "System/.dex-sessions.db",

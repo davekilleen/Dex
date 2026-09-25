@@ -64,6 +64,10 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/claude-composition-refresh.sh"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }
@@ -112,6 +116,24 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dex-safety-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__track_event",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -120,6 +142,14 @@
           {
             "type": "command",
             "command": "sh -c 'command -v afplay >/dev/null 2>&1 || exit 0; exec afplay /System/Library/Sounds/Ping.aiff'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }
@@ -149,6 +179,14 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/vault-autocommit.cjs"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }

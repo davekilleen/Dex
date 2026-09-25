@@ -253,7 +253,24 @@ For each meeting with unextracted tasks:
      display `name`. Never pass the raw frontmatter value through unresolved
    - **Preserve the exact source checkbox line text**, verbatim, for
      `stamp_source_line`
-3. Create the task, letting `create_task` generate the ID and stamp it back
+3. **Decide whether the item is a task at all.** A tracked task is a promise
+   the user has to keep, not a note that something came up. Create a task only
+   when the item passes at least one of these tests:
+   - **It has a when:** a date, day or timeframe ("by Friday", "before the
+     QBR", "next week")
+   - **It has a who:** something the user owes a named person or team ("send
+     Sarah the deck", "answer Acme's security questions")
+   - **It is urgent or blocking:** flagged urgent, or another decision or
+     meeting waits on it
+
+   Items that pass none of these ("think about pricing", "look into the new
+   vendor", "consider a follow-up") **stay in the meeting note exactly as they
+   are**: no task, no rewording, checkbox kept. Report them under "Left in the
+   note" in your final output, quoting the line and naming the meeting. The
+   `tasks-extracted` marker still goes on the note once the tracked items are
+   verified; an untracked item is not a failed item.
+
+4. Create the task, letting `create_task` generate the ID and stamp it back
    onto that source line:
 
    ```
@@ -278,7 +295,7 @@ For each meeting with unextracted tasks:
    invisible to sync — ticking the task done never updates the note, and vice
    versa.
 
-4. **Verify every result before marking the meeting extracted:**
+5. **Verify every result before marking the meeting extracted:**
    - Require `success: true` for every `create_task` call
    - Require either `stamp.stamped: true`, or `reason: "already_anchored"` with
      that source line's existing anchor equal to the returned `task.task_id`
@@ -286,7 +303,7 @@ For each meeting with unextracted tasks:
      unmarked** and report the exact failed line in your final output. Do not
      retry a task that was created but not stamped
 
-5. **Only after every action item is verified**, append the marker to the note:
+6. **Only after every tracked action item is verified**, append the marker to the note:
    `<!-- tasks-extracted: YYYY-MM-DDTHH:MM:SSZ -->`
 
 **The marker is a one-way door.** The session-start sweep also treats a
@@ -294,7 +311,7 @@ For each meeting with unextracted tasks:
 whose tasks failed to create still loses those action items silently. When
 in doubt, leave it unstamped and report it.
 
-6. **Also stamp meetings with nothing to extract.** A note with no action items
+7. **Also stamp meetings with nothing to extract.** A note with no action items
    still gets the same marker once you have processed it; an unstamped note
    keeps being flagged as waiting, session after session.
 
@@ -334,6 +351,8 @@ Processing complete.
 - Updated: Y existing
 
 **Tasks extracted:** X items added to 03-Tasks/Tasks.md
+**Left in the note (not tracked):** X items with no date, owner or urgency
+- [Meeting title]: "[exact line]"
 
 ### Needs the User
 
