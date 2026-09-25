@@ -68,6 +68,7 @@ QUICK_IDS = [
     "customizations.transition",
     "config.claude_direct_edits",
     "core.drift",
+    "rituals.duration",
     "doctor.self",
 ]
 

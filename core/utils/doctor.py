@@ -656,6 +656,7 @@ QUICK_CHECKS = (
         "_probe_claude_direct_edits",
     ),
     CheckDefinition("core.drift", "Shipped-file drift", "_probe_core_drift"),
+    CheckDefinition("rituals.duration", "Ritual run times", "_probe_ritual_duration"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
 
@@ -4940,6 +4941,112 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         return ProbeResult("OK", detail)
     except (ImportError, OSError, ValueError, TypeError, json.JSONDecodeError) as error:
         return ProbeResult("UNKNOWN", f"Entity engine files could not be checked: {_one_line(error)}")
+
+
+def _probe_ritual_duration(context: DoctorContext) -> ProbeResult:
+    """Judge how long the daily rituals take against their own recent history.
+
+    The hooks in ``.claude/hooks/ritual-timing.py`` record every ritual's start,
+    first hand-back and completion. This probe reads that log and asks one
+    question per ritual: is this week's median, on Dex's own working time or
+    on the time to the first hand-back, both slow in absolute terms and
+    markedly slower than the previous weeks? Time spent waiting for the person
+    to reply is recorded but never judged. A run that has always taken six
+    minutes is not a regression, and one that went from ten seconds to twenty
+    is not worth a word. When a ritual has regressed, the detail names
+    the week it changed, the Dex versions on either side, and whether the skill
+    file is still the one Dex shipped, so a report to the Dex team carries
+    the release to look at rather than a feeling that things got slower.
+    """
+    from core.utils import ritual_timing
+
+    events_file = context.core_path("RITUAL_TIMING_EVENTS_FILE")
+    try:
+        loaded = ritual_timing.load_runs(events_file)
+    except FileNotFoundError:
+        return ProbeResult(
+            "OK",
+            "No finished ritual runs recorded yet; the clock has a reading once the next "
+            "/daily-plan, /daily-review or /process-meetings has handed the conversation back",
+            feature_status="ok",
+            structured_detail={"state": "no-runs", "events_file": str(events_file)},
+        )
+    except OSError as error:
+        detail = f"Could not read the ritual timing log: {error}"
+        if _looks_like_sandbox_failure(str(error)):
+            detail += " (sandboxed run; not a verdict on the install)"
+        return ProbeResult("UNKNOWN", detail, feature_status="unknown")
+
+    registry_path = context.repo_root / "core" / "lens-catalog" / "registry.json"
+    pins = ritual_timing.shipped_skill_pins(registry_path)
+    skills = sorted({run.skill for run in loaded.runs})
+    current = {skill: ritual_timing.skill_sha256(context.repo_root, skill) for skill in skills}
+    assessment = ritual_timing.assess(loaded, now=context.now, shipped_pins=pins, current_shas=current)
+    structured: dict[str, object] = assessment.as_dict()
+    structured["events_file"] = str(events_file)
+
+    if not assessment.trends:
+        return ProbeResult(
+            "OK",
+            "No finished ritual runs recorded yet; the clock has a reading once the next "
+            "/daily-plan, /daily-review or /process-meetings has handed the conversation back",
+            feature_status="ok",
+            structured_detail={"state": "no-runs", **structured},
+        )
+
+    lines = [ritual_timing.describe_trend(trend) for trend in assessment.trends]
+    regressed = assessment.regressed
+    if not regressed:
+        judged = len(assessment.judged)
+        summary = (
+            f"{len(assessment.trends)} ritual{'s' if len(assessment.trends) != 1 else ''} timed"
+            f"; {judged} with enough runs this week to judge; none slower than its own history"
+        )
+        return ProbeResult(
+            "OK",
+            summary + ". " + " | ".join(lines),
+            feature_status="ok",
+            structured_detail={"state": "steady", **structured},
+        )
+
+    names = ", ".join(f"/{trend.skill}" for trend in regressed)
+    stock = [trend for trend in regressed if trend.stock == "stock"]
+    edited = [trend for trend in regressed if trend.stock == "customised"]
+    advice: list[str] = []
+    if stock:
+        stock_names = ", ".join(f"/{trend.skill}" for trend in stock)
+        releases = sorted({version for trend in stock for version in trend.shift_versions_after})
+        where = f" Runs got slower on Dex {', '.join(releases)}." if releases else ""
+        advice.append(
+            f"{stock_names} still match{'es' if len(stock) == 1 else ''} what Dex shipped, so this is "
+            f"Dex's to fix, not yours.{where} Run /feedback and Dex will send the timing history "
+            f"with the report; nothing from your notes goes with it."
+        )
+    if edited:
+        edited_names = ", ".join(f"/{trend.skill}" for trend in edited)
+        advice.append(
+            f"{edited_names} {'has' if len(edited) == 1 else 'have'} been edited locally; compare the "
+            f"edit with the shipped version before reporting it, since the change may be the cause."
+        )
+    for trend in regressed:
+        if trend.stock in {"unpinned", "unknown"}:
+            advice.append(
+                f"/{trend.skill}: Dex could not tell whether the skill file is the shipped one; "
+                f"/feedback will still carry the timing history."
+            )
+    user_message = (
+        f"{names} {'is' if len(regressed) == 1 else 'are'} taking markedly longer than "
+        f"{'it' if len(regressed) == 1 else 'they'} did in the previous "
+        f"{ritual_timing.BASELINE_WEEKS} weeks. " + " ".join(advice)
+    )
+    return ProbeResult(
+        "BROKEN",
+        f"Slower than their own history: {names}. " + " | ".join(lines),
+        heal=Heal(tier=3, action="Report the slowdown with /feedback; Dex attaches the timing history.", applied=False),
+        feature_status="broken",
+        user_message=user_message,
+        structured_detail={"state": "regressed", **structured},
+    )
 
 
 def _probe_doctor_self(_context: DoctorContext) -> ProbeResult:
