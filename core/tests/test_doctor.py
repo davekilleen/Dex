@@ -52,6 +52,7 @@ QUICK_IDS = [
     "topology.migration-pending",
     "release.catalog",
     "adoption.plan",
+    "lifecycle.byte-mode",
     "smoke.history",
     "mcp.registered",
     "mcp.orphans",

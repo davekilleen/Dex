@@ -39,6 +39,11 @@ from pathlib import Path
 from core import portable_contract
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
+from core.transaction.byte_mode_flag import (
+    HASH_READ_MODE_BINARY,
+    refuse_pre_repair_restore,
+    write_operation_flag,
+)
 from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
@@ -288,6 +293,9 @@ class Transaction:
                     f"refusing unsafe transaction directory {unsafe_directory}"
                 )
             tx.tx_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            # Written at the start of the operation — never a clock comparison.
+            # Presence of this flag is how restore decides "pre-repair".
+            write_operation_flag(tx.tx_dir, HASH_READ_MODE_BINARY)
             tx.journal.append(
                 "BEGIN",
                 {
@@ -788,18 +796,25 @@ class Transaction:
         the snapshot manifest (assuming everything was applied — the safe
         over-approximation for restoring PRE-EXISTING files, and creations
         are then deleted only if present). The lock is always released.
+
+        Snapshots taken before the Windows bookkeeping repair are refused on
+        Windows: restoring them could put back altered line endings. The
+        decision uses the flag written at the start of the operation, not a
+        clock.
         """
-        try:
-            entries = self.journal.read()
-            events = {entry.event for entry in entries}
-            applied = self._applied_relatives(entries)
-            journal_ok = True
-        except JournalCorruptError:
-            events = set()
-            applied = set()
-            journal_ok = False
         restored: list[str] = []
+        journal_ok = True
         try:
+            refuse_pre_repair_restore(self.tx_dir)
+            try:
+                entries = self.journal.read()
+                events = {entry.event for entry in entries}
+                applied = self._applied_relatives(entries)
+                journal_ok = True
+            except JournalCorruptError:
+                events = set()
+                applied = set()
+                journal_ok = False
             if journal_ok:
                 if "SNAPSHOT-DONE" in events:
                     restored = self.snapshot.restore(

@@ -7,6 +7,12 @@ import json
 import sys
 from pathlib import Path
 
+from core.lifecycle.byte_mode import (
+    ByteModeError,
+    apply as apply_byte_mode,
+    rollback as rollback_byte_mode,
+    status_payload,
+)
 from core.lifecycle.ledger import (
     LedgerError,
     project_state,
@@ -61,6 +67,23 @@ def _parser() -> argparse.ArgumentParser:
         "rebuild-state",
         help="repair an interrupted terminal publication and rebuild the state cache",
     )
+    byte_mode = commands.add_parser(
+        "byte-mode",
+        help="inspect or repair Windows bookkeeping files written with extra line endings",
+    )
+    byte_mode_commands = byte_mode.add_subparsers(dest="byte_mode_command", required=True)
+    byte_mode_commands.add_parser(
+        "status",
+        help="print whether Dex's own bookkeeping files need a Windows line-ending repair",
+    )
+    byte_mode_commands.add_parser(
+        "apply",
+        help="repair those bookkeeping files and keep a copy first",
+    )
+    byte_mode_commands.add_parser(
+        "rollback",
+        help="put the pre-repair copies back when nothing newer has been recorded",
+    )
     return parser
 
 
@@ -81,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
             verb = "forms" if count == 1 else "form"
             print(f"Ledger verified: {count} immutable {noun} {verb} a valid chain.")
             return 0
+        if args.command == "byte-mode":
+            return _byte_mode_command(args)
         state, repairs = repair_state(vault_root)
         print(_canonical_json(state))
         count = int(state["last_seq"])
@@ -88,10 +113,28 @@ def main(argv: list[str] | None = None) -> int:
         actions = [*repairs, f"rebuilt state cache from {count} {noun}"]
         print(f"Ledger rebuild-state completed: {'; '.join(actions)}.", file=sys.stderr)
         return 0
-    except (LedgerError, OSError) as error:
+    except (ByteModeError, LedgerError, OSError) as error:
+        if args.command == "byte-mode":
+            print(f"Bookkeeping repair failed: {error}", file=sys.stderr)
+            return 1
         action = "verification" if args.command == "verify" else args.command
         print(f"Ledger {action} failed: {error}", file=sys.stderr)
         return 1
+
+
+def _byte_mode_command(args: argparse.Namespace) -> int:
+    vault_root: Path = args.vault_root
+    command = args.byte_mode_command
+    if command == "status":
+        print(_canonical_json(status_payload(vault_root)))
+        return 0
+    if command == "apply":
+        result = apply_byte_mode(vault_root)
+        print(_canonical_json({"actions": result.get("actions", [])}))
+        return 0
+    result = rollback_byte_mode(vault_root)
+    print(_canonical_json(result))
+    return 0
 
 
 if __name__ == "__main__":

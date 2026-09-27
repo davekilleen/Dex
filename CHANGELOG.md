@@ -9,23 +9,26 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
-held until the Windows record repair lands
+Dex on Windows can update again after its first update
 
-On Windows, Dex was reading its own files in a way that quietly changed their
-bytes before comparing them — line endings rewritten, and some files cut short
-at a special Windows end-of-file mark. That made Dex treat its own shipped
-files as edited, and it is why a Windows vault can refuse its next update.
-
-This change starts reading those files exactly as they sit on disk. It must
-not ship on its own: older Windows vaults still have bookkeeping files that
-need the follow-on repair first.
+On Windows, Dex's own record-keeping files had been saved with Windows line
+endings. That made Dex refuse its next update and every undo, and it also
+read files in a way that quietly changed their bytes before comparing them.
+Thanks to Joe for reporting this.
 
 **What this fixes for you:**
 
+* **Dex can update and undo again on Windows.** It repairs those record-keeping
+  files once, keeps a copy of each one first, and leaves your notes alone. A
+  file it cannot safely repair is left untouched and Doctor tells you what to
+  do. History files are reported, not rewritten.
+* **An undo copy taken before this repair is not put back on Windows.** Dex
+  marks those copies when the work starts — it does not guess from the clock —
+  and refuses to restore them, including after a crash. Your current files stay
+  as they are; use your own backup if you need to go back.
 * **Dex now reads its own files exactly as stored.** Line endings and binary
-  files are no longer rewritten on the way in. This is the first half of the
-  Windows repair; the second half puts existing Windows bookkeeping files
-  back into a readable form before any release can carry this change.
+  files are no longer rewritten on the way in. This is the other half of the
+  same repair.
 
 Older copies of Dex can finally name the version they started from.
 
