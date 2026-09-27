@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [Unreleased]
+## Unreleased
 
 Older copies of Dex can finally name the version they started from.
 
