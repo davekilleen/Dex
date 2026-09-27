@@ -21,10 +21,8 @@ CTRL_Z_BLOB_SIZE = 4096
 
 
 def ctrl_z_binary_blob() -> bytes:
-    """4 KiB blob with ``0x1A`` at offset 100; the rest is non-text payload."""
-    blob = bytearray(CTRL_Z_BLOB_SIZE)
-    for index in range(CTRL_Z_BLOB_SIZE):
-        blob[index] = (index % 250) + 1  # never 0x00 or 0x1A
+    """4 KiB blob with ``0x1A`` only at offset 100; the rest is non-text payload."""
+    blob = bytearray(b"\xab" * CTRL_Z_BLOB_SIZE)
     blob[CTRL_Z_OFFSET] = 0x1A
     return bytes(blob)
 

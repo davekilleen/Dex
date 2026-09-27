@@ -38,6 +38,9 @@ def _track_open_flags(monkeypatch: pytest.MonkeyPatch) -> list[int]:
         return real_open(path, flags, mode, **kwargs)
 
     monkeypatch.setattr(os, "open", tracking_open)
+    # Keep the POSIX dir-fd path: ``os.open not in supports_dir_fd`` would
+    # otherwise flip _open_beneath onto the Windows fallback.
+    monkeypatch.setattr(os, "supports_dir_fd", set(os.supports_dir_fd) | {tracking_open})
     return seen_flags
 
 
@@ -55,6 +58,8 @@ def _simulate_windows_crt_read(monkeypatch: pytest.MonkeyPatch) -> list[int]:
         opened_flags[descriptor] = flags
         seen_flags.append(flags)
         return descriptor
+
+    monkeypatch.setattr(os, "supports_dir_fd", set(os.supports_dir_fd) | {tracking_open})
 
     def translating_read(descriptor, size):
         payload = real_read(descriptor, size)
@@ -113,8 +118,10 @@ def test_file_opens_include_obinary_and_directory_opens_do_not(
 def test_windows_fallback_file_open_includes_obinary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(os, "supports_dir_fd", set())
     seen_flags = _track_open_flags(monkeypatch)
+    # Empty after wrapping ``os.open`` so the wrapper is not treated as
+    # dir-fd capable and the Windows fallback path is taken.
+    monkeypatch.setattr(os, "supports_dir_fd", set())
     vault = tmp_path / "vault"
     relative = "payload.bin"
     (vault / relative).parent.mkdir(parents=True)
