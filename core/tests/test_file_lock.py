@@ -72,22 +72,29 @@ class FakePywinTypesError(Exception):
 
 
 class FakeWin32File:
+    """Match pywin32's Python bindings, not the Win32 C prototypes.
+
+    ``win32file.LockFileEx(handle, flags, low, high, overlapped)`` takes five
+    arguments. ``UnlockFileEx(handle, low, high, overlapped)`` takes four.
+    Both omit Win32 ``dwReserved``. A fake that still accepted reserved hid
+    the six-argument TypeError that broke Windows CI after #754.
+    """
+
     def __init__(self) -> None:
         self.owners: dict[int, bool] = {}
-        self.lock_calls: list[tuple[int, int]] = []
-        self.unlock_calls: list[int] = []
+        self.lock_calls: list[tuple[int, int, int, int]] = []
+        self.unlock_calls: list[tuple[int, int, int]] = []
 
     def LockFileEx(
         self,
         handle: int,
         flags: int,
-        reserved: int,
         nlow: int,
         nhigh: int,
         overlapped: object,
     ) -> None:
         exclusive = bool(flags & LOCKFILE_EXCLUSIVE_LOCK)
-        self.lock_calls.append((handle, flags))
+        self.lock_calls.append((handle, flags, nlow, nhigh))
         for owner, owner_exclusive in self.owners.items():
             if owner == handle:
                 continue
@@ -100,12 +107,11 @@ class FakeWin32File:
     def UnlockFileEx(
         self,
         handle: int,
-        reserved: int,
         nlow: int,
         nhigh: int,
         overlapped: object,
     ) -> None:
-        self.unlock_calls.append(handle)
+        self.unlock_calls.append((handle, nlow, nhigh))
         if handle not in self.owners:
             raise FakePywinTypesError(158, "UnlockFileEx", "not locked")
         del self.owners[handle]
@@ -403,6 +409,75 @@ def test_posix_failure_keeps_the_real_cause_in_the_debug_log(
     assert "_posix_flock" in caplog.text
 
 
+def test_win32_lockfileex_matches_pywin32_five_argument_signature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fake now rejects reserved the same way real pywin32 does.
+
+    Passing ``dwReserved=0`` used to raise ``TypeError: LockFileEx() takes
+    exactly 5 arguments (6 given)`` 76 times on windows-latest while the
+    six-argument fake still accepted it.
+    """
+    _msvcrt, fake_win32 = _install_win32(monkeypatch, with_win32=True)
+    assert fake_win32 is not None
+    descriptor = _open_lockfile(tmp_path / "lock")
+    try:
+        flock(descriptor, LOCK_EX)
+        flock(descriptor, LOCK_UN)
+    finally:
+        _close(descriptor)
+    assert fake_win32.lock_calls == [
+        (descriptor, LOCKFILE_EXCLUSIVE_LOCK, 0xFFFFFFFF, 0xFFFFFFFF)
+    ]
+    assert fake_win32.unlock_calls == [(descriptor, 0xFFFFFFFF, 0xFFFFFFFF)]
+    with pytest.raises(TypeError):
+        fake_win32.LockFileEx(
+            descriptor, LOCKFILE_EXCLUSIVE_LOCK, 0, 0xFFFFFFFF, 0xFFFFFFFF, object()
+        )
+    with pytest.raises(TypeError):
+        fake_win32.UnlockFileEx(descriptor, 0, 0xFFFFFFFF, 0xFFFFFFFF, object())
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows lock path")
+def test_native_windows_lockfileex_five_argument_contract(tmp_path: Path) -> None:
+    """Hit the real pywin32/msvcrt path that windows-latest runs.
+
+    Proves LockFileEx rejects the old six-argument call, then that flock()
+    lock and unlock succeed through whichever Windows backend is installed.
+    """
+    first, second = _open_lockfile(tmp_path / "lock"), _open_lockfile(tmp_path / "lock")
+    try:
+        try:
+            import msvcrt
+            import pywintypes
+            import win32file
+        except ImportError:
+            win32file = None  # type: ignore[assignment]
+        else:
+            handle = msvcrt.get_osfhandle(first)
+            overlapped = pywintypes.OVERLAPPED()
+            with pytest.raises(TypeError):
+                win32file.LockFileEx(
+                    handle, 0, 0, 0xFFFFFFFF, 0xFFFFFFFF, overlapped
+                )
+            with pytest.raises(TypeError):
+                win32file.UnlockFileEx(
+                    handle, 0, 0xFFFFFFFF, 0xFFFFFFFF, overlapped
+                )
+
+        flock(first, LOCK_EX)
+        with pytest.raises(BlockingIOError):
+            flock(second, LOCK_EX | LOCK_NB)
+        flock(first, LOCK_UN)
+        with locked(first, LOCK_EX):
+            with pytest.raises(BlockingIOError):
+                flock(second, LOCK_EX | LOCK_NB)
+        flock(second, LOCK_EX | LOCK_NB)
+        flock(second, LOCK_UN)
+    finally:
+        _close(first, second)
+
+
 def test_win32_prefers_lockfileex_and_supports_shared_and_exclusive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -440,7 +515,7 @@ def test_win32_unlock_runs_when_the_block_raises(
                 assert descriptor in fake_win32.owners
                 raise RuntimeError("held")
         assert descriptor not in fake_win32.owners
-        assert fake_win32.unlock_calls == [descriptor]
+        assert [handle for handle, _nlow, _nhigh in fake_win32.unlock_calls] == [descriptor]
     finally:
         _close(descriptor)
 

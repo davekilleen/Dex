@@ -178,8 +178,10 @@ def _win32_flock(descriptor: int, operation: int) -> None:
 
     if operation & LOCK_UN:
         try:
+            # pywin32 omits Win32 dwReserved:
+            # UnlockFileEx(handle, low, high, overlapped)
             win32file.UnlockFileEx(
-                handle, 0, _WIN32_MAXDWORD, _WIN32_MAXDWORD, overlapped
+                handle, _WIN32_MAXDWORD, _WIN32_MAXDWORD, overlapped
             )
         except pywintypes.error as error:
             if _win32_error_code(error) == _ERROR_NOT_LOCKED:
@@ -199,8 +201,10 @@ def _win32_flock(descriptor: int, operation: int) -> None:
         )
 
     try:
+        # pywin32 omits Win32 dwReserved:
+        # LockFileEx(handle, flags, low, high, overlapped)
         win32file.LockFileEx(
-            handle, flags, 0, _WIN32_MAXDWORD, _WIN32_MAXDWORD, overlapped
+            handle, flags, _WIN32_MAXDWORD, _WIN32_MAXDWORD, overlapped
         )
     except pywintypes.error as error:
         _raise_win32_lock_error(error, nonblocking=bool(operation & LOCK_NB))
