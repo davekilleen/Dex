@@ -103,7 +103,13 @@ branch. Offer it when `customization_assessment.completeness` is `OK` and
 they have customised Dex heavily. If the verified count is zero, follow the normal lightweight update
 path and do not mention this branch. If completeness is `UNKNOWN`, or the report has no
 `customization_assessment`, show Doctor's uncertainty
-and do not infer a zero count. When Doctor returns `partial: true`, show the observed
+and do not infer a zero count. If the uncertainty is that Dex could not
+verify which version is installed (`baseline-not-verified`, or Doctor's
+"couldn't verify which Dex version is installed" line), point at the
+starting-version repair — the person runs
+`python3 -m core.update.reanchor_cli --dry-run` in their own terminal —
+and do not continue this update until that repair has set a starting
+version. Do not run the repair yourself. When Doctor returns `partial: true`, show the observed
 records and every exclusion path, reason, and guidance as a partial inventory. Do not
 run the Capsule preview or ask for Capsule approval until reassessment returns
 completeness `OK`.

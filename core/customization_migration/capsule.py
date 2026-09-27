@@ -37,6 +37,7 @@ from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
 from core.transaction.engine import PlanEntry, Transaction
 from core.transaction.fsync import fchmod, fsync_directory
 from core.transaction.lock import acquire_owned_lock
+from core.utils.os_flags import binary_write_flags
 
 CAPSULE_ROOT = "System/.dex/customization-migrations"
 _MAX_SOURCE_BYTES = 1024 * 1024
@@ -547,7 +548,7 @@ def _append_event(path: Path, event: MigrationEvent) -> None:
     raw = _event_bytes(event)
     descriptor = os.open(
         path,
-        os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0),
+        binary_write_flags(os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)),
     )
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):

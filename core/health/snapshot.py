@@ -27,6 +27,7 @@ from core.health.reporter import NormalizationResult, ReporterEnvelope, normaliz
 from core.lifecycle import service
 from core.transaction.engine import PlanEntry
 from core.transaction.fsync import fchmod
+from core.utils.os_flags import binary_write_flags
 
 SNAPSHOT_CONTRACT = "dex.health.snapshot/v1"
 POINTER_CONTRACT = "dex.health.latest/v1"
@@ -378,7 +379,9 @@ class _RefreshCoordinator:
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        descriptor = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+        descriptor = os.open(
+            self.path, binary_write_flags(os.O_RDWR | os.O_CREAT), 0o600
+        )
         fchmod(descriptor, 0o600, path=self.path)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)

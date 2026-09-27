@@ -68,6 +68,7 @@ from core.customization_migration.state import (
 )
 from core.transaction.engine import PlanEntry, Transaction
 from core.transaction.fsync import fchmod, fsync_directory
+from core.utils.os_flags import binary_write_flags
 
 STAGING_SUBDIR = "candidates/{proposal_id}/staging"
 _MAX_JSON_BYTES = 1024 * 1024
@@ -824,7 +825,7 @@ def _append_event(
     raw = _event_bytes(event, **payload)
     descriptor = os.open(
         path,
-        os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0),
+        binary_write_flags(os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)),
     )
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):

@@ -26,6 +26,7 @@ from pathlib import Path
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
 from core.transaction.fsync import fsync_directory, fsync_file
+from core.utils.os_flags import binary_write_flags
 
 MANIFEST_NAME = "manifest.json"
 
@@ -150,7 +151,9 @@ class Snapshot:
         }
         path = self.root / MANIFEST_NAME
         data = json.dumps(manifest, indent=2).encode("utf-8")
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        descriptor = os.open(
+            path, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_TRUNC), 0o600
+        )
         try:
             os.write(descriptor, data)
             os.fsync(descriptor)

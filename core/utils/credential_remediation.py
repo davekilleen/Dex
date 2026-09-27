@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import stat
@@ -66,6 +67,44 @@ SCOPE_CATEGORIES = frozenset(
 )
 EXCEPTIONS_FILE = Path(__file__).with_name("credential_migration_exceptions.json")
 MAX_TRACKED_CONFIG_BYTES = 1024 * 1024
+logger = logging.getLogger(__name__)
+CONTAINED_WRITE_UNAVAILABLE = (
+    "no-follow descriptor-relative writes are unavailable on this host; "
+    "Dex refuses the write rather than follow a path or crash"
+)
+
+
+def _contained_nofollow_available() -> bool:
+    """True only when the POSIX no-follow directory-chain primitives exist.
+
+    Native Windows has no ``O_NOFOLLOW`` and no ``dir_fd`` open. Returning
+    False here must refuse, not fall back. POSIX with those primitives is
+    unchanged.
+    """
+    return (
+        os.name != "nt"
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in getattr(os, "supports_dir_fd", set())
+    )
+
+
+def _require_contained_nofollow(operation: str, *, require_fchmod: bool = False) -> None:
+    """Fail closed when a contained no-follow write cannot be proven safe.
+
+    On macOS/Linux this is a no-op. On Windows (or any host missing the
+    primitives) it logs the real cause without secret bytes and raises.
+    """
+    if _contained_nofollow_available() and (not require_fchmod or hasattr(os, "fchmod")):
+        return
+    logger.debug(
+        "%s refused: contained no-follow unavailable os.name=%s O_NOFOLLOW=%s dir_fd=%s fchmod=%s",
+        operation,
+        os.name,
+        hasattr(os, "O_NOFOLLOW"),
+        os.open in getattr(os, "supports_dir_fd", set()),
+        hasattr(os, "fchmod"),
+    )
+    raise OSError(CONTAINED_WRITE_UNAVAILABLE)
 
 
 @dataclass(frozen=True)
@@ -603,6 +642,7 @@ def _contained_regular(
 
 def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = False) -> int:
     """Open a vault-contained directory chain without following any component."""
+    _require_contained_nofollow("credential directory chain")
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(root, flags)
     try:
@@ -669,6 +709,7 @@ def _atomic_replace_at(
     after_readback: Callable[[], None] | None = None,
     owner: tuple[int, int] | None = None,
 ) -> None:
+    _require_contained_nofollow("credential atomic replace", require_fchmod=True)
     temporary = f".{name}.{uuid.uuid4().hex}"
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode, dir_fd=directory)
@@ -1065,7 +1106,8 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         return MigrationResult("refused")
     if env_metadata is not None and (
         stat.S_IMODE(env_metadata.st_mode) != 0o600
-        or (hasattr(os, "getuid") and env_metadata.st_uid != os.getuid())
+        or not hasattr(os, "getuid")
+        or env_metadata.st_uid != os.getuid()
     ):
         return MigrationResult("refused")
     if env_raw:
@@ -1088,9 +1130,9 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             env_raw, stat.S_IMODE(env_metadata.st_mode), env_metadata.st_uid, env_metadata.st_gid,
         )
     )
-    env_owner = env_preimage.owner if env_preimage else config_preimage.owner
-    if hasattr(os, "getuid") and hasattr(os, "getgid"):
-        env_owner = os.getuid(), os.getgid()
+    if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+        return MigrationResult("refused")
+    env_owner = os.getuid(), os.getgid()
     journal = CredentialJournal.create(
         config_preimage=config_preimage,
         env_preimage=env_preimage,

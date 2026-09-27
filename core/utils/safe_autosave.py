@@ -21,6 +21,7 @@ from core.utils.integration_credentials import (
 )
 from core.transaction.fsync import fsync_directory
 from core.utils.local_git import git_env, git_result
+from core.utils.os_flags import binary_write_flags
 
 LEGACY_YAML_FIELD = re.compile(rb"(?m)^\s*(?:api_key|token)\s*:\s*\S+")
 LEGACY_SECTION = re.compile(rb"(?ms)^\s*(?:todoist|trello)\s*:\s*\n(?:[ \t]+.*\n?)*")
@@ -49,7 +50,9 @@ def _digest(data: bytes | None) -> str:
 
 
 def _write_durable(path: Path, data: bytes) -> None:
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        path, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+    )
     with os.fdopen(descriptor, "wb") as handle:
         handle.write(data)
         handle.flush()

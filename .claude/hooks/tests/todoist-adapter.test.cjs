@@ -92,6 +92,100 @@ test('create embeds the Dex marker and resolves project, priority, and due date'
   });
 });
 
+test('toExternal puts vault-aware Obsidian source links in the description', () => {
+  const adapter = loadAdapter();
+  const payload = adapter.toExternal(
+    {
+      title: 'Draft executive intro email',
+      task_id: 'task-20260918-001',
+      context: 'Keep the summary concise.',
+      source_links: [
+        {
+          path: '00-Inbox/Meetings/2026-09-18-kickoff.md',
+          label: '2026-09-18-kickoff',
+          uri: 'obsidian://open?vault=My%20Vault&file=00-Inbox%2FMeetings%2F2026-09-18-kickoff.md',
+        },
+      ],
+    },
+    {},
+  );
+
+  assert.equal(payload.content, 'Draft executive intro email');
+  assert.equal(
+    payload.description,
+    'Keep the summary concise.\n\n'
+      + '[2026-09-18-kickoff](obsidian://open?vault=My%20Vault&file=00-Inbox%2FMeetings%2F2026-09-18-kickoff.md)\n'
+      + '[dex:task-20260918-001]',
+  );
+});
+
+test('toExternal builds an Obsidian link from source_paths when links are missing', () => {
+  const adapter = loadAdapter();
+  const payload = adapter.toExternal(
+    {
+      title: 'Follow up with Ada',
+      task_id: 'task-20260918-002',
+      source_paths: ['05-Areas/People/Internal/Ada.md'],
+      vault_name: 'Dex Notes',
+    },
+    {},
+  );
+
+  assert.equal(payload.content, 'Follow up with Ada');
+  assert.match(
+    payload.description,
+    /\[Ada\]\(obsidian:\/\/open\?vault=Dex%20Notes&file=05-Areas%2FPeople%2FInternal%2FAda\.md\)/,
+  );
+  assert.match(payload.description, /\[dex:task-20260918-002\]$/);
+});
+
+test('toExternal omits vault= when the vault name is unknown', () => {
+  const adapter = loadAdapter();
+  const payload = adapter.toExternal(
+    {
+      title: 'Open the note',
+      task_id: 'task-20260918-003',
+      source_paths: ['04-Projects/Launch.md'],
+    },
+    {},
+  );
+
+  assert.match(
+    payload.description,
+    /\[Launch\]\(obsidian:\/\/open\?file=04-Projects%2FLaunch\.md\)/,
+  );
+  assert.equal(payload.description.includes('vault='), false);
+});
+
+test('buildObsidianOpenUri rejects traversal, schemes, and absolute paths', () => {
+  const adapter = loadAdapter();
+  assert.equal(adapter.buildObsidianOpenUri('../etc/passwd', 'Vault'), '');
+  assert.equal(adapter.buildObsidianOpenUri('foo/../../secret.md', 'Vault'), '');
+  assert.equal(adapter.buildObsidianOpenUri('https://evil.example/note', 'Vault'), '');
+  assert.equal(adapter.buildObsidianOpenUri('/etc/passwd', 'Vault'), '');
+  assert.equal(adapter.buildObsidianOpenUri('C:\\Windows\\note.md', 'Vault'), '');
+  assert.equal(adapter.buildObsidianOpenUri('note.md\njavascript:alert(1)', 'Vault'), '');
+  assert.equal(
+    adapter.buildObsidianOpenUri('05-Areas/People/Internal/X.md', 'vault/../evil'),
+    'obsidian://open?file=05-Areas%2FPeople%2FInternal%2FX.md',
+  );
+});
+
+test('formatSourceLinks ignores injected non-obsidian URIs', () => {
+  const adapter = loadAdapter();
+  assert.equal(
+    adapter.formatSourceLinks({
+      source_links: [
+        { label: 'Nope', uri: 'javascript:alert(1)' },
+        { label: 'Also no', uri: 'obsidian://open?file=ok.md\njavascript:alert(1)' },
+        { label: 'Extra query', uri: 'obsidian://open?file=ok.md&redirect=https://evil.example' },
+        { label: 'Hash', uri: 'obsidian://open?file=ok.md#javascript:alert(1)' },
+      ],
+    }),
+    '',
+  );
+});
+
 test('toExternal preserves the locked P0 through P3 priority mapping', () => {
   const adapter = loadAdapter();
   assert.deepEqual(

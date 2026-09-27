@@ -33,6 +33,7 @@ sys.path.insert(0, str(RUNNER_ROOT))
 
 from core.transaction.fsync import fchmod
 from core.utils import dex_logger, release_channel
+from core.utils.os_flags import binary_write_flags
 
 SCHEMA_VERSION = 1
 HISTORY_LIMIT = 120
@@ -100,6 +101,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/portable_contract.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/dex_logger.py"),
+    Path("core/utils/os_flags.py"),
     Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),
     Path("core/utils/trust_registry.py"),
@@ -932,7 +934,9 @@ def _copy_runner_file(
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination_fd = os.open(
             destination,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | no_follow | close_on_exec,
+            binary_write_flags(
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | no_follow | close_on_exec
+            ),
             0o600,
         )
         with (
@@ -942,7 +946,9 @@ def _copy_runner_file(
             shutil.copyfileobj(source_handle, destination_handle)
         fchmod(destination_fd, stat.S_IMODE(source_stat.st_mode), path=destination)
     except OSError as exc:
-        raise JourneySafetySkip(f"tracked runner file could not be copied: {relative}") from exc
+        raise JourneySafetySkip(
+            f"tracked runner file could not be copied: {relative}: {exc}"
+        ) from exc
     finally:
         for descriptor in (destination_fd, source_fd):
             if descriptor is not None:
