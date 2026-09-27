@@ -36,10 +36,12 @@ A **vault** is the folder containing your personal Dex notes and configuration.
 curl -fsSL https://heydex.ai/install.sh | bash
 ```
 
-**Windows — PowerShell (preview):**
+**Windows — Git Bash (preview):**
 
-```powershell
-irm https://heydex.ai/install.ps1 | iex
+Clone the official Dex release, open **Git Bash** in that folder, and run:
+
+```bash
+bash ./install.sh
 ```
 
 Windows support is a **preview** while we finish the Windows-specific work
@@ -47,7 +49,8 @@ Windows support is a **preview** while we finish the Windows-specific work
 first setup work; updating, undoing an update, and connected-service keys are still being
 completed. Requirements: Windows 10 22H2 or 11, Python 3.12 or 3.13 from python.org (not the
 Microsoft Store), Git for Windows installed for all users, and a Dex folder on your local `C:`
-drive. Calendar and background sync remain Mac-only.
+drive. Calendar and background sync remain Mac-only. Do not use a PowerShell one-liner from
+heydex.ai — that still serves an older script.
 
 Then open the Dex folder in Claude Code or Cursor and say **"hi"**. Dex guides you through your role and priorities. [Installation help](https://heydex.ai/install/). If setup stops, keep the error message and use the help below; some prerequisites may already have been installed.
 
@@ -87,13 +90,13 @@ Dex's update service previews product changes and protects personal content thro
 
 | Area | Status today |
 | --- | --- |
-| Install (`install.ps1`, Git Bash `install.sh`) | Preview — works on a clean Windows 11 with python.org 3.12/3.13 |
+| Install (Git Bash `install.sh`) | Preview — works on a clean Windows 11 with python.org 3.12/3.13 |
 | First setup and daily use (notes, tasks, MCP tools) | Preview |
 | `/dex-update` and `/dex-rollback` | Not yet — a fix for how Dex read and wrote its own record files on Windows is in progress |
 | Connected-service keys (`.env`) and trusted local MCPs | Not yet — Windows file-permission checks are in progress |
 | Older vaults (before v1.80) moving to the current update engine | Not on Windows — start from a fresh install |
 | Calendar, background meeting sync, launch-at-login jobs | Mac only |
-| Supported shells and Pythons | PowerShell or Git Bash; python.org Python 3.12/3.13. Not supported: Cygwin, Microsoft Store Python, WSL folders under `/mnt` |
+| Supported shells and Pythons | Git Bash; python.org Python 3.12/3.13. Not supported: Cygwin, Microsoft Store Python, WSL folders under `/mnt` |
 
 ## Guides
 
@@ -222,8 +225,8 @@ python3 --version
 The repository installer is a **Bash script**. Run it from the Dex folder you opened in Step 1.
 
 - **Mac:** Open Cursor's **View → Terminal** in that folder.
-- **Windows (preview):** Use **Git Bash**, supplied by Git for Windows, in that folder, or
-  PowerShell with the [Quick install](#quick-install-claude-code-or-cursor) route. Git Bash
+- **Windows (preview):** Use **Git Bash**, supplied by Git for Windows, in that folder.
+  Clone the official Dex release first, then run `bash ./install.sh`. Git Bash
   must find the python.org Python (`python --version` prints 3.12 or 3.13); Cygwin and
   Microsoft Store Python are not supported. The installer checks this and tells you what to
   change.
@@ -298,7 +301,7 @@ xcode-select --install
 
 ---
 
-### Windows (Git Bash or PowerShell): "python is not recognized" or "pip is not recognized"
+### Windows (Git Bash): "python is not recognized" or "pip is not recognized"
 
 This means Python wasn't added to your PATH during installation.
 
@@ -310,11 +313,11 @@ This means Python wasn't added to your PATH during installation.
 4. ⚠️ **CHECK THE BOX: "Add Python to PATH"** (on first screen)
 5. Complete installation
 6. **Restart your terminal completely** (close and reopen)
-7. Return to **Git Bash or PowerShell** in your Dex folder and run the installer again
+7. Return to **Git Bash** in your Dex folder and run `bash ./install.sh` again
 
 ---
 
-### Windows (Git Bash or PowerShell): "git is not recognized"
+### Windows (Git Bash): "git is not recognized"
 
 Git for Windows isn't installed.
 
@@ -323,7 +326,7 @@ Git for Windows isn't installed.
 1. Download from [git-scm.com/download/win](https://git-scm.com/download/win)
 2. Run installer with default options
 3. **Restart your terminal**
-4. Open **Git Bash or PowerShell** in your Dex folder and run the installer again
+4. Open **Git Bash** in your Dex folder and run `bash ./install.sh` again
 
 ---
 
@@ -345,12 +348,12 @@ python3 -m venv .venv
 .venv/bin/pip install -r core/mcp/requirements.txt
 ```
 
-**Windows — PowerShell, in your Dex folder:**
+**Windows — Git Bash, in your Dex folder:**
 
-```powershell
+```bash
 python -m venv .venv
-.venv\Scripts\pip install --upgrade pip
-.venv\Scripts\pip install -r core/mcp/requirements.txt
+.venv/Scripts/pip install --upgrade pip
+.venv/Scripts/pip install -r core/mcp/requirements.txt
 ```
 
 ---

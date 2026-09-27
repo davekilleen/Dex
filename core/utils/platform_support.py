@@ -19,7 +19,7 @@ from typing import Any, Mapping, Sequence
 
 WINDOWS_PYTHON_MIN = (3, 12)
 WINDOWS_PYTHON_RECOMMENDED_MAX = (3, 13)
-POSIX_PYTHON_MIN = (3, 10)
+POSIX_PYTHON_MIN = (3, 11)
 
 MESSAGE_W1 = (
     "Dex needs Python 3.12 or 3.13 on Windows. You have {version}. Install "
@@ -33,19 +33,15 @@ MESSAGE_W2 = (
     "Store version; Dex will use the one from python.org."
 )
 MESSAGE_W3 = (
-    "Dex on Windows runs in PowerShell or Git Bash with a Python from "
-    "python.org. Cygwin isn't supported. Open Git Bash (installed with Git for "
-    "Windows) or PowerShell in your Dex folder and run the installer there."
+    "Dex on Windows runs in Git Bash with a Python from python.org. "
+    "Cygwin isn't supported. Open Git Bash (installed with Git for "
+    "Windows) in your Dex folder and run bash ./install.sh."
 )
 MESSAGE_W4 = (
     "Your Dex folder is on the Windows side of WSL (/mnt/...). Dex can't "
     "keep its files safe there. Either keep the folder in Linux (for example "
-    "~/Dex) and use Dex from WSL, or install Dex natively in Windows PowerShell."
-)
-MESSAGE_W5 = (
-    "Dex needs Git installed for all users (the default 'Install for all users' "
-    "option of Git for Windows, which places it under Program Files). Dex found "
-    "a per-user Git but will not use it."
+    "~/Dex) and use Dex from WSL, or clone the official Dex release on "
+    "Windows and run bash ./install.sh from Git Bash."
 )
 MESSAGE_W6 = (
     "Your Dex folder is on a drive that doesn't keep file permissions "
@@ -314,6 +310,8 @@ def _windows_volume_facts(path: str) -> tuple[str | None, bool | None, bool | No
     if not drive.endswith("\\"):
         drive = drive + "\\"
     drive_type = int(GetDriveTypeW(drive))
+    if drive_type in {0, 1}:  # DRIVE_UNKNOWN, DRIVE_NO_ROOT_DIR
+        return None, None, None
     remote = drive_type == 4  # DRIVE_REMOTE
     filesystem = None
     acls = None
@@ -376,6 +374,11 @@ def _volume_unsupported(volume: VaultVolume) -> SupportMessage | None:
         return SupportMessage(
             id="W6",
             text=MESSAGE_W6.format(name="the folder", kind="a network drive"),
+        )
+    if volume.filesystem is None:
+        return SupportMessage(
+            id="W6",
+            text=MESSAGE_W6.format(name="the folder", kind="an unknown drive"),
         )
     filesystem = (volume.filesystem or "").upper()
     if filesystem in {"FAT", "FAT32", "EXFAT"}:

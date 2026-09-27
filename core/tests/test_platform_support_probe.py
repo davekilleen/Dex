@@ -187,6 +187,20 @@ def test_sync_roots_detected_from_onedrive_env_and_path() -> None:
     assert "Dropbox" in from_path.messages[0].text
 
 
+def test_unknown_windows_drive_is_unsupported_w6() -> None:
+    report = _probe(
+        sys_platform="win32",
+        version_info=(3, 12, 0),
+        base_prefix=r"C:\Python312",
+        vault_root=r"C:\Dex",
+        environ={},
+        volume=support.VaultVolume(filesystem=None, acls=None, remote=False),
+    )
+    assert report.verdict == "unsupported"
+    assert report.message_ids() == ["W6"]
+    assert "unknown drive" in report.messages[0].text
+
+
 def test_fat_and_network_drives_are_unsupported_w6() -> None:
     fat = _probe(
         sys_platform="win32",
@@ -240,7 +254,7 @@ def test_macos_and_linux_stay_supported() -> None:
     assert mac.verdict == "supported"
     linux = _probe(
         sys_platform="linux",
-        version_info=(3, 10, 12),
+        version_info=(3, 11, 9),
         base_prefix="/usr",
         vault_root="/home/joe/Dex",
         proc_version="Linux version 6.8.0",
@@ -250,6 +264,28 @@ def test_macos_and_linux_stay_supported() -> None:
     assert linux.family == "linux"
     assert linux.python_ok is True
     assert linux.verdict == "supported"
+
+
+def test_posix_python_310_is_below_the_311_floor() -> None:
+    linux = _probe(
+        sys_platform="linux",
+        version_info=(3, 10, 12),
+        base_prefix="/usr",
+        vault_root="/home/joe/Dex",
+        proc_version="Linux version 6.8.0",
+        wsl_interop=False,
+        uname_s="Linux",
+    )
+    assert linux.python_ok is False
+    mac = _probe(
+        sys_platform="darwin",
+        version_info=(3, 10, 14),
+        base_prefix="/usr/local",
+        vault_root="/home/joe/Dex",
+        uname_s="Darwin",
+    )
+    assert mac.python_ok is False
+    assert support.POSIX_PYTHON_MIN == (3, 11)
 
 
 def test_git_bash_uname_is_launcher_not_cygwin_refuse() -> None:
@@ -326,13 +362,18 @@ def test_module_is_importable_before_venv() -> None:
     """The installer imports this with the system Python, not the vault venv."""
     assert (REPO_ROOT / "core" / "utils" / "platform_support.py").is_file()
     assert support.WINDOWS_PYTHON_MIN == (3, 12)
+    assert support.WINDOWS_PYTHON_RECOMMENDED_MAX == (3, 13)
+    assert support.POSIX_PYTHON_MIN == (3, 11)
     payload = json.loads(json.dumps(_probe(sys_platform="darwin").to_dict()))
     assert payload["verdict"] in {"supported", "supported-with-warnings", "unsupported"}
 
 
 def test_readme_says_preview_and_lists_what_is_not_ready() -> None:
     text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "**Windows — PowerShell (preview):**" in text
+    assert "**Windows — Git Bash (preview):**" in text
+    assert "bash ./install.sh" in text
+    assert "install.ps1" not in text
+    assert "irm https://heydex.ai/install.ps1" not in text
     assert "Windows support is a **preview**" in text
     assert "## Windows support status" in text
     assert "`/dex-update` and `/dex-rollback`" in text
