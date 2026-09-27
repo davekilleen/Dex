@@ -675,6 +675,12 @@ def test_install_ps1_is_classified_as_brain() -> None:
     assert rule.ownership == "brain"
 
 
+def test_install_ps1_is_held_out_of_releases_until_installed_contracts_know_it() -> None:
+    text = (REPO_ROOT / ".distignore").read_text(encoding="utf-8")
+    assert "install.ps1" in text
+    assert "unclassified" in text
+
+
 def _windows_like_install_fixture(
     tmp_path: Path,
     *,
