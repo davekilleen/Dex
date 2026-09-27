@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import secrets
-import shutil
 import stat
 import subprocess
 import sys
@@ -21,6 +20,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
+
+from core.utils.local_git import trusted_git_binary
 
 REGISTRY_RELATIVE = Path("System/trusted-mcps.yaml")
 MAX_REGISTRY_BYTES = 64 * 1024
@@ -255,19 +256,12 @@ def _parse_registry(content: bytes) -> dict[str, TrustedMcpEntry]:
 
 
 def _git_executable() -> Path | None:
-    discovered = shutil.which("git")
-    candidates = [Path("/usr/bin/git"), Path("/bin/git")]
-    if discovered is not None:
-        candidates.append(Path(discovered))
-    seen: set[str] = set()
-    for candidate in candidates:
-        rendered = os.fspath(candidate)
-        if rendered in seen:
-            continue
-        seen.add(rendered)
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return candidate
-    return None
+    """Resolve Git via trusted_git_binary — never ambient PATH or cwd (Windows)."""
+    try:
+        return trusted_git_binary()
+    except RuntimeError:
+        # ZIP install or no trusted absolute Git: same degrade as before.
+        return None
 
 
 def _registry_is_git_tracked(vault_root: Path) -> bool | None:

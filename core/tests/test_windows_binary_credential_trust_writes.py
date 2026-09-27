@@ -9,7 +9,7 @@ from pathlib import Path, PureWindowsPath
 
 import pytest
 
-from core.utils import credential_remediation, integration_credentials, trust_registry
+from core.utils import credential_remediation, integration_credentials, local_git, trust_registry
 from core.utils.trust_registry import TrustRegistryError, normalize_vault_relative
 
 
@@ -135,3 +135,45 @@ def test_windows_name_probe_does_not_authorise(tmp_path, monkeypatch):
     assert not (root / "System/.dex").exists() or not any(
         (root / "System/.dex").rglob("*")
     )
+
+
+def test_git_executable_uses_trusted_git_binary(monkeypatch):
+    sentinel = Path("/usr/bin/git")
+    monkeypatch.setattr(trust_registry, "trusted_git_binary", lambda: sentinel)
+    assert trust_registry._git_executable() == sentinel
+
+
+def test_git_executable_maps_unavailable_trusted_git_to_none(monkeypatch):
+    def _unavailable() -> Path:
+        raise RuntimeError("trusted absolute local Git is unavailable")
+
+    monkeypatch.setattr(trust_registry, "trusted_git_binary", _unavailable)
+    assert trust_registry._git_executable() is None
+
+
+def test_git_executable_ignores_cwd_and_ambient_path_shims(tmp_path, monkeypatch):
+    """Windows shutil.which('git') searches cwd first; this must not."""
+    cwd = tmp_path / "cwd"
+    path_dir = tmp_path / "on-path"
+    cwd.mkdir()
+    path_dir.mkdir()
+    for directory in (cwd, path_dir):
+        shim = directory / "git"
+        shim.write_text("#!/bin/sh\nexit 99\n")
+        shim.chmod(0o755)
+
+    monkeypatch.chdir(cwd)
+    monkeypatch.setenv("PATH", str(path_dir))
+    original_is_file = Path.is_file
+
+    def hide_fhs_git(path: Path) -> bool:
+        if Path(path) in {Path("/usr/bin/git"), Path("/bin/git")}:
+            return False
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", hide_fhs_git)
+    monkeypatch.setattr(os, "defpath", str(tmp_path / "empty-defpath"))
+
+    assert trust_registry._git_executable() is None
+    with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
+        local_git.trusted_git_binary()

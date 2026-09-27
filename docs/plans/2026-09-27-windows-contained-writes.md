@@ -111,6 +111,30 @@ readback — another reason to refuse until the directory chain exists.
 
 ---
 
+## 4. Git resolution (Windows PATH / cwd)
+
+`trust_registry._git_executable` used `shutil.which("git")` with no path
+restriction. On Windows that searches the current directory before PATH, so a
+planted `git.exe` in cwd would win.
+
+This PR calls `trusted_git_binary()` from `core.utils.local_git` (the helper
+already on main). `RuntimeError` (no trusted absolute Git) maps to `None` —
+the same ZIP-install degrade as before. A present registry still fail-closes
+when Git is indeterminate.
+
+**Depends on draft PR #749** for the Windows Known Folder candidate list and
+Cygwin `/usr/bin/git` distrust. #749 is not merged as of this note; this
+change uses main's resolver (`/usr/bin/git`, `/bin/git`, then
+`shutil.which("git", path=os.defpath)`). When #749 lands, this call site
+picks up the hardened resolver with no further trust_registry change.
+
+The three `protect_trust_registry.py` copies still have their own PATH
+resolver. They are out of this PR (digest-identical copies; do not edit
+one without the others, and they are not the Windows cwd-search surface
+Dex Security called out).
+
+---
+
 ## What this PR implements
 
 - POSIX: same flags, same mode/owner checks, same hashes, same exclusive
@@ -119,4 +143,6 @@ readback — another reason to refuse until the directory chain exists.
 - Windows (and any host missing `O_NOFOLLOW` / `dir_fd` / `fchmod`): fail
   closed with a logged reason (`os.name`, which primitive is missing). No
   secret or registry bytes in the log. No crash on `fchmod` / `getuid`.
+- Git lookup in `trust_registry` goes through `trusted_git_binary()`; cwd
+  and ambient PATH shims are ignored.
 - No `O_BINARY`, no digest change, no skipped POSIX control.
