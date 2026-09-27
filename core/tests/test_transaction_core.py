@@ -1423,6 +1423,19 @@ def test_verify_checks_mode_as_well_as_bytes(tmp_path: Path) -> None:
     assert not (vault / "System/.installed-files.manifest").exists()  # rolled back
 
 
+def test_posix_permission_bits_apply_follows_os_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Windows skip is keyed on os.name. Do not construct Path here —
+    setting os.name to 'nt' on POSIX makes pathlib refuse WindowsPath."""
+    from core.transaction import engine as engine_module
+
+    monkeypatch.setattr(engine_module.os, "name", "nt")
+    assert engine_module._posix_permission_bits_apply() is False
+    monkeypatch.setattr(engine_module.os, "name", "posix")
+    assert engine_module._posix_permission_bits_apply() is True
+
+
 def test_windows_mode_mismatch_does_not_fail_verify(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1430,7 +1443,7 @@ def test_windows_mode_mismatch_does_not_fail_verify(
     must not fail verify or roll back the user's new files."""
     from core.transaction import engine as engine_module
 
-    monkeypatch.setattr(engine_module.os, "name", "nt")
+    monkeypatch.setattr(engine_module, "_posix_permission_bits_apply", lambda: False)
     vault = _vault(tmp_path)
     tx = Transaction.begin(vault, [PlanEntry("System/.installed-files.manifest", b"x\n", mode=0o600)])
     original_verify = tx._verify_phase
@@ -1451,7 +1464,7 @@ def test_windows_still_fails_verify_when_bytes_do_not_match(
     """Relaxing POSIX mode checks on Windows must not skip byte verify."""
     from core.transaction import engine as engine_module
 
-    monkeypatch.setattr(engine_module.os, "name", "nt")
+    monkeypatch.setattr(engine_module, "_posix_permission_bits_apply", lambda: False)
     vault = _vault(tmp_path)
     target = vault / "System/.installed-files.manifest"
     target.write_bytes(b"old manifest\n")
@@ -1472,7 +1485,7 @@ def test_windows_deletion_precondition_ignores_permission_mode(
     """A Windows-synthetic mode must not look like the file changed."""
     from core.transaction import engine as engine_module
 
-    monkeypatch.setattr(engine_module.os, "name", "nt")
+    monkeypatch.setattr(engine_module, "_posix_permission_bits_apply", lambda: False)
     vault = _vault(tmp_path)
     target = vault / "README.md"
     target.write_bytes(b"shipped bytes\n")
@@ -1495,7 +1508,7 @@ def test_posix_deletion_precondition_still_checks_permission_mode(
     """macOS/Linux keep the load-bearing mode check on deletions."""
     from core.transaction import engine as engine_module
 
-    monkeypatch.setattr(engine_module.os, "name", "posix")
+    monkeypatch.setattr(engine_module, "_posix_permission_bits_apply", lambda: True)
     vault = _vault(tmp_path)
     target = vault / "README.md"
     target.write_bytes(b"shipped bytes\n")
