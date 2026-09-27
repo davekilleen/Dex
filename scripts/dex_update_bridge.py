@@ -1764,8 +1764,7 @@ def _installed_python(vault_root: Path) -> Path | None:
     The foundation lifecycle service needs the same runtime dependencies that
     the historical Dex installer already put in ``.venv``.  The bridge never
     downloads Python packages at update time.  This is deliberately a POSIX
-    seam; Windows vaults never need this bridge (they are created
-    post-foundation).
+    seam; Windows vaults never need this bridge (they are created post-foundation).
     """
     venv = vault_root / ".venv"
     if venv.is_symlink() or (venv.exists() and not venv.is_dir()):

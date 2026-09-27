@@ -89,7 +89,7 @@ def test_wsl_mnt_vault_prints_w4_and_exits_one(tmp_path: Path) -> None:
         env={
             "DEX_TEST_UNAME": "Linux",
             "DEX_TEST_PROC_VERSION": "Linux version 5.15.0-microsoft-standard-WSL2",
-            "DEX_TEST_VAULT_PATH": "/mnt/c/Users/Joe/Documents/Dex",
+            "DEX_TEST_VAULT_PATH": "/mnt/c/Documents/Dex",
         },
     )
     assert result.returncode == 1, result.stdout + result.stderr

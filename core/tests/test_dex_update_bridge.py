@@ -1582,7 +1582,8 @@ def test_windows_bridge_message_names_old_vaults_and_a_fresh_install(
 
 def test_installed_python_docstring_does_not_promise_a_windows_bridge() -> None:
     doc = bridge._installed_python.__doc__ or ""
-    assert "Windows vaults never need this bridge (they are created post-foundation)" in doc
+    collapsed = " ".join(doc.split())
+    assert "Windows vaults never need this bridge (they are created post-foundation)" in collapsed
     assert "Windows gets its own reviewed bridge" not in doc
 
 

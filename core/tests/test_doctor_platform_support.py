@@ -69,7 +69,10 @@ def test_python_env_uses_scripts_python_on_windows(monkeypatch, context) -> None
     monkeypatch.setattr(doctor.os, "name", "nt")
     missing = doctor._probe_python_env(context)
     assert missing.verdict == "BROKEN"
-    assert str(Path(".venv") / "Scripts" / "python.exe") in missing.detail.replace("\\", "/") or (
+    # Build the expected fragment as text. pathlib.Path follows os.name, and
+    # this test has already patched os.name to "nt".
+    detail = missing.detail.replace("\\", "/")
+    assert ".venv/Scripts/python.exe" in detail or (
         "Scripts" in missing.detail and "python.exe" in missing.detail
     )
 

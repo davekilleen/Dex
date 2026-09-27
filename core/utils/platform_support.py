@@ -130,7 +130,9 @@ class SupportReport:
 
 
 def _norm(value: str) -> str:
-    return os.path.normcase(value).replace("\\", "/")
+    # Always lowercase. os.path.normcase only folds case on Windows, and the
+    # probe tests (and Linux CI) inject Windows paths on POSIX.
+    return os.path.normcase(value).replace("\\", "/").lower()
 
 
 def _version_tuple(info: Sequence[int] | None) -> tuple[int, int]:

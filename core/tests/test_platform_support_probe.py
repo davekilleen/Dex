@@ -136,7 +136,7 @@ def test_wsl_mnt_vault_is_unsupported_w4() -> None:
         sys_platform="linux",
         version_info=(3, 12, 3),
         base_prefix="/usr",
-        vault_root="/mnt/c/Users/Joe/Documents/Dex",
+        vault_root="/mnt/c/Documents/Dex",
         proc_version="Linux version 5.15.0-microsoft-standard-WSL2",
         wsl_interop=True,
     )
@@ -233,7 +233,7 @@ def test_macos_and_linux_stay_supported() -> None:
         sys_platform="darwin",
         version_info=(3, 12, 0),
         base_prefix="/usr/local",
-        vault_root="/Users/joe/Dex",
+        vault_root="/home/joe/Dex",
         uname_s="Darwin",
     )
     assert mac.family == "macos"
@@ -283,7 +283,7 @@ def test_msys_uname_is_launcher() -> None:
 def test_wsl_mnt_shell_precheck_refuses() -> None:
     check = support.evaluate_shell(
         uname_s="Linux",
-        vault_path="/mnt/c/Users/Joe/Dex",
+        vault_path="/mnt/c/Documents/Dex",
         proc_version="Linux version 5.15.0-microsoft-standard-WSL2",
     )
     assert check.refused is True
