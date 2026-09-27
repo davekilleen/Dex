@@ -398,10 +398,10 @@ def _detect_adoption_receipts(vault_root: Path) -> tuple[
         )
         return findings, blocking
     for path in sorted(directory.iterdir(), key=lambda item: item.name):
-        if path.name.startswith("."):
+        if path.name.startswith(".") or not path.name.endswith(".receipt.json"):
             continue
         relative = path.relative_to(vault_root).as_posix()
-        if path.is_symlink() or not path.is_file() or not path.name.endswith(".receipt.json"):
+        if path.is_symlink() or not path.is_file():
             blocking.append(
                 ByteModeFinding(relative, FINDING_UNEXPLAINED, ACTION_BLOCKED, UNEXPLAINED_REASON)
             )
@@ -455,10 +455,10 @@ def _detect_topology_receipts(vault_root: Path) -> tuple[
         )
         return findings, blocking
     for path in sorted(directory.iterdir(), key=lambda item: item.name):
-        if path.name.startswith("."):
+        if path.name.startswith(".") or not path.name.endswith(".receipt.json"):
             continue
         relative = path.relative_to(vault_root).as_posix()
-        if path.is_symlink() or not path.is_file() or not path.name.endswith(".receipt.json"):
+        if path.is_symlink() or not path.is_file():
             blocking.append(
                 ByteModeFinding(relative, FINDING_UNEXPLAINED, ACTION_BLOCKED, UNEXPLAINED_REASON)
             )
@@ -510,10 +510,10 @@ def _detect_ledger_events(vault_root: Path) -> list[ByteModeFinding]:
         )
         return blocking
     for path in sorted(events_dir.iterdir(), key=lambda item: item.name):
-        if path.name.startswith("."):
+        if path.name.startswith(".") or not path.name.endswith(".json"):
             continue
         relative = path.relative_to(vault_root).as_posix()
-        if path.is_symlink() or not path.is_file() or not path.name.endswith(".json"):
+        if path.is_symlink() or not path.is_file():
             blocking.append(
                 ByteModeFinding(relative, FINDING_UNEXPLAINED, ACTION_BLOCKED, UNEXPLAINED_REASON)
             )
@@ -882,9 +882,14 @@ def ensure(vault_root: Path) -> ByteModeReport:
     if marker_is_binary_for_this_platform(root):
         return ByteModeReport(state="binary")
     scanned = detect(root)
-    if scanned.blocking:
-        raise ByteModeBlocked(scanned.blocking[0].record, root)
-    if scanned.repairable:
+    ledger_blocks = [
+        finding for finding in scanned.blocking if finding.finding == FINDING_LEDGER_CRLF
+    ]
+    if ledger_blocks:
+        raise ByteModeBlocked(ledger_blocks[0].record, root)
+    # Unexplained records are left to the existing readers so their messages
+    # stay the same. Only an exact trailing-CRLF finding is this repair's job.
+    if scanned.repairable and not scanned.blocking:
         apply(root, scanned)
         return detect(root)
     return scanned

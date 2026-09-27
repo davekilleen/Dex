@@ -94,6 +94,19 @@ def test_interior_crlf_and_changed_field_are_blocking(tmp_path: Path) -> None:
     assert report3.blocking[0].finding == FINDING_UNEXPLAINED
 
 
+def test_adoption_profiles_directory_is_not_a_finding(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    write_receipt(vault, receipt_bytes())
+    profile = vault / "System/.dex/adoptions/profiles/davekilleen.json"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_bytes(b'{"ok":true}\n')
+
+    report = detect(vault)
+    assert report.findings == []
+    assert report.blocking == []
+
+
 def test_canonical_records_are_not_findings(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()
