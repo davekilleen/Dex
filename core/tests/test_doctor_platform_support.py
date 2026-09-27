@@ -46,6 +46,33 @@ def test_platform_support_unsupported_is_broken_tier_3(monkeypatch, context) -> 
     assert support.MESSAGE_W3 in result.detail
 
 
+def test_platform_support_posix_python_310_is_broken(monkeypatch, context) -> None:
+    monkeypatch.setattr(
+        support,
+        "probe",
+        lambda **_kwargs: support.SupportReport(
+            family="linux",
+            shell_hint="uname=Linux",
+            python_source="other",
+            python_ok=False,
+            vault_volume={},
+            verdict="unsupported",
+            messages=[
+                support.SupportMessage(
+                    id="P1",
+                    text=support.MESSAGE_POSIX_PYTHON.format(version="3.10.12"),
+                )
+            ],
+        ),
+    )
+    result = doctor._probe_platform_support(context)
+    assert result.verdict == "BROKEN"
+    assert result.heal is not None
+    assert result.heal.tier == 3
+    assert "Python 3.11 or newer" in result.detail
+    assert "You have 3.10.12" in result.detail
+
+
 def test_platform_support_warnings_stay_ok(monkeypatch, context) -> None:
     monkeypatch.setattr(
         support,

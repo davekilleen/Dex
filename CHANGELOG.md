@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+The optional Windows setup check now runs in Git Bash, and Doctor on a Mac or Linux computer treats Python older than 3.11 as unsupported.
+
 ### We now say plainly what works on Windows
 
 Windows setup pages made a one-line install look finished and ready. It is not: install and first use can work, but updating, undoing an update, and connected-service keys are still being completed.
@@ -28,7 +30,7 @@ A Windows 11 install from Git Bash could stop without a usable reason. Dex treat
 * **Python from python.org is found.** Setup tries every usual Windows Python command and checks the version before continuing.
 * **The fake Microsoft Store Python is skipped.** Windows sometimes puts a `python3` on the path that only opens the Store. Setup ignores that placeholder, checks the version on a real Python, and continues with that one.
 * **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
-* **Setup copies the official release.** The Windows installer takes the official release only, not the latest development copy.
+* **Setup copies the official release.** Clone the official release, then run `bash ./install.sh` from Git Bash — that copy, not the latest development one.
 * **On Windows, run setup from Git Bash.** After you clone the official release, open Git Bash in that folder and run `bash ./install.sh`. That is the same installer Mac uses, and it is the file the official release includes.
 * **Only the listed packages are installed.** Setup installs only the Node and Python package versions Dex listed, including the Windows and Mac extras those packages need.
 * **Setup needs Python 3.11 or newer.** The listed packages no longer install on 3.10, so setup says so instead of accepting a version it cannot finish.
