@@ -118,6 +118,7 @@ jobs:
         timeout-minutes: 12
         run: |
           set -euo pipefail
+          pip install pytest pyyaml python-dateutil requests "mcp>=1.0.0,<2.0.0"
           python -m pytest \
             core/tests/test_transaction_core.py \
             core/tests/test_adoption_transaction.py \

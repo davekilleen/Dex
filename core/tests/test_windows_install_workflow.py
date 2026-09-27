@@ -186,6 +186,7 @@ def test_runs_real_install_paths_and_engine_suites() -> None:
         for path in ENGINE_TEST_FILES:
             assert path in engine["run"]
         assert '-m "not fuzz"' in engine["run"]
+    assert "pip install pytest" in engine_313["run"]
 
 
 def test_journey_script_covers_store_stub_spaced_path_and_both_ostypes() -> None:
