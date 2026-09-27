@@ -881,6 +881,81 @@ def test_ordinary_transaction_still_cannot_write_release_anchor(
     assert not (vault / path).exists()
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "System/.installed-files.manifest",
+        "System/.release-catalog.json",
+        "core/lifecycle/catalog/release-hashes.json",
+        "System/.dex/established-baseline.receipt.json",
+    ],
+)
+@pytest.mark.parametrize("exists", [False, True])
+def test_establish_baseline_operation_allows_only_exact_seam_files(
+    path: str, exists: bool
+) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=exists,
+        operation="establish-baseline",
+    )
+
+    assert verdict.allowed is True
+    assert verdict.action == "write-establish-baseline"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "core/x.py",
+        "05-Areas/People/Jane_Doe.md",
+        "System/.dex/release-anchor.json",
+        "CLAUDE-custom.md",
+        "core/lifecycle/catalog/release-hashes.json.bak",
+        "System/.dex/established-baseline.receipt.json.bak",
+    ],
+)
+def test_establish_baseline_operation_refuses_everything_outside_the_seam(
+    path: str,
+) -> None:
+    verdict = portable_contract.update_write_verdict(
+        path,
+        exists=False,
+        operation="establish-baseline",
+    )
+
+    assert verdict.allowed is False
+    assert verdict.action == "outside-establish-baseline"
+
+
+def test_establish_baseline_contract_view_is_frozen() -> None:
+    assert portable_contract.build_contract_document()["establish_baseline"] == {
+        "version": 0,
+        "action": "write-establish-baseline",
+        "seam_paths": [
+            "System/.installed-files.manifest",
+            "System/.release-catalog.json",
+            "core/lifecycle/catalog/release-hashes.json",
+            "System/.dex/established-baseline.receipt.json",
+        ],
+    }
+
+
+def test_ordinary_transaction_still_cannot_write_establish_baseline_receipt(
+    tmp_path: Path,
+) -> None:
+    from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+
+    vault = tmp_path / "vault"
+    (vault / "System/.dex").mkdir(parents=True)
+    path = "System/.dex/established-baseline.receipt.json"
+
+    with pytest.raises(PlanRejected, match="the ownership contract forbids writing"):
+        Transaction.begin(vault, [PlanEntry(path, b"{}\n")])
+
+    assert not (vault / path).exists()
+
+
 def test_legacy_shipped_runtime_surfaces_the_baseline_debt() -> None:
     debt = portable_contract.legacy_shipped_runtime(_tracked_paths())
     # Runtime debt still exists, but untrack-v1 no longer ships personal
