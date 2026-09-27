@@ -20,6 +20,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _probe(**kwargs):
+    # Windows fixtures default to AMD64 so a macOS ARM CI host cannot leak W9
+    # into tests that are not about ARM.
+    if kwargs.get("sys_platform") == "win32" and "machine" not in kwargs:
+        kwargs["machine"] = "AMD64"
     return support.probe(**kwargs)
 
 
