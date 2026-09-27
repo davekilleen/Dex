@@ -35,6 +35,10 @@ def _scan_crlf(vault: Path) -> list[str]:
     for path in root.rglob("*"):
         if not path.is_file() or path.is_symlink():
             continue
+        # install.sh transcripts use the shell's line endings. That is not
+        # a ledger write; do not treat the log as a CRLF protection failure.
+        if path.name.endswith(".log"):
+            continue
         if b"\r\n" in path.read_bytes():
             tainted.append(path.relative_to(vault).as_posix())
     return tainted
