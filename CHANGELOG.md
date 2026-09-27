@@ -9,6 +9,12 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+The Windows install check could stop with a file-lock error, even after Dex started using the Windows lock instead of the Mac one.
+
+**What this fixes for you:**
+
+* **Windows install and update history work again.** Dex was calling the Windows file lock the wrong way, so the install check failed and anything that writes the update history failed with it. The call now matches what Windows expects, and the Windows install check would catch it if this slipped again.
+
 Dex on Windows can update again after its first update
 
 On Windows, Dex's own record-keeping files had been saved with Windows line
