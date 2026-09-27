@@ -31,19 +31,30 @@ from typing import IO, Any, Callable
 
 logger = logging.getLogger(__name__)
 
-try:
-    import fcntl as _fcntl
-except ImportError:  # pragma: no cover - native Windows Python
+# Native Windows Python has no fcntl. Importing it at module load used to
+# crash dex_logger, which MCP servers wrap in try/except ImportError — so
+# health logging silently disabled. Skip the import on nt; still tolerate a
+# missing fcntl on an otherwise POSIX build.
+if os.name == "nt":  # pragma: no cover - native Windows Python
     _fcntl = None
     LOCK_SH = 1
     LOCK_EX = 2
     LOCK_NB = 4
     LOCK_UN = 8
 else:
-    LOCK_SH = _fcntl.LOCK_SH
-    LOCK_EX = _fcntl.LOCK_EX
-    LOCK_NB = _fcntl.LOCK_NB
-    LOCK_UN = _fcntl.LOCK_UN
+    try:
+        import fcntl as _fcntl
+    except ImportError:  # pragma: no cover - POSIX build without fcntl
+        _fcntl = None
+        LOCK_SH = 1
+        LOCK_EX = 2
+        LOCK_NB = 4
+        LOCK_UN = 8
+    else:
+        LOCK_SH = _fcntl.LOCK_SH
+        LOCK_EX = _fcntl.LOCK_EX
+        LOCK_NB = _fcntl.LOCK_NB
+        LOCK_UN = _fcntl.LOCK_UN
 
 # msvcrt.locking is a byte-range lock. One byte at offset 0 is the conventional
 # exclusive-only stand-in for a whole-file flock. Shared readers become

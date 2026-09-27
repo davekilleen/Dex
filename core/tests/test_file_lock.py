@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 import errno
 import logging
 import os
 import sys
 import threading
 import types
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -31,6 +33,24 @@ LEDGER_AND_SIBLINGS = (
     Path("core/utils/history_hygiene.py"),
     Path("core/utils/release_notes_sweep.py"),
     Path("core/utils/session_health.py"),
+)
+LOCK_IMPORT_MODULES = (
+    "core.utils.file_lock",
+    "core.utils.dex_logger",
+    "core.utils.session_health",
+    "core.utils.release_notes_sweep",
+    "core.utils.history_hygiene",
+    "core.health.snapshot",
+    "core.lifecycle.ledger",
+)
+MCP_HEALTH_LOGGER_IMPORTS = (
+    Path("core/mcp/work_server.py"),
+    Path("core/mcp/calendar_server.py"),
+    Path("core/mcp/analytics_server.py"),
+    Path("core/mcp/career_server.py"),
+    Path("core/mcp/resume_server.py"),
+    Path("core/mcp/dex_improvements_server.py"),
+    Path("core/mcp/update_checker.py"),
 )
 
 
@@ -155,8 +175,91 @@ def _install_win32(
 
 def test_ledger_and_siblings_do_not_import_fcntl() -> None:
     for path in LEDGER_AND_SIBLINGS:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                assert all(alias.name != "fcntl" for alias in node.names), path
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "fcntl", path
+
+
+@pytest.fixture
+def fcntl_missing() -> Iterator[None]:
+    """Reload lock users as if this were native Windows Python (no fcntl)."""
+    originals = {name: sys.modules.get(name) for name in LOCK_IMPORT_MODULES}
+    original_fcntl = sys.modules.get("fcntl")
+    sys.modules["fcntl"] = None  # type: ignore[assignment]
+    for name in LOCK_IMPORT_MODULES:
+        sys.modules.pop(name, None)
+    try:
+        yield
+    finally:
+        if original_fcntl is not None:
+            sys.modules["fcntl"] = original_fcntl
+        else:
+            sys.modules.pop("fcntl", None)
+        for name, module in originals.items():
+            if module is not None:
+                sys.modules[name] = module
+            else:
+                sys.modules.pop(name, None)
+
+
+def test_shared_helper_imports_when_fcntl_is_missing(fcntl_missing) -> None:
+    import core.utils.file_lock as reloaded
+
+    assert reloaded._fcntl is None
+    assert reloaded.LOCK_SH == 1
+    assert reloaded.LOCK_EX == 2
+    assert reloaded.LOCK_NB == 4
+    assert reloaded.LOCK_UN == 8
+
+
+def test_sibling_lock_modules_import_when_fcntl_is_missing(fcntl_missing) -> None:
+    import core.health.snapshot as snapshot
+    import core.lifecycle.ledger as ledger
+    import core.utils.dex_logger as logger
+    import core.utils.history_hygiene as history
+    import core.utils.release_notes_sweep as sweep
+    import core.utils.session_health as session
+
+    assert logger.locked is not None
+    assert snapshot.flock is not None
+    assert ledger.locked is not None
+    assert history.flock is not None
+    assert sweep.locked is not None
+    assert session.flock is not None
+
+
+def test_mcp_health_logging_stays_enabled_when_fcntl_is_missing(
+    fcntl_missing, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import core.utils.file_lock as reloaded
+
+    monkeypatch.setattr(reloaded, "flock", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+    try:
+        from core.utils.dex_logger import log_error as _log_health_error
+        from core.utils.dex_logger import mark_healthy as _mark_healthy
+
+        has_health = True
+    except ImportError:
+        has_health = False
+
+    assert has_health is True
+    _mark_healthy("work-mcp")
+    _log_health_error("work-mcp", "windows fcntl must not disable this")
+    queue = tmp_path / ".logs" / "error-queue.json"
+    assert queue.is_file()
+    assert "windows fcntl must not disable this" in queue.read_text(encoding="utf-8")
+
+
+def test_mcp_servers_keep_health_logger_behind_import_error() -> None:
+    for path in MCP_HEALTH_LOGGER_IMPORTS:
         text = path.read_text(encoding="utf-8")
-        assert "fcntl" not in text, f"{path} still mentions fcntl"
+        assert "from core.utils.dex_logger import log_error" in text
+        assert "except ImportError:" in text
+        assert "_HAS_HEALTH = False" in text
 
 
 def test_posix_constants_match_fcntl() -> None:
