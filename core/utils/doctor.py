@@ -38,6 +38,7 @@ from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
+from core.transaction.fsync import fchmod
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import (
     apple_mail_health,
@@ -866,7 +867,7 @@ def _tighten_env_permissions(context: DoctorContext) -> None:
             raise OSError(".env changed identity during the permission repair")
         if hasattr(os, "geteuid") and opened.st_uid != os.geteuid():
             raise OSError(".env is owned by another user")
-        os.fchmod(descriptor, 0o600)
+        fchmod(descriptor, 0o600, path=context.vault_root / ".env")
     finally:
         os.close(descriptor)
 

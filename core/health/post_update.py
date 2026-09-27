@@ -20,6 +20,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+_SOURCE_ROOT = str(Path(__file__).resolve().parents[2])
+if _SOURCE_ROOT not in sys.path:
+    sys.path.insert(0, _SOURCE_ROOT)
+
+from core.transaction.fsync import fsync_directory
+
 RECEIPT_RELATIVE = Path("System/.dex/health/post-update-canary.json")
 RECEIPT_CONTRACT = "dex.health.post-update-canary/v1"
 
@@ -47,11 +53,7 @@ def _write_receipt(vault_root: Path, receipt: dict[str, object]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, target)
-        directory = os.open(target.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        fsync_directory(target.parent)
     finally:
         temporary.unlink(missing_ok=True)
 

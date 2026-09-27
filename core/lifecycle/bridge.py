@@ -18,6 +18,7 @@ from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import Transaction
 from core.transaction.fsync import fsync_directory
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
+from core.utils.os_flags import binary_write_flags
 
 BRIDGE_CONTRACT_VERSION = 1
 ACTIVATION_VERSION = 1
@@ -359,7 +360,11 @@ def activate_vault(
     temporary = directory / f".activation.json.tmp-{os.getpid()}-{secrets.token_hex(8)}"
     descriptor: int | None = None
     try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(
+            temporary,
+            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
+            0o600,
+        )
         view = memoryview(data)
         while view:
             view = view[os.write(descriptor, view) :]

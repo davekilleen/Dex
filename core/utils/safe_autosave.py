@@ -12,6 +12,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.transaction.fsync import fsync_directory
 from core.utils.integration_credentials import (
     MAX_ACTIVE_CONFIG_BYTES,
     active_mcp_raw_residual,
@@ -56,11 +57,7 @@ def _write_durable(path: Path, data: bytes) -> None:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    fsync_directory(path.parent)
 
 
 def _read_recovery_artifact(path: Path, *, max_bytes: int) -> bytes:
