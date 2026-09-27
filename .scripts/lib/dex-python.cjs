@@ -5,7 +5,7 @@ const path = require('node:path');
 const childProcess = require('node:child_process');
 
 const capabilityCache = new Map();
-const CAPABILITY_CODE = 'import yaml,sys; assert sys.version_info >= (3,10)';
+const CAPABILITY_CODE = 'import yaml,sys; assert sys.version_info >= (3,11)';
 
 function isExecutableFile(candidate) {
   if (!candidate || !path.isAbsolute(candidate)) return false;
@@ -57,7 +57,7 @@ function broken(candidate, detail) {
     feature: 'Entity engine Python',
     feature_status: 'broken',
     success: false,
-    user_message: `DEX_PYTHON must use Python 3.10 or newer with PyYAML installed. `
+    user_message: `DEX_PYTHON must use Python 3.11 or newer with PyYAML installed. `
       + `Fix ${candidate}, then run /dex-doctor.`,
     detail,
   };
@@ -87,7 +87,7 @@ function resolveDexPythonStatus(
     feature_status: 'not_installed',
     success: false,
     user_message: 'Entity writes are paused because no safe Dex Python is available. '
-      + 'Restore the vault .venv or set DEX_PYTHON to Python 3.10+ with PyYAML, '
+      + 'Restore the vault .venv or set DEX_PYTHON to Python 3.11+ with PyYAML, '
       + 'then run /dex-doctor.',
   };
 }

@@ -712,7 +712,7 @@ function provisionMutationTargets(vaultRoot, options) {
 }
 
 const SYSTEM_PYTHON_FALLBACK = process.platform === 'win32' ? 'python' : 'python3';
-const PYTHON_MIN_VERSION_PROBE = 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 2)';
+const PYTHON_MIN_VERSION_PROBE = 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 2)';
 
 function isExecutablePython(candidate) {
   if (!candidate || !path.isAbsolute(candidate)) return false;
@@ -743,9 +743,9 @@ function systemPythonTooOld(python) {
 
 function refuseSystemPython(python) {
   throw new Error(
-    `Dex setup needs Python 3.10 or newer. ${python} is too old `
+    `Dex setup needs Python 3.11 or newer. ${python} is too old `
     + '(macOS still ships 3.9). Use the Python Dex already created in this vault, '
-    + 'or install Python 3.10+ and run setup again.',
+    + 'or install Python 3.11+ and run setup again.',
   );
 }
 

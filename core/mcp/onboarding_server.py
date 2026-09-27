@@ -26,9 +26,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-if sys.version_info < (3, 10):
+if sys.version_info < (3, 11):
     sys.stderr.write(
-        "Dex setup needs Python 3.10 or newer. "
+        "Dex setup needs Python 3.11 or newer. "
         f"This copy is {sys.version.split()[0]} ({sys.executable}). "
         "Point onboarding at the Python Dex already created in this vault, "
         "then run /setup again.\n"
