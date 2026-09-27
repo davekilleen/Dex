@@ -229,6 +229,28 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Optional Windows run of the trusted-git policy tests, including a real
+  # `git rev-parse` with no mocks. Not a required check: a red runner must not
+  # block merge or release jobs, which depend on `test-results` only.
+  windows-trusted-git:
+    runs-on: windows-latest
+    continue-on-error: true
+    env:
+      VAULT_PATH: core/tests/fixtures/vault
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
+      - name: Trusted Git on Windows (real rev-parse)
+        run: python -m pytest core/tests/test_local_git.py -q --tb=short
+
   # Recombines the three shards and enforces the whole-suite gates: total
   # coverage threshold, touched-file coverage threshold, and the merged junit
   # report that feeds release health. This is the single required verdict for
