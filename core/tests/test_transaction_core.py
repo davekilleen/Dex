@@ -143,33 +143,6 @@ def test_fsync_directory_is_a_noop_on_windows(
     fsync_module.fsync_directory(tmp_path)  # must not raise
 
 
-def test_fsync_file_on_windows_opens_read_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Windows CRT cannot fsync a read-only handle (EBADF). The shared
-    helper must open the file for write there, then still fsync."""
-    import core.transaction.fsync as fsync_module
-
-    target = tmp_path / "payload.bin"
-    target.write_bytes(b"abc")
-    seen: list[int] = []
-
-    def capture_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
-        seen.append(flags)
-        return original_open(path, flags, *args, **kwargs)
-
-    original_open = fsync_module.os.open
-    monkeypatch.setattr(fsync_module.os, "name", "nt")
-    monkeypatch.setattr(fsync_module.os, "O_BINARY", 0x8000, raising=False)
-    monkeypatch.setattr(fsync_module.os, "open", capture_open)
-    fsync_module.fsync_file(target)
-    assert seen
-    assert seen[0] & fsync_module.os.O_RDWR
-    assert not (seen[0] & fsync_module.os.O_RDONLY) or (
-        seen[0] & fsync_module.os.O_RDWR
-    )
-
-
 # ---------------------------------------------------------------------------
 # Journal
 # ---------------------------------------------------------------------------

@@ -23,7 +23,7 @@ from pathlib import Path
 
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
-from core.transaction.fsync import fsync_directory, fsync_file
+from core.transaction.fsync import fsync_directory
 from core.utils.os_flags import binary_write_flags
 
 MANIFEST_NAME = "manifest.json"
@@ -126,7 +126,11 @@ class Snapshot:
                     ).hexdigest()
                 if digest != source_digest:
                     raise SnapshotError(f"target changed while being snapshotted: {relative}")
-                fsync_file(store)
+                descriptor = os.open(store, os.O_RDONLY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
                 entries.append(
                     SnapshotEntry(
                         relative,
@@ -222,9 +226,13 @@ class Snapshot:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temporary = target.parent / f".{target.name}.tx-restore"
                 shutil.copyfile(store, temporary)
-                fsync_file(temporary)
                 if entry.mode is not None:
                     os.chmod(temporary, entry.mode)
+                descriptor = os.open(temporary, os.O_RDONLY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
                 os.replace(temporary, target)
                 fsync_directory(target.parent)
             else:

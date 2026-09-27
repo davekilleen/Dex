@@ -38,7 +38,7 @@ from pathlib import Path
 from core import portable_contract
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
-from core.transaction.fsync import fsync_directory, fsync_file
+from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
@@ -497,8 +497,12 @@ class Transaction:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.parent / f".{target.name}.tx-{self.tx_id}"
         shutil.copyfile(staged, temporary)
-        fsync_file(temporary)
         os.chmod(temporary, entry.mode)
+        descriptor = os.open(temporary, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
         if entry.expected_current_sha256 is not None:
             try:
                 self._verify_content_precondition(
