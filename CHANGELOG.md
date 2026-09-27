@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.21] — Lessons from a session are saved when you close it (2026-09-27)
+
+Dex used to say it learned from your sessions on its own. What it actually did was remember that a session ended, then wait for you to run the evening review before any of the useful bits were written down. Skip the review and the day file stayed empty of lessons. That is no longer true, and the wording now matches what happens.
+
+**What this fixes for you:**
+
+* **Closing a session keeps the obvious lessons.** When you end a Dex session the usual way, Dex writes down corrections and preferences it can spot, marked for you to confirm later.
+* **Saying "that's wrong" still saves it immediately.** You do not have to wait until you close the session. If you close a window instead of ending the session, that typed capture is the one that ran.
+* **The evening review is the careful pass, not the only pass.** `/daily-review` confirms what was already written and looks for anything the automatic pass missed.
+* **The reminder that you have lessons waiting can finally see them.** The nudge that appears when five or more are still pending now has real entries to count, not just a note that a session ended.
+
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
 The last release made the morning plan and evening review do less work. It could not say how much less, because Dex had no clock on them: the only timings anyone had were one user's, taken by hand with a stopwatch. That same user had forty open tasks, twelve marked top priority, and most of them had come out of meeting notes. Every "think about pricing" and "look into the vendor" said in a meeting had become a task. This release fixes both. Thanks again to Michelle for the numbers.

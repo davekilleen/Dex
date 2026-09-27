@@ -120,7 +120,7 @@ timer, but the notice still has to land in a turn.
 | `connection-health-checker.cjs` | `SessionStart` | Integration health glance |
 | `feedback_sweep.py` | `SessionStart` | Once-daily feedback inbox |
 | `release_notes_sweep.py` | `SessionStart` | Once-daily what’s-new notice |
-| `session-end.sh` | `SessionEnd` | Session marker / transcript reference |
+| `session-end.sh` | `SessionEnd` | Session marker, transcript reference, and candidate lesson extract |
 | `mcp_session_lifecycle.py` | `SessionEnd` / `SessionStart` | Reap this session's Google Workspace connector pair; sweep leftovers |
 | `vault-autocommit.cjs` | `SessionEnd` | Optional local Git checkpoint of vault edits |
 
