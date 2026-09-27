@@ -8,7 +8,6 @@ the current local calendar day, it runs the same bounded smoke harness.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import subprocess
@@ -16,6 +15,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
+
+from core.utils.file_lock import LOCK_EX, LOCK_NB, flock
 
 LOCK_RELATIVE_PATH = Path("System/.dex/session-health.lock")
 REPORT_RELATIVE_PATH = Path("System/.smoke-last-run.json")
@@ -183,7 +184,7 @@ def run_session_start_check(
 
     with lock_handle:
         try:
-            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock(lock_handle.fileno(), LOCK_EX | LOCK_NB)
         except BlockingIOError:
             return 0
         except OSError:
