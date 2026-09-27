@@ -1,0 +1,39 @@
+# Trigger evals for /setup-v2.
+skill: setup-v2
+
+positive:
+  - utterance: "Type /setup-v2 and walk me through the new first hour."
+    expect: fire
+  - utterance: "Try the new first hour — I want to meet Dex as a Chief of Staff, not a questionnaire."
+    expect: fire
+  - utterance: "Preview setup in this fresh folder."
+    expect: fire
+  - utterance: "/setup-v2 preview"
+    expect: fire
+  - utterance: "I already have Dex — let me try the new first hour without changing anything."
+    expect: fire
+
+negative:
+  - utterance: "Set up Dex for the first time the usual way."
+    expect: no-fire
+    route_to: setup
+    why: shipped first setup stays on /setup and FLOW.md.
+  - utterance: "Show me around — I already finished setup."
+    expect: no-fire
+    route_to: getting-started
+    why: post-onboarding tour, not a new first hour.
+
+ambiguous:
+  - utterance: "I need to set things up."
+    expect: ask
+    why: could be shipped /setup, /setup-v2, or /reset — ask which.
+
+missing_prerequisite:
+  - utterance: "/setup-v2"
+    expect: degrade
+    why: if onboarding tools are missing, one honest line and stop — do not install from chat.
+
+failure_recovery:
+  - utterance: "Finish /setup-v2 — finalize just crashed."
+    expect: honest-failure
+    why: resume from the saved mirror; do not claim the workspace is ready until finalize succeeds.

@@ -8,7 +8,7 @@ to Monday-Friday whenever the profile cannot provide a safe configuration.
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +102,33 @@ def next_working_day(d: date) -> date:
         if candidate.weekday() in working_days:
             return candidate
     return d + timedelta(days=1)
+
+
+def next_genuine_working_day(
+    d: date,
+    ooo_dates: Any = None,
+) -> date:
+    """Return the next working day after ``d``, skipping out-of-office dates.
+
+    Weekends and other non-working days follow the configured working week.
+    ``ooo_dates`` is an optional iterable of ``date`` values for all-day
+    out-of-office or holiday days. Unknown values are ignored. If every
+    candidate in the next year is blocked, fall back to ``next_working_day``.
+    """
+    blocked: set[date] = set()
+    if ooo_dates:
+        for item in ooo_dates:
+            if isinstance(item, datetime):
+                blocked.add(item.date())
+            elif isinstance(item, date):
+                blocked.add(item)
+
+    working_days = get_working_days()
+    for days_ahead in range(1, 367):
+        candidate = d + timedelta(days=days_ahead)
+        if candidate.weekday() in working_days and candidate not in blocked:
+            return candidate
+    return next_working_day(d)
 
 
 def _week_start_weekday() -> int:

@@ -514,3 +514,39 @@ def test_profile_template_ships_the_default_working_week() -> None:
         "thursday",
         "friday",
     ]
+
+
+def test_next_genuine_working_day_skips_weekends_without_ooo(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+    assert working_week.next_genuine_working_day(date(2026, 7, 31)) == date(2026, 8, 3)
+    assert working_week.next_genuine_working_day(date(2026, 8, 1)) == date(2026, 8, 3)
+    assert working_week.next_genuine_working_day(date(2026, 7, 27)) == date(2026, 7, 28)
+
+
+def test_next_genuine_working_day_skips_ooo_and_holidays(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+    assert working_week.next_genuine_working_day(
+        date(2026, 7, 27),
+        ooo_dates={date(2026, 7, 28)},
+    ) == date(2026, 7, 29)
+    assert working_week.next_genuine_working_day(
+        date(2026, 7, 31),
+        ooo_dates={date(2026, 8, 3)},
+    ) == date(2026, 8, 4)
+
+
+def test_next_working_day_stays_unaware_of_ooo(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("VAULT_PATH", str(tmp_path))
+
+    assert working_week.next_working_day(date(2026, 7, 27)) == date(2026, 7, 28)

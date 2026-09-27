@@ -6303,6 +6303,74 @@
       "changed_in": []
     },
     {
+      "id": "setup-v2",
+      "capability_class": "active-skill",
+      "impact_tier": "core",
+      "availability": "active",
+      "source": {
+        "kind": "active-skill",
+        "path": ".claude/skills/setup-v2/SKILL.md",
+        "sha256": "51094f6d00375859ddfc11d77e26859d42d214a6178dfbc1aa33edbd9c5e43ec",
+        "byte_size": 5927
+      },
+      "value": "Meet Dex as your new Chief of Staff and get a working Dex from your week, not a questionnaire.",
+      "jobs_served": [
+        "evolve-the-system-itself"
+      ],
+      "foundation_capabilities": [
+        "safe-change-recovery",
+        "compounding-correctability"
+      ],
+      "prerequisites": [
+        "An installed Dex release with its skills directory available."
+      ],
+      "trade_offs": [
+        "Results depend on the current local data and permissions the skill can inspect.",
+        "The workflow can guide and verify a bounded action, but cannot guarantee the underlying system is healthy."
+      ],
+      "evidence": [
+        {
+          "kind": "runtime-path",
+          "reference": ".claude/skills/setup-v2/SKILL.md",
+          "summary": "The shipped Setup V2 skill defines the workflow Lens is cataloguing."
+        },
+        {
+          "kind": "test",
+          "coverage": "supporting",
+          "reference": "core/tests/test_setup_v2_journey.py",
+          "summary": "The first-hour journey and preview-mode contracts are covered by dedicated tests."
+        }
+      ],
+      "brief": {
+        "goal": "Meet Dex as your new Chief of Staff and get a working Dex from your week, not a questionnaire.",
+        "method_outline": [
+          "Inspect the current local state and the person's request.",
+          "Run the Setup V2 workflow within its documented safety boundary.",
+          "Verify the intended result and report anything still needing attention."
+        ],
+        "verification_checklist": [
+          "The workflow reports what it found or changed.",
+          "The person keeps control over any consequential action."
+        ],
+        "rollback_advice": "Disable or remove the skill if it is not useful; reverse any external configuration through the same provider-controlled setup path."
+      },
+      "compatibility": {
+        "host_requirements": [
+          "skills-directory"
+        ],
+        "needs_hooks": false,
+        "needs_mcp": false,
+        "platforms": [
+          "macos",
+          "linux",
+          "windows"
+        ]
+      },
+      "docs_url": "https://github.com/davekilleen/Dex",
+      "since_release": "1.97.20",
+      "changed_in": []
+    },
+    {
       "id": "skill-score",
       "capability_class": "active-skill",
       "impact_tier": "high",
