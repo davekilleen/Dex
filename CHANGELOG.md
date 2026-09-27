@@ -7,7 +7,9 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.21] — Lessons from a session are saved when you close it (2026-09-27)
+## [Unreleased]
+
+### Lessons from a session are saved when you close it
 
 Dex used to say it learned from your sessions on its own. What it actually did was remember that a session ended, then wait for you to run the evening review before any of the useful bits were written down. Skip the review and the day file stayed empty of lessons. That is no longer true, and the wording now matches what happens.
 
