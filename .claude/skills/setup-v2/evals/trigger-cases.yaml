@@ -8,6 +8,10 @@ positive:
     expect: fire
   - utterance: "Preview setup in this fresh folder."
     expect: fire
+  - utterance: "/setup-v2 preview"
+    expect: fire
+  - utterance: "I already have Dex — let me try the new first hour without changing anything."
+    expect: fire
 
 negative:
   - utterance: "Set up Dex for the first time the usual way."

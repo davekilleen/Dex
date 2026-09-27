@@ -18,6 +18,7 @@ Happy path ends at the 5–10 minute stop. Do not drag them through 15–30 minu
 ## Settled rules
 
 - Command is `/setup-v2`. Type it in a fresh folder. No practice starter.
+- Existing Dex: `/setup-v2 preview` runs the same hour with no writes. If `/setup-v2` is typed in a finished vault, offer preview first.
 - Google persist stays Apple or none. Host Google may be shown in this sitting only.
 - Harness confirm is early and quiet, before finalize. No extra spoken beat.
 - People from the last few weeks: `prepare_entity_page_offer(v2_window=true)` only. Shipped `/setup` stays at five.
@@ -52,7 +53,7 @@ They have a readable calendar. They skip the source doc. They skip notes. They s
 
 ### Calendar + identity
 
-*(Silently: `start_onboarding_session(v2=true)`. If `blocked: shipped_setup_in_progress`, leave that session and say so. If `.onboarding-complete` exists, do not wipe — offer `/getting-started` or `/reset`. Address calendar: list Apple calendars, or `save_calendar_selection(skipped=true)`. `inspect_harnesses` + `save_harness_selection(..., confirmed=true)` after they have seen the preview in passing. Do not narrate.)*
+*(Silently: if they typed `/setup-v2 preview`, `start_onboarding_session(preview=true)`. Otherwise `start_onboarding_session(v2=true)`. If `blocked: shipped_setup_in_progress`, leave that session and say so. If the tool returns `offer_preview`, do not wipe — preview is the first choice, then `/getting-started` or `/reset`. Address calendar: list Apple calendars, or `save_calendar_selection(skipped=true)`. `inspect_harnesses` + `save_harness_selection(..., confirmed=true)` after they have seen the preview in passing. Do not narrate.)*
 
 **Dex:** I’d like to read your calendar so I can organise this week. I won’t change anything there. Which work calendar should I use — or say skip?
 
@@ -166,7 +167,8 @@ Then the same helping hand and transition to normal Dex.
 `start_onboarding_session(v2=true)` **without** `force_new` unless they asked to start over.
 
 - **In-progress v2 session:** one line of progress. “We were about to save your workspace — pick up there, or start fresh?” Resume is the default if they just say hello.
-- **Finished vault:** do not wipe. Offer `/getting-started` or `/reset`. Rehearsal needs a fresh folder.
+- **Finished vault:** do not wipe. Preview is the first choice (`/setup-v2 preview`). Then `/getting-started` or `/reset`. Rehearsal that writes needs a fresh folder.
+- **`/setup-v2 preview`:** same screens as the real hour. Connection and sync steps call `preview_connection_step` and `preview_sync_install` (no-ops). End with discard.
 - **Mid shipped `/setup`:** leave it. `/setup-v2` does not attach.
 - **Crashed finalize:** answers stay on the session. “Your answers are saved. Type `/setup-v2` and ask me to finish from the mirror.” Do not rebuild the interview. Do not edit Dex files.
 
@@ -198,3 +200,41 @@ On macOS, list Calendar.app calendars when that listing works. On any other host
 They have been greeted like a person, a workspace that belongs to them, a week they recognise, pillars they confirmed, and permission to stop.
 
 They do not have a catalogue of tools, a promise Dex cannot keep tomorrow morning, silently created people pages, a stack of unanswered cards, or a sense that they “didn’t finish setup.”
+
+---
+
+## Preview mode — existing Dex, no writes
+
+Same spoken hour. The server keeps every write in a temp folder and refuses anything outside it.
+
+**Start (no Terminal):** type `/setup-v2 preview` in the Dex they already use.
+
+If they typed `/setup-v2` in a finished vault:
+
+**Dex:** This Dex is already set up. The safest way to try the new first hour is preview — nothing here changes. Want to try it that way? You can also use `/getting-started` or `/reset`.
+
+### Discard
+
+After the clean stop or if they leave early — always:
+
+*(Silently: `discard_preview_session`.)*
+
+**Dex:** Preview discarded. Nothing was saved. Your Dex is exactly as it was.
+
+Leftover temp folders are wiped on the next start if this sitting ends early.
+
+### Optional feedback — DRAFT COPY PENDING APPROVAL
+
+Do not write this anywhere. Do not send it. They copy the answers back to whoever asked them to try this.
+
+**Dex:** Thanks for trying the new first hour.
+
+Nothing was saved. Your Dex is exactly as it was.
+
+If you have a minute, copy your answers back to whoever asked you to try this. Nothing is sent from here.
+
+1. Did Dex already feel like it understood your working world, or did this still feel like a setup form?
+2. Was there a moment you wanted to stop — and was it easy to stop there?
+3. What felt missing, confusing, or off?
+
+You can skip this.

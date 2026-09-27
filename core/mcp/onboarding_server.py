@@ -285,11 +285,12 @@ def save_session(session_data: Dict) -> bool:
         logger.error(f"Error saving session: {e}")
         return False
 
-def create_new_session(v2: bool = False) -> Dict:
+def create_new_session(v2: bool = False, preview: bool = False) -> Dict:
     """Create a new onboarding session.
 
     ``v2=True`` marks a /setup-v2 journey. The default session shape is
     unchanged so shipped /setup resume and tests stay identical.
+    ``preview=True`` is /setup-v2 only and never writes the real vault.
     """
     session = {
         "version": "1.0",
@@ -301,6 +302,8 @@ def create_new_session(v2: bool = False) -> Dict:
     }
     if v2:
         session["journey"] = "v2"
+    if preview:
+        session["preview"] = True
     return session
 
 
@@ -731,12 +734,20 @@ def _run_onboarding_provisioner(
     }
     profile_path: Path | None = None
     try:
+        scratch = None
+        try:
+            from core.onboarding.preview_sandbox import preview_scratch_dir
+
+            scratch = preview_scratch_dir()
+        except Exception:
+            scratch = None
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
             prefix="dex-onboarding-profile-",
             suffix=".json",
             delete=False,
+            dir=str(scratch) if scratch is not None else None,
         ) as profile:
             profile_path = Path(profile.name)
             json.dump(data, profile, cls=DateTimeEncoder)
@@ -796,12 +807,20 @@ def _run_harness_receipt_provisioner(
     """Record only the post-onboarding harness receipt through provisioning."""
     profile_path: Path | None = None
     try:
+        scratch = None
+        try:
+            from core.onboarding.preview_sandbox import preview_scratch_dir
+
+            scratch = preview_scratch_dir()
+        except Exception:
+            scratch = None
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
             prefix="dex-harness-profile-",
             suffix=".json",
             delete=False,
+            dir=str(scratch) if scratch is not None else None,
         ) as profile:
             profile_path = Path(profile.name)
             json.dump(
@@ -2157,9 +2176,59 @@ async def handle_list_tools() -> list[types.Tool]:
                             "Does not attach to a mid-progress shipped /setup session."
                         ),
                         "default": False
+                    },
+                    "preview": {
+                        "type": "boolean",
+                        "description": (
+                            "/setup-v2 only. Run the full first hour in a temp "
+                            "sandbox and write nothing to the real vault."
+                        ),
+                        "default": False
                     }
                 }
             }
+        ),
+        types.Tool(
+            name="discard_preview_session",
+            description=(
+                "End a /setup-v2 preview: wipe the temp sandbox and leave the "
+                "real vault unchanged. Safe if no preview is active."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="preview_connection_step",
+            description=(
+                "Preview-only no-op for a connection step. Does not write "
+                "config or contact any service."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "description": "Which connection the hour would have offered",
+                    }
+                },
+                "required": ["kind"],
+            },
+        ),
+        types.Tool(
+            name="preview_sync_install",
+            description=(
+                "Preview-only no-op for launch-agent or background sync install. "
+                "Does not write LaunchAgents, cron, or home config."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "description": "launch-agent or background-sync",
+                        "default": "background-sync",
+                    }
+                },
+            },
         ),
         types.Tool(
             name="save_meeting_source",
@@ -2672,8 +2741,48 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
         elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
             v2 = arguments.get('v2', False) is True
-            
+            preview = arguments.get('preview', False) is True
+            if preview:
+                v2 = True
+
+            if preview:
+                from core.onboarding.preview_sandbox import begin_preview
+
+                source_vault = BASE_DIR
+                sandbox = begin_preview(source_vault)
+                session = create_new_session(v2=True, preview=True)
+                inspected = inspect_harnesses()
+                session["harness_setup"] = {
+                    "detected": inspected["detected"],
+                    "selected": inspected["selected"],
+                    "confirmed": False,
+                }
+                session["harness_capabilities"] = inspected["profiles"]
+                save_session(session)
+                result = create_success_response(
+                    {
+                        **session,
+                        "preview": True,
+                        "sandbox": str(sandbox),
+                        "source_vault": str(source_vault),
+                    },
+                    "Preview first hour started. Nothing will be written to your Dex.",
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
             session = load_session()
+
+            if v2 and MARKER_FILE.exists() and not force_new:
+                result = create_success_response(
+                    {
+                        "existing_vault": True,
+                        "offer_preview": True,
+                        "attached": False,
+                    },
+                    "This Dex is already set up. Preview is the first choice — "
+                    "nothing here will change.",
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
             if v2 and session and not force_new and not _is_v2_session(session):
                 result = create_success_response(
@@ -2720,6 +2829,54 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "discard_preview_session":
+            from core.onboarding.preview_sandbox import (
+                discard_preview,
+                is_preview_active,
+            )
+
+            if not is_preview_active():
+                result = create_success_response(
+                    {"discarded": False, "nothing_saved": True, "sandbox_gone": True},
+                    "No preview was running. Your Dex was not changed.",
+                )
+            else:
+                result = create_success_response(
+                    discard_preview(),
+                    "Preview discarded. Nothing was saved. Your Dex is as it was.",
+                )
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "preview_connection_step":
+            from core.onboarding.preview_sandbox import no_op_background_install
+
+            try:
+                payload = no_op_background_install(
+                    arguments.get("kind") or "connection"
+                )
+                result = create_success_response(
+                    payload,
+                    "Preview connection step — nothing was connected or written.",
+                )
+            except RuntimeError as error:
+                result = create_error_response(str(error))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "preview_sync_install":
+            from core.onboarding.preview_sandbox import no_op_background_install
+
+            try:
+                payload = no_op_background_install(
+                    arguments.get("kind") or "background-sync"
+                )
+                result = create_success_response(
+                    payload,
+                    "Preview sync install — no launch agent or background job was added.",
+                )
+            except RuntimeError as error:
+                result = create_error_response(str(error))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "save_meeting_source":
             try:

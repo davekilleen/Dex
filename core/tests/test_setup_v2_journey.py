@@ -179,3 +179,32 @@ def test_zero_tools_on_the_first_turn() -> None:
     hour = _read(HOUR)
     assert "Zero tools" in skill or "zero tools" in skill.lower()
     assert "first turn, zero tools" in hour.lower() or "Zero tools" in hour
+
+
+def test_preview_mode_is_easy_to_start_and_offered_on_existing_vault() -> None:
+    skill = _read(SKILL)
+    hour = _read(HOUR)
+    assert "/setup-v2 preview" in skill
+    assert "/setup-v2 preview" in hour
+    assert "offer preview as the first choice" in skill.lower() or "offer preview first" in hour.lower()
+    assert "discard_preview_session" in skill
+    assert "preview_connection_step" in skill
+    assert "preview_sync_install" in skill
+    assert "Nothing was saved" in hour
+    assert "Your Dex is exactly as it was" in hour
+
+
+def test_preview_feedback_is_copy_only_and_three_questions() -> None:
+    hour = _read(HOUR)
+    assert "DRAFT COPY PENDING APPROVAL" in hour
+    assert "Nothing is sent from here" in hour
+    assert "copy your answers back" in hour
+    questions = [
+        "Did Dex already feel like it understood your working world, or did this still feel like a setup form?",
+        "Was there a moment you wanted to stop — and was it easy to stop there?",
+        "What felt missing, confusing, or off?",
+    ]
+    for question in questions:
+        assert question in hour
+    spoken = "\n".join(_spoken_lines(hour))
+    assert spoken.count("?") >= 3
