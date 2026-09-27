@@ -30,6 +30,7 @@ from core.lifecycle.engine import (
 )
 from core.lifecycle.model import HEX_SHA256, ITEM_ID, SEMVER
 from core.transaction.fsync import fsync_directory
+from core.utils.os_flags import binary_write_flags
 
 LEDGER_VERSION = 1
 GENESIS_SHA256 = "0" * 64
@@ -337,7 +338,9 @@ def _complete_commitment(vault_root: Path, sequence: int, digest: str) -> None:
     temporary = ledger_root / f".commitment.tmp-{os.getpid()}-{secrets.token_hex(8)}"
     descriptor: int | None = None
     try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(
+            temporary, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+        )
         view = memoryview(data)
         while view:
             view = view[os.write(descriptor, view) :]
@@ -646,7 +649,9 @@ def _write_state(vault_root: Path, state: dict[str, object]) -> None:
     temporary = ledger_root / f".state.json.tmp-{os.getpid()}-{secrets.token_hex(8)}"
     descriptor: int | None = None
     try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(
+            temporary, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+        )
         view = memoryview(data)
         while view:
             view = view[os.write(descriptor, view) :]
@@ -800,7 +805,9 @@ def _publish_event(vault_root: Path, event_type: str, payload: dict[str, object]
     temporary = ledger_root / f".event.tmp-{os.getpid()}-{secrets.token_hex(8)}"
     descriptor: int | None = None
     try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(
+            temporary, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+        )
         view = memoryview(data)
         while view:
             view = view[os.write(descriptor, view) :]
@@ -826,7 +833,7 @@ def _publish_event(vault_root: Path, event_type: str, payload: dict[str, object]
         try:
             commitment_descriptor = os.open(
                 commitment_temporary,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
                 0o600,
             )
             view = memoryview(commitment_data)

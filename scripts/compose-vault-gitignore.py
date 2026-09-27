@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path.cwd()))
 
 from core.update.apply_update import _compose_gitignore
+from core.utils.os_flags import binary_write_flags
 
 
 def compose_file(path: Path) -> None:
@@ -24,7 +25,9 @@ def compose_file(path: Path) -> None:
 
     mode = target.stat().st_mode & 0o777
     temporary = target.parent / f".{target.name}.compose-{os.getpid()}"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    descriptor = os.open(
+        temporary, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), mode
+    )
     try:
         written = 0
         while written < len(composed):
