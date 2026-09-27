@@ -4,7 +4,7 @@ System improvements discovered during work sessions.
 
 ## What Goes Here
 
-Meta-feedback about Dex itself, captured during `/daily-review`:
+Meta-feedback about Dex itself, captured as you work and confirmed during `/daily-review`:
 
 - **Mistakes or corrections** — Things that went wrong and how to fix them
 - **Preferences mentioned** — Workflow preferences you shared
@@ -25,7 +25,7 @@ Each learning includes:
 
 ## Workflow
 
-1. **Capture** — Happens automatically during `/daily-review` (daily review)
+1. **Capture** — Corrections are written as you say them; obvious corrections and preferences are also pulled from the session when it ends cleanly. `/daily-review` confirms those and catches anything missed.
 2. **Review** — Periodically check pending learnings via `/dex-whats-new`
 3. **Implement** — Fix documentation gaps or system issues
 4. **Update status** — Mark as implemented when done
