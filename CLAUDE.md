@@ -430,7 +430,7 @@ After significant work (new features, complex integrations), ask: "Worth capturi
 
 ### Learning Capture via `/daily-review`
 
-Learnings are captured during the daily review process. When the user runs `/daily-review`, you will:
+Learnings already written during the day are confirmed here. When the user runs `/daily-review`, you will:
 
 1. **Scan the current session** for learning opportunities:
    - Mistakes or corrections made
@@ -438,7 +438,12 @@ Learnings are captured during the daily review process. When the user runs `/dai
    - Documentation gaps discovered
    - Workflow inefficiencies noticed
 
-2. **Automatically write to** `System/Session_Learnings/YYYY-MM-DD.md`:
+2. **Read today's file first.** Corrections said during the session, and obvious
+   corrections/preferences spotted when the session closed, may already be there
+   as pending entries. Do not write a second copy. Confirm them, then scan for
+   anything the automatic pass missed.
+
+3. **Write any new ones** to `System/Session_Learnings/YYYY-MM-DD.md`:
 
 ```markdown
 ## [HH:MM] - [Short title]
@@ -451,18 +456,31 @@ Learnings are captured during the daily review process. When the user runs `/dai
 ---
 ```
 
-3. **Tell the user** how many learnings you captured, then ask if they want to add more
+4. **Tell the user** how many learnings you captured (including ones already
+   waiting), then ask if they want to add more
 
-This happens during `/daily-review` - you don't need to capture learnings silently during the session. The review process handles it systematically.
+`/daily-review` is the careful pass. It is not the only time a lesson can be
+written down.
 
 ### Background Self-Learning Automation
 
-Dex continuously learns from usage and external sources through automatic checks:
-- Monitors Anthropic changelog for new Claude features (every 6h)
-- Checks bounded release evidence from the pinned Dex repository (at most daily)
-- Tracks pending learnings in `System/Session_Learnings/` (daily)
-- Surfaces alerts during session start and `/daily-plan`
-- Pattern recognition during weekly reviews
+Dex keeps a few automatic checks, and one step that still needs you:
+
+- **Corrections as you type** — when you tell Dex it got something wrong, that
+  message is written to `System/Session_Learnings/` immediately, marked pending.
+- **Session close** — when a session ends cleanly, Dex scans the recorded
+  transcript for other obvious corrections and preferences and writes those the
+  same way. Closing a window instead of ending the session skips this pass; the
+  as-you-type capture still ran.
+- **Pending-learning reminder** — a daily check counts unreviewed entries and
+  nudges you when five or more are waiting (session start and `/daily-plan`).
+- **Claude feature watch** — a check every 6 hours for new Claude features,
+  surfaced at session start.
+- **`/daily-review`** — the careful pass. It confirms automatic candidates,
+  catches lessons the hooks missed, and decides what to keep.
+
+Dex does not invent lessons from a quiet day, and it does not apply them to its
+own instructions until you confirm.
 
 **Setup details:** See `06-Resources/Dex_System/Dex_Technical_Guide.md` for installation and configuration.
 

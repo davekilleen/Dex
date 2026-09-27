@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
@@ -12,8 +11,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 if __package__:
+    from .file_lock import LOCK_EX, locked
     from .update_verifier import EvidenceError, SemVer, UpdateVerifier
 else:
+    from file_lock import LOCK_EX, locked
     from update_verifier import EvidenceError, SemVer, UpdateVerifier
 
 STATE_PATH = Path("System/.dex/release-notes-state.json")
@@ -40,10 +41,9 @@ def _state_lock(vault: Path):
     directory.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(directory / "release-notes-state.lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        yield
+        with locked(descriptor, LOCK_EX):
+            yield
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
 
 
