@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -28,6 +29,11 @@ LEGACY_CREDENTIAL_FIELDS = {
 }
 MAX_ACTIVE_CONFIG_BYTES = 1024 * 1024
 MAX_ENV_BYTES = 8 * 1024 * 1024
+logger = logging.getLogger(__name__)
+CONTAINED_WRITE_UNAVAILABLE = (
+    "descriptor-relative no-follow .env authority is unavailable on this host; "
+    "Dex refuses the write rather than follow a path or crash"
+)
 
 
 @dataclass(frozen=True)
@@ -235,12 +241,20 @@ def updated_env_bytes(original: bytes, updates: dict[str, str]) -> bytes:
 
 def _open_vault(vault_root: Path) -> tuple[int, os.stat_result]:
     if (
-        not hasattr(os, "O_DIRECTORY")
+        os.name == "nt"
+        or not hasattr(os, "O_DIRECTORY")
         or not hasattr(os, "O_NOFOLLOW")
         or os.open not in os.supports_dir_fd
         or os.stat not in os.supports_dir_fd
     ):
-        raise OSError("descriptor-relative no-follow .env authority is unavailable")
+        logger.debug(
+            "vault .env open refused: os.name=%s O_DIRECTORY=%s O_NOFOLLOW=%s dir_fd=%s",
+            os.name,
+            hasattr(os, "O_DIRECTORY"),
+            hasattr(os, "O_NOFOLLOW"),
+            os.open in getattr(os, "supports_dir_fd", set()),
+        )
+        raise OSError(CONTAINED_WRITE_UNAVAILABLE)
     descriptor = os.open(vault_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     metadata = os.fstat(descriptor)
     if not stat.S_ISDIR(metadata.st_mode):
@@ -371,6 +385,9 @@ def update_vault_env(
             dir_fd=root_fd,
         )
         try:
+            if not hasattr(os, "fchmod"):
+                logger.debug("vault .env write refused: fchmod unavailable")
+                raise OSError(CONTAINED_WRITE_UNAVAILABLE)
             os.fchmod(descriptor, 0o600)
             with os.fdopen(descriptor, "wb", closefd=False) as handle:
                 handle.write(expected)

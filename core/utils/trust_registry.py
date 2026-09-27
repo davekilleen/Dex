@@ -27,78 +27,33 @@ MAX_REGISTRY_BYTES = 64 * 1024
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 ENTRY_KEYS = frozenset({"file", "sha256"})
 logger = logging.getLogger(__name__)
+CONTAINED_WRITE_UNAVAILABLE = (
+    "safe no-follow file operations are unavailable on this host; "
+    "Windows contained writes are refused until a reviewed directory-chain design is implemented"
+)
 
 
-def _binary_write_flags(base: int) -> int:
-    """Local copy of ``binary_write_flags(base) = base | getattr(os, "O_BINARY", 0)``.
-
-    Inlined to avoid a merge dependency on the shared helper. Windows CRT
-    ``os.open`` plus raw ``os.write`` defaults to text mode, so a hashed
-    snapshot written without ``O_BINARY`` can silently become CRLF and no
-    longer match the blessed digest. POSIX has no ``O_BINARY``; ``getattr``
-    is 0 and this is a no-op.
-    """
-    return base | getattr(os, "O_BINARY", 0)
-
-
-def _posix_mode_enforced() -> bool:
-    """POSIX permission bits are not an access-control mechanism on Windows.
-
-    Snapshot ``0o400`` and registry ``0o600`` cannot be enforced as ACLs
-    there. Dex must not treat a Windows ``0o666`` as proof of those modes,
-    and must not refuse a successful verbatim write solely because the CRT
-    reported different mode bits.
-    """
-    return os.name != "nt"
-
-
-def _apply_posix_mode(fd: int, mode: int) -> None:
-    """Best-effort POSIX mode. Windows cannot enforce 0400/0600 ACLs this way."""
-    if hasattr(os, "fchmod"):
-        os.fchmod(fd, mode)
-        return
-    logger.debug("fchmod unavailable; POSIX mode 0o%o cannot be enforced", mode)
-
-
-def _log_write_failure(operation: str, error: BaseException) -> None:
-    """Record why a trust-registry write failed without logging file bytes."""
-    logger.debug(
-        "%s failed: %s errno=%s",
-        operation,
-        type(error).__name__,
-        getattr(error, "errno", None),
+def _contained_nofollow_available() -> bool:
+    """True only when POSIX no-follow directory opens exist. Windows must refuse."""
+    return (
+        os.name != "nt"
+        and getattr(os, "O_NOFOLLOW", None) is not None
+        and getattr(os, "O_DIRECTORY", None) is not None
     )
 
 
-_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-
-
-def _is_reparse_point(metadata: os.stat_result) -> bool:
-    """True for Windows junctions/symlinks that ``S_ISLNK`` may not report."""
-    attributes = getattr(metadata, "st_file_attributes", 0)
-    return bool(attributes & _FILE_ATTRIBUTE_REPARSE_POINT)
-
-
-def _confirm_unfollowed_regular_write(directory: int, name: str, descriptor: int) -> None:
-    """Refuse if the exclusive snapshot create followed a symlink or raced.
-
-    When ``O_NOFOLLOW`` exists the kernel already refused a symlink. When it
-    does not (Windows), ``O_EXCL`` plus this lstat/fstat match is the
-    remaining check. Confirm before writing hashed script bytes. Windows
-    junctions are refused via ``st_file_attributes`` even when ``S_ISLNK``
-    is false.
-    """
-    leaf = os.stat(name, dir_fd=directory, follow_symlinks=False)
-    opened = os.fstat(descriptor)
-    if (
-        stat.S_ISLNK(leaf.st_mode)
-        or _is_reparse_point(leaf)
-        or not stat.S_ISREG(leaf.st_mode)
-        or not stat.S_ISREG(opened.st_mode)
-    ):
-        raise TrustRegistryError("snapshot temporary path is not an unfollowed regular file")
-    if (leaf.st_dev, leaf.st_ino) != (opened.st_dev, opened.st_ino):
-        raise TrustRegistryError("snapshot temporary file changed before write")
+def _require_contained_nofollow(operation: str) -> None:
+    """Fail closed instead of crashing when no-follow primitives are missing."""
+    if _contained_nofollow_available():
+        return
+    logger.debug(
+        "%s refused: contained no-follow unavailable os.name=%s O_NOFOLLOW=%s O_DIRECTORY=%s",
+        operation,
+        os.name,
+        hasattr(os, "O_NOFOLLOW"),
+        hasattr(os, "O_DIRECTORY"),
+    )
+    raise TrustRegistryError(CONTAINED_WRITE_UNAVAILABLE)
 
 
 class TrustRegistryError(ValueError):
@@ -195,6 +150,7 @@ def _open_component_file(
     *,
     label: str,
 ) -> tuple[int, os.stat_result]:
+    _require_contained_nofollow("trust registry file open")
     no_follow = getattr(os, "O_NOFOLLOW", None)
     directory_flag = getattr(os, "O_DIRECTORY", None)
     if no_follow is None or directory_flag is None:
@@ -370,6 +326,7 @@ def _registry_is_git_tracked(vault_root: Path) -> bool | None:
 
 
 def _require_private_directory(path: Path, *, label: str) -> int:
+    _require_contained_nofollow("trust registry directory open")
     no_follow = getattr(os, "O_NOFOLLOW", None)
     directory_flag = getattr(os, "O_DIRECTORY", None)
     if no_follow is None or directory_flag is None:
@@ -384,9 +341,11 @@ def _require_private_directory(path: Path, *, label: str) -> int:
     except OSError as exc:
         raise TrustRegistryError(f"{label} could not be opened safely: {exc}") from exc
     try:
-        if hasattr(os, "getuid") and opened_stat.st_uid != os.getuid():
+        if not hasattr(os, "getuid"):
+            raise TrustRegistryError("safe owner checks are unavailable")
+        if opened_stat.st_uid != os.getuid():
             raise TrustRegistryError(f"{label} is not owned by the current user")
-        if _posix_mode_enforced() and opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             raise TrustRegistryError(f"{label} is group- or other-writable")
         return descriptor
     except TrustRegistryError:
@@ -411,11 +370,12 @@ def _verified_content_addressed_snapshot(
             dir_fd=directory_fd,
         )
         opened_stat = os.fstat(descriptor)
-        if (opened_stat.st_dev, opened_stat.st_ino) != (leaf_stat.st_dev, leaf_stat.st_ino):
-            return False
-        if hasattr(os, "getuid") and opened_stat.st_uid != os.getuid():
-            return False
-        if _posix_mode_enforced() and opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        if (
+            (opened_stat.st_dev, opened_stat.st_ino) != (leaf_stat.st_dev, leaf_stat.st_ino)
+            or not hasattr(os, "getuid")
+            or opened_stat.st_uid != os.getuid()
+            or opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        ):
             return False
         digest = hashlib.sha256()
         while True:
@@ -449,9 +409,11 @@ def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
             REGISTRY_RELATIVE,
             label=REGISTRY_RELATIVE.as_posix(),
         )
-        if hasattr(os, "getuid") and opened_stat.st_uid != os.getuid():
+        if not hasattr(os, "getuid"):
+            raise TrustRegistryError("safe owner checks are unavailable")
+        if opened_stat.st_uid != os.getuid():
             raise TrustRegistryError("registry is not owned by the current user")
-        if _posix_mode_enforced() and opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             raise TrustRegistryError("registry is group- or other-writable")
         if opened_stat.st_size > MAX_REGISTRY_BYTES:
             raise TrustRegistryError("registry is larger than 64KB")
@@ -583,18 +545,12 @@ def _snapshot_local_python_file(
         safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", name)
         temporary_name = f".{safe_name}-{secrets.token_hex(16)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
-        nofollow = getattr(os, "O_NOFOLLOW", None)
-        if nofollow is not None:
-            flags |= nofollow
-        flags = _binary_write_flags(flags)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
         destination_fd = os.open(
             temporary_name,
             flags,
             0o400,
             dir_fd=snapshot_directory_fd,
-        )
-        _confirm_unfollowed_regular_write(
-            snapshot_directory_fd, temporary_name, destination_fd
         )
 
         digest = hashlib.sha256()
@@ -617,14 +573,16 @@ def _snapshot_local_python_file(
             )
 
         os.fsync(destination_fd)
-        _apply_posix_mode(destination_fd, 0o400)
+        if not hasattr(os, "fchmod"):
+            raise TrustRegistryError(CONTAINED_WRITE_UNAVAILABLE)
+        os.fchmod(destination_fd, 0o400)
         temporary_stat = os.stat(
             temporary_name,
             dir_fd=snapshot_directory_fd,
             follow_symlinks=False,
         )
         opened_temporary_stat = os.fstat(destination_fd)
-        if stat.S_ISLNK(temporary_stat.st_mode) or (temporary_stat.st_dev, temporary_stat.st_ino) != (
+        if (temporary_stat.st_dev, temporary_stat.st_ino) != (
             opened_temporary_stat.st_dev,
             opened_temporary_stat.st_ino,
         ):
@@ -662,10 +620,8 @@ def _snapshot_local_python_file(
         os.unlink(temporary_name, dir_fd=snapshot_directory_fd)
         temporary_name = None
     except TrustRegistryError as exc:
-        _log_write_failure("trusted script snapshot", exc)
         return TrustedMcpSnapshot(False, str(exc))
     except OSError as exc:
-        _log_write_failure("trusted script snapshot", exc)
         return TrustedMcpSnapshot(False, f"trusted script snapshot failed: {exc}")
     finally:
         if destination_fd is not None:
@@ -783,6 +739,8 @@ def bless_local_mcp(
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
+            if not hasattr(os, "fchmod"):
+                raise TrustRegistryError(CONTAINED_WRITE_UNAVAILABLE)
             os.fchmod(handle.fileno(), 0o600)
         os.replace(temporary_path, registry_path)
     finally:

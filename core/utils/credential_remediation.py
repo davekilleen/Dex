@@ -68,101 +68,43 @@ SCOPE_CATEGORIES = frozenset(
 EXCEPTIONS_FILE = Path(__file__).with_name("credential_migration_exceptions.json")
 MAX_TRACKED_CONFIG_BYTES = 1024 * 1024
 logger = logging.getLogger(__name__)
+CONTAINED_WRITE_UNAVAILABLE = (
+    "no-follow descriptor-relative writes are unavailable on this host; "
+    "Dex refuses the write rather than follow a path or crash"
+)
 
 
-def _binary_write_flags(base: int) -> int:
-    """Local copy of ``binary_write_flags(base) = base | getattr(os, "O_BINARY", 0)``.
+def _contained_nofollow_available() -> bool:
+    """True only when the POSIX no-follow directory-chain primitives exist.
 
-    Inlined to avoid a merge dependency on the shared helper. Windows CRT
-    ``os.open`` defaults to text mode, so a hashed journal, ``.env``, or YAML
-    image written without ``O_BINARY`` can silently become CRLF and fail
-    readback. POSIX has no ``O_BINARY``; ``getattr`` is 0 and this is a no-op.
+    Native Windows has no ``O_NOFOLLOW`` and no ``dir_fd`` open. Returning
+    False here must refuse, not fall back. POSIX with those primitives is
+    unchanged.
     """
-    return base | getattr(os, "O_BINARY", 0)
-
-
-def _exclusive_binary_write_flags(base: int = 0) -> int:
-    """Flags for a new file that must be written verbatim.
-
-    Always keeps the caller's ``O_EXCL``/``O_CREAT``/``O_WRONLY`` bits. Adds
-    ``O_NOFOLLOW`` when the platform has it — never omitted on POSIX. Windows
-    has no ``O_NOFOLLOW``; ``_confirm_unfollowed_regular_write`` is the
-    compensating check after the exclusive create, before any secret bytes
-    are written.
-    """
-    flags = _binary_write_flags(base)
-    nofollow = getattr(os, "O_NOFOLLOW", None)
-    if nofollow is not None:
-        flags |= nofollow
-    return flags
-
-
-def _posix_mode_enforced() -> bool:
-    """POSIX permission bits are not an access-control mechanism on Windows.
-
-    ``os.open`` / ``os.fchmod`` mode arguments are best-effort there (the
-    read-only attribute only). Dex must not treat a Windows ``0o666`` as
-    proof of ``0o600``, and must not refuse a successful verbatim write
-    solely because the CRT reported different mode bits.
-    """
-    return os.name != "nt"
-
-
-def _posix_mode_matches(metadata: os.stat_result, expected: int) -> bool:
-    if not _posix_mode_enforced():
-        return True
-    return stat.S_IMODE(metadata.st_mode) == expected
-
-
-def _apply_posix_mode(fd: int, mode: int) -> None:
-    """Best-effort POSIX mode. Windows cannot enforce 0600/0400 ACLs this way."""
-    if hasattr(os, "fchmod"):
-        os.fchmod(fd, mode)
-        return
-    logger.debug("fchmod unavailable; POSIX mode 0o%o cannot be enforced", mode)
-
-
-def _log_write_failure(operation: str, error: BaseException) -> None:
-    """Record why a credential write failed without logging file bytes or secrets."""
-    logger.debug(
-        "%s failed: %s errno=%s",
-        operation,
-        type(error).__name__,
-        getattr(error, "errno", None),
+    return (
+        os.name != "nt"
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in getattr(os, "supports_dir_fd", set())
     )
 
 
-_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+def _require_contained_nofollow(operation: str, *, require_fchmod: bool = False) -> None:
+    """Fail closed when a contained no-follow write cannot be proven safe.
 
-
-def _is_reparse_point(metadata: os.stat_result) -> bool:
-    """True for Windows junctions/symlinks that ``S_ISLNK`` may not report."""
-    attributes = getattr(metadata, "st_file_attributes", 0)
-    return bool(attributes & _FILE_ATTRIBUTE_REPARSE_POINT)
-
-
-def _confirm_unfollowed_regular_write(directory: int, name: str, descriptor: int) -> None:
-    """Refuse if the exclusive create followed a symlink or the inode changed.
-
-    When ``O_NOFOLLOW`` exists the kernel already refused a symlink. When it
-    does not (Windows), ``O_EXCL`` plus this lstat/fstat match is the
-    remaining check — weaker than ``O_NOFOLLOW`` (a TOCTOU remains between
-    create and lstat) but never weaker than the POSIX path, which still
-    passes ``O_NOFOLLOW``. Confirm before writing secret bytes. Windows
-    junctions are refused via ``st_file_attributes`` even when ``S_ISLNK``
-    is false.
+    On macOS/Linux this is a no-op. On Windows (or any host missing the
+    primitives) it logs the real cause without secret bytes and raises.
     """
-    leaf = os.stat(name, dir_fd=directory, follow_symlinks=False)
-    opened = os.fstat(descriptor)
-    if (
-        stat.S_ISLNK(leaf.st_mode)
-        or _is_reparse_point(leaf)
-        or not stat.S_ISREG(leaf.st_mode)
-        or not stat.S_ISREG(opened.st_mode)
-    ):
-        raise OSError("credential write path is not an unfollowed regular file")
-    if (leaf.st_dev, leaf.st_ino) != (opened.st_dev, opened.st_ino):
-        raise OSError("credential write path changed while it was opened")
+    if _contained_nofollow_available() and (not require_fchmod or hasattr(os, "fchmod")):
+        return
+    logger.debug(
+        "%s refused: contained no-follow unavailable os.name=%s O_NOFOLLOW=%s dir_fd=%s fchmod=%s",
+        operation,
+        os.name,
+        hasattr(os, "O_NOFOLLOW"),
+        os.open in getattr(os, "supports_dir_fd", set()),
+        hasattr(os, "fchmod"),
+    )
+    raise OSError(CONTAINED_WRITE_UNAVAILABLE)
 
 
 @dataclass(frozen=True)
@@ -340,7 +282,7 @@ class CredentialImage:
     def with_identity(self, metadata: os.stat_result) -> "CredentialImage":
         identity = FileIdentity.from_metadata(metadata)
         if (
-            not _posix_mode_matches(metadata, self.mode)
+            stat.S_IMODE(identity.mode) != self.mode
             or identity.uid != self.uid
             or identity.gid != self.gid
             or identity.size != len(self.data)
@@ -420,7 +362,7 @@ class CredentialTarget:
             raise OSError("published credential target has invalid authority")
         authority = self.prepared_identity if self.publication_state == "prepared" else self.postimage.identity
         if authority is not None and (
-            (_posix_mode_enforced() and stat.S_IMODE(authority.mode) != self.postimage.mode)
+            stat.S_IMODE(authority.mode) != self.postimage.mode
             or authority.uid != self.postimage.uid
             or authority.gid != self.postimage.gid
             or authority.size != len(self.postimage.data)
@@ -569,7 +511,7 @@ class CredentialJournal:
         if (
             not _owner_restorable(image.owner)
             or (image.identity is not None and (
-                (_posix_mode_enforced() and stat.S_IMODE(image.identity.mode) != image.mode)
+                stat.S_IMODE(image.identity.mode) != image.mode
                 or image.identity.uid != image.uid
                 or image.identity.gid != image.gid
                 or image.identity.size != len(image.data)
@@ -700,6 +642,7 @@ def _contained_regular(
 
 def _open_directory_chain(root: Path, parts: tuple[str, ...], *, create: bool = False) -> int:
     """Open a vault-contained directory chain without following any component."""
+    _require_contained_nofollow("credential directory chain")
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(root, flags)
     try:
@@ -766,18 +709,12 @@ def _atomic_replace_at(
     after_readback: Callable[[], None] | None = None,
     owner: tuple[int, int] | None = None,
 ) -> None:
+    _require_contained_nofollow("credential atomic replace", require_fchmod=True)
     temporary = f".{name}.{uuid.uuid4().hex}"
     try:
-        flags = _exclusive_binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-        descriptor = os.open(temporary, flags, mode, dir_fd=directory)
-        try:
-            _confirm_unfollowed_regular_write(directory, temporary, descriptor)
-        except OSError as error:
-            os.close(descriptor)
-            _log_write_failure("credential exclusive create", error)
-            raise
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode, dir_fd=directory)
         with os.fdopen(descriptor, "wb") as handle:
-            _apply_posix_mode(handle.fileno(), mode)
+            os.fchmod(handle.fileno(), mode)
             if owner is not None and hasattr(os, "fchown"):
                 os.fchown(handle.fileno(), *owner)
             handle.write(data)
@@ -790,24 +727,14 @@ def _atomic_replace_at(
             after_replace()
         os.fsync(directory)
         actual, metadata = _read_at_with_metadata(directory, name)
-        if actual != data:
-            _log_write_failure("credential replacement readback", OSError("bytes differ"))
-            raise OSError("credential replacement readback mismatch")
-        if not _posix_mode_matches(metadata, mode):
-            _log_write_failure("credential replacement mode", OSError("posix mode differs"))
-            raise OSError("credential replacement readback mismatch")
         if (
-            owner is not None
-            and hasattr(os, "fchown")
-            and (metadata.st_uid, metadata.st_gid) != owner
+            actual != data
+            or stat.S_IMODE(metadata.st_mode) != mode
+            or (owner is not None and (metadata.st_uid, metadata.st_gid) != owner)
         ):
-            _log_write_failure("credential replacement owner", OSError("owner differs"))
             raise OSError("credential replacement readback mismatch")
         if after_readback is not None:
             after_readback()
-    except OSError as error:
-        _log_write_failure("credential atomic replace", error)
-        raise
     finally:
         try:
             os.unlink(temporary, dir_fd=directory)
@@ -847,24 +774,15 @@ def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityRes
     replacement = probe + ".replacement"
     rollback = probe + ".rollback"
     try:
-        probe_flags = _exclusive_binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL)
         for name, data in ((probe, b"before"), (replacement, b"after")):
-            descriptor = os.open(name, probe_flags, 0o600, dir_fd=journal_descriptor)
-            try:
-                _confirm_unfollowed_regular_write(journal_descriptor, name, descriptor)
-            except OSError as error:
-                os.close(descriptor)
-                _log_write_failure("credential capability probe create", error)
-                raise
+            descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor)
             with os.fdopen(descriptor, "wb") as handle:
-                _apply_posix_mode(handle.fileno(), 0o600)
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
         probe_stat = os.stat(probe, dir_fd=journal_descriptor, follow_symlinks=False)
         replacement_stat = os.stat(replacement, dir_fd=journal_descriptor, follow_symlinks=False)
-        mode_ok = _posix_mode_matches(probe_stat, 0o600)
-        results["journal-readback"] = _read_at(journal_descriptor, probe) == b"before" and mode_ok
+        results["journal-readback"] = _read_at(journal_descriptor, probe) == b"before" and stat.S_IMODE(probe_stat.st_mode) == 0o600
         results["same-directory-temp"] = replacement_stat.st_dev == probe_stat.st_dev
         os.fsync(journal_descriptor)
         results["durability"] = True
@@ -872,22 +790,15 @@ def probe_atomic_migration(vault_root: Path, journal_dir: Path) -> CapabilityRes
         os.replace(replacement, probe, src_dir_fd=journal_descriptor, dst_dir_fd=journal_descriptor)
         results["atomic-replace"] = _read_at(journal_descriptor, probe) == b"after"
         results["replacement-readback"] = _read_at(journal_descriptor, probe) == b"after"
-        descriptor = os.open(rollback, probe_flags, 0o600, dir_fd=journal_descriptor)
-        try:
-            _confirm_unfollowed_regular_write(journal_descriptor, rollback, descriptor)
-        except OSError as error:
-            os.close(descriptor)
-            _log_write_failure("credential capability rollback create", error)
-            raise
+        descriptor = os.open(rollback, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor)
         with os.fdopen(descriptor, "wb") as handle:
-            _apply_posix_mode(handle.fileno(), 0o600)
             handle.write(b"before")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(rollback, probe, src_dir_fd=journal_descriptor, dst_dir_fd=journal_descriptor)
         results["rollback-readback"] = _read_at(journal_descriptor, probe) == b"before"
-    except OSError as error:
-        _log_write_failure("credential capability probe", error)
+    except OSError:
+        pass
     finally:
         for name in (probe, replacement, rollback):
             try:
@@ -1104,23 +1015,14 @@ def _publish_migration_target(
     temporary = _migration_temp_name(target, journal_name)
     prepared_recorded = False
     try:
-        flags = _exclusive_binary_write_flags(
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        )
         descriptor = os.open(
             temporary,
-            flags,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
             target.postimage.mode,
             dir_fd=opened.parent,
         )
-        try:
-            _confirm_unfollowed_regular_write(opened.parent, temporary, descriptor)
-        except OSError as error:
-            os.close(descriptor)
-            _log_write_failure("credential migration target create", error)
-            raise
         with os.fdopen(descriptor, "wb") as handle:
-            _apply_posix_mode(handle.fileno(), target.postimage.mode)
+            os.fchmod(handle.fileno(), target.postimage.mode)
             if hasattr(os, "fchown"):
                 os.fchown(handle.fileno(), *target.postimage.owner)
             handle.write(target.postimage.data)
@@ -1242,28 +1144,18 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         journal_descriptor = _open_directory_chain(
             vault_root, ("System", ".dex", "adoption", "credential-journals")
         )
-        flags = _exclusive_binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL)
         descriptor = os.open(
-            journal_name, flags, 0o600, dir_fd=journal_descriptor
+            journal_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=journal_descriptor
         )
-        try:
-            _confirm_unfollowed_regular_write(journal_descriptor, journal_name, descriptor)
-        except OSError as error:
-            os.close(descriptor)
-            _log_write_failure("credential journal create", error)
-            raise
         with os.fdopen(descriptor, "wb") as handle:
-            _apply_posix_mode(handle.fileno(), 0o600)
             handle.write(journal.serialize())
             handle.flush()
             os.fsync(handle.fileno())
         os.fsync(journal_descriptor)
         if CredentialJournal.parse(_read_at(journal_descriptor, journal_name)).serialize() != journal.serialize():
-            _log_write_failure("credential journal readback", OSError("bytes differ"))
             os.close(journal_descriptor)
             return MigrationResult("refused")
-    except OSError as error:
-        _log_write_failure("credential journal create", error)
+    except OSError:
         if journal_descriptor is not None:
             os.close(journal_descriptor)
         return MigrationResult("refused")
@@ -1386,8 +1278,8 @@ def _require_image(
     data, metadata = _read_at_with_metadata(opened.parent, opened.target.filename)
     if (
         data != image.data
-        or not _posix_mode_matches(metadata, image.mode)
-        or (hasattr(os, "fchown") and (metadata.st_uid, metadata.st_gid) != image.owner)
+        or stat.S_IMODE(metadata.st_mode) != image.mode
+        or (metadata.st_uid, metadata.st_gid) != image.owner
         or (
             require_identity
             and (
@@ -1456,8 +1348,8 @@ def _refresh_postimage_identities(opened_targets: tuple[_OpenedCredentialTarget,
         image = opened.target.postimage
         if (
             data != image.data
-            or not _posix_mode_matches(metadata, image.mode)
-            or (hasattr(os, "fchown") and (metadata.st_uid, metadata.st_gid) != image.owner)
+            or stat.S_IMODE(metadata.st_mode) != image.mode
+            or (metadata.st_uid, metadata.st_gid) != image.owner
         ):
             raise OSError("credential rewind recovery-required: postimage readback mismatch")
         opened.target.postimage = image.with_identity(metadata)
@@ -1583,7 +1475,7 @@ def _recover_migration_journal(vault_root: Path, journal_id: str) -> None:
     opened_targets: tuple[_OpenedCredentialTarget, ...] = ()
     try:
         raw, metadata = _read_at_with_metadata(journal_parent, journal_name)
-        if not _posix_mode_matches(metadata, 0o600) or not _owner_restorable(
+        if stat.S_IMODE(metadata.st_mode) != 0o600 or not _owner_restorable(
             (metadata.st_uid, metadata.st_gid)
         ):
             raise OSError("unsafe credential migration journal authority")
@@ -1669,7 +1561,7 @@ def rewind_credential_migration(vault_root: Path, journal_id: str) -> MigrationR
     try:
         journal_raw, journal_metadata = _read_at_with_metadata(journal_parent, journal_name)
         if (
-            not _posix_mode_matches(journal_metadata, 0o600)
+            stat.S_IMODE(journal_metadata.st_mode) != 0o600
             or not _owner_restorable((journal_metadata.st_uid, journal_metadata.st_gid))
         ):
             raise OSError("unsafe credential rewind journal authority")
