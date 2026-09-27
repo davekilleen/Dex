@@ -86,32 +86,33 @@ clone_into() {
   ensure_official_release_ref "$dest_unix"
 }
 
-# The brain/vault split drops remotes, so official/release is gone afterwards.
-# Stash the generated catalog from that ref before install.sh runs.
-stash_official_catalog() {
-  local dest="$1"
-  local stash_dir
-  stash_dir="$(unix_path "$(python -c "import os; from pathlib import Path; print(Path(os.environ['RUNNER_TEMP']) / 'official-release-catalog')")")"
-  mkdir -p "$stash_dir/System" "$stash_dir/core/lifecycle/catalog"
-  git -C "$dest" show official/release:System/.release-catalog.json \
-    > "$stash_dir/System/.release-catalog.json"
-  git -C "$dest" show official/release:core/lifecycle/catalog/release-hashes.json \
-    > "$stash_dir/core/lifecycle/catalog/release-hashes.json" || true
-  printf '%s\n' "$stash_dir"
-}
-
-restore_official_catalog() {
-  local dest="$1"
-  local stash_dir="$2"
-  if [ -f "$dest/System/.release-catalog.json" ]; then
-    return 0
-  fi
-  mkdir -p "$dest/System" "$dest/core/lifecycle/catalog"
-  cp "$stash_dir/System/.release-catalog.json" "$dest/System/.release-catalog.json"
-  if [ -f "$stash_dir/core/lifecycle/catalog/release-hashes.json" ]; then
-    cp "$stash_dir/core/lifecycle/catalog/release-hashes.json" \
-      "$dest/core/lifecycle/catalog/release-hashes.json"
-  fi
+# Official releases ship a generated catalog bound to that tree. A PR
+# checkout does not, and planting the official catalog onto PR files fails
+# the binding check. Add the generated paths to this tree's manifest, then
+# generate a catalog that matches it.
+ensure_generated_catalog() {
+  local dest_win="$1"
+  DEST_WIN="$dest_win" python - <<'PY'
+from pathlib import Path
+import os
+dest = Path(os.environ["DEST_WIN"])
+manifest = dest / "System" / ".installed-files.manifest"
+required = (
+    "System/.release-catalog.json",
+    "core/lifecycle/catalog/release-hashes.json",
+)
+lines = manifest.read_bytes().decode("utf-8").splitlines() if manifest.is_file() else []
+lines = [line for line in lines if line]
+for item in required:
+    if item not in lines:
+        lines.append(item)
+manifest.parent.mkdir(parents=True, exist_ok=True)
+manifest.write_bytes(("\n".join(sorted(set(lines))) + "\n").encode("utf-8"))
+PY
+  PYTHONPATH="$GITHUB_WORKSPACE" \
+    python "$GITHUB_WORKSPACE/scripts/generate-release-catalog.py" \
+    --release-root "$dest_win" \
+    --contract-root "$GITHUB_WORKSPACE"
 }
 
 run_install_sh() {
@@ -142,11 +143,10 @@ case "$cmd" in
     echo "vault_path_windows=$DEST_WIN"
     echo "vault_path_unix=$DEST_UNIX"
     clone_into "$DEST_UNIX"
-    CATALOG_STASH="$(stash_official_catalog "$DEST_UNIX")"
     cd "$DEST_UNIX"
     echo "OSTYPE_OVERRIDE=msys native_OSTYPE=${OSTYPE:-unset}"
     run_install_sh msys
-    restore_official_catalog "$DEST_UNIX" "$CATALOG_STASH"
+    ensure_generated_catalog "$DEST_WIN"
     PYTHONPATH="$GITHUB_WORKSPACE" \
       python "$GITHUB_WORKSPACE/scripts/run-windows-lifecycle-journey.py" --vault-root "$DEST_WIN"
     ;;
