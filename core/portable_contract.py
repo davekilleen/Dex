@@ -207,6 +207,8 @@ RULES: tuple[Rule, ...] = (
     _r("brain-commercial-license", "COMMERCIAL_LICENSE.md", "file", "brain"),
     _r("brain-distribution-ready", "DISTRIBUTION_READY.md", "file", "brain"),
     _r("brain-install", "install.sh", "file", "brain"),
+    _r("brain-install-ps1", "install.ps1", "file", "brain",
+       "Windows PowerShell twin of install.sh"),
     _r("brain-package-json", "package.json", "file", "brain"),
     _r("brain-package-lock", "package-lock.json", "file", "brain"),
     _r("brain-pyproject", "pyproject.toml", "file", "brain"),

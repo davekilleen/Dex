@@ -203,12 +203,18 @@ python3 --version
 The repository installer is a **Bash script**. Run it from the Dex folder you opened in Step 1.
 
 - **Mac:** Open Cursor's **View → Terminal** in that folder.
-- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. PowerShell can run the version checks above, but cannot directly run this Bash installer. For the PowerShell installation route, use [Quick install](#quick-install-claude-code-or-cursor).
+- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder, or PowerShell. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. PowerShell can run `.\install.ps1` in the same folder. For the one-line PowerShell route, use [Quick install](#quick-install-claude-code-or-cursor).
 
-In the terminal selected above, run:
+In Git Bash:
 
 ```bash
 bash ./install.sh
+```
+
+In PowerShell, from the same Dex folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 **What's happening:** This installs the automation that makes Dex work (task sync, career tracking, meeting intelligence). Takes 1-2 minutes. You'll see text scrolling - that's normal.

@@ -2,20 +2,234 @@
 # Dex PKM - Installation Script
 # This script sets up your development environment
 
-set -e
-
 # Quiet Node's noisy upstream deprecation warnings (e.g. DEP0040 "punycode is
 # deprecated") so first-run install output stays clean. These originate from
 # transitive dependencies / npm internals on newer Node versions, not from Dex,
 # and are harmless. Preserves any NODE_OPTIONS the user already set.
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--no-deprecation"
 
+# ---------------------------------------------------------------------------
+# Helpers (sourced by tests when DEX_INSTALL_LIB_ONLY=1)
+# ---------------------------------------------------------------------------
+
+dex_is_windows() {
+    # Prefer a concrete Windows venv layout over OSTYPE alone. Git Bash on
+    # Windows 11 often reports OSTYPE=cygwin (Joe, 2026-09-26), which the old
+    # msys/win32-only check missed.
+    if [ -f ".venv/Scripts/pip.exe" ] || [ -f ".venv/Scripts/python.exe" ]; then
+        return 0
+    fi
+    case "${OSTYPE:-}" in
+        msys*|cygwin*|win32*|mingw*) return 0 ;;
+    esac
+    if [ -n "${WINDIR:-}" ]; then
+        return 0
+    fi
+    return 1
+}
+
+dex_resolve_venv_paths() {
+    if [ -f ".venv/Scripts/pip.exe" ] || [ -f ".venv/Scripts/python.exe" ]; then
+        VENV_PYTHON=".venv/Scripts/python.exe"
+        VENV_PIP=".venv/Scripts/pip.exe"
+    elif [ -f ".venv/bin/pip" ] || [ -f ".venv/bin/python" ]; then
+        VENV_PYTHON=".venv/bin/python"
+        VENV_PIP=".venv/bin/pip"
+    elif dex_is_windows; then
+        VENV_PYTHON=".venv/Scripts/python.exe"
+        VENV_PIP=".venv/Scripts/pip.exe"
+    else
+        VENV_PYTHON=".venv/bin/python"
+        VENV_PIP=".venv/bin/pip"
+    fi
+}
+
+dex_parse_python_version() {
+    local text="$1"
+    local rest
+    case "$text" in
+        *Python\ 3.*)
+            rest="${text#*Python }"
+            rest="${rest%%[!0-9.]*}"
+            printf '%s\n' "$rest"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+dex_python_version_ok() {
+    local output version major minor
+    output=$("$@" --version 2>&1) || return 1
+    version=$(dex_parse_python_version "$output") || return 1
+    major="${version%%.*}"
+    minor="${version#*.}"
+    minor="${minor%%.*}"
+    if [ "$major" != "3" ]; then
+        return 1
+    fi
+    if [ "$minor" -lt 10 ]; then
+        return 1
+    fi
+    printf '%s\n' "$version"
+}
+
+dex_python_executable() {
+    local resolved=""
+    resolved=$("$@" -c "import sys; print(sys.executable)" 2>/dev/null) || true
+    if [ -n "$resolved" ]; then
+        if command -v cygpath >/dev/null 2>&1; then
+            case "$resolved" in
+                [A-Za-z]:\\*|[A-Za-z]:/*)
+                    resolved=$(cygpath -u "$resolved" 2>/dev/null || printf '%s' "$resolved")
+                    ;;
+            esac
+        fi
+        printf '%s\n' "$resolved"
+        return 0
+    fi
+    if [ "$#" -eq 1 ]; then
+        command -v "$1"
+        return 0
+    fi
+    return 1
+}
+
+dex_resolve_python() {
+    PYTHON_CMD=""
+    PYTHON_VERSION=""
+    local version=""
+
+    if command -v python3 >/dev/null 2>&1; then
+        if version=$(dex_python_version_ok python3); then
+            PYTHON_CMD=$(dex_python_executable python3) || PYTHON_CMD="python3"
+            PYTHON_VERSION="$version"
+            return 0
+        fi
+    fi
+
+    if command -v py >/dev/null 2>&1; then
+        if version=$(dex_python_version_ok py -3); then
+            PYTHON_CMD=$(dex_python_executable py -3) || true
+            if [ -n "$PYTHON_CMD" ]; then
+                PYTHON_VERSION="$version"
+                return 0
+            fi
+        fi
+    fi
+
+    if command -v python >/dev/null 2>&1; then
+        if version=$(dex_python_version_ok python); then
+            PYTHON_CMD=$(dex_python_executable python) || PYTHON_CMD="python"
+            PYTHON_VERSION="$version"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+dex_granola_candidates() {
+    printf '%s\n' "/Applications/Granola.app"
+    if [ -n "${APPDATA:-}" ]; then
+        printf '%s\n' "${APPDATA}/Granola"
+    fi
+    if [ -n "${LOCALAPPDATA:-}" ]; then
+        printf '%s\n' "${LOCALAPPDATA}/Granola"
+        printf '%s\n' "${LOCALAPPDATA}/Programs/@granolaelectron"
+        printf '%s\n' "${LOCALAPPDATA}/Programs/Granola"
+    fi
+    if [ -n "${USERPROFILE:-}" ]; then
+        printf '%s\n' "${USERPROFILE}/AppData/Roaming/Granola"
+        printf '%s\n' "${USERPROFILE}/AppData/Local/Granola"
+        printf '%s\n' "${USERPROFILE}/AppData/Local/Programs/@granolaelectron"
+        printf '%s\n' "${USERPROFILE}/AppData/Local/Programs/Granola"
+    fi
+}
+
+dex_granola_detected() {
+    local candidate
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if [ -d "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(dex_granola_candidates)
+    return 1
+}
+
+dex_install_log_path() {
+    if [ -n "${DEX_INSTALL_LOG:-}" ]; then
+        printf '%s\n' "$DEX_INSTALL_LOG"
+        return 0
+    fi
+    printf '%s\n' "$(pwd)/System/.dex/install.log"
+}
+
+dex_init_install_log() {
+    INSTALL_LOG="$(dex_install_log_path)"
+    mkdir -p "$(dirname "$INSTALL_LOG")"
+    {
+        echo "===== Dex install log $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="
+        echo "pwd=$(pwd)"
+        echo "OSTYPE=${OSTYPE:-}"
+        echo "WINDIR=${WINDIR:-}"
+        echo "PATH=$PATH"
+    } >> "$INSTALL_LOG"
+}
+
+dex_log() {
+    if [ -n "${INSTALL_LOG:-}" ]; then
+        printf '%s\n' "$*" >> "$INSTALL_LOG"
+    fi
+}
+
+dex_run_logged() {
+    local label="$1"
+    shift
+    local status=0
+    {
+        echo "----- $label -----"
+        printf '+ '
+        printf '%q ' "$@"
+        echo
+    } >> "$INSTALL_LOG"
+    "$@" >> "$INSTALL_LOG" 2>&1 || status=$?
+    echo "exit $status" >> "$INSTALL_LOG"
+    return "$status"
+}
+
+dex_show_logged_failure() {
+    echo "❌ $1"
+    echo "   See the install log for the exact error: $INSTALL_LOG"
+}
+
+dex_prompt_continue() {
+    if [ -t 0 ] && [ -z "${DEX_INSTALL_NONINTERACTIVE:-}" ]; then
+        read -r -p "Press Enter to continue setup (you can fix this later)..."
+    fi
+}
+
+if [ "${DEX_INSTALL_LIB_ONLY:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
+set -e
+
+# ---------------------------------------------------------------------------
+# Main install
+# ---------------------------------------------------------------------------
+
+dex_init_install_log
+dex_log "starting install"
+
 echo "🚀 Setting up Dex..."
 echo ""
 
 # Check for Command Line Tools on macOS (required for git)
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    if ! xcode-select -p &> /dev/null; then
+    if ! xcode-select -p >/dev/null 2>&1; then
         echo "⚠️  Command Line Developer Tools not found"
         echo ""
         echo "macOS will now prompt you to install them - this is required for git."
@@ -25,7 +239,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
         read -r
         
         # Trigger the install prompt
-        xcode-select --install 2>/dev/null || true
+        xcode-select --install >/dev/null 2>&1 || true
         
         echo ""
         echo "⏳ Waiting for Command Line Tools installation..."
@@ -33,7 +247,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
         echo ""
         
         # Wait for installation to complete
-        until xcode-select -p &> /dev/null; do
+        until xcode-select -p >/dev/null 2>&1; do
             sleep 5
         done
         
@@ -43,17 +257,17 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 # Silently fix git remote to avoid Claude Desktop confusion
-if git remote -v 2>/dev/null | grep -q "davekilleen/[Dd]ex"; then
-    git remote rename origin upstream 2>/dev/null || true
+if git remote -v >/dev/null 2>&1 && git remote -v | grep -q "davekilleen/[Dd]ex"; then
+    git remote rename origin upstream >/dev/null 2>&1 || true
 fi
 
 # Check Git first (required for repo operations)
-if ! command -v git &> /dev/null; then
+if ! command -v git >/dev/null 2>&1; then
     echo "❌ Git is not installed"
     echo ""
     echo "Git is required to clone the repository and manage updates."
     echo ""
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    if dex_is_windows; then
         echo "Download Git for Windows from: https://git-scm.com/download/win"
         echo "After installing, restart your terminal and run ./install.sh again"
     else
@@ -65,7 +279,7 @@ fi
 echo "✅ Git $(git --version | cut -d' ' -f3)"
 
 # Check Node.js
-if ! command -v node &> /dev/null; then
+if ! command -v node >/dev/null 2>&1; then
     echo "❌ Node.js is not installed"
     echo "   Please install Node.js 18+ from https://nodejs.org/"
     exit 1
@@ -80,59 +294,25 @@ fi
 echo "✅ Node.js $(node -v)"
 
 # Check Python (required for Work MCP - task sync)
-# Windows often uses 'python' instead of 'python3'
-PYTHON_CMD=""
-if command -v python3 &> /dev/null; then
-    PYTHON_CMD="python3"
-elif command -v python &> /dev/null; then
-    # Verify it's Python 3, not Python 2
-    PYTHON_VERSION=$(python --version 2>&1 | grep "Python 3")
-    if [ -n "$PYTHON_VERSION" ]; then
-        PYTHON_CMD="python"
-    fi
-fi
-
-if [ -n "$PYTHON_CMD" ]; then
-    PYTHON_VERSION=$($PYTHON_CMD --version | cut -d' ' -f2)
-    PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d'.' -f1)
-    PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d'.' -f2)
-    
-    # Check if Python 3.10+
-    if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 10 ]; then
-        echo "❌ Python $PYTHON_VERSION found (too old)"
-        echo ""
-        echo "MCP SDK requires Python 3.10 or newer."
-        echo "You have Python $PYTHON_VERSION which is too old."
-        echo ""
-        echo "Install Python 3.10+:"
-        echo "  Download the latest version from https://www.python.org/downloads/"
-        echo "  After installing, restart your terminal and run ./install.sh again"
-        exit 1
-    fi
-    
+# Windows python.org installs often expose `py -3` and `python`, not `python3`.
+if dex_resolve_python; then
     echo "✅ Python $PYTHON_VERSION"
 
-    # Determine venv paths for this platform
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        VENV_PYTHON=".venv/Scripts/python.exe"
-        VENV_PIP=".venv/Scripts/pip.exe"
-    else
-        VENV_PYTHON=".venv/bin/python"
-        VENV_PIP=".venv/bin/pip"
-    fi
+    dex_resolve_venv_paths
 else
-    echo "❌ Python 3 not found"
+    echo "❌ Python 3.10+ not found"
     echo ""
     echo "Python 3.10+ is required for MCP servers (task sync across all files)."
     echo "Without it, tasks won't sync between meeting notes, person pages, and Tasks.md."
     echo ""
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    if dex_is_windows; then
         echo "Install Python 3.10+:"
         echo "  1. Download from https://www.python.org/downloads/"
         echo "  2. Run the installer"
         echo "  3. ⚠️  IMPORTANT: Check 'Add Python to PATH' during installation"
         echo "  4. Restart your terminal"
         echo "  5. Run ./install.sh again"
+        echo "  The installer also looks for the Windows 'py -3' launcher."
     else
         echo "Install Python 3.10+:"
         echo "  Mac: Download from https://www.python.org/downloads/"
@@ -144,19 +324,28 @@ else
 fi
 
 # Check npx (required for MCP servers)
-if ! command -v npx &> /dev/null; then
+if ! command -v npx >/dev/null 2>&1; then
     echo "⚠️  npx not found (usually bundled with Node.js)"
     echo "   Some MCP servers may not work without npx."
     echo "   Try reinstalling Node.js from https://nodejs.org/"
 fi
 
-# Install Node dependencies
+# Install Node dependencies. Keep the live output on screen (this step can
+# take a minute) and record the same lines in the install log.
 echo ""
 echo "📦 Installing dependencies..."
-if command -v pnpm &> /dev/null; then
-    pnpm install
-elif command -v npm &> /dev/null; then
-    npm install
+if command -v pnpm >/dev/null 2>&1; then
+    dex_log "----- pnpm install -----"
+    if ! pnpm install > >(tee -a "$INSTALL_LOG") 2>&1; then
+        dex_show_logged_failure "Could not install Node dependencies"
+        exit 1
+    fi
+elif command -v npm >/dev/null 2>&1; then
+    dex_log "----- npm install -----"
+    if ! npm install > >(tee -a "$INSTALL_LOG") 2>&1; then
+        dex_show_logged_failure "Could not install Node dependencies"
+        exit 1
+    fi
 else
     echo "❌ Neither npm nor pnpm found"
     exit 1
@@ -172,11 +361,14 @@ fi
 echo ""
 echo "📝 Converging bootstrap configuration through the provision contract..."
 PROVISION_ARGS=(--path "$(pwd)" --install-config-only --json)
-if command -v qmd &> /dev/null; then
+if command -v qmd >/dev/null 2>&1; then
     PROVISION_ARGS+=(--enable-qmd)
 fi
-DEX_CAPABILITY_PYTHON="$PYTHON_CMD" DEX_PROVISION_PYTHON="$PYTHON_CMD" DEX_HARNESS_PYTHON="$PYTHON_CMD" DEX_LIFECYCLE_PYTHON="$PYTHON_CMD" node core/provision.cjs "${PROVISION_ARGS[@]}" >/dev/null
-if command -v qmd &> /dev/null; then
+if ! DEX_CAPABILITY_PYTHON="$PYTHON_CMD" DEX_PROVISION_PYTHON="$PYTHON_CMD" DEX_HARNESS_PYTHON="$PYTHON_CMD" DEX_LIFECYCLE_PYTHON="$PYTHON_CMD" dex_run_logged "provision-bootstrap" node core/provision.cjs "${PROVISION_ARGS[@]}"; then
+    dex_show_logged_failure "Dex could not finish the first-run setup"
+    exit 1
+fi
+if command -v qmd >/dev/null 2>&1; then
     echo "   qmd MCP server added when configuration was absent"
 else
     echo "   semantic search not installed — run /enable-semantic-search to add it later"
@@ -185,8 +377,10 @@ echo "   MCP servers configured for: $(pwd)"
 
 # Check for the optional Granola app. API access is connected separately.
 echo ""
-if [ -d "/Applications/Granola.app" ]; then
+GRANOLA_PATH=""
+if GRANOLA_PATH=$(dex_granola_detected); then
     echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
+    dex_log "granola detected at $GRANOLA_PATH"
 else
     echo "ℹ️  Granola app not detected"
     echo "   Install Granola from https://granola.ai for meeting transcription"
@@ -201,31 +395,36 @@ if [ -n "$PYTHON_CMD" ]; then
     # Create venv if it doesn't exist
     if [ ! -d ".venv" ]; then
         echo "   Creating virtual environment..."
-        if ! $PYTHON_CMD -m venv .venv 2>/dev/null; then
-            echo "❌ Could not create virtual environment"
+        if ! dex_run_logged "python -m venv" "$PYTHON_CMD" -m venv .venv; then
+            dex_show_logged_failure "Could not create virtual environment"
             echo ""
             echo "Try manually:"
-            echo "  $PYTHON_CMD -m venv .venv"
+            echo "  \"$PYTHON_CMD\" -m venv .venv"
             echo "  $VENV_PIP install -r core/mcp/requirements.txt"
             echo ""
-            read -p "Press Enter to continue setup (you can fix this later)..."
+            dex_prompt_continue
         fi
     fi
 
+    dex_resolve_venv_paths
+
     # Install dependencies into venv
-    if [ -f "$VENV_PIP" ] && "$VENV_PIP" install -r core/mcp/requirements.txt --quiet 2>/dev/null; then
+    if [ -f "$VENV_PIP" ] && dex_run_logged "pip install" "$VENV_PIP" install -r core/mcp/requirements.txt --quiet; then
         echo "✅ Work MCP dependencies installed"
     else
-        echo "❌ Could not install Python dependencies"
+        if [ ! -f "$VENV_PIP" ]; then
+            dex_log "venv pip missing at $VENV_PIP"
+        fi
+        dex_show_logged_failure "Could not install Python dependencies"
         echo ""
         echo "Work MCP is critical - it syncs tasks across all your files."
         echo "Without it, checking off a task in one place won't update others."
         echo ""
         echo "Try manually:"
-        echo "  $PYTHON_CMD -m venv .venv"
+        echo "  \"$PYTHON_CMD\" -m venv .venv"
         echo "  $VENV_PIP install -r core/mcp/requirements.txt"
         echo ""
-        read -p "Press Enter to continue setup (you can fix this later)..."
+        dex_prompt_continue
     fi
 fi
 
@@ -233,18 +432,19 @@ fi
 echo ""
 echo "🔍 Verifying Work MCP setup..."
 if [ -n "$PYTHON_CMD" ] && [ -f "$VENV_PYTHON" ]; then
-    if "$VENV_PYTHON" -c "import mcp, yaml" 2>/dev/null; then
+    if dex_run_logged "import mcp, yaml" "$VENV_PYTHON" -c "import mcp, yaml"; then
         echo "✅ Work MCP verified - task sync will work"
         WORK_MCP_STATUS="✅ Working"
 
         # Path constants were generated by the sanctioned provision contract.
         echo "Path constants generated"
     else
-        echo "⚠️  Work MCP not working - task sync won't function"
+        dex_show_logged_failure "Work MCP not working - task sync won't function"
         WORK_MCP_STATUS="⚠️  Needs attention"
     fi
 else
     WORK_MCP_STATUS="⚠️  Needs attention"
+    dex_log "Work MCP skipped: PYTHON_CMD='$PYTHON_CMD' VENV_PYTHON='$VENV_PYTHON'"
 fi
 
 # Converge Git clones to the split Brain/Vault topology through the migration
@@ -287,6 +487,7 @@ while true; do
     if [ "$MIGRATION_STATUS" -ne 0 ]; then
         echo "❌ Dex could not finish the brain/vault split."
         echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
+        echo "   Install log: $INSTALL_LOG"
         exit "$MIGRATION_STATUS"
     fi
     break
@@ -312,12 +513,18 @@ DEX_ADOPTION_PYTHON="$PYTHON_CMD"
 if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
     DEX_ADOPTION_PYTHON="$VENV_PYTHON"
 fi
-DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" DEX_PROVISION_PYTHON="$DEX_ADOPTION_PYTHON" DEX_CAPABILITY_PYTHON="$DEX_ADOPTION_PYTHON" DEX_HARNESS_PYTHON="$DEX_ADOPTION_PYTHON" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only
+if ! DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" DEX_PROVISION_PYTHON="$DEX_ADOPTION_PYTHON" DEX_CAPABILITY_PYTHON="$DEX_ADOPTION_PYTHON" DEX_HARNESS_PYTHON="$DEX_ADOPTION_PYTHON" dex_run_logged "provision-adopt" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only; then
+    dex_show_logged_failure "Dex could not finish the last setup step"
+    exit 1
+fi
 
 # Detect likely agent harnesses through the same capability registry onboarding and
 # Doctor use. This is a suggestion only: /setup shows the capability preview and lets
 # the user confirm one or several harnesses before anything is recorded.
-DEX_HARNESSES_JSON="$($PYTHON_CMD -m core.harnesses.registry detect --format json 2>/dev/null || echo '[]')"
+if ! DEX_HARNESSES_JSON=$("$PYTHON_CMD" -m core.harnesses.registry detect --format json 2>>"$INSTALL_LOG"); then
+    dex_log "harness detection failed; continuing with an empty list"
+    DEX_HARNESSES_JSON="[]"
+fi
 DEX_CHAT_APPS="$(node -e '
   try {
     const profiles = JSON.parse(process.argv[1]);
@@ -346,6 +553,7 @@ if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
     echo "⚠️  IMPORTANT: Work MCP enables task sync across all files."
     echo "   Without it, Dex works but tasks won't sync automatically."
     echo "   See troubleshooting above to fix."
+    echo "   Install log: $INSTALL_LOG"
 fi
 echo ""
 echo "Dex detected: $DEX_CHAT_APPS"

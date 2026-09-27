@@ -807,6 +807,13 @@
       "ownership": "seed"
     },
     {
+      "id": "brain-install-ps1",
+      "path": "install.ps1",
+      "kind": "file",
+      "ownership": "brain",
+      "note": "Windows PowerShell twin of install.sh"
+    },
+    {
       "id": "brain-install",
       "path": "install.sh",
       "kind": "file",

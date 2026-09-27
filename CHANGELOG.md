@@ -7,6 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.21] — Windows setup can finish, and when it cannot you see why (2026-09-27)
+
+A Windows 11 install from Git Bash could stop without a usable reason. Dex treated that shell as if it were a Mac, looked in the wrong place for Python, and hid the real error. A report from Joe on 26 September made this visible.
+
+**What this fixes for you:**
+
+* **Windows is recognized, including Git Bash.** Setup now finds the Windows Python folder and the Windows copy of Granola, instead of looking only in Mac locations.
+* **Python from python.org is found.** Setup tries every usual Windows Python command and checks the version before continuing.
+* **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
+* **PowerShell setup works the same way.** `install.ps1` now runs the same install as the Git Bash script.
+
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
 The last release made the morning plan and evening review do less work. It could not say how much less, because Dex had no clock on them: the only timings anyone had were one user's, taken by hand with a stopwatch. That same user had forty open tasks, twelve marked top priority, and most of them had come out of meeting notes. Every "think about pricing" and "look into the vendor" said in a meeting had become a task. This release fixes both. Thanks again to Michelle for the numbers.

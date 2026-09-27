@@ -89,6 +89,7 @@ exit 0
         shim_dir / "python3",
         """#!/bin/sh
 if [ "$1" = "--version" ]; then echo "Python 3.12.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
 if [ "$1" = "-m" ] && [ "$2" = "core.harnesses.registry" ]; then
   printf '%s\n' "$DEX_TEST_HARNESSES_JSON"
   exit 0
@@ -120,6 +121,8 @@ exit 0
                 "claude": '[{"display_name":"Claude Code"}]',
                 "cursor": '[{"display_name":"Cursor"}]',
             }.get(chat_app, "[]"),
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+            "DEX_INSTALL_LOG": str(tmp_path / "install.log"),
         }
     )
     return root, environment
