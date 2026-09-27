@@ -72,6 +72,13 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   'execute_approved_delivered_release',
   'build_and_preview_mcp_registration',
   'execute_approved_mcp_registration',
+  // UNKNOWN-identity starting-version repair (DEX-135): the skill only
+  // names `python3 -m core.update.reanchor_cli` so the person can run it
+  // in their own terminal. The skill never runs it, never pipes yes, and
+  // never treats a refusal as an error. The CLI writes only version
+  // paperwork through the establish-baseline transaction; notes and
+  // edited files stay outside the write set.
+  'reanchor_cli',
   // Capsule journey (Lane H): read-only customization-migration operations and the
   // authority fields the skill must reproduce verbatim. The CLI create/abandon writes
   // are human-confirmed and capsule-scoped; they never touch vault user files.

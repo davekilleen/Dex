@@ -7,7 +7,9 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.21] — Older copies of Dex can finally name the version they started from (2026-09-27)
+## [Unreleased]
+
+Older copies of Dex can finally name the version they started from.
 
 If you started with Dex before it kept an official version record, checkup would say it could not tell which version was installed — and then stop. The guided update stayed closed, and the repair that checks your files against the official record would not run either. There was no safe way to set a starting version.
 
