@@ -532,6 +532,7 @@ def test_install_ps1_covers_the_same_windows_install_contract() -> None:
     assert "Resolve-DexPython" in text
     assert "Test-DexWindowsAppsStub" in text
     assert "DEX_INSTALL_PYTHON" in text
+    assert "DEX_INSTALL_NONINTERACTIVE" in text
     assert "handing off to install.sh" in text
     assert '@("-3")' in text or '"-3"' in text
     assert "python3" in text
