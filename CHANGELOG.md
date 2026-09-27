@@ -20,6 +20,16 @@ Dex used to say it learned from your sessions on its own. What it actually did w
 * **The evening review is the careful pass, not the only pass.** `/daily-review` confirms what was already written and looks for anything the automatic pass missed.
 * **The reminder that you have lessons waiting can finally see them.** The nudge that appears when five or more are still pending now has real entries to count, not just a note that a session ended.
 
+Older copies of Dex can finally name the version they started from.
+
+If you started with Dex before it kept an official version record, checkup would say it could not tell which version was installed — and then stop. The guided update stayed closed, and the repair that checks your files against the official record would not run either. There was no safe way to set a starting version.
+
+**What this fixes for you:**
+
+* **You can set a starting version without losing your edits.** When Dex cannot tell which version is installed, the same guided repair now offers a look-only pass that lists every official file it compared and marks the ones you changed as customizations. Nothing is written until you say yes.
+* **A wrong version number is refused.** If you name a version Dex has no official record for, it stops and changes nothing.
+* **Your checkup points at this repair instead of dead-ending.** It tells you the look-only command to run in Terminal, and reminds you that only the version paperwork is saved — not your notes, and not the files you have changed.
+
 When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
 
 **What this fixes for you:**

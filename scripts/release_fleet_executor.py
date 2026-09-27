@@ -28,6 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.update.journey_protocol import UpdateJourneyProtocol
+from core.utils.os_flags import binary_write_flags
 from scripts import dex_update_bridge
 
 EXECUTOR_INTERFACE_VERSION = 1
@@ -1216,7 +1217,9 @@ def _write_json(path: Path, value: object) -> None:
     ).encode("utf-8")
     descriptor = os.open(
         path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        binary_write_flags(
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        ),
         0o600,
     )
     try:
@@ -1388,7 +1391,9 @@ def _write_failure_diagnostic(
     try:
         descriptor = os.open(
             temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            binary_write_flags(
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+            ),
             0o600,
         )
         created = True
@@ -1407,7 +1412,9 @@ def _write_failure_diagnostic(
         finally:
             os.close(directory)
     except OSError as error:
-        raise ExecutorError("failure diagnostic could not be retained safely") from error
+        raise ExecutorError(
+            f"failure diagnostic could not be retained safely: {error}"
+        ) from error
     finally:
         if created:
             try:

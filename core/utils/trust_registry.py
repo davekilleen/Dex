@@ -6,10 +6,10 @@ import argparse
 import errno
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
-import shutil
 import stat
 import subprocess
 import sys
@@ -21,10 +21,40 @@ from typing import Any
 
 import yaml
 
+from core.utils.local_git import trusted_git_binary
+
 REGISTRY_RELATIVE = Path("System/trusted-mcps.yaml")
 MAX_REGISTRY_BYTES = 64 * 1024
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 ENTRY_KEYS = frozenset({"file", "sha256"})
+logger = logging.getLogger(__name__)
+CONTAINED_WRITE_UNAVAILABLE = (
+    "safe no-follow file operations are unavailable on this host; "
+    "Windows contained writes are refused until a reviewed directory-chain design is implemented"
+)
+
+
+def _contained_nofollow_available() -> bool:
+    """True only when POSIX no-follow directory opens exist. Windows must refuse."""
+    return (
+        os.name != "nt"
+        and getattr(os, "O_NOFOLLOW", None) is not None
+        and getattr(os, "O_DIRECTORY", None) is not None
+    )
+
+
+def _require_contained_nofollow(operation: str) -> None:
+    """Fail closed instead of crashing when no-follow primitives are missing."""
+    if _contained_nofollow_available():
+        return
+    logger.debug(
+        "%s refused: contained no-follow unavailable os.name=%s O_NOFOLLOW=%s O_DIRECTORY=%s",
+        operation,
+        os.name,
+        hasattr(os, "O_NOFOLLOW"),
+        hasattr(os, "O_DIRECTORY"),
+    )
+    raise TrustRegistryError(CONTAINED_WRITE_UNAVAILABLE)
 
 
 class TrustRegistryError(ValueError):
@@ -121,6 +151,7 @@ def _open_component_file(
     *,
     label: str,
 ) -> tuple[int, os.stat_result]:
+    _require_contained_nofollow("trust registry file open")
     no_follow = getattr(os, "O_NOFOLLOW", None)
     directory_flag = getattr(os, "O_DIRECTORY", None)
     if no_follow is None or directory_flag is None:
@@ -225,19 +256,12 @@ def _parse_registry(content: bytes) -> dict[str, TrustedMcpEntry]:
 
 
 def _git_executable() -> Path | None:
-    discovered = shutil.which("git")
-    candidates = [Path("/usr/bin/git"), Path("/bin/git")]
-    if discovered is not None:
-        candidates.append(Path(discovered))
-    seen: set[str] = set()
-    for candidate in candidates:
-        rendered = os.fspath(candidate)
-        if rendered in seen:
-            continue
-        seen.add(rendered)
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return candidate
-    return None
+    """Resolve Git via trusted_git_binary (Windows: #749 Known Folder list)."""
+    try:
+        return trusted_git_binary()
+    except RuntimeError:
+        # ZIP install or no trusted absolute Git: same degrade as before.
+        return None
 
 
 def _registry_is_git_tracked(vault_root: Path) -> bool | None:
@@ -296,6 +320,7 @@ def _registry_is_git_tracked(vault_root: Path) -> bool | None:
 
 
 def _require_private_directory(path: Path, *, label: str) -> int:
+    _require_contained_nofollow("trust registry directory open")
     no_follow = getattr(os, "O_NOFOLLOW", None)
     directory_flag = getattr(os, "O_DIRECTORY", None)
     if no_follow is None or directory_flag is None:
@@ -310,6 +335,8 @@ def _require_private_directory(path: Path, *, label: str) -> int:
     except OSError as exc:
         raise TrustRegistryError(f"{label} could not be opened safely: {exc}") from exc
     try:
+        if not hasattr(os, "getuid"):
+            raise TrustRegistryError("safe owner checks are unavailable")
         if opened_stat.st_uid != os.getuid():
             raise TrustRegistryError(f"{label} is not owned by the current user")
         if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
@@ -339,6 +366,7 @@ def _verified_content_addressed_snapshot(
         opened_stat = os.fstat(descriptor)
         if (
             (opened_stat.st_dev, opened_stat.st_ino) != (leaf_stat.st_dev, leaf_stat.st_ino)
+            or not hasattr(os, "getuid")
             or opened_stat.st_uid != os.getuid()
             or opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
         ):
@@ -363,6 +391,7 @@ def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
         return TrustedMcpRegistry(entries={}, present=False)
     descriptor: int | None = None
     try:
+        _require_contained_nofollow("trust registry load")
         tracked = _registry_is_git_tracked(vault_root)
         if tracked is True:
             raise TrustRegistryError(
@@ -375,6 +404,8 @@ def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
             REGISTRY_RELATIVE,
             label=REGISTRY_RELATIVE.as_posix(),
         )
+        if not hasattr(os, "getuid"):
+            raise TrustRegistryError("safe owner checks are unavailable")
         if opened_stat.st_uid != os.getuid():
             raise TrustRegistryError("registry is not owned by the current user")
         if opened_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
@@ -537,6 +568,8 @@ def _snapshot_local_python_file(
             )
 
         os.fsync(destination_fd)
+        if not hasattr(os, "fchmod"):
+            raise TrustRegistryError(CONTAINED_WRITE_UNAVAILABLE)
         os.fchmod(destination_fd, 0o400)
         temporary_stat = os.stat(
             temporary_name,
@@ -701,6 +734,8 @@ def bless_local_mcp(
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
+            if not hasattr(os, "fchmod"):
+                raise TrustRegistryError(CONTAINED_WRITE_UNAVAILABLE)
             os.fchmod(handle.fileno(), 0o600)
         os.replace(temporary_path, registry_path)
     finally:

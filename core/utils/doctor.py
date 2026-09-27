@@ -2046,7 +2046,11 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
         return ProbeResult(
             "UNKNOWN",
             "I couldn't verify which Dex version is installed, so I can't tell you "
-            "what you've changed." + anchor_note,
+            "what you've changed. There's a guided repair that can set a starting "
+            "version from the official record — it only writes the version "
+            "paperwork, never your notes or the files you have changed. Open the "
+            "Terminal app in your Dex vault folder and run: "
+            "python3 -m core.update.reanchor_cli --dry-run" + anchor_note,
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":

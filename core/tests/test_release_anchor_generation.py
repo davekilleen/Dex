@@ -670,6 +670,8 @@ def test_no_mcp_server_references_the_anchor_write_or_generation_path() -> None:
         "release-anchor",
         "reanchor",
         "reanchor_cli",
+        "establish_baseline",
+        "write_established_baseline",
     )
     for source_file in sorted((REPO_ROOT / "core/mcp").glob("*.py")):
         source = source_file.read_text(encoding="utf-8")

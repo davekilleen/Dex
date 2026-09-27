@@ -14,9 +14,12 @@ under the adversarial review's conditions
   running the preview (review finding F3, §2.5). No MCP tool reaches this
   module, and neither the ``operation`` value nor any consent is ever read
   from tool arguments, plan files, or anchor content.
-- **C12 — the release to prove is derived, never supplied.** The command
-  accepts no version or tag argument; ``generate_release_anchor`` derives the
-  claim from the installed catalog's manifest-bound identity.
+- **C12 — on a VERIFIED vault the release to prove is derived, never
+  supplied.** ``generate_release_anchor`` still derives the claim from the
+  installed catalog. ``--baseline`` is refused on VERIFIED identity so it
+  cannot override a proved version. UNKNOWN identity (DEX-135) may pass
+  ``--baseline VERSION`` so a fork with no catalog can name the official
+  record to start from.
 - **Ruling 6 — on demand only.** This flow is the only creator of the release
   anchor. Nothing hooks anchor generation into the update transaction or any
   automatic path.
@@ -51,6 +54,13 @@ from core.update.anchor_generation import (
     AnchorGenerationError,
     generate_release_anchor,
     write_release_anchor,
+)
+from core.update.establish_baseline import (
+    BaselineEstablishmentError,
+    infer_best_match,
+    preview_against_baseline,
+    resolve_official_baseline,
+    write_established_baseline,
 )
 
 _UNPROVED_REASON = "release-identity-unproved"
@@ -102,6 +112,43 @@ _LOCAL_SOURCES_FAILED = (
     "repair can't do yet — when it can, it will always ask you first "
     "before going online."
 )
+_UNKNOWN_NO_EVIDENCE = (
+    "Dex can't tell which version is installed in this vault, and it "
+    "couldn't find an official version record on this computer to start "
+    "from. Nothing was changed.\n"
+    "When you know which official version these files came from, open "
+    "the Terminal app in your Dex vault folder and run:\n"
+    "    python3 -m core.update.reanchor_cli --dry-run --baseline VERSION\n"
+    "That only looks. Saving a starting version always asks you first."
+)
+_UNKNOWN_INVALID_BASELINE = (
+    "Dex can't use {version} as a starting version. {error}\n"
+    "Nothing was changed."
+)
+_VERIFIED_REJECTS_BASELINE = (
+    "This vault already has a verified version record (v{version}). "
+    "Dex won't replace it with --baseline. Nothing was changed."
+)
+_VERIFIED_REJECTS_DRY_RUN = (
+    "This vault already has a verified version record. --dry-run is for "
+    "setting a starting version when Dex can't tell which one is "
+    "installed. Nothing was changed."
+)
+_UNKNOWN_GATE_1 = (
+    "Compare these files with the official record of v{version} now? "
+    "This step only looks — you'll see every file it checked, and be "
+    "asked again before anything is saved. [yes/no] "
+)
+_UNKNOWN_GATE_WRITE = (
+    "Save v{version} as the starting version for this vault? Dex will "
+    "write only the version paperwork — not your notes, and not the "
+    "files you have changed. Those stay as they are and are listed "
+    "above as customizations. [yes/no] "
+)
+_UNKNOWN_DRY_RUN_HEADER = (
+    "This is a look-only pass against official v{version}. Nothing will "
+    "be saved."
+)
 
 
 class _NotInteractive(RuntimeError):
@@ -109,18 +156,39 @@ class _NotInteractive(RuntimeError):
 
 
 def _parser() -> argparse.ArgumentParser:
-    # C12 + C8: the parser deliberately defines NO arguments and NO flags.
-    # There is no version, no tag, no --yes, and nothing that names an
-    # operation. Adding any argument here is a frozen-consent-contract
-    # change and must fail the red-when-removed tests.
-    return argparse.ArgumentParser(
+    # C8: there is still no --yes and no argument that substitutes for a
+    # person saying yes. C12: --baseline is refused when identity is already
+    # VERIFIED. UNKNOWN identity (DEX-135) may name an official version so a
+    # pre-catalog fork can establish a starting record.
+    parser = argparse.ArgumentParser(
         prog="python3 -m core.update.reanchor_cli",
         description=(
-            "Interactively re-anchor this vault's files to the installed "
-            "release's verified record. Asks before running and again before "
-            "writing; refuses to run without a terminal."
+            "Interactively re-anchor this vault's files to a verified release "
+            "record, or establish that record when Dex can't tell which "
+            "version is installed. Asks before running and again before "
+            "writing; refuses to write without a terminal."
         ),
     )
+    parser.add_argument(
+        "--baseline",
+        metavar="VERSION",
+        help=(
+            "Official Dex version to use as the starting record when this "
+            "vault has no verified version (for example 1.64.0). Rejected "
+            "if the version is not in the official release record, and "
+            "rejected when a verified version is already in place."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Show the file-by-file customization inventory against the "
+            "starting version and write nothing. For vaults whose version "
+            "is unknown."
+        ),
+    )
+    return parser
 
 
 def _root() -> Path:
@@ -215,9 +283,10 @@ def _report_current_state(root: Path) -> tuple[tuple[str, ...], object]:
     # FOUNDER COPY - DRAFT PENDING APPROVAL: state-report wording.
     if baseline.identity_state != "VERIFIED":
         print(
-            "Dex can't tell which version is installed in this vault, so "
-            "there's nothing to check these files against. The repair "
-            "can't run here; nothing was changed."
+            "Dex can't tell which version is installed in this vault yet. "
+            "There is a guided repair that can set a starting version from "
+            "the official record — it only writes the version paperwork, "
+            "never your notes or the files you have changed."
         )
         return unproved, baseline
     version = baseline.release_version
@@ -248,14 +317,137 @@ def _report_current_state(root: Path) -> tuple[tuple[str, ...], object]:
     return unproved, baseline
 
 
+def _print_unknown_inventory(preview) -> None:
+    print()
+    print("Here's every official file Dex checked — nothing is saved yet:")
+    print(f"  Official version: v{preview.version}")
+    print(f"  Checked against: the official release record {preview.tag}")
+    if preview.inferred:
+        print("  This version is Dex's closest match on this computer.")
+    print(f"  Exactly as shipped: {preview.counts['release-pristine']}")
+    print(
+        f"  Changed on this computer — these stay as your customizations: "
+        f"{preview.counts['release-modified']}"
+    )
+    print(
+        f"  Shipped with Dex but missing from this vault: "
+        f"{preview.counts['missing-from-disk']}"
+    )
+    print(
+        f"  Extra Dex-owned files this version does not account for: "
+        f"{preview.counts['user-owned-addition']}"
+    )
+    if preview.counts["unreadable"]:
+        print(f"  Couldn't be read for this preview: {preview.counts['unreadable']}")
+    print(f"  Proof fingerprint: {preview.preview_sha256}")
+    print(
+        "  If you save, Dex writes only the version paperwork (the official "
+        "file list and version record). An existing file list that differs "
+        "is replaced with the official one. Your notes and edited files "
+        "are not written."
+    )
+    print()
+    print("File-by-file:")
+    for row in preview.rows:
+        print(f"  {row.classification}: {row.path}")
+    customizations = preview.customization_paths
+    if customizations:
+        print()
+        print(
+            "These files differ from the official record and will be kept "
+            "as your customizations:"
+        )
+        for path in customizations:
+            print(f"  {path}")
+    print()
+
+
+def _run_unknown_identity(root: Path, *, baseline_version: str | None, dry_run: bool) -> int:
+    """DEX-135: establish a starting version for an UNKNOWN-identity vault."""
+    try:
+        if baseline_version:
+            official = resolve_official_baseline(root, baseline_version)
+        else:
+            official = infer_best_match(root)
+    except BaselineEstablishmentError as error:
+        if baseline_version:
+            print(
+                _UNKNOWN_INVALID_BASELINE.format(
+                    version=baseline_version, error=error
+                )
+            )
+        else:
+            print(_UNKNOWN_NO_EVIDENCE)
+            print(f"What Dex found: {error}")
+        return 2
+
+    if dry_run:
+        print(_UNKNOWN_DRY_RUN_HEADER.format(version=official.version))
+        preview = preview_against_baseline(root, official)
+        _print_unknown_inventory(preview)
+        print("Look-only pass finished. Nothing was changed.")
+        return 0
+
+    # Consent gate 1: look at the official record. Dry-run never reaches here.
+    if not _interactive_yes(_UNKNOWN_GATE_1.format(version=official.version)):
+        print(_DECLINED)
+        return 2
+
+    preview = preview_against_baseline(root, official)
+    _print_unknown_inventory(preview)
+
+    if not _interactive_yes(_UNKNOWN_GATE_WRITE.format(version=official.version)):
+        print(_DECLINED)
+        return 2
+
+    result = write_established_baseline(
+        root, official, previewed_sha256=preview.preview_sha256
+    )
+    after = load_release_baseline(root)
+    assessment = migration_service.assess(root)
+    if after.identity_state == "VERIFIED":
+        print(f"Starting version saved: v{after.release_version}.")
+    else:
+        print(
+            "The version paperwork was saved, but Dex still can't verify "
+            "it — nothing else was changed."
+        )
+    print(f"  Reference: {result.get('tx_id', '')}")
+    print(f"  Version status on re-read: {after.identity_state}")
+    print(f"  Checkup status: {assessment.completeness}")
+    if assessment.completeness == "OK":
+        print("  The protected update path is open again.")
+    elif after.identity_state == "VERIFIED":
+        print(
+            "  The starting version is in place. If the checkup still "
+            "can't finish, run this same command without --baseline to "
+            "prove the remaining files."
+        )
+    return 0
+
+
 def run(arguments: list[str] | None = None) -> int:
-    _parser().parse_args(arguments)
+    parsed = _parser().parse_args(arguments)
     try:
         root = _root()
 
         # (a) report the current unproved state in plain words.
         unproved, baseline = _report_current_state(root)
         if baseline.identity_state != "VERIFIED":
+            return _run_unknown_identity(
+                root,
+                baseline_version=parsed.baseline,
+                dry_run=parsed.dry_run,
+            )
+        if parsed.baseline:
+            print(
+                _VERIFIED_REJECTS_BASELINE.format(
+                    version=baseline.release_version or "unknown"
+                )
+            )
+            return 2
+        if parsed.dry_run:
+            print(_VERIFIED_REJECTS_DRY_RUN)
             return 2
         if not unproved and baseline.anchor_state != "rejected":
             # FOUNDER COPY - DRAFT PENDING APPROVAL.
@@ -356,6 +548,9 @@ def run(arguments: list[str] | None = None) -> int:
         print(error.message)
         return 2
     except AnchorGenerationError as error:
+        print(f"Nothing was written: {error}")
+        return 2
+    except BaselineEstablishmentError as error:
         print(f"Nothing was written: {error}")
         return 2
     except Exception:
