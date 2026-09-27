@@ -206,6 +206,15 @@ def test_missing_o_binary_would_corrupt_lf_payload(tmp_path, monkeypatch):
         os.close(directory)
 
 
+def test_windows_reparse_point_is_refused_even_when_s_islnk_is_false():
+    reparse = type("Stat", (), {"st_file_attributes": 0x400})()
+    regular = type("Stat", (), {})()
+    assert credential_remediation._is_reparse_point(reparse)
+    assert trust_registry._is_reparse_point(reparse)
+    assert not credential_remediation._is_reparse_point(regular)
+    assert not trust_registry._is_reparse_point(regular)
+
+
 def test_windows_follow_open_refuses_symlink_temp_before_writing_secrets(tmp_path, monkeypatch):
     monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
     monkeypatch.setattr(

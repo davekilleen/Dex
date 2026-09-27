@@ -70,16 +70,32 @@ def _log_write_failure(operation: str, error: BaseException) -> None:
     )
 
 
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _is_reparse_point(metadata: os.stat_result) -> bool:
+    """True for Windows junctions/symlinks that ``S_ISLNK`` may not report."""
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    return bool(attributes & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
 def _confirm_unfollowed_regular_write(directory: int, name: str, descriptor: int) -> None:
     """Refuse if the exclusive snapshot create followed a symlink or raced.
 
     When ``O_NOFOLLOW`` exists the kernel already refused a symlink. When it
     does not (Windows), ``O_EXCL`` plus this lstat/fstat match is the
-    remaining check. Confirm before writing hashed script bytes.
+    remaining check. Confirm before writing hashed script bytes. Windows
+    junctions are refused via ``st_file_attributes`` even when ``S_ISLNK``
+    is false.
     """
     leaf = os.stat(name, dir_fd=directory, follow_symlinks=False)
     opened = os.fstat(descriptor)
-    if stat.S_ISLNK(leaf.st_mode) or not stat.S_ISREG(leaf.st_mode) or not stat.S_ISREG(opened.st_mode):
+    if (
+        stat.S_ISLNK(leaf.st_mode)
+        or _is_reparse_point(leaf)
+        or not stat.S_ISREG(leaf.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+    ):
         raise TrustRegistryError("snapshot temporary path is not an unfollowed regular file")
     if (leaf.st_dev, leaf.st_ino) != (opened.st_dev, opened.st_ino):
         raise TrustRegistryError("snapshot temporary file changed before write")
