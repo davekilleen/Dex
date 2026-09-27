@@ -25,6 +25,7 @@ crash window.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -38,6 +39,11 @@ from pathlib import Path
 from core import portable_contract
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
+from core.transaction.byte_mode_flag import (
+    HASH_READ_MODE_BINARY,
+    refuse_pre_repair_restore,
+    write_operation_flag,
+)
 from core.transaction.fsync import (
     fsync_directory,
     fsync_file,
@@ -46,8 +52,23 @@ from core.transaction.fsync import (
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
+from core.utils.os_flags import binary_read_flags
 
 TX_ROOT_RELATIVE = Path("System") / ".dex" / "tx"
+_LOG = logging.getLogger(__name__)
+_WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED = False
+
+
+def _log_windows_planned_content_shortcut_once() -> None:
+    """Explain once why the planned-content shortcut is refused on Windows."""
+    global _WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED
+    if _WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED:
+        return
+    _WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED = True
+    _LOG.debug(
+        "Windows planned-content probe refuses the no-follow shortcut until "
+        "the handle-verified open lands"
+    )
 
 
 # Operations that only append their own small receipt. They are committed and
@@ -291,6 +312,9 @@ class Transaction:
                     f"refusing unsafe transaction directory {unsafe_directory}"
                 )
             tx.tx_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            # Written at the start of the operation — never a clock comparison.
+            # Presence of this flag is how restore decides "pre-repair".
+            write_operation_flag(tx.tx_dir, HASH_READ_MODE_BINARY)
             tx.journal.append(
                 "BEGIN",
                 {
@@ -654,6 +678,11 @@ class Transaction:
     ) -> bool:
         if max_bytes is not None and planned_size > max_bytes:
             return False
+        if os.name == "nt":
+            # Phase 4 replaces this with the handle-verified open. Until then
+            # refuse the shortcut so recovery never follows a reparse point.
+            _log_windows_planned_content_shortcut_once()
+            return False
         try:
             nofollow = os.O_NOFOLLOW
         except AttributeError:
@@ -661,7 +690,7 @@ class Transaction:
         try:
             descriptor = os.open(
                 target,
-                os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0),
+                binary_read_flags(os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0)),
             )
         except OSError:
             return False
@@ -790,18 +819,25 @@ class Transaction:
         the snapshot manifest (assuming everything was applied — the safe
         over-approximation for restoring PRE-EXISTING files, and creations
         are then deleted only if present). The lock is always released.
+
+        Snapshots taken before the Windows bookkeeping repair are refused on
+        Windows: restoring them could put back altered line endings. The
+        decision uses the flag written at the start of the operation, not a
+        clock.
         """
-        try:
-            entries = self.journal.read()
-            events = {entry.event for entry in entries}
-            applied = self._applied_relatives(entries)
-            journal_ok = True
-        except JournalCorruptError:
-            events = set()
-            applied = set()
-            journal_ok = False
         restored: list[str] = []
+        journal_ok = True
         try:
+            refuse_pre_repair_restore(self.tx_dir)
+            try:
+                entries = self.journal.read()
+                events = {entry.event for entry in entries}
+                applied = self._applied_relatives(entries)
+                journal_ok = True
+            except JournalCorruptError:
+                events = set()
+                applied = set()
+                journal_ok = False
             if journal_ok:
                 if "SNAPSHOT-DONE" in events:
                     restored = self.snapshot.restore(

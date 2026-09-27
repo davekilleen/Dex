@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from core import portable_contract
+from core.utils.os_flags import binary_read_flags
 
 DEFAULT_MAX_ENTRIES = 200_000
 DEFAULT_MAX_READ_BYTES = 8 * 1024 * 1024
@@ -164,7 +165,7 @@ def _open_beneath(root: Path, relative: str) -> int:
             resolved_target = target.resolve(strict=True)
             if not resolved_target.is_relative_to(resolved_root) or not resolved_target.is_file():
                 raise FilesystemInspectionError(f"path is not a regular file beneath the vault: {normalized}")
-            return os.open(resolved_target, os.O_RDONLY | nofollow_flag)
+            return os.open(resolved_target, binary_read_flags(os.O_RDONLY | nofollow_flag))
         except OSError as error:
             raise FilesystemInspectionError(
                 f"cannot safely open {normalized}: {error.__class__.__name__}"
@@ -183,7 +184,7 @@ def _open_beneath(root: Path, relative: str) -> int:
             opened.append(directory_fd)
         descriptor = os.open(
             parts[-1],
-            os.O_RDONLY | nofollow_flag,
+            binary_read_flags(os.O_RDONLY | nofollow_flag),
             dir_fd=directory_fd,
         )
         metadata = os.fstat(descriptor)

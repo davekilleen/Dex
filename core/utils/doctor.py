@@ -617,6 +617,11 @@ QUICK_CHECKS = (
     ),
     CheckDefinition("release.catalog", "Release catalog", "_probe_release_catalog"),
     CheckDefinition("adoption.plan", "Adoption plan", "_probe_adoption_plan"),
+    CheckDefinition(
+        "lifecycle.byte-mode",
+        "Windows bookkeeping files",
+        "_probe_lifecycle_byte_mode",
+    ),
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
@@ -1921,6 +1926,46 @@ def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
                 f"{len(receipts)} adopted item receipt record(s); {sum(entry.rewindable for entry in receipts)} pass the receipt-backed rewind preflight.",
             ),
         ),
+    )
+
+
+def _probe_lifecycle_byte_mode(context: DoctorContext) -> ProbeResult:
+    """Read-only check that Dex's own bookkeeping files are in a readable form."""
+    from core.lifecycle.byte_mode import detect
+
+    try:
+        report = detect(context.vault_root)
+    except Exception as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"Dex could not check its own bookkeeping files: {_one_line(error)}",
+        )
+    if report.blocking:
+        first = report.blocking[0].record
+        return ProbeResult(
+            "BROKEN",
+            f"Dex found a bookkeeping file it cannot safely repair on its own: {first}. "
+            "Nothing was changed.",
+            Heal(tier=3, action="Repair by hand or report with /feedback."),
+        )
+    if report.findings:
+        return ProbeResult(
+            "BROKEN",
+            "Some of Dex's own bookkeeping files were saved with Windows line endings, "
+            "which can block updates and undo. Your notes were not touched.",
+            Heal(
+                tier=2,
+                action="Repair Dex's bookkeeping files (a copy is kept first).",
+            ),
+        )
+    if sys.platform != "win32":
+        return ProbeResult(
+            "OK",
+            "not applicable on this platform",
+        )
+    return ProbeResult(
+        "OK",
+        "Dex's own bookkeeping files are in the readable form this copy expects.",
     )
 
 
