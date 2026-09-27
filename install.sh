@@ -59,11 +59,13 @@ dex_parse_python_version() {
 }
 
 dex_is_windows_apps_stub() {
-    # Microsoft Store aliases live under WindowsApps and open the Store
-    # instead of running Python. Ignore them even if --version looks fine.
+    # Microsoft Store aliases live under a WindowsApps folder and open the
+    # Store instead of running Python. Match a path segment only, so a
+    # nearby folder name that merely contains those letters is left alone.
     case "$1" in
-        *[Ww]indows[Aa]pps*) return 0 ;;
-        *[Ww]indows[Aa]pps\\*) return 0 ;;
+        *[\\/][Ww]indows[Aa]pps[\\/]*|*[\\/][Ww]indows[Aa]pps)
+            return 0
+            ;;
     esac
     return 1
 }

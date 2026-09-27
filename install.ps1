@@ -76,7 +76,7 @@ function Test-DexWindowsAppsStub {
     if (-not $Candidate) {
         return $false
     }
-    return [bool]($Candidate -match '(?i)WindowsApps')
+    return [bool]($Candidate -match '(?i)(^|[/\\])WindowsApps([/\\]|$)')
 }
 
 function Test-DexPythonVersion {
