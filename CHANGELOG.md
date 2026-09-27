@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [Unreleased]
+## Unreleased
 
 ### Lessons from a session are saved when you close it
 
