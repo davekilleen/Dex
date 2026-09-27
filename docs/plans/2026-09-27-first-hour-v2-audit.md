@@ -1,9 +1,9 @@
 # First Hour v2 — audit
 
-**Status:** Phase 1 only. No implementation in this commit.  
+**Status:** Phase 1 audit, updated for the Phase 2 brief.  
 **Date:** 2026-09-27  
-**Audience:** founder review before Phase 2  
-**Command proposal:** `/setup-v2` (see the journey). Shipped `/setup` stays the default.
+**Audience:** founder review and Phase 2 implementers  
+**Command:** `/setup-v2`. Shipped `/setup` stays the default.
 
 This audit is grounded in **current `main`** and in **open draft PR #621**. It does not merge, rebase, or cherry-pick that branch.
 
@@ -20,7 +20,7 @@ This audit is grounded in **current `main`** and in **open draft PR #621**. It d
 | Compatibility copy | `.claude/flows/onboarding.md` | Byte-identical to `FLOW.md` (`core/tests/test_onboarding_flow_portability.py`) |
 | Shipped skill | `.claude/skills/setup/SKILL.md` | Thin wrapper: start session, then follow `FLOW.md` |
 
-**Not readable in this run.** The attached brief (`uploads/fh2-issue.md`) was not on disk. `davekilleen/dex-product-gtm-lab#720` is not visible to this token (`Could not resolve to a Repository`). Claims below are therefore grounded in `main`, #621, #617, and the Phase 1 instructions for this run. If the brief names extra branches, add them in review before Phase 2.
+**Brief.** Pasted in full for Phase 2 (the upload and `dex-product-gtm-lab#720` were not readable in Phase 1). Product intent: meet your Chief of Staff; progressive 2 / 5–10 / 15–30 minute value; infer–propose–confirm; no dead ends; finish with something real. Required branches: calendar unavailable, no meeting notes, no source doc, shortest setup, longer enrichment, returning/resume.
 
 ---
 
@@ -115,7 +115,7 @@ Valuable product intent (from `docs/plans/2026-08-27-first-hour-onboarding.md` @
 9. **Invite voice + a real review** (annual, ladder, job spec, or a public-profile extract). No invented `/voice` command.
 10. **Next working morning = weekday + date**, after the calendar is read. Skip out-of-office. Never a hardcoded Tuesday or a bare Monday (`9969337e`, `core/utils/working_week.py` on that branch).
 11. **Hello first. Zero tools on turn one.** The practice-hour failure mode was narrating wiring (`52ed64cd`, `bd21d8e9`).
-12. **Fresh session.** `force_new` so a new preview does not resume yesterday (`bf69d516`).
+12. **A preview that can start clean.** #621 used `force_new` so a new sitting did not resume yesterday (`bf69d516`). The Phase 2 brief requires a **returning / resume** branch instead: resume an in-progress v2 session; start fresh only if they ask.
 13. **Reuse the onboarding MCP.** Widen it. Do not invent a second provisioner (`c83c035f`).
 14. **Honest failure.** If helpers are missing, close the chat and run the starter again. Do not edit Dex source in the vault (`bd21d8e9`).
 15. **Never advertise `/connect`.** Point Granola at `/granola-setup` (`bd21d8e9`).
@@ -173,6 +173,7 @@ Do **not** bring these across.
 | Creating a skill in hour one unless it can be **made and run** in that sitting | #621 allows create-from-gleanings. Easy to over-promise. Shelf-first is enough for v2. |
 | Cue-card calendar writes before a real calendar persist exists | Do not put `[Dex]` events on a calendar we cannot name. |
 | Vendor/model names in skill copy | Hard rule for this run. #621 names host products in user-facing lines. Rewrite as “this chat” / “the host.” |
+| Always-fresh `force_new` as the only start | The brief requires resume. `force_new` only when they ask to start over. |
 | Practice-hour copy that names a real person or company | PII gate. Use generic names in transcripts and tests. |
 | `/connect` even as a “don’t say this” list that still leaks into FLOW-style catalogues | v2 never offers that door. |
 | Claiming “tomorrow’s brief is ready” | Still false unless the same calendar persist morning skills can read. |
@@ -270,23 +271,28 @@ Useful as a checklist for Phase 2, to be rewritten against current `main` and `/
 
 ---
 
-## 7. Recommended build shape (for Phase 2, not this commit)
+## 7. Recommended build shape (Phase 2)
 
-1. New first-party skill `.claude/skills/setup-v2/` with `evals/trigger-cases.yaml` and a `references/` hour script.
+1. New first-party skill `.claude/skills/setup-v2/` with `evals/trigger-cases.yaml` and a `references/` hour script that follows the **progressive 2 / 5–10 / 15–30** journey. Clean stop at 5–10 minutes.
 2. Anti-triggers: not `/setup`, not `/getting-started`, not `/reset`, not `/change-job`.
-3. Reuse `onboarding-mcp` as the only vault write door.
-4. Any MCP widening is **opt-in** (`v2=true` / session flag) and covered by a test that shipped sessions still behave as today.
-5. Do not touch `FLOW.md`, the `.claude/flows` copy, or `.claude/skills/setup/SKILL.md`.
+3. Reuse `onboarding-mcp` as the only vault write door. No second provisioner. No practice starter.
+4. Any MCP widening is **opt-in** (`v2=true` / session flag) and covered by a test that shipped sessions still behave as today. Shared defaults, including the five-person entity cap, stay unchanged.
+5. Do not touch `FLOW.md`, the `.claude/flows` copy, `.claude/skills/setup/SKILL.md`, or hooks.
 6. Do not claim a morning brief, a recorder, or a page set Dex cannot actually produce from tools on `main`.
+7. Do not widen Google persist. Host Google may be *shown* in chat; it is not stored through `preview_confirmed_onboarding_context`.
+8. Harness confirm is early, quiet, and required before finalize — not a spoken extra beat.
+9. Source-doc invite is required in the script; “not now” is a first-class path. Notes are never a gate.
 
 ---
 
-## 8. Open decisions (audit)
+## 8. Settled decisions (no longer open)
 
-See the journey for product-facing ones. Engineering decisions that block Phase 2:
-
-1. **Google persist.** Stay on Apple/none in the shared lifecycle (v2 uses `/google-workspace-setup` and only claims “while we talk” until that skill has written the profile), **or** widen the contract and update `test_confirmed_onboarding_context_refuses_google_calendar` on purpose.
-2. **Harness beat.** Include a short confirm with existing tools, or skip and let `/setup` remain the only harness writer (then a v2-only vault may fail finalize).
-3. **Entity “file all.”** New v2 offer tool vs raising the shipped cap of 5. Raising the cap changes `/setup`.
-4. **Practice starter.** Needed for founder rehearsal, or is “type `/setup-v2` in a fresh vault” enough?
-5. **Brief gap.** Re-read `dex-product-gtm-lab#720` once that repo is visible, and add any branch this audit missed.
+1. **Command.** `/setup-v2`.
+2. **Google persist.** Stay on Apple or none. `test_confirmed_onboarding_context_refuses_google_calendar` stays green.
+3. **Harness.** Confirm early and quietly with existing tools, before finalize.
+4. **Entity window.** v2-only parameter or path may offer the last few weeks. Shipped `/setup` stays at five. The existing cap test stays green.
+5. **Starter.** None. Type `/setup-v2` in a fresh folder.
+6. **Skills in hour one.** Shelf-first only. Do not auto-create a skill.
+7. **Notes.** Not a gate.
+8. **Source doc.** Invite with a great “I don’t have one / not now” path.
+9. **Shape.** Progressive value, not an hour-long wizard. Happy path = shortest setup to the 5–10 minute stop.
