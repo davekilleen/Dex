@@ -97,7 +97,7 @@ def test_windows_name_refuses_env_authority(tmp_path, monkeypatch, caplog):
 
 def test_trust_registry_still_rejects_simulated_windows_paths():
     windows_relative = str(PureWindowsPath("System") / "trusted-mcps.yaml")
-    windows_absolute = str(PureWindowsPath("C:/Users/Joe/Dex/custom-mcp/server.py"))
+    windows_absolute = str(PureWindowsPath("C:/Temp/Dex/custom-mcp/server.py"))
     assert "\\" in windows_relative
     with pytest.raises(TrustRegistryError, match="vault-relative"):
         normalize_vault_relative(windows_relative)
