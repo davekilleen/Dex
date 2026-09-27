@@ -165,29 +165,14 @@ dex_resolve_python() {
     return 1
 }
 
-dex_granola_candidates() {
-    printf '%s\n' "/Applications/Granola.app"
-    if [ -n "${APPDATA:-}" ]; then
-        printf '%s\n' "${APPDATA}/Granola"
-    fi
-    if [ -n "${LOCALAPPDATA:-}" ]; then
-        printf '%s\n' "${LOCALAPPDATA}/Granola"
-        printf '%s\n' "${LOCALAPPDATA}/Programs/@granolaelectron"
-        printf '%s\n' "${LOCALAPPDATA}/Programs/Granola"
-    fi
-    if [ -n "${USERPROFILE:-}" ]; then
-        printf '%s\n' "${USERPROFILE}/AppData/Roaming/Granola"
-        printf '%s\n' "${USERPROFILE}/AppData/Local/Granola"
-        printf '%s\n' "${USERPROFILE}/AppData/Local/Programs/@granolaelectron"
-        printf '%s\n' "${USERPROFILE}/AppData/Local/Programs/Granola"
-    fi
+dex_granola_locator_present() {
+    [ -n "${PYTHON_CMD:-}" ] && [ -f "core/integrations/granola_paths.py" ]
 }
 
 dex_granola_via_shared_module() {
-    # Prefer the shared locator from the Granola Windows-sync work when it is
-    # already in this checkout. If that module is not here yet, return quietly
-    # and let the simple candidate walk below handle detection.
-    if [ -z "${PYTHON_CMD:-}" ] || [ ! -f "core/integrations/granola_paths.py" ]; then
+    # Shared locator from the Granola Windows-sync work. If that module is not
+    # in this checkout yet, return quietly so install can skip with a note.
+    if ! dex_granola_locator_present; then
         return 1
     fi
     local path
@@ -203,22 +188,6 @@ print(payload.get("app_path_posix") or payload.get("app_path") or payload.get("d
 ') || return 1
     [ -n "$path" ] || return 1
     printf '%s\n' "$path"
-}
-
-dex_granola_detected() {
-    local candidate
-    if candidate=$(dex_granola_via_shared_module); then
-        printf '%s\n' "$candidate"
-        return 0
-    fi
-    while IFS= read -r candidate; do
-        [ -n "$candidate" ] || continue
-        if [ -d "$candidate" ] || [ -f "$candidate" ]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
-    done < <(dex_granola_candidates)
-    return 1
 }
 
 dex_install_log_path() {
@@ -439,9 +408,15 @@ fi
 echo "   MCP servers configured for: $(pwd)"
 
 # Check for the optional Granola app. API access is connected separately.
+# Path resolution lives in core.integrations.granola_paths (Windows-sync PR).
+# If that module is not here yet, skip the check with a note and continue.
 echo ""
 GRANOLA_PATH=""
-if GRANOLA_PATH=$(dex_granola_detected); then
+if ! dex_granola_locator_present; then
+    echo "ℹ️  Granola app check skipped — shared locator not in this checkout yet"
+    echo "   Run /granola-setup later to connect it (needs a Granola Business API key)"
+    dex_log "granola locator missing; skipped detection"
+elif GRANOLA_PATH=$(dex_granola_via_shared_module); then
     echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
     dex_log "granola detected at $GRANOLA_PATH"
 else

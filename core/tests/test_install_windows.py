@@ -363,14 +363,16 @@ exit 0
     assert result.stdout.strip() == "3.12.0"
 
 
-def test_granola_windows_data_path_is_detected(tmp_path: Path) -> None:
+def test_granola_skips_quietly_when_shared_module_is_missing(tmp_path: Path) -> None:
     roaming = tmp_path / "AppData" / "Roaming" / "Granola"
     roaming.mkdir(parents=True)
     result = subprocess.run(
         [
             "/bin/bash",
             "-c",
-            f'set -e\n. "{INSTALL_SH}"\ndex_granola_detected',
+            f'set -e\n. "{INSTALL_SH}"\n'
+            "if dex_granola_locator_present; then echo present; else echo missing; fi\n"
+            "if dex_granola_via_shared_module; then echo detected; else echo skipped; fi",
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -384,33 +386,8 @@ def test_granola_windows_data_path_is_detected(tmp_path: Path) -> None:
             "USERPROFILE": str(tmp_path),
         },
     )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == str(roaming)
-
-
-def test_granola_windows_app_install_path_is_detected(tmp_path: Path) -> None:
-    app = tmp_path / "AppData" / "Local" / "Programs" / "@granolaelectron"
-    app.mkdir(parents=True)
-    result = subprocess.run(
-        [
-            "/bin/bash",
-            "-c",
-            f'set -e\n. "{INSTALL_SH}"\ndex_granola_detected',
-        ],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        timeout=20,
-        env={
-            **os.environ,
-            "DEX_INSTALL_LIB_ONLY": "1",
-            "APPDATA": str(tmp_path / "missing-roaming"),
-            "LOCALAPPDATA": str(tmp_path / "AppData" / "Local"),
-            "USERPROFILE": str(tmp_path),
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == str(app)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.splitlines() == ["missing", "skipped"]
 
 
 def test_granola_uses_shared_module_when_present(tmp_path: Path) -> None:
@@ -437,7 +414,7 @@ sys.exit(0)
         [
             "/bin/bash",
             "-c",
-            f'set -e\n. "{INSTALL_SH}"\nPYTHON_CMD="{sys.executable}"\ndex_granola_detected',
+            f'set -e\n. "{INSTALL_SH}"\nPYTHON_CMD="{sys.executable}"\ndex_granola_via_shared_module',
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -621,6 +598,8 @@ def test_cygwin_install_uses_windows_venv_scripts_and_finishes(tmp_path: Path) -
     assert (root / ".venv" / "Scripts" / "pip.exe").is_file()
     assert "Dex installation complete" in result.stdout
     assert "Python 3.12.0" in result.stdout
+    assert "Granola app check skipped" in result.stdout
+    assert "shared locator not in this checkout yet" in result.stdout
 
 
 @pytest.mark.skipif(shutil.which("pwsh") is None and shutil.which("powershell") is None, reason="PowerShell is not installed")
