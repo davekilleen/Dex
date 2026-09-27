@@ -55,6 +55,18 @@ git -C "$UPSTREAM" config core.autocrlf false
 git -C "$UPSTREAM" checkout --force -B main "$SOURCE_HEAD" --quiet
 git -C "$UPSTREAM" config user.name "Dex Fixture Builder"
 git -C "$UPSTREAM" config user.email "fixture-builder@example.com"
+# A shallow PR checkout is often a merge commit whose parents are not in
+# the object store. Fetching that commit into a new repo drops .git/shallow,
+# so P8 fsck reports broken links. Replace an incomplete HEAD with an
+# orphan of the same tree so the fixture history is self-contained.
+for parent in $(git -C "$UPSTREAM" rev-parse --verify --quiet 'HEAD^@' || true); do
+  if ! git -C "$UPSTREAM" cat-file -e "${parent}^{commit}" 2>/dev/null; then
+    _tree="$(git -C "$UPSTREAM" rev-parse 'HEAD^{tree}')"
+    _orphan="$(git -C "$UPSTREAM" commit-tree "$_tree" -m "fixture: self-contained source tree")"
+    git -C "$UPSTREAM" checkout --force -B main "$_orphan" --quiet
+    break
+  fi
+done
 
 # Include the live migrator even while it is still uncommitted in this worktree.
 # The contract, tracked-ignore policy, and transition metadata come from v1.63.

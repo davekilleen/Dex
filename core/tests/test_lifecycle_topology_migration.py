@@ -326,4 +326,4 @@ def test_real_migrator_completes_the_service_guided_journey() -> None:
         assert (vault / ".dex/pre-split-archive.git").is_dir()
         assert (vault / executed["receipt_path"]).is_file()
     finally:
-        shutil.rmtree(vault)
+        shutil.rmtree(vault, ignore_errors=True)
