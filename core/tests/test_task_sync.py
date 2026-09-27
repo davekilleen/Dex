@@ -247,9 +247,7 @@ def test_push_create_sends_clean_title_and_obsidian_source_links(
         f"{person} {meeting} ^task-20260712-020",
         "\t- Pillar: Product | Priority: P1",
     )
-    vault = sync_vault["root"] / "My Vault"
-    vault.mkdir()
-    monkeypatch.setattr(task_sync, "VAULT_ROOT", vault)
+    monkeypatch.setattr(task_sync, "_obsidian_vault_name", lambda _root=None: "My Vault")
     task_sync._write_state(_state(todoist=_service_state()))
     captured = []
 
