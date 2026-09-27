@@ -143,6 +143,70 @@ def test_fsync_directory_is_a_noop_on_windows(
     fsync_module.fsync_directory(tmp_path)  # must not raise
 
 
+def test_fsync_file_opens_rdwr_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows fsync on a read-only handle fails; the shared file fsync
+    must open O_RDWR there so a successful write is actually durable."""
+    import core.transaction.fsync as fsync_module
+
+    monkeypatch.setattr(fsync_module.os, "name", "nt")
+    seen: list[int] = []
+    real_open = fsync_module.os.open
+
+    def record_open(path: str | bytes | os.PathLike[str], flags: int, *args: object) -> int:
+        seen.append(flags)
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(fsync_module.os, "open", record_open)
+    target = tmp_path / "flush.bin"
+    target.write_bytes(b"durable")
+    fsync_module.fsync_file(target)
+    assert seen == [os.O_RDWR]
+
+
+def test_fsync_file_opens_rdonly_on_posix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POSIX keeps the established read-only open — do not start writing
+    a file we only need to flush."""
+    import core.transaction.fsync as fsync_module
+
+    monkeypatch.setattr(fsync_module.os, "name", "posix")
+    seen: list[int] = []
+    real_open = fsync_module.os.open
+
+    def record_open(path: str | bytes | os.PathLike[str], flags: int, *args: object) -> int:
+        seen.append(flags)
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(fsync_module.os, "open", record_open)
+    target = tmp_path / "flush.bin"
+    target.write_bytes(b"durable")
+    fsync_module.fsync_file(target)
+    assert len(seen) == 1
+    assert seen[0] & os.O_ACCMODE == os.O_RDONLY
+
+
+def test_fsync_file_keeps_the_real_oserror_in_the_debug_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    import core.transaction.fsync as fsync_module
+
+    def boom(_descriptor: int) -> None:
+        raise OSError(13, "simulated windows fsync denial")
+
+    monkeypatch.setattr(fsync_module.os, "fsync", boom)
+    target = tmp_path / "flush.bin"
+    target.write_bytes(b"x")
+    with caplog.at_level(logging.DEBUG, logger="core.transaction.fsync"):
+        with pytest.raises(OSError, match="simulated windows fsync denial"):
+            fsync_module.fsync_file(target)
+    assert "simulated windows fsync denial" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # Journal
 # ---------------------------------------------------------------------------
@@ -1357,6 +1421,142 @@ def test_verify_checks_mode_as_well_as_bytes(tmp_path: Path) -> None:
     with pytest.raises(Exception):
         tx.run()
     assert not (vault / "System/.installed-files.manifest").exists()  # rolled back
+
+
+def test_windows_mode_mismatch_does_not_fail_verify(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows cannot store 0o600. A synthetic mode after a successful write
+    must not fail verify or roll back the user's new files."""
+    from core.transaction import engine as engine_module
+
+    monkeypatch.setattr(engine_module.os, "name", "nt")
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(vault, [PlanEntry("System/.installed-files.manifest", b"x\n", mode=0o600)])
+    original_verify = tx._verify_phase
+
+    def windows_style_mode_then_verify() -> None:
+        os.chmod(vault / "System/.installed-files.manifest", 0o666)
+        original_verify()
+
+    tx._verify_phase = windows_style_mode_then_verify
+    result = tx.run()
+    assert result["committed"] is True
+    assert (vault / "System/.installed-files.manifest").read_bytes() == b"x\n"
+
+
+def test_windows_still_fails_verify_when_bytes_do_not_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relaxing POSIX mode checks on Windows must not skip byte verify."""
+    from core.transaction import engine as engine_module
+
+    monkeypatch.setattr(engine_module.os, "name", "nt")
+    vault = _vault(tmp_path)
+    target = vault / "System/.installed-files.manifest"
+    target.write_bytes(b"old manifest\n")
+
+    class Sabotaged(PlanEntry):
+        def sha256(self) -> str:
+            return "0" * 64
+
+    tx = Transaction.begin(vault, [Sabotaged("System/.installed-files.manifest", b"new\n")])
+    with pytest.raises(Exception):
+        tx.run()
+    assert target.read_bytes() == b"old manifest\n"
+
+
+def test_windows_deletion_precondition_ignores_permission_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Windows-synthetic mode must not look like the file changed."""
+    from core.transaction import engine as engine_module
+
+    monkeypatch.setattr(engine_module.os, "name", "nt")
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"shipped bytes\n")
+    os.chmod(target, 0o644)
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    result = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o600, expected_current_sha256=expected)],
+    ).run()
+
+    assert result["committed"] is True
+    assert not target.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not stored on Windows")
+def test_posix_deletion_precondition_still_checks_permission_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """macOS/Linux keep the load-bearing mode check on deletions."""
+    from core.transaction import engine as engine_module
+
+    monkeypatch.setattr(engine_module.os, "name", "posix")
+    vault = _vault(tmp_path)
+    target = vault / "README.md"
+    target.write_bytes(b"shipped bytes\n")
+    os.chmod(target, 0o644)
+    expected = hashlib.sha256(target.read_bytes()).hexdigest()
+    before = target.read_bytes()
+
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry("README.md", None, 0o600, expected_current_sha256=expected)],
+    )
+    with pytest.raises(PlanRejected, match="the existing file wins and the transaction aborts"):
+        tx.run()
+    assert target.read_bytes() == before
+
+
+def test_engine_apply_uses_shared_file_fsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.transaction import engine as engine_module
+    import core.transaction.fsync as fsync_module
+
+    flushed: list[Path] = []
+    real = fsync_module.fsync_file
+
+    def record(path: Path | str) -> None:
+        flushed.append(Path(path))
+        real(path)
+
+    monkeypatch.setattr(engine_module, "fsync_file", record)
+    vault = _vault(tmp_path)
+    Transaction.begin(
+        vault,
+        [PlanEntry("System/.installed-files.manifest", b"x\n")],
+    ).run()
+    assert any(path.name.startswith(".") and ".tx-" in path.name for path in flushed)
+
+
+def test_snapshot_capture_and_restore_use_shared_file_fsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.transaction import snapshot as snapshot_module
+    import core.transaction.fsync as fsync_module
+
+    flushed: list[Path] = []
+    real = fsync_module.fsync_file
+
+    def record(path: Path | str) -> None:
+        flushed.append(Path(path))
+        real(path)
+
+    monkeypatch.setattr(snapshot_module, "fsync_file", record)
+    vault = _vault(tmp_path)
+    (vault / "a.md").write_text("original")
+    snapshot = Snapshot(tmp_path / "tx" / "snapshot")
+    snapshot.capture(vault, ["a.md"])
+    (vault / "a.md").write_text("CLOBBERED")
+    snapshot.restore(vault)
+    assert (vault / "a.md").read_text() == "original"
+    assert any(path.name == "000000.bin" for path in flushed)
+    assert any(path.name.endswith(".tx-restore") for path in flushed)
 
 
 def test_commit_prunes_to_last_three_snapshots(tmp_path: Path) -> None:
