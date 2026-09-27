@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.21] — Dex can find Granola on a Windows PC (2026-09-27)
+## Unreleased
 
 Setup only looked for Granola in the Mac Applications folder. On a Windows PC the app was already there, and Dex still said it was not installed.
 
@@ -16,6 +16,15 @@ Setup only looked for Granola in the Mac Applications folder. On a Windows PC th
 * **Dex notices Granola on Windows.** First-run setup and the tool suggestions can see the Granola app on a Windows PC, including when you opened the installer from Git Bash.
 * **A miss has a real reason.** When Granola is not found, Dex records every place it looked so a later checkup can say why, instead of a blank "not detected."
 * **Meetings still come from the official Granola connection.** Dex does not read Granola's private local files. You connect with `/granola-setup` the same way as before.
+
+When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
+
+**What this fixes for you:**
+
+* **The Todoist title is just the task.** Folder paths from your notes no longer get glued onto the name.
+* **The description has a link back to the note.** If you use Obsidian, it opens the source page. If Dex cannot see the vault name, the link still points at the file so it can open in the vault you already have open.
+
+Reported by @mekuhl.
 
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
