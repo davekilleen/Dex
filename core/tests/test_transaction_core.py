@@ -22,6 +22,7 @@ import pytest
 
 from core import portable_contract
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction, TransactionError
+from core.transaction.fsync import posix_permission_bits_apply
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.lock import LockBusyError, acquire_owned_lock
 from core.transaction.snapshot import Snapshot, SnapshotError
@@ -191,7 +192,9 @@ def test_fsync_file_opens_rdonly_on_posix(
     target.write_bytes(b"durable")
     fsync_module.fsync_file(target)
     assert len(seen) == 1
-    assert seen[0] & os.O_ACCMODE == os.O_RDONLY
+    # Windows Python has no os.O_ACCMODE. The POSIX mask is O_RDONLY|O_WRONLY|O_RDWR.
+    access_mode = getattr(os, "O_ACCMODE", os.O_RDONLY | os.O_WRONLY | os.O_RDWR)
+    assert seen[0] & access_mode == os.O_RDONLY
 
 
 def test_fchmod_falls_back_to_chmod_when_the_syscall_is_missing(
@@ -558,7 +561,8 @@ def test_engine_content_write_with_matching_precondition_applies_and_verifies(
 
     assert result["committed"] is True
     assert target.read_bytes() == b"replacement\n"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    if posix_permission_bits_apply():
+        assert stat.S_IMODE(target.stat().st_mode) == 0o644
 
 
 def test_engine_content_write_precondition_mismatch_rejects_without_mutation(
@@ -1164,7 +1168,8 @@ def test_engine_delete_entry_commits_and_rolls_back_byte_exact(tmp_path: Path) -
         tx.run()
 
     assert target.read_bytes() == b"restorable shipped bytes\n"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    if posix_permission_bits_apply():
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
 def test_engine_rejects_deletion_without_current_content_precondition(
@@ -1495,6 +1500,8 @@ def test_special_mode_bits_are_rejected(tmp_path: Path) -> None:
 
 def test_verify_checks_mode_as_well_as_bytes(tmp_path: Path) -> None:
     """F9: a mode mismatch after apply fails verification and rolls back."""
+    if not posix_permission_bits_apply():
+        pytest.skip("Windows does not store POSIX permission bits")
     vault = _vault(tmp_path)
     tx = Transaction.begin(vault, [PlanEntry("System/.installed-files.manifest", b"x\n", mode=0o600)])
     original_verify = tx._verify_phase
@@ -1614,8 +1621,8 @@ def test_posix_deletion_precondition_still_checks_permission_mode(
 def test_engine_apply_uses_shared_file_fsync(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from core.transaction import engine as engine_module
     import core.transaction.fsync as fsync_module
+    from core.transaction import engine as engine_module
 
     flushed: list[Path] = []
     real = fsync_module.fsync_file
@@ -1636,8 +1643,8 @@ def test_engine_apply_uses_shared_file_fsync(
 def test_snapshot_capture_and_restore_use_shared_file_fsync(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from core.transaction import snapshot as snapshot_module
     import core.transaction.fsync as fsync_module
+    from core.transaction import snapshot as snapshot_module
 
     flushed: list[Path] = []
     real = fsync_module.fsync_file

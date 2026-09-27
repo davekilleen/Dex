@@ -23,6 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable, Protocol
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from core.transaction.fsync import fsync_directory
 
 CANONICAL_REMOTE_URL = "https://github.com/davekilleen/Dex.git"

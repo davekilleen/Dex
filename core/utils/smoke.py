@@ -97,8 +97,12 @@ RUNNER_EXTERNAL_RELATIVES = frozenset(
 )
 RUNNER_FALLBACK_RELATIVES = (
     Path("core/__init__.py"),
+    Path("core/path_safety.py"),
     Path("core/paths.py"),
     Path("core/portable_contract.py"),
+    Path("core/transaction/__init__.py"),
+    Path("core/transaction/fsync.py"),
+    Path("core/transaction/lock.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/dex_logger.py"),
     Path("core/utils/file_lock.py"),

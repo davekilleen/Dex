@@ -20,6 +20,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+_SOURCE_ROOT = str(Path(__file__).resolve().parents[2])
+if _SOURCE_ROOT not in sys.path:
+    sys.path.insert(0, _SOURCE_ROOT)
+
 from core.transaction.fsync import fsync_directory
 
 RECEIPT_RELATIVE = Path("System/.dex/health/post-update-canary.json")

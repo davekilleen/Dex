@@ -12,6 +12,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.transaction.fsync import fsync_directory
 from core.utils.integration_credentials import (
     MAX_ACTIVE_CONFIG_BYTES,
     active_mcp_raw_residual,
@@ -19,7 +20,6 @@ from core.utils.integration_credentials import (
     mcp_credential_key_names,
     read_vault_env,
 )
-from core.transaction.fsync import fsync_directory
 from core.utils.local_git import git_env, git_result
 from core.utils.os_flags import binary_write_flags
 
