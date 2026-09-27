@@ -285,7 +285,7 @@ dex_support_shell_precheck() {
     vault=$(dex_support_vault_path)
     case "$uname_s" in
         CYGWIN*|cygwin*)
-            echo "Dex on Windows runs in PowerShell or Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) or PowerShell in your Dex folder and run the installer there."
+            echo "Dex on Windows runs in Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) in your Dex folder and run bash ./install.sh."
             return 1
             ;;
         MINGW*|mingw*|MSYS*|msys*)
@@ -296,7 +296,7 @@ dex_support_shell_precheck() {
         *[Mm]icrosoft*)
             case "$vault" in
                 /mnt/[A-Za-z]|/mnt/[A-Za-z]/*)
-                    echo "Your Dex folder is on the Windows side of WSL (/mnt/...). Dex can't keep its files safe there. Either keep the folder in Linux (for example ~/Dex) and use Dex from WSL, or install Dex natively in Windows PowerShell."
+                    echo "Your Dex folder is on the Windows side of WSL (/mnt/...). Dex can't keep its files safe there. Either keep the folder in Linux (for example ~/Dex) and use Dex from WSL, or clone the official Dex release on Windows and run bash ./install.sh from Git Bash."
                     return 1
                     ;;
             esac
@@ -348,7 +348,7 @@ dex_support_verify_venv_python() {
     local plat
     plat=$("$python" -c "import sys; print(sys.platform)" 2>/dev/null || true)
     if [ "$plat" != "win32" ]; then
-        echo "Dex on Windows runs in PowerShell or Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) or PowerShell in your Dex folder and run the installer there."
+        echo "Dex on Windows runs in Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) in your Dex folder and run bash ./install.sh."
         echo "The Python in .venv printed '$plat', not win32."
         dex_support_show_log
         return 1

@@ -58,6 +58,7 @@ QUICK_IDS = [
     "mcp.orphans",
     "harness.capabilities",
     "python.env",
+    "platform.support",
     "hooks.wired",
     "jobs.loaded",
     "jobs.fresh",

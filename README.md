@@ -80,6 +80,18 @@ Dex's update service previews product changes and protects personal content thro
 - Use [the help guide](https://heydex.ai/help/) for setup, or [report a bug](https://github.com/davekilleen/dex/issues) without posting private vault contents. The [feedback guide](https://heydex.ai/help/feedback.html) explains reporting.
 - To stop using an app, close its Dex session and revoke its folder access or disable its plugin in that app. Keep the vault if you want your notes. Removing an app or plugin does not stop independently installed background jobs. New-app removal instructions remain pending native verification.
 
+## Windows support status
+
+| Area | Status today |
+| --- | --- |
+| Install (Git Bash `install.sh`) | Preview — works on a clean Windows 11 with python.org 3.12/3.13 |
+| First setup and daily use (notes, tasks, MCP tools) | Preview |
+| `/dex-update` and `/dex-rollback` | Not yet — a fix for how Dex read and wrote its own record files on Windows is in progress |
+| Connected-service keys (`.env`) and trusted local MCPs | Not yet — Windows file-permission checks are in progress |
+| Older vaults (before v1.80) moving to the current update engine | Not on Windows — start from a fresh install |
+| Calendar, background meeting sync, launch-at-login jobs | Mac only |
+| Supported shells and Pythons | Git Bash; python.org Python 3.12/3.13. Not supported: Cygwin, Microsoft Store Python, WSL folders under `/mnt` |
+
 ## Guides
 
 - [System guide](docs/Dex_System/Dex_System_Guide.md): planning, meetings, people, tasks and reviews.
@@ -249,7 +261,8 @@ Open **System Settings** → **Privacy & Security** → **Calendars**. Turn **Cu
 That's it. The installer already set up the rest on Mac. Your meetings—including recurring ones like weekly 1:1s—will show on the correct days in Dex.
 
 **More detail and troubleshooting:** [Calendar_Setup.md](docs/Dex_System/Calendar_Setup.md) (in your vault after setup).
-**On Windows?** Calendar connection is supported on Mac via Apple Calendar. We don't have Windows instructions in this repo yet.
+**On Windows?** Calendar connection is Mac-only (Apple Calendar). Windows calendar support is
+not planned in this release; Dex will say so rather than pretend it checked.
 
 </details>
 
@@ -278,7 +291,7 @@ xcode-select --install
 
 ---
 
-### Windows: "python is not recognized" or "pip is not recognized"
+### Windows (Git Bash): "python is not recognized" or "pip is not recognized"
 
 This means Python wasn't added to your PATH during installation.
 
@@ -294,7 +307,7 @@ This means Python wasn't added to your PATH during installation.
 
 ---
 
-### Windows: "git is not recognized"
+### Windows (Git Bash): "git is not recognized"
 
 Git for Windows isn't installed.
 
@@ -304,6 +317,12 @@ Git for Windows isn't installed.
 2. Run installer with default options
 3. **Restart your terminal**
 4. Open **Git Bash** in your Dex folder and run `bash ./install.sh` again
+
+---
+
+### Windows: "this Dex copy's update engine doesn't match its release information"
+
+You have hit the record-file line-ending problem above; the fix arrives with the next release and repairs itself. Nothing in your notes is affected.
 
 ---
 
@@ -319,12 +338,12 @@ python3 -m venv .venv
 .venv/bin/pip install --require-hashes -r core/mcp/requirements.hash.txt
 ```
 
-**Windows — PowerShell, in your Dex folder:**
+**Windows — Git Bash, in your Dex folder:**
 
-```powershell
+```bash
 python -m venv .venv
-.venv\Scripts\pip install --upgrade pip
-.venv\Scripts\pip install --require-hashes -r core\mcp\requirements.hash.txt
+.venv/Scripts/pip install --upgrade pip
+.venv/Scripts/pip install --require-hashes -r core/mcp/requirements.hash.txt
 ```
 
 ---

@@ -45,6 +45,7 @@ from core.utils import (
     automation_ownership,
     dex_logger,
     launch_agents,
+    platform_support,
     preflight,
     release_channel,
 )
@@ -631,6 +632,7 @@ QUICK_CHECKS = (
         "_probe_harness_capabilities",
     ),
     CheckDefinition("python.env", "Python environment", "_probe_python_env"),
+    CheckDefinition("platform.support", "Supported setup", "_probe_platform_support"),
     CheckDefinition("hooks.wired", "Claude hooks", "_probe_hooks_wired"),
     CheckDefinition("jobs.loaded", "Background jobs", "_probe_jobs_loaded"),
     CheckDefinition("jobs.fresh", "Background job freshness", "_probe_jobs_fresh"),
@@ -1436,6 +1438,24 @@ class EnvPermissionFinding:
     auto_tighten: bool
 
 
+WINDOWS_ENV_PERMISSION_UNKNOWN = (
+    "file permissions are not checked on Windows yet"
+)
+
+
+def _windows_env_permission_unknown(context: DoctorContext) -> str | None:
+    """Windows .env authority is UNKNOWN until the ACL check lands (Phase 5).
+
+    Returning None on a missing .env is not a permission OK. A present .env
+    must never look checked.
+    """
+    if os.name == "posix":
+        return None
+    if (context.vault_root / ".env").exists():
+        return WINDOWS_ENV_PERMISSION_UNKNOWN
+    return None
+
+
 def _env_permission_finding(context: DoctorContext) -> EnvPermissionFinding | None:
     """Classify a vault .env readable by other users; never reads its contents.
 
@@ -1530,6 +1550,7 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
         except Exception as error:
             failures.append(f"{config_path.name} could not be parsed ({_one_line(error)})")
     env_finding = _env_permission_finding(context)
+    windows_env_unknown = _windows_env_permission_unknown(context)
     if failures:
         # The parse failures keep the Tier-3 hand-repair heal, but the
         # security finding must never be masked by an unrelated config
@@ -1537,6 +1558,8 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
         detail = "; ".join(failures)
         if env_finding is not None:
             detail += f"; {env_finding.detail}"
+        elif windows_env_unknown is not None:
+            detail += f"; {windows_env_unknown}"
         return ProbeResult(
             "BROKEN",
             detail,
@@ -1544,6 +1567,8 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
         )
     if env_finding is not None:
         return ProbeResult("BROKEN", env_finding.detail, env_finding.heal)
+    if windows_env_unknown is not None:
+        return ProbeResult("UNKNOWN", windows_env_unknown)
     return ProbeResult("OK", "user-profile.yaml, pillars.yaml, and .claude/settings.json all parse")
 
 
@@ -2691,8 +2716,32 @@ print(json.dumps(missing))
     return (lambda missing: (not missing, missing))(json.loads(result.stdout))
 
 
+def _vault_python_interpreter(context: DoctorContext) -> Path:
+    if os.name == "nt":
+        return context.vault_root / ".venv" / "Scripts" / "python.exe"
+    return context.vault_root / ".venv" / "bin" / "python"
+
+
+def _probe_platform_support(context: DoctorContext) -> ProbeResult:
+    try:
+        report = platform_support.probe(vault_root=context.vault_root)
+    except Exception as error:
+        return ProbeResult("UNKNOWN", _one_line(error))
+    detail = "; ".join(item.text for item in report.messages) or (
+        f"{report.family} setup is {report.verdict}"
+    )
+    if report.verdict == "unsupported":
+        action = report.messages[0].text if report.messages else detail
+        return ProbeResult(
+            "BROKEN",
+            detail,
+            Heal(tier=3, action=action, applied=False),
+        )
+    return ProbeResult("OK", detail)
+
+
 def _probe_python_env(context: DoctorContext) -> ProbeResult:
-    python = context.vault_root / ".venv" / "bin" / "python"
+    python = _vault_python_interpreter(context)
     if not python.is_file() or not os.access(python, os.X_OK):
         return ProbeResult(
             "BROKEN",

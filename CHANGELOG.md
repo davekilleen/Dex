@@ -9,6 +9,16 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+### We now say plainly what works on Windows
+
+Windows setup pages made a one-line install look finished and ready. It is not: install and first use can work, but updating, undoing an update, and connected-service keys are still being completed.
+
+**What this fixes for you:**
+
+* **The Windows install note now says preview, and the only route is Git Bash.** Clone the official release, then run `bash ./install.sh`. It lists what you need (Windows 10 22H2 or 11, Python 3.12 or 3.13 from python.org, Git for Windows for all users, a folder on your local C: drive) and what is still Mac-only (calendar and background sync). The old PowerShell one-liner is not the install path.
+* **Dex tells you when your Windows setup is one we do not support.** Microsoft Store Python, Cygwin, and a Dex folder on the Windows side of WSL are refused with a short reason, instead of failing later with no explanation.
+* **An old one-time updater no longer sounds like Windows is merely missing.** If you run that older tool on Windows, it says it is only for old Mac and Linux copies, and that a Windows install should use the normal update command instead.
+
 A Windows 11 install from Git Bash could stop without a usable reason. Dex treated that shell as if it were a Mac, looked in the wrong place for Python, and hid the real error. A report from Joe on 26 September made this visible.
 
 **What this fixes for you:**

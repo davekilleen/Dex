@@ -1,7 +1,23 @@
 # Windows support and security — code-ready specification
 
-**Status:** specification only, no implementation. Written 2026-09-27 against `main` at
-`aab02b19` (released: v1.97.15; unreleased on main through v1.97.20).
+**Status:** specification plus the Phase 3 support table below. Written 2026-09-27
+against `main`. Phases 1 and 2 are on `main`. Full text (areas A–F) follows. This
+file also keeps the public status table the README links to.
+
+Tracking: https://github.com/davekilleen/dex-product-gtm-lab/issues/719
+
+## Windows support status
+
+| Area | Status today |
+| --- | --- |
+| Install (Git Bash `install.sh`) | Preview — works on a clean Windows 11 with python.org 3.12/3.13 |
+| First setup and daily use (notes, tasks, MCP tools) | Preview |
+| `/dex-update` and `/dex-rollback` | Not yet — a fix for how Dex read and wrote its own record files on Windows is in progress |
+| Connected-service keys (`.env`) and trusted local MCPs | Not yet — Windows file-permission checks are in progress |
+| Older vaults (before v1.80) moving to the current update engine | Not on Windows — start from a fresh install |
+| Calendar, background meeting sync, launch-at-login jobs | Mac only |
+| Supported shells and Pythons | Git Bash; python.org Python 3.12/3.13. Not supported: Cygwin, Microsoft Store Python, WSL folders under `/mnt` |
+
 **Audience:** the implementing agent (phase by phase, with tests) and the security reviewer.
 **Scope:** the six areas named in the planning request (A–F). The parallel "safe fix" PRs are
 treated as preconditions and are *not* re-specified here except where a design below depends on
