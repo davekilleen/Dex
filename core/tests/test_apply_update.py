@@ -53,6 +53,18 @@ def _write(root: Path, relative: str, content: bytes, mode: int = 0o644) -> None
     target.chmod(mode)
 
 
+def _is_release_tree_path(release: Path, candidate: Path) -> bool:
+    relative = candidate.relative_to(release)
+    if ".git" in relative.parts:
+        return False
+    # macOS runners can drop Finder sidecar files into a tmp release tree.
+    # Those must not enter the installed-files manifest: git often ignores
+    # them (global excludes), and the verifier requires an exact tree match.
+    if candidate.name == ".DS_Store" or candidate.name.startswith("._"):
+        return False
+    return candidate.is_file()
+
+
 def _refresh_manifest(release: Path) -> None:
     manifest = release / "System/.installed-files.manifest"
     manifest.parent.mkdir(parents=True, exist_ok=True)
@@ -60,7 +72,7 @@ def _refresh_manifest(release: Path) -> None:
     paths = sorted(
         candidate.relative_to(release).as_posix()
         for candidate in release.rglob("*")
-        if candidate.is_file() and ".git" not in candidate.relative_to(release).parts
+        if _is_release_tree_path(release, candidate)
     )
     manifest.write_text("".join(f"{relative}\n" for relative in paths), encoding="utf-8")
 
@@ -68,7 +80,13 @@ def _refresh_manifest(release: Path) -> None:
 def _commit_release(release: Path, version: str) -> tuple[str, str, str, str]:
     package = release / "package.json"
     package.write_text(json.dumps({"name": "dex-test", "version": version}) + "\n")
-    _refresh_manifest(release)
+    _git(release, "add", "-A")
+    tracked = {path for path in _git(release, "ls-files").splitlines() if path}
+    manifest_relative = "System/.installed-files.manifest"
+    tracked.add(manifest_relative)
+    manifest = release / manifest_relative
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("".join(f"{path}\n" for path in sorted(tracked)), encoding="utf-8")
     _git(release, "add", "-A")
     _git(release, "commit", "--quiet", "-m", f"release {version}")
     commit = _git(release, "rev-parse", "HEAD")

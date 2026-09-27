@@ -1035,7 +1035,8 @@ def _release_payload_loader(release_root: str | Path):
 
 def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> None:
     from core.lifecycle.bridge import BridgeActivationError, prepare_vault
-    from core.lifecycle.byte_mode import ByteModeBlocked, ensure as ensure_byte_mode
+    from core.lifecycle.byte_mode import ByteModeBlocked
+    from core.lifecycle.byte_mode import ensure as ensure_byte_mode
 
     try:
         ensure_byte_mode(Path(vault_root))

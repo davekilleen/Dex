@@ -7,12 +7,9 @@ import json
 import sys
 from pathlib import Path
 
-from core.lifecycle.byte_mode import (
-    ByteModeError,
-    apply as apply_byte_mode,
-    rollback as rollback_byte_mode,
-    status_payload,
-)
+from core.lifecycle.byte_mode import ByteModeError, status_payload
+from core.lifecycle.byte_mode import apply as apply_byte_mode
+from core.lifecycle.byte_mode import rollback as rollback_byte_mode
 from core.lifecycle.ledger import (
     LedgerError,
     project_state,
