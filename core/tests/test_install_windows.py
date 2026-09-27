@@ -540,8 +540,8 @@ def test_readme_does_not_recommend_bypass_or_remote_iex() -> None:
     assert "ExecutionPolicy Bypass" not in text
     assert "irm https://heydex.ai/install.ps1 | iex" not in text
     assert "clone --branch release --single-branch" in text
-    assert "RemoteSigned" in text
-    assert "-Scope Process" in text
+    assert "Git Bash" in text
+    assert "bash ./install.sh" in text
     assert "--require-hashes" in text
 
 
