@@ -43,6 +43,11 @@ clone_into() {
   rm -rf "$dest_unix"
   mkdir -p "$(dirname "$dest_unix")"
   git clone --local --no-hardlinks "$GITHUB_WORKSPACE" "$dest_unix"
+  # Shallow GHA checkouts omit origin/release. install.sh's brain/vault split
+  # needs an official remote release ref before it will converge.
+  if ! git -C "$dest_unix" rev-parse --verify 'refs/remotes/origin/release^{commit}' >/dev/null 2>&1; then
+    git -C "$dest_unix" fetch --depth=1 origin refs/heads/release:refs/remotes/origin/release
+  fi
 }
 
 run_install_sh() {

@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_PATH="$0"
+if command -v cygpath >/dev/null 2>&1; then
+  SCRIPT_PATH="$(cygpath -u "$SCRIPT_PATH")"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WITH_MERGE=false
@@ -23,7 +27,11 @@ if [ "$WITH_MERGE" = true ] && [ "$NO_GIT" = true ]; then
   exit 2
 fi
 
-FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dex-aged-vault.XXXXXX")"
+_tmp="${TMPDIR:-${TEMP:-/tmp}}"
+if command -v cygpath >/dev/null 2>&1; then
+  _tmp="$(cygpath -u "$_tmp")"
+fi
+FIXTURE_ROOT="$(mktemp -d "${_tmp}/dex-aged-vault.XXXXXX")"
 UPSTREAM="$FIXTURE_ROOT/upstream"
 VAULT="$FIXTURE_ROOT/Dex Vault - Aged"
 

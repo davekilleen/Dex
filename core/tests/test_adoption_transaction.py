@@ -32,6 +32,7 @@ from core.lifecycle.preview import (
 )
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
 from core.transaction.engine import Transaction
+from core.transaction.fsync import posix_permission_bits_apply
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = "System/.release-catalog.json"
@@ -577,9 +578,10 @@ def test_e9_adoption_crash_at_every_transaction_seam_converges(
         for relative in relatives
     }
     if seam == "after-commit-record":
+        expected_mode = 0o644 if posix_permission_bits_apply() else 0o666
         assert after == {
-            ".claude/skills/alpha/SKILL.md": (b"# alpha\n", 0o644),
-            ".claude/skills/beta/SKILL.md": (b"# beta\n", 0o644),
+            ".claude/skills/alpha/SKILL.md": (b"# alpha\n", expected_mode),
+            ".claude/skills/beta/SKILL.md": (b"# beta\n", expected_mode),
         }
         assert outcomes == []
     else:

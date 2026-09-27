@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -233,14 +234,17 @@ def test_dex_update_skill_routes_the_guided_migration_through_service() -> None:
 
 
 def test_real_migrator_completes_the_service_guided_journey() -> None:
+    script = REPO_ROOT / "scripts/make-aged-vault-fixture.sh"
+    # Git Bash dirname does not treat backslashes as separators.
+    script_arg = script.as_posix() if os.name == "nt" else str(script)
     fixture = subprocess.run(
-        ["bash", str(REPO_ROOT / "scripts/make-aged-vault-fixture.sh")],
+        ["bash", script_arg],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        check=True,
         timeout=180,
     )
+    assert fixture.returncode == 0, fixture.stderr[-2000:]
     marker = "Fixture ready: "
     vault = Path(
         next(

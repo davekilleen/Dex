@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+* **Windows install checks can finish.** Dex now writes its private history files the same way on a PC as on a Mac, so those checks no longer fail after a successful write.
+
 The Windows install check could stop with a file-lock error, even after Dex started using the Windows lock instead of the Mac one.
 
 **What this fixes for you:**

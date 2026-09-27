@@ -28,6 +28,7 @@ from core.lifecycle.inventory import build_inventory
 from core.tests.lifecycle_test_helpers import write_bridge_release
 from core.tests.test_adoption_transaction import _setup
 from core.transaction.engine import PlanRejected
+from core.transaction.fsync import posix_permission_bits_apply
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -84,7 +85,12 @@ def test_baseline_import_is_read_only_and_activation_is_atomic(
         "baseline_inventory_sha256": expected_hash,
     }
     assert activation_path.read_bytes() == _canonical(activation)
-    assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
+    if posix_permission_bits_apply():
+        assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
+    else:
+        # Windows cannot store 0o600. chmod still runs; NTFS ACLs are the
+        # equivalent owner-only protection and the record stays owner-writable.
+        assert stat.S_IMODE(activation_path.stat().st_mode) == 0o666
     assert protected.read_bytes() == before
     assert stat.S_IMODE((vault / "System").stat().st_mode) == system_mode
     assert fsynced_directories == [
@@ -190,7 +196,12 @@ def test_stale_activation_from_a_previous_release_is_rerecorded(
         "baseline_inventory_sha256": expected_hash,
     }
     assert activation_path.read_bytes() == _canonical(refreshed)
-    assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
+    if posix_permission_bits_apply():
+        assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
+    else:
+        # Windows cannot store 0o600. chmod still runs; NTFS ACLs are the
+        # equivalent owner-only protection and the record stays owner-writable.
+        assert stat.S_IMODE(activation_path.stat().st_mode) == 0o666
     assert not list(activation_path.parent.glob(".activation.json.tmp-*"))
     assert activate_vault(vault) == refreshed
 
