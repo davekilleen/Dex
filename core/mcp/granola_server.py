@@ -102,7 +102,7 @@ def _read_key_from_env_file() -> Optional[str]:
         return None
 
     try:
-        for raw_line in env_path.read_text().splitlines():
+        for raw_line in env_path.read_text(encoding="utf-8-sig").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
