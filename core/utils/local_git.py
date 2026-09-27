@@ -27,20 +27,20 @@ _MUTATING_COMMANDS = frozenset(
 # Git Bash (`/c/...`) and Cygwin (`/cygdrive/c/...`) spellings map to this list
 # before any filesystem access. They are not extra trust roots.
 #
-# Per-user Git for Windows (`<LocalAppData>/Programs/Git/cmd/git.exe`) is added
-# only from the OS Known Folder ID, never from the LOCALAPPDATA environment
-# variable. See `_windows_local_app_data`.
+# The official per-user Git for Windows path under LocalAppData\Programs is
+# intentionally omitted: that directory is user-writable, so a same-user
+# plant would satisfy any ownership story we could tell. System Program Files
+# locations only.
 WINDOWS_FIXED_GIT_CANDIDATES = (
     "C:/Program Files/Git/cmd/git.exe",
     "C:/Program Files/Git/bin/git.exe",
     "C:/Program Files (x86)/Git/cmd/git.exe",
 )
-_WINDOWS_LOCAL_GIT_SUFFIX = "Programs/Git/cmd/git.exe"
 _WINDOWS_ABS = re.compile(r"^[A-Za-z]:[/\\]")
 _WINDOWS_POSIX_ALIAS = re.compile(r"^/(?:cygdrive/)?([A-Za-z])/(.*)$")
 _WINDOWS_8_3_COMPONENT = re.compile(r"^[^.]{1,8}~\d{1,2}(?:\.[^.]{1,3})?$", re.IGNORECASE)
+_WINDOWS_SHIM_SUFFIXES = (".cmd", ".bat")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-_FOLDERID_LOCAL_APP_DATA = "{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}"
 _WINDOWS_LIKE_PLATFORMS = frozenset({"win32", "cygwin", "msys"})
 
 # Windows cannot enforce the POSIX ownership/mode bar this helper applies on
@@ -52,10 +52,8 @@ _WINDOWS_LIKE_PLATFORMS = frozenset({"win32", "cygwin", "msys"})
 # - Intermediate junctions: the leaf and each parent are rejected if they are
 #   a symlink, junction, or reparse point. After resolve() the realpath must
 #   still be a closed-list member. We do not have POSIX dir_fd no-follow.
-# - Same-user planting in LocalAppData\Programs is possible because that
-#   directory is user-writable. The path is still included because it is the
-#   official Git for Windows per-user location, and the prefix comes from the
-#   Known Folder API rather than an environment variable.
+# - Per-user LocalAppData installs are not trusted (user-writable).
+# - .cmd / .bat shims are rejected even if they sit next to git.exe.
 # - 8.3 short names are not in the closed list and are rejected lexically.
 # - Windows is treated as case-insensitive; a case-sensitive directory (rare)
 #   could hold a second file with different case. We cannot distinguish that.
@@ -77,6 +75,19 @@ def _windows_has_dot_or_empty_component(text: str) -> bool:
 def _windows_has_short_name_component(text: str) -> bool:
     rest = _WINDOWS_ABS.sub("", text, count=1)
     return any(_WINDOWS_8_3_COMPONENT.fullmatch(part) for part in rest.replace("/", "\\").split("\\") if part)
+
+
+def _windows_leaf_name(text: str) -> str:
+    return text.replace("\\", "/").rsplit("/", 1)[-1].casefold()
+
+
+def _windows_leaf_is_git_exe(text: str) -> bool:
+    return _windows_leaf_name(text) == "git.exe"
+
+
+def _windows_leaf_is_cmd_or_bat_shim(text: str) -> bool:
+    leaf = _windows_leaf_name(text)
+    return leaf.endswith(_WINDOWS_SHIM_SUFFIXES)
 
 
 def posix_windows_alias_to_drive_path(text: str) -> str | None:
@@ -139,111 +150,26 @@ def _drive_letter_windows_path(text: str) -> str | None:
     return mapped
 
 
-def _windows_local_app_data() -> str | None:
-    """Return the OS-known LocalAppData folder.
-
-    Uses SHGetKnownFolderPath(FOLDERID_LocalAppData). Never reads LOCALAPPDATA,
-    USERPROFILE, or HOME. A hijacked environment therefore cannot redirect this
-    prefix. Returns None when the API is unavailable or the result is not a
-    drive-letter absolute path.
-    """
-    if not _is_windows_like():
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-    except ImportError:
-        return None
-    if not hasattr(ctypes, "windll"):
-        return None
-
-    class GUID(ctypes.Structure):
-        _fields_ = [
-            ("Data1", wintypes.DWORD),
-            ("Data2", wintypes.WORD),
-            ("Data3", wintypes.WORD),
-            ("Data4", wintypes.BYTE * 8),
-        ]
-
-    hexed = _FOLDERID_LOCAL_APP_DATA.strip("{}").split("-")
-    if len(hexed) != 5:
-        return None
-    data4 = bytes.fromhex(hexed[3] + hexed[4])
-    if len(data4) != 8:
-        return None
-    folder_id = GUID(
-        int(hexed[0], 16),
-        int(hexed[1], 16),
-        int(hexed[2], 16),
-        (wintypes.BYTE * 8).from_buffer_copy(data4),
-    )
-    path_ptr = ctypes.c_wchar_p()
-    try:
-        get_known = ctypes.windll.shell32.SHGetKnownFolderPath
-        get_known.argtypes = [
-            ctypes.POINTER(GUID),
-            wintypes.DWORD,
-            wintypes.HANDLE,
-            ctypes.POINTER(ctypes.c_wchar_p),
-        ]
-        get_known.restype = ctypes.HRESULT
-        status = get_known(ctypes.byref(folder_id), 0, None, ctypes.byref(path_ptr))
-    except (AttributeError, OSError, TypeError, ValueError):
-        return None
-    if status != 0 or not path_ptr.value:
-        return None
-    try:
-        value = path_ptr.value
-    finally:
-        try:
-            ctypes.windll.ole32.CoTaskMemFree(path_ptr)
-        except (AttributeError, OSError, TypeError, ValueError):
-            pass
-    if not value or "\x00" in value:
-        return None
-    drive_path = _drive_letter_windows_path(value)
-    if drive_path is None or not is_windows_local_app_data_folder(drive_path):
-        return None
-    return drive_path
-
-
-def is_windows_local_app_data_folder(text: str) -> bool:
-    """True only for a drive-letter path whose final components are AppData\\Local."""
-    drive_path = _drive_letter_windows_path(text)
-    if drive_path is None:
-        return False
-    return _windows_lexical_key(drive_path).endswith(ntpath.normcase("\\appdata\\local"))
-
-
 def windows_git_candidate_texts() -> tuple[str, ...]:
-    """Closed Windows candidate texts, including a validated per-user path."""
-    candidates = list(WINDOWS_FIXED_GIT_CANDIDATES)
-    local_app_data = _windows_local_app_data()
-    if local_app_data is not None:
-        per_user = f"{local_app_data.rstrip('/')}/{_WINDOWS_LOCAL_GIT_SUFFIX}"
-        if canonical_windows_git_path(per_user) == per_user:
-            candidates.append(per_user)
-    return tuple(dict.fromkeys(candidates))
+    """Closed Windows candidate texts. No per-user LocalAppData path."""
+    return WINDOWS_FIXED_GIT_CANDIDATES
 
 
 def canonical_windows_git_path(text: str) -> str | None:
     """Return the closed-list Windows path for `text`, or None.
 
-    Accepts the three fixed Git for Windows locations, their Git Bash/Cygwin
-    spellings, and the Known-Folder per-user path. Rejects PATH names, relative
-    paths, the current directory, UNC/extended prefixes, 8.3 names, and any
-    other location.
+    Accepts the three fixed Git for Windows locations and their Git Bash/Cygwin
+    spellings. Rejects PATH names, relative paths, the current directory,
+    UNC/extended prefixes, 8.3 names, .cmd/.bat shims, LocalAppData installs,
+    and any other location.
     """
     drive_path = _drive_letter_windows_path(text)
     if drive_path is None:
         return None
-    if not drive_path.replace("\\", "/").casefold().endswith("/git.exe"):
+    if _windows_leaf_is_cmd_or_bat_shim(drive_path) or not _windows_leaf_is_git_exe(drive_path):
         return None
     key = _windows_lexical_key(drive_path)
     allowed = {_windows_lexical_key(item) for item in WINDOWS_FIXED_GIT_CANDIDATES}
-    local_app_data = _windows_local_app_data()
-    if local_app_data is not None:
-        allowed.add(_windows_lexical_key(f"{local_app_data.rstrip('/')}/{_WINDOWS_LOCAL_GIT_SUFFIX}"))
     if key not in allowed:
         return None
     return drive_path
@@ -312,11 +238,16 @@ def _windows_path_has_reparse_in_chain(path: Path) -> bool:
 def _passes_windows_trust_checks(path: Path) -> Path | None:
     """Apply the POSIX file/symlink/execute/realpath checks, adapted for Windows."""
     try:
+        if _windows_leaf_is_cmd_or_bat_shim(os.fspath(path)) or not _windows_leaf_is_git_exe(os.fspath(path)):
+            return None
         if _windows_path_has_reparse_in_chain(path):
             return None
         if not _path_is_file(path) or not _path_access_execute(path):
             return None
-        return _path_resolve_strict(path)
+        resolved = _path_resolve_strict(path)
+        if _windows_leaf_is_cmd_or_bat_shim(os.fspath(resolved)) or not _windows_leaf_is_git_exe(os.fspath(resolved)):
+            return None
+        return resolved
     except OSError:
         return None
 

@@ -102,6 +102,14 @@ REJECTED_WINDOWS_LOCATIONS = (
     "D:/Program Files/Git/cmd/git.exe",
     "C:/Program Files/Git/mingw64/bin/git.exe",
     "C:/Program Files (x86)/Git/bin/git.exe",
+    "C:/Program Files/Git/cmd/git.cmd",
+    "C:/Program Files/Git/cmd/git.bat",
+    "C:/Program Files/Git/bin/git.cmd",
+    "C:/Program Files/Git/bin/git.bat",
+    "C:/Program Files (x86)/Git/cmd/git.cmd",
+    "/c/Program Files/Git/cmd/git.cmd",
+    LOCALAPPDATA_GIT,
+    "/c/Users/Sam/AppData/Local/Programs/Git/cmd/git.exe",
     r"C:\PROGRA~1\Git\cmd\git.exe",
     "C:/PROGRA~1/Git/cmd/git.exe",
     r"\\?\UNC\server\share\Git\cmd\git.exe",
@@ -114,9 +122,8 @@ REJECTED_WINDOWS_LOCATIONS = (
 )
 
 
-def _force_windows(monkeypatch, *, platform: str = "win32", local_app_data: str | None = None) -> None:
+def _force_windows(monkeypatch, *, platform: str = "win32") -> None:
     monkeypatch.setattr(local_git.sys, "platform", platform)
-    monkeypatch.setattr(local_git, "_windows_local_app_data", lambda: local_app_data)
 
 
 def _present_windows_binaries(monkeypatch, present: dict[str, str]) -> None:
@@ -163,34 +170,54 @@ def test_windows_maps_cygwin_alias_of_each_candidate(candidate):
     assert alias.startswith("/cygdrive/c/")
 
 
-def test_windows_per_user_localappdata_candidate_when_known_folder_is_safe(monkeypatch):
-    _force_windows(monkeypatch, local_app_data="C:/Users/Sam/AppData/Local")
+def test_windows_rejects_user_writable_localappdata_install(monkeypatch):
+    _force_windows(monkeypatch)
+    monkeypatch.setenv("LOCALAPPDATA", "C:/Users/Sam/AppData/Local")
+    monkeypatch.setenv("USERPROFILE", "C:/Users/Sam")
+    assert LOCALAPPDATA_GIT not in local_git.windows_git_candidate_texts()
+    assert local_git.canonical_windows_git_path(LOCALAPPDATA_GIT) is None
     _present_windows_binaries(monkeypatch, {LOCALAPPDATA_GIT: LOCALAPPDATA_GIT})
-    assert LOCALAPPDATA_GIT in local_git.windows_git_candidate_texts()
-    assert os.fspath(local_git.trusted_git_binary()) == LOCALAPPDATA_GIT
-    assert local_git.canonical_windows_git_path("/c/Users/Sam/AppData/Local/Programs/Git/cmd/git.exe") == LOCALAPPDATA_GIT
-
-
-def test_windows_ignores_localappdata_environment_injection(monkeypatch):
-    _force_windows(monkeypatch, local_app_data="C:/Users/Sam/AppData/Local")
-    monkeypatch.setenv("LOCALAPPDATA", "C:/evil/AppData/Local")
-    monkeypatch.setenv("USERPROFILE", "C:/evil")
-    monkeypatch.setenv("HOME", "C:/evil")
-    planted = "C:/evil/AppData/Local/Programs/Git/cmd/git.exe"
-    assert local_git.canonical_windows_git_path(planted) is None
-    assert planted not in local_git.windows_git_candidate_texts()
-    _present_windows_binaries(monkeypatch, {planted: planted})
     with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
         local_git.trusted_git_binary()
 
 
-def test_windows_known_folder_localappdata_never_reads_process_environment():
+def test_windows_source_does_not_resolve_localappdata():
     source = Path(local_git.__file__).read_text(encoding="utf-8")
-    assert "LOCALAPPDATA" in source
+    assert "intentionally omitted" in source
+    assert "SHGetKnownFolderPath" not in source
     assert 'os.environ.get("LOCALAPPDATA"' not in source
     assert "os.environ[\"LOCALAPPDATA\"]" not in source
-    assert "os.environ.get('LOCALAPPDATA'" not in source
-    assert "SHGetKnownFolderPath" in source
+    assert all("AppData/Local" not in candidate for candidate in local_git.WINDOWS_FIXED_GIT_CANDIDATES)
+
+
+@pytest.mark.parametrize(
+    "shim",
+    (
+        "C:/Program Files/Git/cmd/git.cmd",
+        "C:/Program Files/Git/cmd/git.bat",
+        "C:/Program Files/Git/bin/git.cmd",
+        "C:/Program Files/Git/bin/git.bat",
+        "/c/Program Files/Git/cmd/git.cmd",
+    ),
+)
+def test_windows_rejects_cmd_and_bat_shims(monkeypatch, shim):
+    _force_windows(monkeypatch)
+    assert local_git.canonical_windows_git_path(shim) is None
+    _present_windows_binaries(monkeypatch, {shim: shim, FIXED_WINDOWS_CANDIDATES[0]: shim})
+    with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
+        local_git.trusted_git_binary()
+
+
+def test_windows_rejects_resolved_cmd_shim(monkeypatch):
+    _force_windows(monkeypatch)
+    monkeypatch.setattr(local_git, "_path_is_symlink", lambda _path: False)
+    monkeypatch.setattr(local_git, "_path_is_junction", lambda _path: False)
+    monkeypatch.setattr(local_git, "_path_is_reparse_point", lambda _path: False)
+    monkeypatch.setattr(local_git, "_path_is_file", lambda _path: True)
+    monkeypatch.setattr(local_git, "_path_access_execute", lambda _path: True)
+    monkeypatch.setattr(local_git, "_path_resolve_strict", lambda _path: Path("C:/Program Files/Git/cmd/git.cmd"))
+    with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
+        local_git.trusted_git_binary()
 
 
 @pytest.mark.parametrize("rejected", REJECTED_WINDOWS_LOCATIONS)
@@ -321,15 +348,6 @@ def test_windows_accepts_extended_prefix_on_resolved_closed_path(monkeypatch):
     )
     assert local_git.canonical_windows_git_path(r"\\?\UNC\server\share\Git\cmd\git.exe") is None
     assert os.fspath(local_git.trusted_git_binary()) == "C:/Program Files/Git/cmd/git.exe"
-
-
-@pytest.mark.parametrize(
-    "folder",
-    ("C:/", "C:/evil", "C:/Users/Sam/AppData", "C:/Users/Sam/AppData/Roaming", "/c/evil"),
-)
-def test_windows_known_folder_must_be_appdata_local(folder):
-    assert local_git.is_windows_local_app_data_folder(folder) is False
-    assert local_git.is_windows_local_app_data_folder("C:/Users/Sam/AppData/Local") is True
 
 
 def test_windows_accepts_case_insensitive_closed_list_match(monkeypatch):
