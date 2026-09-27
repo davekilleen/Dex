@@ -36,15 +36,15 @@ A **vault** is the folder containing your personal Dex notes and configuration.
 curl -fsSL https://heydex.ai/install.sh | bash
 ```
 
-**Windows — PowerShell:**
+**Windows — Git Bash:**
 
-```powershell
+```bash
 git clone --branch release --single-branch https://github.com/davekilleen/dex.git Dex
 cd Dex
-powershell -ExecutionPolicy RemoteSigned -Scope Process -File .\install.ps1
+bash ./install.sh
 ```
 
-Download the official release, review `install.ps1`, then run it from that folder. Do not pipe a remote script into `iex`.
+Clone the official release, review `install.sh`, then run it from Git Bash in that folder. Git Bash comes with Git for Windows. Do not pipe a remote script into `iex`.
 
 Then open the Dex folder in Claude Code or Cursor and say **"hi"**. Dex guides you through your role and priorities. [Installation help](https://heydex.ai/install/). If setup stops, keep the error message and use the help below; some prerequisites may already have been installed.
 
@@ -207,18 +207,12 @@ python3 --version
 The repository installer is a **Bash script**. Run it from the Dex folder you opened in Step 1.
 
 - **Mac:** Open Cursor's **View → Terminal** in that folder.
-- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder, or PowerShell. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. PowerShell can run `.\install.ps1` from that same folder after you have cloned the official release. See [Quick install](#quick-install-claude-code-or-cursor).
+- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. See [Quick install](#quick-install-claude-code-or-cursor).
 
 In Git Bash:
 
 ```bash
 bash ./install.sh
-```
-
-In PowerShell, from the same Dex folder:
-
-```powershell
-powershell -ExecutionPolicy RemoteSigned -Scope Process -File .\install.ps1
 ```
 
 **What's happening:** This installs the automation that makes Dex work (task sync, career tracking, meeting intelligence). Takes 1-2 minutes. You'll see text scrolling - that's normal.
