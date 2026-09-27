@@ -520,7 +520,7 @@ def test_g1_git_repo_registry_is_invalid_when_git_cannot_be_discovered(
         return original_is_file(path)
 
     monkeypatch.setattr(Path, "is_file", hide_fhs_git)
-    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(shutil, "which", lambda _name, path=None, **_kwargs: None)
 
     registry = load_trusted_mcp_registry(vault)
 
@@ -542,7 +542,10 @@ def test_g1_nested_vault_registry_is_indeterminate_without_git(
     vault = _nested_vault_in_git_repo(tmp_path)
     content = b"pass\n"
     _write_registry(vault, "custom-server", "custom-mcp/server.py", content)
-    monkeypatch.setattr(trust_registry, "_git_executable", lambda: None)
+    def _unavailable() -> Path:
+        raise RuntimeError("trusted absolute local Git is unavailable")
+
+    monkeypatch.setattr(trust_registry, "trusted_git_binary", _unavailable)
 
     assert not (vault / ".git").exists()
     assert trust_registry._registry_is_git_tracked(vault) is None

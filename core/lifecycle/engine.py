@@ -47,6 +47,7 @@ from core.transaction.engine import PlanEntry, PlanRejected, Transaction, Transa
 from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.snapshot import Snapshot, SnapshotEntry, SnapshotError
+from core.utils.os_flags import binary_write_flags
 
 RECEIPT_VERSION = 1
 REWIND_RECEIPT_VERSION = 1
@@ -624,7 +625,7 @@ def _persist_adoption_receipt(vault_root: Path, receipt: AdoptionReceipt) -> Non
     try:
         descriptor = os.open(
             temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
             0o600,
         )
         view = memoryview(data)
@@ -2126,7 +2127,7 @@ def _persist_topology_receipt(
     try:
         descriptor = os.open(
             temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
             0o600,
         )
         view = memoryview(data)

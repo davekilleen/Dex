@@ -7,6 +7,27 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## Unreleased
+
+Older copies of Dex can finally name the version they started from.
+
+If you started with Dex before it kept an official version record, checkup would say it could not tell which version was installed — and then stop. The guided update stayed closed, and the repair that checks your files against the official record would not run either. There was no safe way to set a starting version.
+
+**What this fixes for you:**
+
+* **You can set a starting version without losing your edits.** When Dex cannot tell which version is installed, the same guided repair now offers a look-only pass that lists every official file it compared and marks the ones you changed as customizations. Nothing is written until you say yes.
+* **A wrong version number is refused.** If you name a version Dex has no official record for, it stops and changes nothing.
+* **Your checkup points at this repair instead of dead-ending.** It tells you the look-only command to run in Terminal, and reminds you that only the version paperwork is saved — not your notes, and not the files you have changed.
+
+When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
+
+**What this fixes for you:**
+
+* **The Todoist title is just the task.** Folder paths from your notes no longer get glued onto the name.
+* **The description has a link back to the note.** If you use Obsidian, it opens the source page. If Dex cannot see the vault name, the link still points at the file so it can open in the vault you already have open.
+
+Reported by @mekuhl.
+
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
 The last release made the morning plan and evening review do less work. It could not say how much less, because Dex had no clock on them: the only timings anyone had were one user's, taken by hand with a stopwatch. That same user had forty open tasks, twelve marked top priority, and most of them had come out of meeting notes. Every "think about pricing" and "look into the vendor" said in a meeting had become a task. This release fixes both. Thanks again to Michelle for the numbers.

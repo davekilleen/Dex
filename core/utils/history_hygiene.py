@@ -21,6 +21,7 @@ from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
 from core.transaction.fsync import fsync_directory
 from core.utils.file_lock import LOCK_EX, LOCK_UN, flock
 from core.utils.local_git import git_env, git_output
+from core.utils.os_flags import binary_write_flags
 
 HistoryResult = Literal[
     "optional-tool-unavailable",
@@ -243,7 +244,9 @@ def _sha(data: bytes) -> str:
 
 
 def _write_restrictive(path: Path, data: bytes) -> None:
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        path, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+    )
     with os.fdopen(descriptor, "wb") as handle:
         handle.write(data)
         handle.flush()
