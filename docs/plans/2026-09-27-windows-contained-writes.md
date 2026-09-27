@@ -117,16 +117,15 @@ readback — another reason to refuse until the directory chain exists.
 restriction. On Windows that searches the current directory before PATH, so a
 planted `git.exe` in cwd would win.
 
-This PR calls `trusted_git_binary()` from `core.utils.local_git` (the helper
-already on main). `RuntimeError` (no trusted absolute Git) maps to `None` —
-the same ZIP-install degrade as before. A present registry still fail-closes
-when Git is indeterminate.
+This PR calls `trusted_git_binary()` from `core.utils.local_git`.
+`RuntimeError` (no trusted absolute Git) maps to `None` — the same ZIP-install
+degrade as before. A present registry still fail-closes when Git is
+indeterminate.
 
-**Depends on draft PR #749** for the Windows Known Folder candidate list and
-Cygwin `/usr/bin/git` distrust. #749 is not merged as of this note; this
-change uses main's resolver (`/usr/bin/git`, `/bin/git`, then
-`shutil.which("git", path=os.defpath)`). When #749 lands, this call site
-picks up the hardened resolver with no further trust_registry change.
+**#749 is merged** (`17d9c880`). The helper now has the Windows Known Folder
+candidate list, uses `core.hooksPath=//./NUL` on Windows, distrusts Cygwin
+`/usr/bin/git`, and ignores the current folder and ambient PATH shims. This
+call site uses that helper as-is.
 
 The three `protect_trust_registry.py` copies still have their own PATH
 resolver. They are out of this PR (digest-identical copies; do not edit

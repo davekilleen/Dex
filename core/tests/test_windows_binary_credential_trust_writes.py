@@ -137,6 +137,15 @@ def test_windows_name_probe_does_not_authorise(tmp_path, monkeypatch):
     )
 
 
+def test_git_executable_uses_hardened_trusted_git_binary():
+    assert trust_registry.trusted_git_binary is local_git.trusted_git_binary
+    if local_git._is_windows_like():
+        assert local_git._hooks_path_config() == "core.hooksPath=//./NUL"
+        assert local_git._WINDOWS_PF_GIT_SUFFIXES == ("Git/cmd/git.exe", "Git/bin/git.exe")
+    else:
+        assert local_git._hooks_path_config() == "core.hooksPath=/dev/null"
+
+
 def test_git_executable_uses_trusted_git_binary(monkeypatch):
     sentinel = Path("/usr/bin/git")
     monkeypatch.setattr(trust_registry, "trusted_git_binary", lambda: sentinel)
@@ -151,29 +160,49 @@ def test_git_executable_maps_unavailable_trusted_git_to_none(monkeypatch):
     assert trust_registry._git_executable() is None
 
 
-def test_git_executable_ignores_cwd_and_ambient_path_shims(tmp_path, monkeypatch):
-    """Windows shutil.which('git') searches cwd first; this must not."""
+def _plant_cwd_and_path_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
     cwd = tmp_path / "cwd"
     path_dir = tmp_path / "on-path"
     cwd.mkdir()
     path_dir.mkdir()
+    planted: list[Path] = []
+    names = ("git", "git.exe")
     for directory in (cwd, path_dir):
-        shim = directory / "git"
-        shim.write_text("#!/bin/sh\nexit 99\n")
-        shim.chmod(0o755)
-
+        for name in names:
+            shim = directory / name
+            shim.write_text("#!/bin/sh\nexit 99\n")
+            shim.chmod(0o755)
+            planted.append(shim.resolve())
     monkeypatch.chdir(cwd)
-    monkeypatch.setenv("PATH", str(path_dir))
-    original_is_file = Path.is_file
+    monkeypatch.setenv("PATH", os.pathsep.join((str(path_dir), os.environ.get("PATH", ""))))
+    return planted
 
-    def hide_fhs_git(path: Path) -> bool:
-        if Path(path) in {Path("/usr/bin/git"), Path("/bin/git")}:
-            return False
-        return original_is_file(path)
 
-    monkeypatch.setattr(Path, "is_file", hide_fhs_git)
-    monkeypatch.setattr(os, "defpath", str(tmp_path / "empty-defpath"))
+def test_git_executable_never_chooses_cwd_or_path_planted_git(tmp_path, monkeypatch):
+    planted = _plant_cwd_and_path_git(tmp_path, monkeypatch)
+    resolved = trust_registry._git_executable()
+    try:
+        trusted = local_git.trusted_git_binary()
+    except RuntimeError:
+        assert resolved is None
+    else:
+        assert resolved == trusted
+        assert resolved.resolve() not in planted
+    assert {path.resolve() for path in planted}.isdisjoint(
+        {resolved.resolve()} if resolved is not None else set()
+    )
 
-    assert trust_registry._git_executable() is None
-    with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
-        local_git.trusted_git_binary()
+
+def test_git_executable_ignores_cwd_and_ambient_path_shims_when_trusted_git_missing(
+    tmp_path, monkeypatch
+):
+    """A planted cwd/PATH git must not replace the hardened helper."""
+    planted = _plant_cwd_and_path_git(tmp_path, monkeypatch)
+
+    def _unavailable() -> Path:
+        raise RuntimeError("trusted absolute local Git is unavailable")
+
+    monkeypatch.setattr(trust_registry, "trusted_git_binary", _unavailable)
+    resolved = trust_registry._git_executable()
+    assert resolved is None
+    assert all(shim.exists() for shim in planted)
