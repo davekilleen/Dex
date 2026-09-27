@@ -30,6 +30,7 @@ from core.lifecycle.engine import (
 )
 from core.lifecycle.model import HEX_SHA256, ITEM_ID, SEMVER
 from core.transaction.fsync import fsync_directory
+from core.utils.file_lock import LOCK_EX, LOCK_SH, locked
 
 LEDGER_VERSION = 1
 GENESIS_SHA256 = "0" * 64
@@ -752,27 +753,21 @@ def _read_lock(vault_root: Path) -> Iterator[None]:
         return
     descriptor = _open_lock(lock_path, create=False)
     try:
-        import fcntl
-
-        fcntl.flock(descriptor, fcntl.LOCK_SH)
-        yield
+        with locked(descriptor, LOCK_SH):
+            yield
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
 
 
 @contextmanager
 def _write_lock(vault_root: Path) -> Iterator[None]:
-    import fcntl
-
     ledger_root, _events_dir, _state_path = _ensure_directories(vault_root)
     lock_path = ledger_root / ".write.lock"
     descriptor = _open_lock(lock_path, create=True)
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        yield
+        with locked(descriptor, LOCK_EX):
+            yield
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
 
 

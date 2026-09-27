@@ -9,6 +9,8 @@ rather than "restoring" wrong bytes.
 
 The tx directory is 0o700 and files 0o600 — and hard-denied paths can never
 appear in a plan (the engine refuses them), so secrets never enter snapshots.
+On Windows those POSIX modes cannot be stored; chmod is best-effort and
+verify must not treat a synthetic mode as a failed snapshot.
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ from pathlib import Path
 
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
-from core.transaction.fsync import fsync_directory
+from core.transaction.fsync import fsync_directory, fsync_file
+from core.utils.os_flags import binary_write_flags
 
 MANIFEST_NAME = "manifest.json"
 
@@ -125,11 +128,7 @@ class Snapshot:
                     ).hexdigest()
                 if digest != source_digest:
                     raise SnapshotError(f"target changed while being snapshotted: {relative}")
-                descriptor = os.open(store, os.O_RDONLY)
-                try:
-                    os.fsync(descriptor)
-                finally:
-                    os.close(descriptor)
+                fsync_file(store)
                 entries.append(
                     SnapshotEntry(
                         relative,
@@ -152,7 +151,9 @@ class Snapshot:
         }
         path = self.root / MANIFEST_NAME
         data = json.dumps(manifest, indent=2).encode("utf-8")
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        descriptor = os.open(
+            path, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_TRUNC), 0o600
+        )
         try:
             os.write(descriptor, data)
             os.fsync(descriptor)
@@ -223,13 +224,11 @@ class Snapshot:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temporary = target.parent / f".{target.name}.tx-restore"
                 shutil.copyfile(store, temporary)
+                # Flush while the restore temp is still writable. chmod of a
+                # no-write captured mode would make Windows O_RDWR fsync fail.
+                fsync_file(temporary)
                 if entry.mode is not None:
                     os.chmod(temporary, entry.mode)
-                descriptor = os.open(temporary, os.O_RDONLY)
-                try:
-                    os.fsync(descriptor)
-                finally:
-                    os.close(descriptor)
                 os.replace(temporary, target)
                 fsync_directory(target.parent)
             else:

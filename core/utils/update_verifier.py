@@ -23,6 +23,12 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable, Protocol
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from core.transaction.fsync import fsync_directory
+
 CANONICAL_REMOTE_URL = "https://github.com/davekilleen/Dex.git"
 CANONICAL_RELEASE_PAGE = "https://github.com/davekilleen/Dex/releases/tag/v{version}"
 PROFILE_PATH = "System/.release-evidence-profile.json"
@@ -634,14 +640,7 @@ def _atomic_write_json(path: Path, value: dict[str, object]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary_path, path)
-        try:
-            directory_fd = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-        except OSError:
-            pass
+        fsync_directory(path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
 

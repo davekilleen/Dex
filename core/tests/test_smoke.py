@@ -943,8 +943,14 @@ def test_runner_fallback_is_import_complete_for_the_runner_entry(
     tmp_path: Path,
 ) -> None:
     required = {
+        Path("core/path_safety.py"),
+        Path("core/transaction/__init__.py"),
+        Path("core/transaction/fsync.py"),
+        Path("core/transaction/lock.py"),
         Path("core/utils/smoke.py"),
         Path("core/utils/dex_logger.py"),
+        Path("core/utils/file_lock.py"),
+        Path("core/utils/os_flags.py"),
         Path("core/utils/release_channel.py"),
         Path("core/utils/update_verifier.py"),
     }

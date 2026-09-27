@@ -184,7 +184,8 @@ def verify_local_release_tag(
     git_dir: Path,
     tag: str,
     claimed_version: str,
-    installed_manifest_bytes: bytes,
+    installed_manifest_bytes: bytes | None = None,
+    require_installed_manifest_match: bool = True,
 ) -> VerifiedAnchorSource:
     """The C5 verification variant, parameterized by ``git_dir``.
 
@@ -277,6 +278,8 @@ def verify_local_release_tag(
     # INSTALLED manifest bytes (same centralized CRLF policy as every other
     # release-byte comparison). Without this, a verified tag for a different
     # release could mint rows for a vault it never shipped.
+    # DEX-135 exception: establishing a baseline from UNKNOWN identity has
+    # no installed manifest to match yet; the caller opts out explicitly.
     by_path = {entry.path: entry for entry in entries}
     manifest_entry = by_path.get(MANIFEST_RELATIVE)
     if manifest_entry is None:
@@ -287,12 +290,17 @@ def verify_local_release_tag(
         raise AnchorGenerationError(
             f"release manifest blob is unreadable: {error}"
         ) from error
-    if not release_bytes_match(
-        hashlib.sha256(tree_manifest).hexdigest(), installed_manifest_bytes
-    ):
-        raise AnchorGenerationError(
-            "verified release tree does not reproduce the installed manifest"
-        )
+    if require_installed_manifest_match:
+        if installed_manifest_bytes is None:
+            raise AnchorGenerationError(
+                "installed manifest bytes are required to prove an anchor source"
+            )
+        if not release_bytes_match(
+            hashlib.sha256(tree_manifest).hexdigest(), installed_manifest_bytes
+        ):
+            raise AnchorGenerationError(
+                "verified release tree does not reproduce the installed manifest"
+            )
 
     # Retained check 8: package-version equality against the tag version.
     package_entry = by_path.get("package.json")
@@ -425,7 +433,7 @@ def generate_release_anchor(vault_root: Path) -> AnchorGeneration:
         tag_object=source.tag_object,
         commit=source.commit,
         tree=source.tree,
-        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        manifest_sha256=catalog.release.manifest.sha256,
         catalog_sha256=catalog.integrity.catalog_sha256,
         files=rows,
     )

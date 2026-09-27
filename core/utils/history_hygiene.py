@@ -18,13 +18,10 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
-from core.transaction.fsync import fsync_directory
+from core.transaction.fsync import fchmod, fsync_directory, posix_permission_bits_apply
+from core.utils.file_lock import LOCK_EX, LOCK_UN, flock
 from core.utils.local_git import git_env, git_output
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - history cleanup already requires Unix descriptor passing
-    fcntl = None
+from core.utils.os_flags import binary_write_flags
 
 HistoryResult = Literal[
     "optional-tool-unavailable",
@@ -247,12 +244,17 @@ def _sha(data: bytes) -> str:
 
 
 def _write_restrictive(path: Path, data: bytes) -> None:
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        path, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+    )
     with os.fdopen(descriptor, "wb") as handle:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != 0o600:
+    if path.read_bytes() != data or (
+        posix_permission_bits_apply()
+        and stat.S_IMODE(path.stat().st_mode) != 0o600
+    ):
         raise OSError("restrictive history artifact readback failed")
     fsync_directory(path.parent)
 
@@ -261,13 +263,16 @@ def _atomic_replace(path: Path, data: bytes, mode: int, error: str) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            os.fchmod(handle.fileno(), mode)
+            fchmod(handle.fileno(), mode, path=temporary)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         fsync_directory(path.parent)
-        if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != mode:
+        if path.read_bytes() != data or (
+            posix_permission_bits_apply()
+            and stat.S_IMODE(path.stat().st_mode) != mode
+        ):
             raise OSError(error)
     finally:
         Path(temporary).unlink(missing_ok=True)
@@ -540,20 +545,19 @@ class _HistoryLifecycleLock:
             os.close(self.backup_descriptor)
             self.backup_descriptor = -1
         if self.root_descriptor >= 0:
-            if fcntl is not None:
-                fcntl.flock(self.root_descriptor, fcntl.LOCK_UN)
-            os.close(self.root_descriptor)
-            self.root_descriptor = -1
+            try:
+                flock(self.root_descriptor, LOCK_UN)
+            finally:
+                os.close(self.root_descriptor)
+                self.root_descriptor = -1
 
 
 def _acquire_history_lifecycle_lock(root: Path, *, create: bool) -> _HistoryLifecycleLock:
-    if fcntl is None:
-        raise RuntimeError("history lifecycle locking is unavailable")
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     root_descriptor = os.open(root, flags)
     backup_descriptor = None
     try:
-        fcntl.flock(root_descriptor, fcntl.LOCK_EX)
+        flock(root_descriptor, LOCK_EX)
         backup_descriptor = _open_backup_root_at(root_descriptor, create=create)
         metadata = os.fstat(backup_descriptor)
         if not stat.S_ISDIR(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o700:

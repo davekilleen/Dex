@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import shutil
@@ -54,7 +55,10 @@ from core.lifecycle.preview import AdoptionPreview, build_adoption_preview
 from core.lifecycle.retention import compute_retention_report
 from core.path_safety import unsafe_existing_parent
 from core.transaction.engine import PlanEntry, PlanRejected, Transaction
+from core.transaction.fsync import fsync_directory
 from core.utils import automation_ownership
+
+_LOG = logging.getLogger(__name__)
 
 api_version = "1.5.0"
 
@@ -1035,15 +1039,22 @@ def _release_payload_loader(release_root: str | Path):
 
 def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> None:
     from core.lifecycle.bridge import BridgeActivationError, prepare_vault
+    from core.lifecycle.byte_mode import ByteModeBlocked
+    from core.lifecycle.byte_mode import ensure as ensure_byte_mode
 
+    try:
+        ensure_byte_mode(Path(vault_root))
+    except ByteModeBlocked as error:
+        raise PlanRejected(str(error)) from None
     recover_committed_adoption_evidence(Path(vault_root))
     try:
         prepare_vault(vault_root, release_root=release_root)
-    except BridgeActivationError:
+    except BridgeActivationError as error:
+        _LOG.debug("lifecycle prepare_vault failed", exc_info=True)
         raise PlanRejected(
             "this Dex copy's update engine doesn't match its release information "
             "— run /dex-doctor"
-        ) from None
+        ) from error
 
 
 def _archive_inventory(root: Path) -> dict[str, object]:
@@ -1093,11 +1104,7 @@ def _write_archive_receipt(path: Path, receipt: dict[str, object]) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, path)
-    descriptor = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    fsync_directory(path.parent)
 
 
 def execute_approved_archive_removal(
@@ -1411,6 +1418,17 @@ def execute_approved_delivered_release(
     return _envelope(receipt=receipt, release=expected_preview["release"])
 
 
+def _substitute_vault_path(value: object, vault_path: str) -> object:
+    """Replace ``{{VAULT_PATH}}`` inside a JSON object without breaking escapes.
+
+    A raw string replace of a Windows path such as ``C:\\Users\\Joe\\Dex "Vault"``
+    produces illegal JSON. Escape first, then splice into the serialized form.
+    """
+    return json.loads(
+        json.dumps(value).replace("{{VAULT_PATH}}", json.dumps(vault_path)[1:-1])
+    )
+
+
 def _mcp_registration_preview(
     vault_root: str | Path,
 ) -> tuple[dict[str, object] | None, list[PlanEntry]]:
@@ -1436,7 +1454,7 @@ def _mcp_registration_preview(
     if _MCP_REGISTRATION_NAME in servers:
         return None, []
 
-    rendered = json.loads(json.dumps(registration).replace("{{VAULT_PATH}}", str(root)))
+    rendered = _substitute_vault_path(registration, str(root))
     if os.name == "nt":
         rendered = json.loads(
             json.dumps(rendered).replace(".venv/bin/python", ".venv/Scripts/python.exe")

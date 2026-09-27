@@ -47,6 +47,7 @@ from core.transaction.engine import PlanEntry, PlanRejected, Transaction, Transa
 from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError
 from core.transaction.snapshot import Snapshot, SnapshotEntry, SnapshotError
+from core.utils.os_flags import binary_write_flags
 
 RECEIPT_VERSION = 1
 REWIND_RECEIPT_VERSION = 1
@@ -624,7 +625,7 @@ def _persist_adoption_receipt(vault_root: Path, receipt: AdoptionReceipt) -> Non
     try:
         descriptor = os.open(
             temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
             0o600,
         )
         view = memoryview(data)
@@ -1091,6 +1092,14 @@ def rewind_adoption(
             "the adoption snapshot is no longer available under keep-last-3 retention; "
             "this adoption can no longer be rewound"
         )
+    from core.transaction.byte_mode_flag import (
+        MESSAGE_REWIND_REFUSED,
+        restore_is_refused,
+    )
+
+    tx_dir = snapshot_root.parent
+    if restore_is_refused(tx_dir):
+        raise _rewind_refuse(MESSAGE_REWIND_REFUSED)
     _verify_adoption_commit(root, validated)
     previous_commit = _delivered_release_previous_commit(root, validated)
     plan, restored = _snapshot_rewind_plan(root, validated, current_modes)
@@ -2126,7 +2135,7 @@ def _persist_topology_receipt(
     try:
         descriptor = os.open(
             temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
             0o600,
         )
         view = memoryview(data)

@@ -16,6 +16,15 @@ from core.lifecycle.model import ReleaseCatalog
 from core.transaction.journal import PREVIOUS_SCHEMA_VERSION, SCHEMA_VERSION
 
 SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+CTRL_Z_OFFSET = 100
+CTRL_Z_BLOB_SIZE = 4096
+
+
+def ctrl_z_binary_blob() -> bytes:
+    """4 KiB blob with ``0x1A`` only at offset 100; the rest is non-text payload."""
+    blob = bytearray(b"\xab" * CTRL_Z_BLOB_SIZE)
+    blob[CTRL_Z_OFFSET] = 0x1A
+    return bytes(blob)
 
 
 def canonical_json_bytes(value: object) -> bytes:

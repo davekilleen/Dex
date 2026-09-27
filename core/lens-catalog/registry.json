@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "d31dbaaa35dd02e86044d0f6e5a5b29c86f8852fded5683e7167f67e529d85f7",
-        "byte_size": 20690
+        "sha256": "abaf22bbecd3af229b139a7f148adb3598fbab70d9675cff28efb21abcd7a8fc",
+        "byte_size": 21850
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "af1faf56a06cf2ec7a934f45f6b787b8cca92f484462edf2361849d26492d422",
-        "byte_size": 19918
+        "sha256": "7e2a3db97372aadb71f280f1c9008d293e71c1a8f38884ec5f8f9f02c889837c",
+        "byte_size": 20209
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": [
@@ -4940,8 +4940,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "33abce727780449277cae7e8fcd0b9b27321d53ecd01969f83e58792b22be28a",
-        "byte_size": 22915
+        "sha256": "9ba8519c3ea7acdd2487ec08252060223759bc6f3f33b83264c2f65569f029fb",
+        "byte_size": 23325
       },
       "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable).",
       "jobs_served": [

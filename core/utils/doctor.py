@@ -38,6 +38,7 @@ from core.lifecycle.inventory import build_inventory
 from core.lifecycle.model import ITEM_ID, SEMVER, AdoptionState
 from core.lifecycle.plan import PlannedAction, ReasonCode, build_adoption_plan
 from core.transaction.engine import TX_ROOT_RELATIVE, PlanEntry, PlanRejected
+from core.transaction.fsync import fchmod
 from core.transaction.journal import Journal, JournalCorruptError
 from core.utils import (
     apple_mail_health,
@@ -617,6 +618,11 @@ QUICK_CHECKS = (
     ),
     CheckDefinition("release.catalog", "Release catalog", "_probe_release_catalog"),
     CheckDefinition("adoption.plan", "Adoption plan", "_probe_adoption_plan"),
+    CheckDefinition(
+        "lifecycle.byte-mode",
+        "Windows bookkeeping files",
+        "_probe_lifecycle_byte_mode",
+    ),
     CheckDefinition("smoke.history", "Nightly smoke results", "_probe_smoke_history"),
     CheckDefinition("mcp.registered", "MCP registration", "_probe_mcp_registered"),
     CheckDefinition("mcp.orphans", "MCP server registration", "_probe_mcp_orphans"),
@@ -863,7 +869,7 @@ def _tighten_env_permissions(context: DoctorContext) -> None:
             raise OSError(".env changed identity during the permission repair")
         if hasattr(os, "geteuid") and opened.st_uid != os.geteuid():
             raise OSError(".env is owned by another user")
-        os.fchmod(descriptor, 0o600)
+        fchmod(descriptor, 0o600, path=context.vault_root / ".env")
     finally:
         os.close(descriptor)
 
@@ -1948,6 +1954,46 @@ def collect_adoption_report(context: DoctorContext) -> AdoptionReport:
     )
 
 
+def _probe_lifecycle_byte_mode(context: DoctorContext) -> ProbeResult:
+    """Read-only check that Dex's own bookkeeping files are in a readable form."""
+    from core.lifecycle.byte_mode import detect
+
+    try:
+        report = detect(context.vault_root)
+    except Exception as error:
+        return ProbeResult(
+            "UNKNOWN",
+            f"Dex could not check its own bookkeeping files: {_one_line(error)}",
+        )
+    if report.blocking:
+        first = report.blocking[0].record
+        return ProbeResult(
+            "BROKEN",
+            f"Dex found a bookkeeping file it cannot safely repair on its own: {first}. "
+            "Nothing was changed.",
+            Heal(tier=3, action="Repair by hand or report with /feedback."),
+        )
+    if report.findings:
+        return ProbeResult(
+            "BROKEN",
+            "Some of Dex's own bookkeeping files were saved with Windows line endings, "
+            "which can block updates and undo. Your notes were not touched.",
+            Heal(
+                tier=2,
+                action="Repair Dex's bookkeeping files (a copy is kept first).",
+            ),
+        )
+    if sys.platform != "win32":
+        return ProbeResult(
+            "OK",
+            "not applicable on this platform",
+        )
+    return ProbeResult(
+        "OK",
+        "Dex's own bookkeeping files are in the readable form this copy expects.",
+    )
+
+
 def _probe_release_catalog(context: DoctorContext) -> ProbeResult:
     """Validate the installed release catalog without changing the vault."""
     catalog_path = _release_catalog_path(context)
@@ -2071,7 +2117,11 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
         return ProbeResult(
             "UNKNOWN",
             "I couldn't verify which Dex version is installed, so I can't tell you "
-            "what you've changed." + anchor_note,
+            "what you've changed. There's a guided repair that can set a starting "
+            "version from the official record — it only writes the version "
+            "paperwork, never your notes or the files you have changed. Open the "
+            "Terminal app in your Dex vault folder and run: "
+            "python3 -m core.update.reanchor_cli --dry-run" + anchor_note,
             structured_detail=authority,
         )
     if assessment.completeness == "UNKNOWN":

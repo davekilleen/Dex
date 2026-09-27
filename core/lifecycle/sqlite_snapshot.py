@@ -20,7 +20,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from core.transaction.fsync import fsync_directory
+from core.transaction.fsync import fsync_directory, fsync_file
+from core.utils.os_flags import binary_write_flags
 
 MANIFEST_NAME = "manifest.json"
 BACKUP_NAME = "database.sqlite3"
@@ -268,14 +269,6 @@ def _optional_sha256(path: Path) -> str | None:
         return None
 
 
-def _fsync_file(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _write_all(descriptor: int, data: bytes) -> None:
     offset = 0
     while offset < len(data):
@@ -305,7 +298,9 @@ def _write_manifest(root: Path, result: SQLiteSnapshotResult) -> None:
     }
     data = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
     path = root / MANIFEST_NAME
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        path, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+    )
     try:
         _write_all(descriptor, data)
         os.fsync(descriptor)
@@ -421,8 +416,8 @@ def snapshot_sqlite(
             _quick_check(backup_connection, "backup")
             backup_connection.close()
             backup_connection = None
+            fsync_file(backup)
             os.chmod(backup, 0o600)
-            _fsync_file(backup)
             digest, size = _sha256(backup)
 
             source_connection.close()
@@ -578,8 +573,8 @@ def restore_sqlite(snapshot_dir: Path, dest_db: Path) -> None:
         final_digest, final_size = _sha256(stored)
         if final_digest != entry.sha256 or final_size != entry.size:
             raise _refuse("stored database changed during restore; refusing atomic replace")
+        fsync_file(temporary)
         os.chmod(temporary, 0o600)
-        _fsync_file(temporary)
         # These files contain state and coordination for the old inode. Keeping
         # either beside the restored main file could replay the wrong generation.
         for sidecar in stale_sidecars:

@@ -124,6 +124,22 @@ def test_api_key_falls_back_to_vault_env_when_connection_manager_is_absent(
     assert granola_server.get_api_key() == "grn_from_dotenv"
 
 
+def test_api_key_reads_a_utf8_bom_from_a_windows_env_file(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text(
+        "\ufeffGRANOLA_API_KEY=grn_from_bom\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VAULT_ROOT", str(tmp_path))
+    monkeypatch.delenv("GRANOLA_API_KEY", raising=False)
+    monkeypatch.setattr(
+        granola_server.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError),
+    )
+
+    assert granola_server.get_api_key() == "grn_from_bom"
+
+
 def test_api_key_returns_none_when_connection_manager_and_legacy_sources_are_absent(
     monkeypatch,
     tmp_path,

@@ -27,5 +27,5 @@ testpaths = ["core/tests"]
 python_files = ["test_*.py"]
 markers = [
     "fuzz: slower property-based and large-fixture cases run by nightly quality",
-    "windows_supported: cases that also run on native Windows Python",
+    "windows_supported: tests that can run on native Windows (os.name == 'nt')",
 ]

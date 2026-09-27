@@ -14,7 +14,6 @@ Usage:
     mark_healthy("work-mcp")
 """
 
-import fcntl
 import json
 import os
 import re
@@ -22,6 +21,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from core.utils.file_lock import LOCK_EX, LOCK_SH, locked
 
 STALE_ERROR_DAYS = 30
 MAX_ERROR_ENTRIES = 50
@@ -138,14 +139,11 @@ def _read_queue_with_status() -> tuple[str, list]:
         if not queue_path.exists():
             return "missing", []
         with open(queue_path, "r") as f:
-            fcntl.flock(f, fcntl.LOCK_SH)
-            try:
+            with locked(f, LOCK_SH):
                 entries = json.load(f)
                 if not isinstance(entries, list):
                     return "unreadable", []
                 return "readable", entries
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
     except Exception:
         return "unreadable", []
 
@@ -199,11 +197,8 @@ def _write_queue(entries: list, *, now: Optional[datetime] = None) -> None:
     queue_path = _get_queue_path()
     queue_path.parent.mkdir(exist_ok=True)
     with open(queue_path, "w") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
+        with locked(f, LOCK_EX):
             json.dump(_prune_queue(entries, now=now), f, indent=2)
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 # ---------------------------------------------------------------------------

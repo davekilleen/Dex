@@ -226,7 +226,7 @@ Aim to triage weekly. If something sits 30+ days:
 ```
 System/
 ├── Templates/                # Note templates (5 core templates)
-├── Session_Learnings/        # Auto-captured improvements during /review
+├── Session_Learnings/        # Candidate lessons from sessions; confirmed in /daily-review
 ├── pillars.yaml              # Strategic pillars (your main focus areas)
 ├── user-profile.yaml         # User preferences and settings
 ├── claude-code-state.json    # Tracks last changelog check

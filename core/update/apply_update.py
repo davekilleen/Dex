@@ -23,8 +23,10 @@ from typing import Any, Callable
 
 from core import portable_contract
 from core.transaction.engine import PlanEntry, Transaction
+from core.transaction.fsync import fsync_directory
 from core.utils import release_channel
 from core.utils.local_git import git_output
+from core.utils.os_flags import binary_write_flags
 
 MANIFEST_RELATIVE = "System/.installed-files.manifest"
 TOPOLOGY_RELATIVE = Path("System/.dex/topology.json")
@@ -891,18 +893,16 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     data = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
     temporary = path.parent / f".{path.name}.update-{os.getpid()}"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        temporary, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+    )
     try:
         os.write(descriptor, data)
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
     os.replace(temporary, path)
-    directory = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    fsync_directory(path.parent)
 
 
 def _finalize_release_metadata(
