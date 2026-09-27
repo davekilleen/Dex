@@ -94,7 +94,7 @@ function Test-DexPythonVersion {
     }
     $major = [int]$Matches[1]
     $minor = [int]$Matches[2]
-    if ($major -ne 3 -or $minor -lt 10) {
+    if ($major -ne 3 -or $minor -lt 11) {
         return $null
     }
     if ($output -match "Python (3\.\d+(?:\.\d+)?)") {
@@ -233,6 +233,32 @@ function Invoke-DexSupportPythonProbe {
     ))
 }
 
+function Get-DexGitBash {
+    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)
+    foreach ($root in $roots) {
+        if (-not $root) {
+            continue
+        }
+        foreach ($relative in @("Git\bin\bash.exe", "Git\usr\bin\bash.exe")) {
+            $candidate = Join-Path $root $relative
+            if (Test-Path -LiteralPath $candidate) {
+                return $candidate
+            }
+        }
+    }
+    $found = Get-Command bash -ErrorAction SilentlyContinue
+    if (-not $found) {
+        return $null
+    }
+    if ($found.Source -match '(?i)[\\/]Windows[\\/]System32[\\/]bash\.exe$') {
+        return $null
+    }
+    if ($found.Source -match '(?i)[\\/]WindowsApps[\\/]') {
+        return $null
+    }
+    return $found.Source
+}
+
 function Install-DexRepository {
     param([Parameter(Mandatory = $true)][string]$Target)
     if (Test-Path -LiteralPath (Join-Path $Target "core\provision.cjs")) {
@@ -279,10 +305,10 @@ Write-DexInstallLog "starting install"
 
 $python = Resolve-DexPython
 if (-not $python) {
-    Write-Host "[X] Python 3.10+ not found"
+    Write-Host "[X] Python 3.11+ not found"
     Write-Host ""
-    Write-Host "Python 3.10+ is required for task sync across your files."
-    Write-Host "Install Python 3.10+:"
+    Write-Host "Python 3.11+ is required for task sync across your files."
+    Write-Host "Install Python 3.11+:"
     Write-Host "  1. Download from https://www.python.org/downloads/"
     Write-Host "  2. Run the installer"
     Write-Host "  3. IMPORTANT: Check 'Add Python to PATH' during installation"
@@ -302,14 +328,14 @@ if ((Invoke-DexSupportPythonProbe -Root $Root -PythonCmd $PythonCmd) -ne 0) {
     exit 1
 }
 
-$bash = Get-Command bash -ErrorAction SilentlyContinue
+$bash = Get-DexGitBash
 $installSh = Join-Path $Root "install.sh"
 if ($bash -and (Test-Path -LiteralPath $installSh)) {
     Write-Host "Setting up Dex..."
     Write-Host ""
     Write-Host "[OK] Python $($python.Version) — continuing with the shared installer"
-    Write-DexInstallLog "handing off to install.sh DEX_INSTALL_PYTHON=$PythonCmd"
-    & $bash.Source $installSh @script:DexInstallArgs
+    Write-DexInstallLog "handing off to install.sh DEX_INSTALL_PYTHON=$PythonCmd bash=$bash"
+    & $bash $installSh @script:DexInstallArgs
     $handoffStatus = $LASTEXITCODE
     if ($null -eq $handoffStatus) {
         exit 1

@@ -92,7 +92,7 @@ dex_python_version_ok() {
     if [ "$major" != "3" ]; then
         return 1
     fi
-    if [ "$minor" -lt 10 ]; then
+    if [ "$minor" -lt 11 ]; then
         return 1
     fi
     printf '%s\n' "$version"
@@ -461,13 +461,13 @@ if dex_resolve_python; then
 
     dex_resolve_venv_paths
 else
-    echo "❌ Python 3.10+ not found"
+    echo "❌ Python 3.11+ not found"
     echo ""
-    echo "Python 3.10+ is required for MCP servers (task sync across all files)."
+    echo "Python 3.11+ is required for MCP servers (task sync across all files)."
     echo "Without it, tasks won't sync between meeting notes, person pages, and Tasks.md."
     echo ""
     if dex_is_windows; then
-        echo "Install Python 3.10+:"
+        echo "Install Python 3.11+:"
         echo "  1. Download from https://www.python.org/downloads/"
         echo "  2. Run the installer"
         echo "  3. ⚠️  IMPORTANT: Check 'Add Python to PATH' during installation"
@@ -476,7 +476,7 @@ else
         echo "  The installer also looks for the Windows 'py -3' launcher."
         echo "  The Microsoft Store python3 placeholder is ignored."
     else
-        echo "Install Python 3.10+:"
+        echo "Install Python 3.11+:"
         echo "  Mac: Download from https://www.python.org/downloads/"
         echo "  Or use Homebrew: brew install python3"
         echo ""

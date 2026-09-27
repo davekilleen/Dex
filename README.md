@@ -113,14 +113,14 @@ Prefer to see every step, or the quick install hit a snag? This section does the
    - **Mac:** Installs automatically when needed (you'll see a prompt)
    - **Windows:** Download from [git-scm.com/download/win](https://git-scm.com/download/win)
 3. **[Node.js](https://nodejs.org/)** - Download the "LTS" version and install (this enables the system's automation features)
-4. **[Python 3.10+](https://www.python.org/downloads/)** - Download and install (required for MCP servers and task sync)
-   - **Minimum version:** Python 3.10 or newer
+4. **[Python 3.11+](https://www.python.org/downloads/)** - Download and install (required for MCP servers and task sync)
+   - **Minimum version:** Python 3.11 or newer
    - **Windows users:** ⚠️ During installation, check the box "Add Python to PATH" - this is critical
    - **Mac users with old Python:** If you have Python 3.9 or older, download fresh from python.org
 
 All installers walk you through setup with default options.
 
-**Why Python 3.10+?** The MCP SDK (Model Context Protocol) requires Python 3.10 or newer. This powers the Work MCP server that enables task sync - task updates through its tools can synchronize related pages. Manual checkbox edits need the separately configured sync service.
+**Why Python 3.11+?** The listed Python packages Dex installs need Python 3.11 or newer. This powers the Work MCP server that enables task sync - task updates through its tools can synchronize related pages. Manual checkbox edits need the separately configured sync service.
 
 **Mac users:** If this is your first time using command-line tools, macOS will prompt you to install "Command Line Developer Tools" during setup. Click **Install** when prompted - it's safe and required. Takes 2-3 minutes.
 
@@ -168,9 +168,9 @@ python3 --version
 
 **Windows users:** Try `python --version` if `python3` doesn't work.
 
-**You should see a response like:** `Python 3.10.x` or higher (3.11, 3.12, etc.)
+**You should see a response like:** `Python 3.11.x` or higher (3.12, 3.13, etc.)
 
-**If you see Python 3.9 or older:** The MCP SDK requires Python 3.10+. Download and install a newer version:
+**If you see Python 3.10 or older:** Dex setup needs Python 3.11+. Download and install a newer version:
 - **Mac/Windows:** Download from [python.org](https://www.python.org/downloads/) (get the latest stable version)
 - After installing, restart your terminal and check the version again
 
@@ -178,7 +178,7 @@ python3 --version
 - **Windows:** Python likely isn't in your PATH. Reinstall from [python.org](https://www.python.org/downloads/) and check "Add Python to PATH" during installation. Restart your terminal after.
 - **Mac:** Download Python from [python.org](https://www.python.org/downloads/), install it, then restart your terminal.
 
-**Why Python 3.10+ matters:** It powers the MCP servers that sync tasks everywhere. Check off a task in a meeting note → it updates in your Tasks.md, person pages, and project files automatically. Python 3.9 and older won't work - you need 3.10 or newer.
+**Why Python 3.11+ matters:** It powers the MCP servers that sync tasks everywhere. Check off a task in a meeting note → it updates in your Tasks.md, person pages, and project files automatically. Python 3.10 and older won't work - you need 3.11 or newer.
 
 ---
 
