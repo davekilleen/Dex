@@ -91,16 +91,30 @@ except ImportError:
 # User-configured working week (defaults to Monday-Friday)
 try:
     from core.utils.working_week import (
+        DAY_NAMES,
         DEFAULT_WORKING_DAYS,
         first_working_day_of_week,
+        next_genuine_working_day,
         normalize_working_days,
         working_day_names,
     )
 except ImportError:
     DEFAULT_WORKING_DAYS = frozenset({0, 1, 2, 3, 4})
+    DAY_NAMES = (
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    )
 
     def first_working_day_of_week(target_date):
         return target_date - timedelta(days=target_date.weekday())
+
+    def next_genuine_working_day(target_date, ooo_dates=None):
+        return target_date + timedelta(days=1)
 
     def normalize_working_days(_configured_days):
         return []
@@ -109,6 +123,15 @@ except ImportError:
         return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
 GRANOLA_APP_PATH = Path("/Applications/Granola.app")
+MEETING_SOURCE_PRIMARIES = frozenset(
+    {"granola", "zoom", "teams", "exported-folder", "wispr", "none"}
+)
+SOURCE_DOC_STATUSES = frozenset({"supplied", "skipped"})
+V2_ENTITY_OFFER_MAX = 25
+_OOO_TITLE = re.compile(
+    r"\b(out of office|ooo|holiday|vacation|pto)\b",
+    re.IGNORECASE,
+)
 ONBOARDING_STEPS = 8
 REQUIRED_ONBOARDING_STEPS = tuple(range(1, 8))
 STEP_NAMES = {
@@ -262,9 +285,13 @@ def save_session(session_data: Dict) -> bool:
         logger.error(f"Error saving session: {e}")
         return False
 
-def create_new_session() -> Dict:
-    """Create a new onboarding session"""
-    return {
+def create_new_session(v2: bool = False) -> Dict:
+    """Create a new onboarding session.
+
+    ``v2=True`` marks a /setup-v2 journey. The default session shape is
+    unchanged so shipped /setup resume and tests stay identical.
+    """
+    session = {
         "version": "1.0",
         "started_at": datetime.now().isoformat(),
         "last_updated": datetime.now().isoformat(),
@@ -272,6 +299,13 @@ def create_new_session() -> Dict:
         "current_step": 1,
         "data": {}
     }
+    if v2:
+        session["journey"] = "v2"
+    return session
+
+
+def _is_v2_session(session: Optional[Dict[str, Any]]) -> bool:
+    return isinstance(session, dict) and session.get("journey") == "v2"
 
 
 def _harness_profile_payload(profile: object) -> Dict[str, Any]:
@@ -333,6 +367,46 @@ def inspect_harnesses(explicit: List[str] | None = None) -> Dict[str, Any]:
     }
 
 
+def save_meeting_source(
+    primary: str,
+    notes_folder: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Record the meeting-notes source on the session only. Never a gate."""
+    session = load_session()
+    if not session:
+        raise RuntimeError("No active session")
+    if not isinstance(primary, str) or primary not in MEETING_SOURCE_PRIMARIES:
+        raise ValueError(
+            "meeting source must be granola, zoom, teams, exported-folder, wispr, or none"
+        )
+    payload: Dict[str, Any] = {"primary": primary}
+    if notes_folder is not None:
+        if not isinstance(notes_folder, str):
+            raise ValueError("notes_folder must be a string")
+        payload["notes_folder"] = notes_folder
+    session.setdefault("data", {})["meeting_source"] = payload
+    save_session(session)
+    return payload
+
+
+def save_source_doc_note(
+    status: str,
+    kind: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Record whether a source doc was supplied. Never copies the document."""
+    session = load_session()
+    if not session:
+        raise RuntimeError("No active session")
+    if status not in SOURCE_DOC_STATUSES:
+        raise ValueError("source doc status must be supplied or skipped")
+    payload: Dict[str, Any] = {"status": status}
+    if kind:
+        payload["kind"] = str(kind)
+    session.setdefault("data", {})["source_doc"] = payload
+    save_session(session)
+    return payload
+
+
 def _calendar_addressed(session: Dict[str, Any]) -> bool:
     """Return whether calendar setup was validated or explicitly skipped."""
     return session.get("calendar_addressed") is True or bool(
@@ -351,7 +425,15 @@ def _harness_selection_confirmed(session: Dict[str, Any]) -> bool:
 def _approved_profile_session_data(session: Dict[str, Any]) -> Dict[str, Any]:
     """Exclude context that requires a separate explicit lifecycle approval."""
     data = dict(session["data"])
-    for field in ("calendar", "calendar_source", "work_email", "working_context"):
+    for field in (
+        "calendar",
+        "calendar_source",
+        "work_email",
+        "working_context",
+        "meeting_source",
+        "source_doc",
+        "inferred_identity",
+    ):
         data.pop(field, None)
     harness_setup = session.get("harness_setup", {})
     if isinstance(harness_setup, dict) and harness_setup.get("confirmed") is True:
@@ -1705,14 +1787,20 @@ def _run_entity_offer_bridge(command: str, **payload: Any) -> Dict[str, Any]:
     return result
 
 
-def prepare_entity_page_offer() -> Dict[str, Any]:
-    """Stage only engine-qualified suggestions after onboarding finalization."""
+def prepare_entity_page_offer(v2_window: bool = False) -> Dict[str, Any]:
+    """Stage only engine-qualified suggestions after onboarding finalization.
+
+    ``v2_window=True`` is /setup-v2 only: the last-few-weeks offer may return
+    more than five names. The default path still caps at five.
+    """
     _require_finalized_onboarding()
     profile = _load_first_week_profile()
     result = _run_entity_offer_bridge(
         'prepare',
         meetings=_collect_entity_offer_meetings(),
         profile=profile,
+        v2_window=bool(v2_window),
+        max_items=V2_ENTITY_OFFER_MAX if v2_window else 5,
     )
     suggestions = result.get('suggestions', [])
     return {
@@ -1725,6 +1813,7 @@ def prepare_entity_page_offer() -> Dict[str, Any]:
 def respond_to_entity_page_offer(
     action: str,
     suggestion_ids: List[str],
+    v2_window: bool = False,
 ) -> Dict[str, Any]:
     """Accept, dismiss, or permanently suppress the concrete onboarding offer."""
     _require_finalized_onboarding()
@@ -1732,6 +1821,8 @@ def respond_to_entity_page_offer(
         'respond',
         action=action,
         suggestion_ids=suggestion_ids,
+        v2_window=bool(v2_window),
+        max_items=V2_ENTITY_OFFER_MAX if v2_window else 5,
     )
     return {
         'action': result['action'],
@@ -1861,17 +1952,76 @@ def set_entity_creation_default(automatic: bool) -> Dict[str, Any]:
     }
 
 
-def run_first_week_analysis() -> Dict[str, Any]:
-    """Build the honest, structured first-week reveal used after finalization."""
+def _event_calendar_date(value: Any) -> Optional[date]:
+    """Return a calendar date from an event start/end value."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    parsed = _calendar_event_datetime(value)
+    if parsed is not None:
+        return parsed.date()
+    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip()):
+        return date.fromisoformat(value.strip())
+    return None
+
+
+def _ooo_dates_from_events(events: List[Dict[str, Any]]) -> set[date]:
+    """Collect all-day out-of-office / holiday dates from calendar events."""
+    blocked: set[date] = set()
+    for event in events:
+        title = str(event.get("title") or event.get("summary") or "")
+        if not _OOO_TITLE.search(title):
+            continue
+        start_date = _event_calendar_date(event.get("start"))
+        if start_date is None:
+            continue
+        all_day = event.get("all_day") is True or (
+            _calendar_event_datetime(event.get("start")) is None
+        )
+        if not all_day:
+            continue
+        end_date = _event_calendar_date(event.get("end"))
+        if end_date is None or end_date <= start_date:
+            blocked.add(start_date)
+            continue
+        cursor = start_date
+        while cursor < end_date:
+            blocked.add(cursor)
+            cursor += timedelta(days=1)
+    return blocked
+
+
+def _format_next_working_morning(target: date) -> Dict[str, str]:
+    weekday = DAY_NAMES[target.weekday()]
+    month = target.strftime("%B")
+    return {
+        "date": target.isoformat(),
+        "weekday": weekday,
+        "label": f"{weekday}, {target.day} {month}",
+    }
+
+
+def run_first_week_analysis(
+    events: Optional[List[Dict]] = None,
+    v2: bool = False,
+) -> Dict[str, Any]:
+    """Build the honest, structured first-week reveal used after finalization.
+
+    Passing ``events`` uses host-fetched meetings for this sitting and does
+    not claim they were stored as the Dex calendar. ``v2=True`` or supplied
+    events add ``next_working_day``; the default return shape stays the same.
+    """
+    used_host_events = events is not None
     try:
-        events = get_calendar_events_for_week()
+        calendar_events = list(events) if used_host_events else get_calendar_events_for_week()
     except Exception as e:
         return {
             "available": False,
             "reason": str(e) or "Calendar data could not be read.",
         }
 
-    timed_events = _timed_calendar_events(events)
+    timed_events = _timed_calendar_events(calendar_events)
     calendar_analysis = analyze_calendar_events(timed_events)
     top_contacts = get_frequent_attendees(timed_events)
     recent_meetings = get_recent_granola_meetings(days=7)
@@ -1884,7 +2034,7 @@ def run_first_week_analysis() -> Dict[str, Any]:
     ]
     pillars = [pillar for pillar in pillars if pillar]
 
-    return {
+    result = {
         "available": True,
         "meeting_count": calendar_analysis['total_meetings'],
         "meeting_hours": calendar_analysis['meeting_hours'],
@@ -1917,6 +2067,13 @@ def run_first_week_analysis() -> Dict[str, Any]:
             profile.get('role', ''),
         ),
     }
+    if v2 or used_host_events:
+        nxt = next_genuine_working_day(
+            date.today(),
+            _ooo_dates_from_events(calendar_events),
+        )
+        result["next_working_day"] = _format_next_working_morning(nxt)
+    return result
 
 
 def generate_nudge_calendar() -> Dict[str, Any]:
@@ -1992,8 +2149,65 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "boolean",
                         "description": "Force create a new session even if one exists",
                         "default": False
+                    },
+                    "v2": {
+                        "type": "boolean",
+                        "description": (
+                            "Start or resume a /setup-v2 journey. Default false. "
+                            "Does not attach to a mid-progress shipped /setup session."
+                        ),
+                        "default": False
                     }
                 }
+            }
+        ),
+        types.Tool(
+            name="save_meeting_source",
+            description=(
+                "Record the meeting-notes source on the current onboarding session only. "
+                "Does not write the user profile. Skip or none is a valid finish."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "primary": {
+                        "type": "string",
+                        "enum": [
+                            "granola",
+                            "zoom",
+                            "teams",
+                            "exported-folder",
+                            "wispr",
+                            "none",
+                        ],
+                    },
+                    "notes_folder": {
+                        "type": "string",
+                        "description": "Optional folder path when primary is exported-folder",
+                    },
+                },
+                "required": ["primary"],
+            }
+        ),
+        types.Tool(
+            name="save_source_doc_note",
+            description=(
+                "Record whether the person supplied or skipped a source document. "
+                "Session-only. Never copies the document into the profile."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["supplied", "skipped"],
+                    },
+                    "kind": {
+                        "type": "string",
+                        "description": "Optional label such as review, job-spec, or ladder",
+                    },
+                },
+                "required": ["status"],
             }
         ),
         types.Tool(
@@ -2153,7 +2367,22 @@ async def handle_list_tools() -> list[types.Tool]:
             description="Analyze this week's timed calendar meetings and return an honest, structured onboarding reveal.",
             inputSchema={
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "events": {
+                        "type": "array",
+                        "description": (
+                            "Optional host-fetched events for this sitting. "
+                            "When set, Dex uses them for the reveal and does not "
+                            "claim they were stored as the Dex calendar."
+                        ),
+                        "items": {"type": "object"},
+                    },
+                    "v2": {
+                        "type": "boolean",
+                        "description": "Include next_working_day for /setup-v2. Default false.",
+                        "default": False,
+                    },
+                }
             }
         ),
         types.Tool(
@@ -2169,7 +2398,16 @@ async def handle_list_tools() -> list[types.Tool]:
             description="After finalization, stage only entity-engine-qualified person/company suggestions for the concrete onboarding offer.",
             inputSchema={
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "v2_window": {
+                        "type": "boolean",
+                        "description": (
+                            "/setup-v2 only. Offer people from the last few weeks "
+                            "without the shipped five-person cap. Default false."
+                        ),
+                        "default": False,
+                    },
+                }
             }
         ),
         types.Tool(
@@ -2187,6 +2425,14 @@ async def handle_list_tools() -> list[types.Tool]:
                         "items": {"type": "string"},
                         "minItems": 1,
                         "maxItems": 5,
+                    },
+                    "v2_window": {
+                        "type": "boolean",
+                        "description": (
+                            "/setup-v2 only. Allow more than five accepted ids. "
+                            "Default false keeps the shipped five-id cap."
+                        ),
+                        "default": False,
                     },
                 },
                 "required": ["action", "suggestion_ids"],
@@ -2425,8 +2671,21 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
         elif name == "start_onboarding_session":
             force_new = arguments.get('force_new', False)
+            v2 = arguments.get('v2', False) is True
             
             session = load_session()
+
+            if v2 and session and not force_new and not _is_v2_session(session):
+                result = create_success_response(
+                    {
+                        "attached": False,
+                        "blocked": "shipped_setup_in_progress",
+                        "completed_steps": session.get("completed_steps", []),
+                    },
+                    "A shipped setup is already in progress. Leave it. "
+                    "Use /setup to continue that session, or type /setup-v2 in a fresh folder.",
+                )
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
             
             if session and not force_new:
                 if "harness_setup" not in session:
@@ -2446,7 +2705,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 if session and force_new:
                     logger.info("Creating new session (force_new=True)")
                 
-                session = create_new_session()
+                session = create_new_session(v2=v2)
                 inspected = inspect_harnesses()
                 session["harness_setup"] = {
                     "detected": inspected["detected"],
@@ -2461,6 +2720,38 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 )
             
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+        elif name == "save_meeting_source":
+            try:
+                payload = save_meeting_source(
+                    arguments.get("primary", ""),
+                    arguments.get("notes_folder"),
+                )
+                result = create_success_response(
+                    payload,
+                    "Meeting source recorded on this session only.",
+                )
+            except RuntimeError as error:
+                result = create_error_response(str(error), suggestion="Call start_onboarding_session first")
+            except ValueError as error:
+                result = create_error_response(str(error))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "save_source_doc_note":
+            try:
+                payload = save_source_doc_note(
+                    arguments.get("status", ""),
+                    arguments.get("kind"),
+                )
+                result = create_success_response(
+                    payload,
+                    "Source-doc decision recorded on this session only.",
+                )
+            except RuntimeError as error:
+                result = create_error_response(str(error), suggestion="Call start_onboarding_session first")
+            except ValueError as error:
+                result = create_error_response(str(error))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         
         elif name == "validate_and_save_step":
             step_number = arguments.get('step_number')
@@ -2932,7 +3223,16 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "run_first_week_analysis":
-            result = create_success_response(run_first_week_analysis())
+            host_events = arguments.get("events")
+            if host_events is not None and not isinstance(host_events, list):
+                result = create_error_response("events must be a list of calendar events")
+            else:
+                result = create_success_response(
+                    run_first_week_analysis(
+                        events=host_events,
+                        v2=arguments.get("v2", False) is True,
+                    )
+                )
             return [types.TextContent(
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),
@@ -2949,7 +3249,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             )]
 
         elif name == "prepare_entity_page_offer":
-            result = create_success_response(prepare_entity_page_offer())
+            result = create_success_response(
+                prepare_entity_page_offer(
+                    v2_window=arguments.get("v2_window", False) is True,
+                )
+            )
             return [types.TextContent(
                 type="text",
                 text=json.dumps(result, indent=2, cls=DateTimeEncoder),
@@ -2960,6 +3264,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 respond_to_entity_page_offer(
                     arguments.get('action', ''),
                     arguments.get('suggestion_ids', []),
+                    v2_window=arguments.get("v2_window", False) is True,
                 )
             )
             return [types.TextContent(
