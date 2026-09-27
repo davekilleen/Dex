@@ -27,9 +27,12 @@ if [ "$WITH_MERGE" = true ] && [ "$NO_GIT" = true ]; then
   exit 2
 fi
 
-_tmp="${TMPDIR:-${TEMP:-/tmp}}"
+# Git Bash sets TMPDIR=/tmp, which Python's pathlib cannot open on Windows.
+# Prefer the native TEMP folder, then print a Windows path at the end.
 if command -v cygpath >/dev/null 2>&1; then
-  _tmp="$(cygpath -u "$_tmp")"
+  _tmp="$(cygpath -u "${TEMP:-${TMP:-${TMPDIR:-/tmp}}}")"
+else
+  _tmp="${TMPDIR:-${TEMP:-/tmp}}"
 fi
 FIXTURE_ROOT="$(mktemp -d "${_tmp}/dex-aged-vault.XXXXXX")"
 UPSTREAM="$FIXTURE_ROOT/upstream"
@@ -223,4 +226,8 @@ if [ "$WITH_MERGE" = true ]; then
   fi
 fi
 
-printf 'Fixture ready: %s\n' "$VAULT"
+if command -v cygpath >/dev/null 2>&1; then
+  printf 'Fixture ready: %s\n' "$(cygpath -w "$VAULT")"
+else
+  printf 'Fixture ready: %s\n' "$VAULT"
+fi

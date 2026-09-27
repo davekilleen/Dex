@@ -117,7 +117,8 @@ case "$cmd" in
     cd "$DEST_UNIX"
     echo "OSTYPE_OVERRIDE=msys native_OSTYPE=${OSTYPE:-unset}"
     run_install_sh msys
-    python "$GITHUB_WORKSPACE/scripts/run-windows-lifecycle-journey.py" --vault-root "$DEST_UNIX"
+    PYTHONPATH="$GITHUB_WORKSPACE" \
+      python "$GITHUB_WORKSPACE/scripts/run-windows-lifecycle-journey.py" --vault-root "$DEST_WIN"
     ;;
   *)
     usage

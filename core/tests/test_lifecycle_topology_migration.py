@@ -47,6 +47,24 @@ def _decode_windows_subprocess(raw: bytes) -> str:
         return raw.decode("utf-16-le", errors="replace")
     return raw.decode("utf-8", errors="replace")
 
+
+def _native_fixture_path(raw: str) -> Path:
+    """Turn a Git Bash path into one pathlib can open on Windows."""
+    candidate = Path(raw)
+    if candidate.exists() or os.name != "nt":
+        return candidate
+    converted = subprocess.run(
+        [_git_bash(), "-lc", 'cygpath -w "$DEX_FIXTURE_PATH"'],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env={**os.environ, "DEX_FIXTURE_PATH": raw},
+    )
+    text = (converted.stdout or "").strip()
+    if converted.returncode == 0 and text:
+        return Path(text)
+    return candidate
+
 import pytest
 
 from core.lifecycle import service
@@ -286,13 +304,12 @@ def test_real_migrator_completes_the_service_guided_journey() -> None:
     stderr = _decode_windows_subprocess(fixture.stderr)
     assert fixture.returncode == 0, (stderr[-2000:] or stdout[-2000:])
     marker = "Fixture ready: "
-    vault = Path(
-        next(
-            line.removeprefix(marker)
-            for line in stdout.splitlines()
-            if line.startswith(marker)
-        )
+    reported = next(
+        line.removeprefix(marker)
+        for line in stdout.splitlines()
+        if line.startswith(marker)
     )
+    vault = _native_fixture_path(reported)
     task_path = vault / "03-Tasks/Tasks.md"
     task_bytes = task_path.read_bytes()
     try:
