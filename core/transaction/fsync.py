@@ -24,7 +24,7 @@ import logging
 import os
 from pathlib import Path
 
-__all__ = ["fsync_directory", "fsync_file"]
+__all__ = ["fchmod", "fsync_directory", "fsync_file", "posix_permission_bits_apply"]
 
 _LOG = logging.getLogger(__name__)
 
@@ -41,6 +41,50 @@ def fsync_directory(directory: Path | str) -> None:
         raise
     finally:
         os.close(descriptor)
+
+
+def posix_permission_bits_apply() -> bool:
+    """Whether chmod/stat permission bits are real on this OS.
+
+    Windows does not store POSIX modes such as 0o600. Transaction verify
+    and similar exact-mode checks must stay load-bearing on macOS/Linux
+    and must not treat a synthetic Windows mode as a failed write.
+    """
+    return os.name != "nt"
+
+
+def fchmod(descriptor: int, mode: int, *, path: Path | str | None = None) -> None:
+    """Set permission bits on an open descriptor.
+
+    ``os.fchmod`` does not exist on Windows before Python 3.13. Those
+    versions also cannot store POSIX modes. When the syscall is missing,
+    fall back to ``os.chmod(path)`` if a path is supplied; otherwise skip
+    and keep the real reason in the debug log. On POSIX, and on Windows
+    3.13+, the real ``fchmod`` runs so descriptor-based races stay closed.
+    """
+    helper = getattr(os, "fchmod", None)
+    if helper is not None:
+        try:
+            helper(descriptor, mode)
+        except OSError:
+            _LOG.debug("fchmod failed fd=%s mode=%o", descriptor, mode, exc_info=True)
+            raise
+        return
+    if path is not None:
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            _LOG.debug(
+                "chmod fallback failed path=%s mode=%o", path, mode, exc_info=True
+            )
+            raise
+        return
+    _LOG.debug(
+        "os.fchmod is unavailable (Windows before Python 3.13) and no path "
+        "was supplied; skipping mode %o on fd %s",
+        mode,
+        descriptor,
+    )
 
 
 def fsync_file(path: Path | str) -> None:

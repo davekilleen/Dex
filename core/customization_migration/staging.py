@@ -67,6 +67,7 @@ from core.customization_migration.state import (
     project_state,
 )
 from core.transaction.engine import PlanEntry, Transaction
+from core.transaction.fsync import fchmod, fsync_directory
 
 STAGING_SUBDIR = "candidates/{proposal_id}/staging"
 _MAX_JSON_BYTES = 1024 * 1024
@@ -834,11 +835,7 @@ def _append_event(
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    directory = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    fsync_directory(path.parent)
 
 
 def _secure_staging_directories(root: Path, staging_dir: Path) -> None:
@@ -854,10 +851,10 @@ def _secure_staging_directories(root: Path, staging_dir: Path) -> None:
             directory.relative_to(root).as_posix(),
         )
         try:
-            os.fchmod(descriptor, 0o700)
-            os.fsync(descriptor)
+            fchmod(descriptor, 0o700, path=directory)
         finally:
             os.close(descriptor)
+        fsync_directory(directory)
     files_dir = staging_dir / "files"
     if files_dir.exists() and files_dir not in directories:
         descriptor = _open_directory_beneath(
@@ -865,10 +862,10 @@ def _secure_staging_directories(root: Path, staging_dir: Path) -> None:
             files_dir.relative_to(root).as_posix(),
         )
         try:
-            os.fchmod(descriptor, 0o700)
-            os.fsync(descriptor)
+            fchmod(descriptor, 0o700, path=files_dir)
         finally:
             os.close(descriptor)
+        fsync_directory(files_dir)
 
 
 def stage_candidate(

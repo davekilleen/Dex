@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from core import portable_contract
 from core.transaction.engine import PlanEntry, Transaction
+from core.transaction.fsync import fsync_directory
 from core.utils import release_channel
 from core.utils.local_git import git_output
 
@@ -898,11 +899,7 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     finally:
         os.close(descriptor)
     os.replace(temporary, path)
-    directory = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    fsync_directory(path.parent)
 
 
 def _finalize_release_metadata(

@@ -26,6 +26,7 @@ from pathlib import Path
 from core.health.reporter import NormalizationResult, ReporterEnvelope, normalize_report
 from core.lifecycle import service
 from core.transaction.engine import PlanEntry
+from core.transaction.fsync import fchmod
 
 SNAPSHOT_CONTRACT = "dex.health.snapshot/v1"
 POINTER_CONTRACT = "dex.health.latest/v1"
@@ -378,7 +379,7 @@ class _RefreshCoordinator:
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         descriptor = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
-        os.fchmod(descriptor, 0o600)
+        fchmod(descriptor, 0o600, path=self.path)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:

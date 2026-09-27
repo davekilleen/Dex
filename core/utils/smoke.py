@@ -31,6 +31,7 @@ if str(RUNNER_ROOT) in sys.path:
     sys.path.remove(str(RUNNER_ROOT))
 sys.path.insert(0, str(RUNNER_ROOT))
 
+from core.transaction.fsync import fchmod
 from core.utils import dex_logger, release_channel
 
 SCHEMA_VERSION = 1
@@ -939,7 +940,7 @@ def _copy_runner_file(
             os.fdopen(os.dup(destination_fd), "wb") as destination_handle,
         ):
             shutil.copyfileobj(source_handle, destination_handle)
-        os.fchmod(destination_fd, stat.S_IMODE(source_stat.st_mode))
+        fchmod(destination_fd, stat.S_IMODE(source_stat.st_mode), path=destination)
     except OSError as exc:
         raise JourneySafetySkip(f"tracked runner file could not be copied: {relative}") from exc
     finally:
@@ -1097,7 +1098,7 @@ def _set_runtime_path_writable(path: Path, *, writable: bool) -> None:
             or stat.S_IFMT(opened_stat.st_mode) != stat.S_IFMT(path_stat.st_mode)
         ):
             raise JourneySafetySkip(f"runtime tree path changed during chmod: {path}")
-        os.fchmod(descriptor, mode)
+        fchmod(descriptor, mode, path=path)
     finally:
         os.close(descriptor)
 
@@ -1492,7 +1493,7 @@ def issue_mcp_once_consent_token(name: str, *, directory: Path | None = None) ->
         separators=(",", ":"),
     ).encode("utf-8")
     try:
-        os.fchmod(descriptor, 0o600)
+        fchmod(descriptor, 0o600, path=token_path)
         view = memoryview(payload)
         while view:
             written = os.write(descriptor, view)

@@ -19,6 +19,7 @@ from core.utils.integration_credentials import (
     mcp_credential_key_names,
     read_vault_env,
 )
+from core.transaction.fsync import fsync_directory
 from core.utils.local_git import git_env, git_result
 
 LEGACY_YAML_FIELD = re.compile(rb"(?m)^\s*(?:api_key|token)\s*:\s*\S+")
@@ -53,11 +54,7 @@ def _write_durable(path: Path, data: bytes) -> None:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    fsync_directory(path.parent)
 
 
 def _read_recovery_artifact(path: Path, *, max_bytes: int) -> bytes:

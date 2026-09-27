@@ -38,7 +38,11 @@ from pathlib import Path
 from core import portable_contract
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
-from core.transaction.fsync import fsync_directory, fsync_file
+from core.transaction.fsync import (
+    fsync_directory,
+    fsync_file,
+    posix_permission_bits_apply,
+)
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
@@ -104,7 +108,7 @@ def _posix_permission_bits_apply() -> bool:
     macOS and Linux store the bits for real. The check stays load-bearing
     there — a planned 0o600 that lands as 0o644 is still a verify failure.
     """
-    return os.name != "nt"
+    return posix_permission_bits_apply()
 
 
 def _unsafe_infrastructure_directory(vault_root: Path, directory: Path) -> str | None:

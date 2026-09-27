@@ -188,6 +188,86 @@ def test_fsync_file_opens_rdonly_on_posix(
     assert seen[0] & os.O_ACCMODE == os.O_RDONLY
 
 
+def test_fchmod_falls_back_to_chmod_when_the_syscall_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import core.transaction.fsync as fsync_module
+
+    monkeypatch.delattr(fsync_module.os, "fchmod", raising=False)
+    target = tmp_path / "secret.env"
+    target.write_bytes(b"x")
+    descriptor = os.open(target, os.O_RDWR)
+    try:
+        fsync_module.fchmod(descriptor, 0o600, path=target)
+    finally:
+        os.close(descriptor)
+    if fsync_module.posix_permission_bits_apply():
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_fchmod_uses_the_real_syscall_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import core.transaction.fsync as fsync_module
+
+    if not hasattr(os, "fchmod"):
+        pytest.skip("this interpreter has no os.fchmod")
+    seen: list[tuple[int, int]] = []
+    real = os.fchmod
+
+    def record(descriptor: int, mode: int) -> None:
+        seen.append((descriptor, mode))
+        real(descriptor, mode)
+
+    monkeypatch.setattr(fsync_module.os, "fchmod", record)
+    target = tmp_path / "secret.env"
+    target.write_bytes(b"x")
+    descriptor = os.open(target, os.O_RDWR)
+    try:
+        fsync_module.fchmod(descriptor, 0o600, path=target)
+    finally:
+        os.close(descriptor)
+    assert seen and seen[0][1] == 0o600
+
+
+def test_fchmod_logs_when_the_syscall_and_path_are_both_missing(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    import core.transaction.fsync as fsync_module
+
+    monkeypatch.delattr(fsync_module.os, "fchmod", raising=False)
+    with caplog.at_level(logging.DEBUG, logger="core.transaction.fsync"):
+        fsync_module.fchmod(3, 0o600)
+    assert "os.fchmod is unavailable" in caplog.text
+
+
+def test_durable_writers_route_directory_fsync_through_the_shared_helper() -> None:
+    """Issue #257: an inline directory open+fsync raises on Windows after
+    the write it was meant to make durable. These writers must use the
+    shared helper instead."""
+    import re
+
+    files = [
+        REPO_ROOT / "core/lifecycle/service.py",
+        REPO_ROOT / "core/utils/update_verifier.py",
+        REPO_ROOT / "core/utils/safe_autosave.py",
+        REPO_ROOT / "core/health/post_update.py",
+        REPO_ROOT / "core/update/apply_update.py",
+        REPO_ROOT / "core/customization_migration/capsule.py",
+        REPO_ROOT / "core/customization_migration/staging.py",
+    ]
+    leaked = re.compile(
+        r"os\.open\([^)]*parent[^)]*O_RDONLY[\s\S]{0,120}os\.fsync",
+        re.MULTILINE,
+    )
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert "fsync_directory(" in text, path
+        assert leaked.search(text) is None, path
+
+
 def test_fsync_file_keeps_the_real_oserror_in_the_debug_log(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
