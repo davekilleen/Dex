@@ -333,7 +333,7 @@ def test_windows_data_dir_fixture_is_detected_without_reading_files() -> None:
             "title": "Weekly review",
             "created_at": "2026-08-14T09:00:00Z",
             "summary_markdown": "- [ ] Send notes",
-            "attendees": [{"name": "Sam", "email": "sam@invalid.test"}],
+            "attendees": [{"name": "Sam", "email": "sam@example.com"}],
         }
     )
     assert record.source == "granola"
