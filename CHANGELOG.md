@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.21] — (2026-09-27)
+
 ## Unreleased
 
 Dex on Windows can update again after its first update
