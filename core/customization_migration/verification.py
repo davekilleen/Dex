@@ -56,6 +56,7 @@ from core.customization_migration.state import (
     MigrationState,
 )
 from core.transaction.engine import PlanEntry, Transaction
+from core.transaction.fsync import fchmod, fsync_directory
 
 _OUTCOMES = frozenset({"pass", "fail", "unknown"})
 _REPORT_VERDICTS = frozenset({"OK", "BLOCKED", "UNKNOWN"})
@@ -1457,10 +1458,10 @@ def write_verification_report(
             verification_dir.relative_to(root).as_posix(),
         )
         try:
-            os.fchmod(descriptor, 0o700)
-            os.fsync(descriptor)
+            fchmod(descriptor, 0o700, path=verification_dir)
         finally:
             os.close(descriptor)
+        fsync_directory(verification_dir)
         _verification_stop_seam("verification-after-layout")
         assert_verification_fresh()
         _append_event(

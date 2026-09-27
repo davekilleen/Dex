@@ -47,6 +47,21 @@ function contentBytes(content) {
   return Buffer.isBuffer(content) ? Buffer.from(content) : Buffer.from(content, 'utf8');
 }
 
+function jsonEscapeVaultPath(vaultRoot) {
+  // JSON.stringify wraps the string in quotes; drop them so the result
+  // can be spliced into an existing JSON string value. This turns
+  // Windows backslashes and quotes into legal JSON escapes — a raw
+  // replace of C:\Users\Joe\Dex "Vault" would produce invalid JSON.
+  return JSON.stringify(String(vaultRoot)).slice(1, -1);
+}
+
+function debugCause(context, error) {
+  const detail = error instanceof Error
+    ? (error.stack || error.message)
+    : String(error);
+  process.stderr.write(`provision debug: ${context}: ${detail}\n`);
+}
+
 function reportPath(vaultRoot, filePath) {
   return path.relative(vaultRoot, filePath).split(path.sep).join('/') || '.';
 }
@@ -264,6 +279,7 @@ class ProvisionTransaction {
 }
 
 function rollbackProvision(transaction, reporter, cause) {
+  debugCause('provision transaction failed', cause);
   reporter.error(cause.message);
   try {
     transaction.rollback();
@@ -799,7 +815,8 @@ function routeCapabilityAuthority(
   }
   try {
     return JSON.parse(result.stdout);
-  } catch (_) {
+  } catch (error) {
+    debugCause('capability source authority returned non-JSON stdout', error);
     throw new Error('Capability source authority returned an invalid response');
   }
 }
@@ -842,15 +859,17 @@ function routeProvisionTransaction(
     const detail = (result.stderr || result.stdout || result.signal || 'unknown failure').trim();
     throw new Error(`Provision transaction service refused provisioning: ${detail}`);
   }
+  let parsed;
   try {
-    const parsed = JSON.parse(result.stdout);
-    if (!parsed || parsed.ok !== true) {
-      throw new Error('Provision transaction service returned a non-success receipt');
-    }
-    return parsed;
-  } catch (_) {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    debugCause('provision transaction service returned non-JSON stdout', error);
     throw new Error('Provision transaction service returned an invalid response');
   }
+  if (!parsed || parsed.ok !== true) {
+    throw new Error('Provision transaction service returned a non-success receipt');
+  }
+  return parsed;
 }
 
 function buildHarnessReceipt(vaultRoot, overlay) {
@@ -887,13 +906,17 @@ function buildHarnessReceipt(vaultRoot, overlay) {
   if (result.status !== 0) {
     throw new Error(`Harness receipt authority refused provisioning: ${(result.stderr || result.stdout).trim()}`);
   }
+  let parsed;
   try {
-    const parsed = JSON.parse(result.stdout);
-    if (!parsed || parsed.schema_version !== 1) throw new Error('unsupported schema');
-    return `${JSON.stringify(parsed, null, 2)}\n`;
-  } catch (_) {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    debugCause('harness receipt authority returned non-JSON stdout', error);
     throw new Error('Harness receipt authority returned an invalid response');
   }
+  if (!parsed || parsed.schema_version !== 1) {
+    throw new Error('Harness receipt authority returned an invalid response');
+  }
+  return `${JSON.stringify(parsed, null, 2)}\n`;
 }
 
 function pillarName(pillar) {
@@ -955,7 +978,10 @@ function updateClaudeContent(content, profile) {
 
 function configuredMcp(vaultRoot) {
   const examplePath = path.join(vaultRoot, 'System', '.mcp.json.example');
-  let source = fs.readFileSync(examplePath, 'utf8').replaceAll('{{VAULT_PATH}}', vaultRoot);
+  let source = fs.readFileSync(examplePath, 'utf8').replaceAll(
+    '{{VAULT_PATH}}',
+    jsonEscapeVaultPath(vaultRoot),
+  );
   if (process.platform === 'win32') {
     source = source.replaceAll('.venv/bin/python', '.venv/Scripts/python.exe');
   }
@@ -1085,15 +1111,17 @@ function routeAdoptionThroughLifecycleService(
   if (result.status !== 0) {
     throw new Error(`Lifecycle service refused adoption: ${(result.stderr || result.stdout).trim()}`);
   }
+  let parsed;
   try {
-    const parsed = JSON.parse(result.stdout);
-    if (!parsed || parsed.ok !== true) {
-      throw new Error('Lifecycle service returned a non-success receipt');
-    }
-    return parsed;
-  } catch (_) {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    debugCause('lifecycle service returned non-JSON stdout', error);
     throw new Error('Lifecycle service returned an invalid adoption receipt');
   }
+  if (!parsed || parsed.ok !== true) {
+    throw new Error('Lifecycle service returned a non-success receipt');
+  }
+  return parsed;
 }
 
 function mergeMcp(existing, generated) {
@@ -1731,7 +1759,9 @@ if (require.main === module) {
 
 module.exports = {
   contract,
+  configuredMcp,
   deepFillMissing,
+  jsonEscapeVaultPath,
   parseArgs,
   pathExports,
   provisionMutationTargets,

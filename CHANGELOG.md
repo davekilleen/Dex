@@ -27,6 +27,14 @@ need the follow-on repair first.
   Windows repair; the second half puts existing Windows bookkeeping files
   back into a readable form before any release can carry this change.
 
+Setup only looked for Granola in the Mac Applications folder. On a Windows PC the app was already there, and Dex still said it was not installed.
+
+**What this fixes for you:**
+
+* **Dex notices Granola on Windows.** First-run setup and the tool suggestions can see the Granola app on a Windows PC, including when you opened the installer from Git Bash.
+* **A miss has a real reason.** When Granola is not found, Dex records every place it looked so a later checkup can say why, instead of a blank "not detected."
+* **Meetings still come from the official Granola connection.** Dex does not read Granola's private local files. You connect with `/granola-setup` the same way as before.
+
 ### Lessons from a session are saved when you close it
 
 Dex used to say it learned from your sessions on its own. What it actually did was remember that a session ended, then wait for you to run the evening review before any of the useful bits were written down. Skip the review and the day file stayed empty of lessons. That is no longer true, and the wording now matches what happens.

@@ -116,6 +116,21 @@ def test_mcp_registration_refuses_if_user_configuration_changes_after_preview(
     assert after["unrelated_user_setting"]["changed_after_preview"] is True
 
 
+def test_mcp_registration_json_escapes_windows_backslashes_and_quotes() -> None:
+    windows_path = r'C:\Users\Joe\Dex "Vault"'
+    template = {
+        "command": "{{VAULT_PATH}}/.venv/bin/python",
+        "args": ["{{VAULT_PATH}}/core/mcp/customization_migration_server.py"],
+        "env": {"VAULT_PATH": "{{VAULT_PATH}}"},
+    }
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(json.dumps(template).replace("{{VAULT_PATH}}", windows_path))
+    rendered = service._substitute_vault_path(template, windows_path)
+    assert rendered["env"]["VAULT_PATH"] == windows_path
+    assert rendered["command"] == rf'{windows_path}/.venv/bin/python'
+    assert json.loads(json.dumps(rendered))["env"]["VAULT_PATH"] == windows_path
+
+
 def test_mcp_registration_uses_the_delivered_definition_not_a_preserved_seed(
     tmp_path: Path,
 ) -> None:
