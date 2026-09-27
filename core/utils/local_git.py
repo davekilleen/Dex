@@ -425,7 +425,9 @@ def _hooks_path_config() -> str:
     Autosave runs ``commit`` and ``update-ref``.
     """
     if _is_windows_like():
-        return "core.hooksPath=NUL"
+        # Relative `NUL` is resolved from the repo root, so a planted
+        # `<repo>\NUL\pre-commit` would run. The Win32 device path is not.
+        return "core.hooksPath=//./NUL"
     return "core.hooksPath=/dev/null"
 
 

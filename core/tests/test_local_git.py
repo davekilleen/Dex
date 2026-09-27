@@ -14,16 +14,16 @@ from core.utils import credential_remediation, credential_scanner, history_hygie
 C_DRIVE_FOLDERS = local_git.WindowsFolders(
     program_files="C:/Program Files",
     program_files_x86="C:/Program Files (x86)",
-    local_app_data="C:/Users/Sam/AppData/Local",
+    local_app_data="C:/Profiles/tester/AppData/Local",
     system32="C:/Windows/System32",
-    profile="C:/Users/Sam",
+    profile="C:/Profiles/tester",
 )
 D_DRIVE_FOLDERS = local_git.WindowsFolders(
     program_files="D:/Program Files",
     program_files_x86="D:/Program Files (x86)",
-    local_app_data="D:/Users/Sam/AppData/Local",
+    local_app_data="D:/Profiles/tester/AppData/Local",
     system32="D:/Windows/System32",
-    profile="D:/Users/Sam",
+    profile="D:/Profiles/tester",
 )
 EMPTY_FOLDERS = local_git.WindowsFolders(
     program_files=None,
@@ -36,13 +36,13 @@ C_DRIVE_CANDIDATES = (
     "C:/Program Files/Git/cmd/git.exe",
     "C:/Program Files/Git/bin/git.exe",
     "C:/Program Files (x86)/Git/cmd/git.exe",
-    "C:/Users/Sam/AppData/Local/Programs/Git/cmd/git.exe",
+    "C:/Profiles/tester/AppData/Local/Programs/Git/cmd/git.exe",
 )
 D_DRIVE_CANDIDATES = (
     "D:/Program Files/Git/cmd/git.exe",
     "D:/Program Files/Git/bin/git.exe",
     "D:/Program Files (x86)/Git/cmd/git.exe",
-    "D:/Users/Sam/AppData/Local/Programs/Git/cmd/git.exe",
+    "D:/Profiles/tester/AppData/Local/Programs/Git/cmd/git.exe",
 )
 LOCALAPPDATA_GIT = C_DRIVE_CANDIDATES[3]
 REJECTED_WINDOWS_LOCATIONS = (
@@ -56,7 +56,7 @@ REJECTED_WINDOWS_LOCATIONS = (
     "/usr/bin/git",
     "/bin/git",
     "C:/Windows/System32/git.exe",
-    "C:/Users/Public/git.exe",
+    "C:/Profiles/shared/git.exe",
     "C:/evil/Git/cmd/git.exe",
     "C:/Program Files/Git/mingw64/bin/git.exe",
     "C:/Program Files (x86)/Git/bin/git.exe",
@@ -110,10 +110,37 @@ def _assert_win_path(actual, expected) -> None:
 def _hooks_setting(joined: str) -> None:
     if local_git._is_windows_like():
         assert "core.hooksPath=/dev/null" not in joined
-        assert "core.hooksPath=NUL" in joined
+        assert "core.hooksPath=//./NUL" in joined
         assert "dex-git-hooks-" not in joined
         return
     assert "core.hooksPath=/dev/null" in joined
+
+
+def _hook_script(marker: Path) -> str:
+    return f"#!/bin/sh\nprintf planted > '{marker.as_posix()}'\nexit 1\n"
+
+
+def _raw_git_commit(repo: Path, message: str) -> subprocess.CompletedProcess[bytes]:
+    """Run trusted Git with no hooksPath override (positive control)."""
+    git = local_git.trusted_git_binary()
+    return subprocess.run(
+        [
+            str(git),
+            "-c",
+            "user.name=Dex",
+            "-c",
+            "user.email=dex@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            message,
+        ],
+        cwd=repo,
+        env=local_git.git_env(git=git),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
 
 
 def test_local_git_ignores_hostile_path_and_git_config(tmp_path, monkeypatch):
@@ -246,7 +273,7 @@ def test_planted_pre_commit_hook_is_not_run(tmp_path):
     assert result.returncode == 0, result.stderr
     assert not marker.exists()
     if local_git._is_windows_like():
-        assert local_git._hooks_path_config() == "core.hooksPath=NUL"
+        assert local_git._hooks_path_config() == "core.hooksPath=//./NUL"
     else:
         assert local_git._hooks_path_config() == "core.hooksPath=/dev/null"
 
@@ -319,8 +346,8 @@ def test_windows_localappdata_env_does_not_inject_a_candidate(monkeypatch):
     _force_windows(monkeypatch)
     folders = C_DRIVE_FOLDERS._replace(local_app_data=None)
     _use_folders(monkeypatch, folders)
-    monkeypatch.setenv("LOCALAPPDATA", "C:/Users/Sam/AppData/Local")
-    monkeypatch.setenv("USERPROFILE", "C:/Users/Sam")
+    monkeypatch.setenv("LOCALAPPDATA", "C:/Profiles/tester/AppData/Local")
+    monkeypatch.setenv("USERPROFILE", "C:/Profiles/tester")
     assert LOCALAPPDATA_GIT not in local_git.windows_git_candidate_texts()
     assert local_git.canonical_windows_git_path(LOCALAPPDATA_GIT) is None
     _present_windows_binaries(monkeypatch, {LOCALAPPDATA_GIT: LOCALAPPDATA_GIT})
@@ -417,7 +444,7 @@ def test_windows_rejects_relative_and_cwd_even_when_file_exists(monkeypatch, tmp
 
 
 def test_windows_rejects_git_bash_alias_that_is_not_in_the_closed_list():
-    assert local_git.canonical_windows_git_path("/c/Users/Public/Git/cmd/git.exe", C_DRIVE_FOLDERS) is None
+    assert local_git.canonical_windows_git_path("/c/Profiles/shared/Git/cmd/git.exe", C_DRIVE_FOLDERS) is None
     assert local_git.canonical_windows_git_path(
         "/cygdrive/d/Program Files/Git/cmd/git.exe",
         C_DRIVE_FOLDERS,
@@ -550,13 +577,13 @@ def test_windows_git_env_path_is_only_trusted_git_dir_and_system32(monkeypatch):
     assert local_git._windows_lexical_key("C:/Windows/System32") in {
         local_git._windows_lexical_key(item) for item in expected_dirs
     }
-    assert local_git._windows_lexical_key(env["HOME"]) == local_git._windows_lexical_key("C:/Users/Sam")
+    assert local_git._windows_lexical_key(env["HOME"]) == local_git._windows_lexical_key("C:/Profiles/tester")
 
 
 def test_windows_git_env_home_empty_when_profile_lookup_fails(monkeypatch):
     _force_windows(monkeypatch)
     _use_folders(monkeypatch, C_DRIVE_FOLDERS._replace(profile=None))
-    monkeypatch.setenv("USERPROFILE", r"E:\Users\Pat")
+    monkeypatch.setenv("USERPROFILE", r"E:\Profiles\pat")
     env = local_git.git_env(git=Path("C:/Program Files/Git/cmd/git.exe"))
     assert env["HOME"] == ""
 
@@ -574,7 +601,7 @@ def test_windows_hooks_path_is_nul(tmp_path, monkeypatch):
     monkeypatch.setattr(local_git, "trusted_git_binary", lambda: Path("C:/Program Files/Git/cmd/git.exe"))
     local_git.git_output(tmp_path, "status", profile="read-only")
     joined = " ".join(observed["command"])
-    assert "core.hooksPath=NUL" in joined
+    assert "core.hooksPath=//./NUL" in joined
     assert "core.hooksPath=/dev/null" not in joined
     assert "dex-git-hooks-" not in joined
     source = Path(local_git.__file__).read_text(encoding="utf-8")
@@ -636,11 +663,69 @@ def test_windows_planted_drive_dev_null_hook_is_not_run(tmp_path):
                 local_git._hooks_path_config(),
             ]
         )
-        assert local_git._hooks_path_config() == "core.hooksPath=NUL"
+        assert local_git._hooks_path_config() == "core.hooksPath=//./NUL"
         assert "core.hooksPath=/dev/null" not in joined
     finally:
         try:
             hook.unlink()
+        except OSError:
+            pass
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows repo-root NUL hook plant")
+def test_windows_repo_nul_directory_hook_is_not_run(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    init = local_git.git_result(repo, "init", profile="mutation")
+    assert init.returncode == 0, init.stderr
+
+    control_marker = tmp_path / "control-hook-ran"
+    default_hook = repo / ".git" / "hooks" / "pre-commit"
+    default_hook.write_text(_hook_script(control_marker), encoding="utf-8", newline="\n")
+    default_hook.chmod(0o755)
+    control = _raw_git_commit(repo, "control")
+    assert control.returncode != 0, control.stderr
+    assert control_marker.exists(), (
+        "positive control: Git must run .git/hooks/pre-commit without a hooksPath override"
+    )
+    control_marker.unlink()
+    default_hook.unlink()
+
+    nul_marker = tmp_path / "nul-dir-hook-ran"
+    nul_dir = Path(rf"\\?\{repo.resolve()}\NUL")
+    try:
+        nul_dir.mkdir(parents=True, exist_ok=True)
+        nul_hook = nul_dir / "pre-commit"
+        nul_hook.write_text(_hook_script(nul_marker), encoding="utf-8", newline="\n")
+        try:
+            os.chmod(os.fspath(nul_hook), 0o755)
+        except OSError:
+            pass
+    except OSError as exc:
+        pytest.skip(f"could not create extended-path NUL hook directory: {exc}")
+    try:
+        result = local_git.git_result(
+            repo,
+            "-c",
+            "user.name=Dex",
+            "-c",
+            "user.email=dex@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "nul-dir-hook-test",
+            profile="mutation",
+        )
+        assert result.returncode == 0, result.stderr
+        assert not nul_marker.exists()
+        assert local_git._hooks_path_config() == "core.hooksPath=//./NUL"
+    finally:
+        try:
+            (nul_dir / "pre-commit").unlink()
+        except OSError:
+            pass
+        try:
+            nul_dir.rmdir()
         except OSError:
             pass
 

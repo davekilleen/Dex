@@ -248,7 +248,7 @@ jobs:
           pip install -r requirements-dev.txt
           pip install "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
       - name: Trusted Git on Windows (real rev-parse)
-        run: python -m pytest core/tests/test_local_git.py -q --tb=short
+        run: python -m pytest core/tests/test_local_git.py --tb=short -rA
 
   # Recombines the three shards and enforces the whole-suite gates: total
   # coverage threshold, touched-file coverage threshold, and the merged junit
