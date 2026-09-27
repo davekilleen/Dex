@@ -169,10 +169,16 @@ def test_fsync_file_opens_rdonly_on_posix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """POSIX keeps the established read-only open — do not start writing
-    a file we only need to flush."""
+    a file we only need to flush.
+
+    Only the open flags are under test. Stub ``os.fsync`` so a Windows
+    host cannot raise EBADF on the simulated read-only handle (Dex CI
+    run 36321669806).
+    """
     import core.transaction.fsync as fsync_module
 
     monkeypatch.setattr(fsync_module.os, "name", "posix")
+    monkeypatch.setattr(fsync_module.os, "fsync", lambda _descriptor: None)
     seen: list[int] = []
     real_open = fsync_module.os.open
 
