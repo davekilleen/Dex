@@ -209,6 +209,18 @@ def fcntl_missing() -> Iterator[None]:
                 sys.modules[name] = module
             else:
                 sys.modules.pop(name, None)
+            # `from core.lifecycle import ledger` reads the package attribute,
+            # which a reload leaves pointing at the discarded module. Put the
+            # original back so later tests patch the same object engine imports.
+            if "." in name:
+                parent_name, attr = name.rsplit(".", 1)
+                parent = sys.modules.get(parent_name)
+                if parent is None:
+                    continue
+                if module is not None:
+                    setattr(parent, attr, module)
+                elif getattr(parent, attr, None) is not None:
+                    delattr(parent, attr)
 
 
 def test_shared_helper_imports_when_fcntl_is_missing(fcntl_missing) -> None:
@@ -449,6 +461,7 @@ def test_native_windows_lockfileex_five_argument_contract(tmp_path: Path) -> Non
     try:
         try:
             import msvcrt
+
             import pywintypes
             import win32file
         except ImportError:
