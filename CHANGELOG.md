@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.21] — Windows setup can finish, and when it cannot you see why (2026-09-27)
+## Unreleased
 
 A Windows 11 install from Git Bash could stop without a usable reason. Dex treated that shell as if it were a Mac, looked in the wrong place for Python, and hid the real error. A report from Joe on 26 September made this visible.
 
@@ -19,6 +19,15 @@ A Windows 11 install from Git Bash could stop without a usable reason. Dex treat
 * **The fake Microsoft Store Python is skipped.** Windows sometimes puts a `python3` on the path that only opens the Store. Setup ignores that placeholder, checks the version on a real Python, and continues with that one.
 * **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
 * **PowerShell setup uses the same installer.** When Git Bash is there, the PowerShell script hands the Python it found to the shared setup script, so both doors finish the same way.
+
+When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
+
+**What this fixes for you:**
+
+* **The Todoist title is just the task.** Folder paths from your notes no longer get glued onto the name.
+* **The description has a link back to the note.** If you use Obsidian, it opens the source page. If Dex cannot see the vault name, the link still points at the file so it can open in the vault you already have open.
+
+Reported by @mekuhl.
 
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 

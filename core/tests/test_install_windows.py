@@ -138,6 +138,55 @@ def test_windowsapps_match_requires_a_path_segment() -> None:
     assert store_win.stdout.strip() == "stub"
 
 
+def test_store_alias_exit_9009_is_skipped_even_outside_windowsapps(tmp_path: Path) -> None:
+    """The #752 journey puts a Store-style python3 first on PATH (exit 9009)."""
+    stub_dir = tmp_path / "windowsapps-stub"
+    real = tmp_path / "Python312"
+    stub_dir.mkdir()
+    real.mkdir()
+    _write_executable(
+        stub_dir / "python3",
+        """#!/bin/sh
+echo "Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases." >&2
+exit 9009
+""",
+    )
+    _write_executable(
+        real / "python",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.1"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env.pop("DEX_INSTALL_PYTHON", None)
+    env.update(
+        {
+            "PATH": f"{stub_dir}:{real}",
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "OSTYPE": "cygwin",
+            "WINDIR": r"C:\Windows",
+        }
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_resolve_python\nprintf "%s %s\\n" "$PYTHON_CMD" "$PYTHON_VERSION"',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip().endswith("3.12.1")
+    assert str(real / "python") in result.stdout
+    assert "windowsapps-stub" not in result.stdout
+
+
 def test_windowsapps_python3_stub_is_skipped_even_when_version_looks_fine(tmp_path: Path) -> None:
     apps = tmp_path / "Local" / "Microsoft" / "WindowsApps"
     real = tmp_path / "Python312"
@@ -470,6 +519,7 @@ def test_install_sh_does_not_swallow_venv_or_pip_stderr() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
     assert "WindowsApps" in text
     assert "DEX_INSTALL_PYTHON" in text
+    assert "DEX_INSTALL_NONINTERACTIVE" in text
     assert "core.integrations.granola_paths" in text
     assert "dex_run_logged \"python -m venv\"" in text
     assert "dex_run_logged \"pip install\"" in text

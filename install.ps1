@@ -246,6 +246,11 @@ if ($env:DEX_INSTALL_LIB_ONLY -eq "1") {
     return
 }
 
+# Native Windows CI runs this script with a closed stdin. Do not wait for a key.
+if ($env:CI -and -not $env:DEX_INSTALL_NONINTERACTIVE) {
+    $env:DEX_INSTALL_NONINTERACTIVE = "1"
+}
+
 $script:DexInstallArgs = @($args)
 
 $Root = Get-DexInstallRoot

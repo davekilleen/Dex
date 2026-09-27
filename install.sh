@@ -246,6 +246,12 @@ if [ "${DEX_INSTALL_LIB_ONLY:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
+# Native Windows CI (windows-install-journey) sets CI=true and closes stdin.
+# Never wait for a keypress on that path.
+if [ -n "${CI:-}" ] && [ -z "${DEX_INSTALL_NONINTERACTIVE:-}" ]; then
+    export DEX_INSTALL_NONINTERACTIVE=1
+fi
+
 set -e
 
 # ---------------------------------------------------------------------------
