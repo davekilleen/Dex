@@ -3,7 +3,6 @@ import os
 from core.update import apply_update
 from core.utils.os_flags import binary_write_flags
 
-
 WINDOWS_O_BINARY = 0x8000
 
 
