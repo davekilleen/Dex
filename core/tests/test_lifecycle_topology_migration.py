@@ -10,23 +10,34 @@ from pathlib import Path
 
 
 def _git_bash() -> str:
-    """Return Git Bash, not the Windows Store/WSL ``System32\\bash.exe`` stub."""
+    """Return Git Bash. Never the WSL ``System32\\bash.exe`` launcher."""
     if os.name != "nt":
         return "bash"
-    which = shutil.which("bash")
-    if which:
-        lowered = which.lower()
-        if "system32" not in lowered and "windowsapps" not in lowered:
-            return which
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    for candidate in (
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    candidates = [
         Path(program_files) / "Git" / "bin" / "bash.exe",
         Path(program_files) / "Git" / "usr" / "bin" / "bash.exe",
+        Path(program_files_x86) / "Git" / "bin" / "bash.exe",
+        Path(program_files_x86) / "Git" / "usr" / "bin" / "bash.exe",
         Path(r"C:\Program Files\Git\bin\bash.exe"),
-    ):
+        Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
+    ]
+    if local_app:
+        candidates.append(Path(local_app) / "Programs" / "Git" / "bin" / "bash.exe")
+    for candidate in candidates:
         if candidate.is_file():
             return str(candidate)
-    return "bash"
+    which = shutil.which("bash")
+    if which:
+        lowered = which.lower().replace("/", "\\")
+        if "system32" in lowered or "windowsapps" in lowered:
+            raise FileNotFoundError(
+                "bash resolved to the WSL or Store launcher; Git Bash is required."
+            )
+        return which
+    raise FileNotFoundError("Git Bash was not found.")
 
 
 def _decode_windows_subprocess(raw: bytes) -> str:

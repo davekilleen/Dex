@@ -40,18 +40,42 @@ STUB
 
 ensure_official_release_ref() {
   local dest="$1"
-  if git -C "$dest" rev-parse --verify 'refs/remotes/origin/release^{commit}' >/dev/null 2>&1; then
-    return 0
-  fi
-  if git -C "$dest" rev-parse --verify 'refs/remotes/official/release^{commit}' >/dev/null 2>&1; then
-    return 0
-  fi
-  # A shallow PR checkout has no origin/release. Fetch the official release
-  # branch by URL so the brain/vault split can prove history.
+  local workspace="${GITHUB_WORKSPACE:-}"
   if ! git -C "$dest" remote | grep -qx official; then
     git -C "$dest" remote add official https://github.com/davekilleen/Dex.git
   fi
-  git -C "$dest" fetch --depth=1 official release
+  # A shallow PR checkout has no origin/release. Fetch the full official
+  # release branch (not depth-1: P8 walks parents and reports a broken link).
+  # --update-shallow lets a shallow clone receive those parent objects.
+  if git -C "$dest" fetch --update-shallow official \
+      +refs/heads/release:refs/remotes/official/release; then
+    git -C "$dest" rev-parse --verify 'refs/remotes/official/release^{commit}'
+    return 0
+  fi
+  # Origin on this clone is the GHA workspace, which also has no release
+  # branch. Reuse a release ref already present on the workspace, or fetch
+  # official release into the workspace and copy it across.
+  if [ -n "$workspace" ] && git -C "$workspace" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if ! git -C "$workspace" remote | grep -qx official; then
+      git -C "$workspace" remote add official https://github.com/davekilleen/Dex.git
+    fi
+    git -C "$workspace" fetch --update-shallow official \
+      +refs/heads/release:refs/remotes/official/release || true
+    if git -C "$workspace" rev-parse --verify 'refs/remotes/official/release^{commit}' >/dev/null 2>&1; then
+      git -C "$dest" fetch --update-shallow "$workspace" \
+        +refs/remotes/official/release:refs/remotes/official/release
+      git -C "$dest" rev-parse --verify 'refs/remotes/official/release^{commit}'
+      return 0
+    fi
+    if git -C "$workspace" rev-parse --verify 'refs/heads/release^{commit}' >/dev/null 2>&1; then
+      git -C "$dest" fetch --update-shallow "$workspace" \
+        +refs/heads/release:refs/remotes/official/release
+      git -C "$dest" rev-parse --verify 'refs/remotes/official/release^{commit}'
+      return 0
+    fi
+  fi
+  echo "could not resolve official refs/heads/release (origin has no release branch)" >&2
+  return 1
 }
 
 clone_into() {
