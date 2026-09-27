@@ -7,6 +7,10 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.22] — (2026-09-27)
+
+## [1.97.21] — (2026-09-27)
+
 ## Unreleased
 
 ### We now say plainly what works on Windows
