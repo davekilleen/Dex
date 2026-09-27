@@ -641,7 +641,7 @@ if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
   fi
   mkdir -p "$3/Scripts"
   printf '#!/bin/sh\\nexit 0\\n' > "$3/Scripts/pip.exe"
-  printf '#!/bin/sh\\nexit 0\\n' > "$3/Scripts/python.exe"
+  printf '#!/bin/sh\\nif [ "$1" = "-c" ]; then echo win32; exit 0; fi\\nexit 0\\n' > "$3/Scripts/python.exe"
   chmod +x "$3/Scripts/pip.exe" "$3/Scripts/python.exe"
 fi
 exit 0
