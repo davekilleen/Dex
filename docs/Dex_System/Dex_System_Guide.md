@@ -454,7 +454,7 @@ Behind the scenes, Dex runs two quiet background checks:
 Dex checks if Anthropic has released new Claude Code features. When it finds something new, you'll see a heads-up next time you start working: "🆕 New Claude Code features detected! Run `/dex-whats-new` to review."
 
 **Learning Review Prompts (daily at 5pm)**  
-As you work, Dex captures learnings in `System/Session_Learnings/`. When you accumulate 5+ learnings that haven't been reviewed yet, Dex reminds you: "📚 You have 7 pending learnings from this week. Worth reviewing?"
+As you work, Dex writes obvious corrections and preferences into `System/Session_Learnings/` (when you say them, and again when a session ends cleanly). `/daily-review` confirms those and catches the rest. When you accumulate 5+ learnings that haven't been reviewed yet, Dex reminds you: "📚 You have 7 pending learnings from this week. Worth reviewing?"
 
 These checks depend on the separately installed schedules and Claude Code notification hooks. A portable plugin installation starts neither; ask for a review where automatic delivery is unavailable.
 
@@ -866,13 +866,13 @@ Located in `06-Resources/Learnings/` and `System/Session_Learnings/`:
 |-------------|----------|-----------------|
 | `Mistake_Patterns.md` | Logged mistakes that become rules | During `/daily-review` or `/week-review` |
 | `Working_Preferences.md` | How you like to work (formatting, communication style) | When patterns emerge across multiple sessions |
-| `Session_Learnings/` | Daily captured improvements and discoveries | Every `/daily-review` |
+| `Session_Learnings/` | Daily captured improvements and discoveries | As you work, when a session ends, and during `/daily-review` |
 
 ### How Learning Happens
 
 **During Your Day:**
-- Dex captures learnings in `System/Session_Learnings/` as you work
-- Each entry notes what happened, why it matters, and what to fix
+- Dex writes corrections into `System/Session_Learnings/` as you say them, and pulls other obvious corrections and preferences from the session when it ends cleanly
+- Each entry notes what happened, why it matters, and what to fix, marked pending until you confirm it
 
 **During `/daily-review`:**
 - Dex asks: "This sounds like a mistake pattern. Save it for next time?"

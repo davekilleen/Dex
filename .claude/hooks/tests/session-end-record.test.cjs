@@ -13,12 +13,36 @@ function sandbox(t) {
   return vault;
 }
 
+function pythonBin() {
+  if (process.env.DEX_PYTHON && fs.existsSync(process.env.DEX_PYTHON)) {
+    return process.env.DEX_PYTHON;
+  }
+  for (const candidate of ['/usr/bin/python3', '/usr/local/bin/python3', '/opt/homebrew/bin/python3']) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
 function run(vault, { stdin = '', args = [] } = {}) {
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: vault };
+  const python = pythonBin();
+  if (python) {
+    env.DEX_PYTHON = python;
+  }
   return spawnSync('/bin/bash', [HOOK_PATH, ...args], {
     encoding: 'utf8',
     input: stdin,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: vault },
+    env,
   });
+}
+
+function userLine(text) {
+  return `${JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text }] },
+  })}\n`;
 }
 
 function learningFile(vault) {
@@ -97,4 +121,64 @@ test('appends rather than replacing when a session already ended today', (t) => 
 
   const occurrences = learningFile(vault).match(/Session completed/gu) || [];
   assert.equal(occurrences.length, 2);
+});
+
+test('extracts an obvious preference from the transcript as a pending lesson', (t) => {
+  const vault = sandbox(t);
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(transcript, userLine('I prefer summaries in bullet points'));
+
+  const result = run(vault, { stdin: JSON.stringify({ transcript_path: transcript }) });
+
+  assert.equal(result.status, 0);
+  const text = learningFile(vault);
+  assert.match(text, /Session completed/u);
+  assert.match(text, /I prefer summaries in bullet points/u);
+  assert.match(text, /\*\*Status:\*\* pending/u);
+  assert.match(text, /Run \/daily-review/u);
+});
+
+test('does not treat ordinary work as a lesson', (t) => {
+  const vault = sandbox(t);
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(transcript, userLine('run the daily plan'));
+
+  run(vault, { stdin: JSON.stringify({ transcript_path: transcript }) });
+
+  const text = learningFile(vault);
+  assert.match(text, /Session completed/u);
+  assert.doesNotMatch(text, /\*\*Status:\*\* pending/u);
+});
+
+test('does not write a second copy of a correction already captured live', (t) => {
+  const vault = sandbox(t);
+  const words = 'no, stop over inferring from timesheet entries';
+  const today = new Date().toISOString().slice(0, 10);
+  const learnings = path.join(vault, 'System', 'Session_Learnings');
+  fs.mkdirSync(learnings, { recursive: true });
+  fs.writeFileSync(
+    path.join(learnings, `${today}.md`),
+    `# Session Learnings - ${today}\n\n## 09:15 - Correction\n\n**What was said:**\n\n> ${words}\n\n**Status:** pending\n\n---\n\n`,
+  );
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(transcript, userLine(words));
+
+  run(vault, { stdin: JSON.stringify({ transcript_path: transcript }) });
+
+  assert.equal((learningFile(vault).match(/stop over inferring/gu) || []).length, 1);
+});
+
+test('extractor failure still records the session marker', (t) => {
+  const vault = sandbox(t);
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(transcript, userLine('I prefer shorter answers'));
+
+  const result = spawnSync('/bin/bash', [HOOK_PATH], {
+    encoding: 'utf8',
+    input: JSON.stringify({ transcript_path: transcript }),
+    env: { ...process.env, CLAUDE_PROJECT_DIR: vault, DEX_PYTHON: path.join(vault, 'missing-python') },
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(learningFile(vault), /Session completed/u);
 });

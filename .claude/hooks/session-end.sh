@@ -1,12 +1,17 @@
 #!/bin/bash
 # Claude Code SessionEnd Hook
-# Records that a session ended, so the day's learning file is never silently empty.
+# Records that a session ended, then extracts obvious candidate lessons
+# from the recorded transcript so the day's learning file is never only a marker.
 #
 # ⚠️ Requires graceful shutdown (via `exit` or a proper quit). Closing a Cursor
 # window terminates the process immediately and no SessionEnd hook runs at all.
+# Corrections said during the session were still captured as they were typed
+# by correction-capture.sh.
 #
-# NOTE: this hook records the session boundary. Learning EXTRACTION happens in
-# /daily-review, which scans the transcript for patterns worth keeping.
+# Extraction is local, bounded, and fail-open: no network, a short deadline
+# inside the Python helper, and any helper failure still leaves the session
+# marker. /daily-review remains the careful pass that confirms these
+# candidates and catches what the heuristic missed.
 #
 # Two faults this file used to have, both silent:
 #
@@ -29,6 +34,7 @@
 
 CLAUDE_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 SESSION_LEARNINGS_DIR="$CLAUDE_DIR/System/Session_Learnings"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || true)"
 
 # Payload arrives as JSON on stdin. Read it only when stdin is not a terminal,
 # so direct invocation from a shell cannot hang waiting for input.
@@ -74,7 +80,7 @@ fi
     if [[ -n "$TRANSCRIPT_PATH" ]] && [[ -f "$TRANSCRIPT_PATH" ]]; then
         echo "**Transcript:** \`$TRANSCRIPT_PATH\`"
         echo ""
-        echo "_Note: Run /daily-review to extract learnings from this session._"
+        echo "_Note: Obvious corrections and preferences from this session are captured automatically when they can be spotted, marked pending. Run /daily-review to confirm them and catch anything the automatic pass missed._"
     elif [[ -n "$TRANSCRIPT_PATH" ]]; then
         echo "**Transcript:** recorded as \`$TRANSCRIPT_PATH\`, but no file exists there."
         echo ""
@@ -90,5 +96,38 @@ fi
     echo "---"
     echo ""
 } >> "$LEARNING_FILE"
+
+# Bounded local extract. Never block session end on a missing interpreter,
+# a missing helper, or a helper that fails. Stdin was already consumed above.
+if [[ -n "$TRANSCRIPT_PATH" ]] && [[ -f "$TRANSCRIPT_PATH" ]]; then
+    EXTRACTOR=""
+    if [[ -f "$CLAUDE_DIR/core/utils/session_lesson_extract.py" ]]; then
+        EXTRACTOR="$CLAUDE_DIR/core/utils/session_lesson_extract.py"
+    elif [[ -n "$HOOK_DIR" && -f "$HOOK_DIR/../../core/utils/session_lesson_extract.py" ]]; then
+        EXTRACTOR="$HOOK_DIR/../../core/utils/session_lesson_extract.py"
+    fi
+
+    PYTHON_CMD=()
+    if [[ -n "${DEX_PYTHON:-}" && -x "${DEX_PYTHON}" ]]; then
+        PYTHON_CMD=("$DEX_PYTHON")
+    elif [[ -x "$CLAUDE_DIR/.venv/bin/python" ]]; then
+        PYTHON_CMD=("$CLAUDE_DIR/.venv/bin/python")
+    elif [[ -x "$CLAUDE_DIR/.venv/Scripts/python.exe" ]]; then
+        PYTHON_CMD=("$CLAUDE_DIR/.venv/Scripts/python.exe")
+    elif command -v py >/dev/null 2>&1 && py -3 -c "raise SystemExit(0)" >/dev/null 2>&1; then
+        PYTHON_CMD=(py -3)
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_CMD=(python)
+    elif command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD=(python3)
+    fi
+
+    if [[ -n "$EXTRACTOR" && ${#PYTHON_CMD[@]} -gt 0 ]]; then
+        "${PYTHON_CMD[@]}" "$EXTRACTOR" \
+            --transcript "$TRANSCRIPT_PATH" \
+            --learning-file "$LEARNING_FILE" \
+            >/dev/null 2>&1 || true
+    fi
+fi
 
 exit 0
