@@ -1141,25 +1141,66 @@ def generate_clarification_questions(item: str) -> List[str]:
 # RELATED TASKS SYNC FUNCTIONS
 # ============================================================================
 
+# People/ or Active/ paths, including an optional numbered PARA prefix
+# (05-Areas/People/...). The lookbehind refuses a match in the middle of
+# another path, so People/... is not pulled out of 05-Areas/People/... .
+_TASK_PATH_REF_RE = re.compile(
+    r'(?<![\w./-])'
+    r'(?:\d{2}-[A-Za-z][\w-]*/)?'
+    r'(?:People|Active)/[A-Za-z0-9_./-]+(?:\.md)?'
+)
+# Vault-relative .md paths. Same lookbehind so a shorter People/... .md
+# path is not extracted from a longer PARA-prefixed path.
+_TASK_MD_REF_RE = re.compile(
+    r'(?<![\w./\[-])'
+    r'([A-Za-z0-9_][A-Za-z0-9_/-]*\.md)'
+    r'(?!\])'
+)
+_TITLE_SOURCE_SPLIT_RE = re.compile(r'\s*\|\s+')
+_WINDOWS_DRIVE_REF_RE = re.compile(r'^[A-Za-z]:/')
+
+
 def extract_file_refs_from_task(task_line: str) -> List[str]:
-    """Extract file path references from a task line
-    
-    Detects:
-    - Direct file paths (People/External/John_Doe.md)
-    - Active/Relationships paths
-    - Any .md file references
+    """Extract vault-relative file path references from a task line.
+
+    Detects People/ and Active/ paths (with or without numbered PARA
+    prefixes such as 05-Areas/People/...), plus other vault-relative
+    .md paths. Matches are anchored so a shorter People/... fragment is
+    not returned alongside the full 05-Areas/People/... path.
     """
-    refs = []
-    
-    # Match file path patterns like People/External/John_Doe.md or Active/Relationships/...
-    path_pattern = r'(?:People|Active)/[A-Za-z0-9_/-]+(?:\.md)?'
-    refs.extend(re.findall(path_pattern, task_line))
-    
-    # Also match explicit markdown file references
-    md_pattern = r'(?<!\[)\b([A-Za-z0-9_/-]+\.md)\b(?!\])'
-    refs.extend(re.findall(md_pattern, task_line))
-    
-    return list(set(refs))
+    if not task_line:
+        return []
+
+    normalized = str(task_line).replace('\\', '/')
+    refs = _TASK_PATH_REF_RE.findall(normalized)
+    refs.extend(_TASK_MD_REF_RE.findall(normalized))
+
+    unique: List[str] = []
+    for ref in refs:
+        if _WINDOWS_DRIVE_REF_RE.match(ref) or ref.startswith('/'):
+            continue
+        if any(other != ref and other.endswith('/' + ref) for other in refs):
+            continue
+        if ref not in unique:
+            unique.append(ref)
+    return unique
+
+
+def split_task_title_and_source_paths(title: str) -> tuple[str, List[str]]:
+    """Split a display title from a trailing '| path1 path2 ...' ref list."""
+    raw = (title or '').strip()
+    if not raw:
+        return '', []
+
+    match = _TITLE_SOURCE_SPLIT_RE.search(raw)
+    if match:
+        remainder = raw[match.end():]
+        refs = extract_file_refs_from_task(remainder)
+        if refs:
+            return raw[:match.start()].strip(), refs
+
+    refs = extract_file_refs_from_task(raw)
+    return raw, refs
 
 def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
     """Find all tasks in 03-Tasks/Tasks.md that reference a given page"""
@@ -1206,11 +1247,7 @@ def find_tasks_for_page(page_path: str) -> List[Dict[str, Any]]:
             if task_mentions_page:
                 # Extract title
                 title = _task_title_from_line(line)
-                
-                # Clean title of file references for display
-                clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
-                clean_title = re.sub(r'\s+\.md\b', '', clean_title)
-                clean_title = re.sub(r'\s*\|.*$', '', clean_title)  # Remove trailing | refs
+                clean_title, _ = split_task_title_and_source_paths(title)
                 
                 metadata = _parse_task_metadata(_task_child_lines(lines, i), clean_title)
                 priority = (
@@ -3405,11 +3442,8 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
             
             # Extract task title (remove checkbox, completion mark, and task ID)
             title = _task_title_from_line(line)
-            
-            # Clean title - remove file path references for display
-            clean_title = re.sub(r'\s*\|\s*(?:People|Active)/[^\s]+', '', title)
-            clean_title = re.sub(r'\s+\.md\b', '', clean_title)
-            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3,}\s*', '', clean_title)  # Remove task ID
+            clean_title, source_paths = split_task_title_and_source_paths(title)
+            clean_title = re.sub(r'\s*\^task-\d{8}-\d{3,}\s*', '', clean_title)
             if not clean_title.strip():
                 continue
             
@@ -3430,6 +3464,7 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
                 'task_id': task_id,  # The actual ^task-YYYYMMDD-XXX ID
                 'title': clean_title,
                 'raw_title': title,
+                'source_paths': source_paths,
                 'section': current_section,
                 'completed': completed,
                 'status': status,

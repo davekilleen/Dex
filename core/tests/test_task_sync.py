@@ -235,6 +235,45 @@ def test_unscoped_sync_ignores_global_flags_without_task_service_settings(
     assert result["todoist"]["errors"] == []
 
 
+def test_push_create_sends_clean_title_and_obsidian_source_links(
+    sync_vault, monkeypatch
+):
+    _enable(sync_vault, "todoist")
+    person = "05-Areas/People/Internal/X.md"
+    meeting = "00-Inbox/Meetings/2026-09-18-kickoff.md"
+    _write_tasks(
+        sync_vault["tasks"],
+        "- [ ] **Draft executive intro email** | "
+        f"{person} {meeting} ^task-20260712-020",
+        "\t- Pillar: Product | Priority: P1",
+    )
+    monkeypatch.setattr(task_sync, "_obsidian_vault_name", lambda _root=None: "My Vault")
+    task_sync._write_state(_state(todoist=_service_state()))
+    captured = []
+
+    def run_adapter(_service, operation, _config, args):
+        if operation == "create":
+            captured.append(args)
+            return "opaque:todoist:source-link"
+        if operation == "get_changes":
+            return []
+        raise AssertionError(operation)
+
+    monkeypatch.setattr(task_sync, "_run_adapter", run_adapter)
+
+    result = task_sync.sync_external_tasks()
+
+    assert result["todoist"]["pushed_creates"] == 1
+    payload = captured[0]
+    assert payload["title"] == "Draft executive intro email"
+    assert "05-Areas" not in payload["title"]
+    assert [link["path"] for link in payload["source_links"]] == [meeting, person]
+    assert payload["source_links"][0]["uri"].startswith(
+        "obsidian://open?vault=My%20Vault&file="
+    )
+    assert payload["vault_name"] == "My Vault"
+
+
 def test_push_create_records_opaque_mapping(sync_vault, monkeypatch):
     _enable(sync_vault, "todoist")
     _write_tasks(

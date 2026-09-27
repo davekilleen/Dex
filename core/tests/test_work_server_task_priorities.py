@@ -136,6 +136,8 @@ def test_create_task_source_is_rendered_and_round_trips(tmp_path, monkeypatch):
     parsed = work_server.parse_tasks_file(tasks_file)
     assert len(parsed) == 1
     assert source in parsed[0]["raw_title"]
+    assert source not in parsed[0]["title"]
+    assert parsed[0]["source_paths"] == [source]
     assert source in work_server.extract_file_refs_from_task(task_text)
     assert "Prepare roadmap decisions" in meeting.read_text()
 
