@@ -110,6 +110,7 @@ exit 0
         _write_executable(shim_dir / chat_app, "#!/bin/sh\nexit 0\n")
 
     environment = os.environ.copy()
+    environment.pop("DEX_INSTALL_PYTHON", None)
     environment.update(
         {
             "PATH": f"{shim_dir}:/usr/bin:/bin",

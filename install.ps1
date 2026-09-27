@@ -71,6 +71,14 @@ function Invoke-DexLogged {
     return $status
 }
 
+function Test-DexWindowsAppsStub {
+    param([string]$Candidate)
+    if (-not $Candidate) {
+        return $false
+    }
+    return [bool]($Candidate -match '(?i)WindowsApps')
+}
+
 function Test-DexPythonVersion {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -110,7 +118,46 @@ function Resolve-DexPythonExecutable {
     return $FilePath
 }
 
+function Resolve-DexPythonCandidate {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$PrefixArgs = @()
+    )
+    if (Test-DexWindowsAppsStub $FilePath) {
+        return $null
+    }
+    $version = Test-DexPythonVersion -FilePath $FilePath -PrefixArgs $PrefixArgs
+    if (-not $version) {
+        return $null
+    }
+    $executable = Resolve-DexPythonExecutable -FilePath $FilePath -PrefixArgs $PrefixArgs
+    if (Test-DexWindowsAppsStub $executable) {
+        return $null
+    }
+    return @{
+        Command = $executable
+        Version = $version
+    }
+}
+
 function Resolve-DexPython {
+    if ($env:DEX_INSTALL_PYTHON) {
+        $preferred = $env:DEX_INSTALL_PYTHON
+        if (Test-Path -LiteralPath $preferred) {
+            $resolved = Resolve-DexPythonCandidate -FilePath $preferred
+            if ($resolved) {
+                return $resolved
+            }
+        } else {
+            $command = Get-Command $preferred -ErrorAction SilentlyContinue
+            if ($command) {
+                $resolved = Resolve-DexPythonCandidate -FilePath $command.Source
+                if ($resolved) {
+                    return $resolved
+                }
+            }
+        }
+    }
     $candidates = @(
         @{ File = "python3"; Prefix = @() },
         @{ File = "py"; Prefix = @("-3") },
@@ -121,14 +168,9 @@ function Resolve-DexPython {
         if (-not $command) {
             continue
         }
-        $version = Test-DexPythonVersion -FilePath $command.Source -PrefixArgs $candidate.Prefix
-        if (-not $version) {
-            continue
-        }
-        $executable = Resolve-DexPythonExecutable -FilePath $command.Source -PrefixArgs $candidate.Prefix
-        return @{
-            Command = $executable
-            Version = $version
+        $resolved = Resolve-DexPythonCandidate -FilePath $command.Source -PrefixArgs $candidate.Prefix
+        if ($resolved) {
+            return $resolved
         }
     }
     return $null
@@ -204,6 +246,8 @@ if ($env:DEX_INSTALL_LIB_ONLY -eq "1") {
     return
 }
 
+$script:DexInstallArgs = @($args)
+
 $Root = Get-DexInstallRoot
 if (-not $Root) {
     $defaultTarget = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Dex"
@@ -213,6 +257,42 @@ if (-not $Root) {
 Set-Location -LiteralPath $Root
 Initialize-DexInstallLog -Root $Root
 Write-DexInstallLog "starting install"
+
+$python = Resolve-DexPython
+if (-not $python) {
+    Write-Host "[X] Python 3.10+ not found"
+    Write-Host ""
+    Write-Host "Python 3.10+ is required for task sync across your files."
+    Write-Host "Install Python 3.10+:"
+    Write-Host "  1. Download from https://www.python.org/downloads/"
+    Write-Host "  2. Run the installer"
+    Write-Host "  3. IMPORTANT: Check 'Add Python to PATH' during installation"
+    Write-Host "  4. Restart your terminal"
+    Write-Host "  5. Run .\install.ps1 again"
+    Write-Host "  The installer also looks for the Windows 'py -3' launcher."
+    Write-Host "  The Microsoft Store python3 placeholder is ignored."
+    exit 1
+}
+$PythonCmd = $python.Command
+$env:DEX_INSTALL_PYTHON = $PythonCmd
+if (-not $env:DEX_INSTALL_LOG) {
+    $env:DEX_INSTALL_LOG = $script:InstallLog
+}
+
+$bash = Get-Command bash -ErrorAction SilentlyContinue
+$installSh = Join-Path $Root "install.sh"
+if ($bash -and (Test-Path -LiteralPath $installSh)) {
+    Write-Host "Setting up Dex..."
+    Write-Host ""
+    Write-Host "[OK] Python $($python.Version) — continuing with the shared installer"
+    Write-DexInstallLog "handing off to install.sh DEX_INSTALL_PYTHON=$PythonCmd"
+    & $bash.Source $installSh @script:DexInstallArgs
+    $handoffStatus = $LASTEXITCODE
+    if ($null -eq $handoffStatus) {
+        exit 1
+    }
+    exit $handoffStatus
+}
 
 Write-Host "Setting up Dex..."
 Write-Host ""
@@ -246,22 +326,6 @@ if ($nodeMajor -lt 18) {
     exit 1
 }
 Write-Host "[OK] Node.js $nodeVersionText"
-
-$python = Resolve-DexPython
-if (-not $python) {
-    Write-Host "[X] Python 3.10+ not found"
-    Write-Host ""
-    Write-Host "Python 3.10+ is required for task sync across your files."
-    Write-Host "Install Python 3.10+:"
-    Write-Host "  1. Download from https://www.python.org/downloads/"
-    Write-Host "  2. Run the installer"
-    Write-Host "  3. IMPORTANT: Check 'Add Python to PATH' during installation"
-    Write-Host "  4. Restart your terminal"
-    Write-Host "  5. Run .\install.ps1 again"
-    Write-Host "  The installer also looks for the Windows 'py -3' launcher."
-    exit 1
-}
-$PythonCmd = $python.Command
 Write-Host "[OK] Python $($python.Version)"
 
 $npx = Get-Command npx -ErrorAction SilentlyContinue

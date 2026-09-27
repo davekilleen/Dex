@@ -15,8 +15,9 @@ A Windows 11 install from Git Bash could stop without a usable reason. Dex treat
 
 * **Windows is recognized, including Git Bash.** Setup now finds the Windows Python folder and the Windows copy of Granola, instead of looking only in Mac locations.
 * **Python from python.org is found.** Setup tries every usual Windows Python command and checks the version before continuing.
+* **The fake Microsoft Store Python is skipped.** Windows sometimes puts a `python3` on the path that only opens the Store. Setup ignores that placeholder, checks the version on a real Python, and continues with that one.
 * **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
-* **PowerShell setup works the same way.** `install.ps1` now runs the same install as the Git Bash script.
+* **PowerShell setup uses the same installer.** When Git Bash is there, the PowerShell script hands the Python it found to the shared setup script, so both doors finish the same way.
 
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 

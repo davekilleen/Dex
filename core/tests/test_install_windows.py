@@ -11,6 +11,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ def _write_executable(path: Path, content: str) -> None:
 def _source_helpers(script: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
     merged["DEX_INSTALL_LIB_ONLY"] = "1"
+    merged.pop("DEX_INSTALL_PYTHON", None)
     if env:
         merged.update(env)
     return subprocess.run(
@@ -118,6 +120,149 @@ def test_cygwin_without_venv_uses_windows_scripts_paths() -> None:
     assert result.stdout.strip() == ".venv/Scripts/python.exe .venv/Scripts/pip.exe"
 
 
+def test_windowsapps_python3_stub_is_skipped_even_when_version_looks_fine(tmp_path: Path) -> None:
+    apps = tmp_path / "Local" / "Microsoft" / "WindowsApps"
+    real = tmp_path / "Python312"
+    apps.mkdir(parents=True)
+    real.mkdir()
+    _write_executable(
+        apps / "python3",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    _write_executable(
+        real / "python",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.1"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env.pop("DEX_INSTALL_PYTHON", None)
+    env.update(
+        {
+            "PATH": f"{apps}:{real}",
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "OSTYPE": "cygwin",
+            "WINDIR": r"C:\Windows",
+        }
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_resolve_python\nprintf "%s %s\\n" "$PYTHON_CMD" "$PYTHON_VERSION"',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip().endswith("3.12.1")
+    assert "WindowsApps" not in result.stdout
+    assert str(real / "python") in result.stdout
+
+
+def test_dex_install_python_is_used_before_path_python3(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    preferred_dir = tmp_path / "preferred"
+    bin_dir.mkdir()
+    preferred_dir.mkdir()
+    preferred = preferred_dir / "python"
+    _write_executable(
+        bin_dir / "python3",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.11.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    _write_executable(
+        preferred,
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.8"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": str(bin_dir),
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "DEX_INSTALL_PYTHON": str(preferred),
+        }
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_resolve_python\nprintf "%s %s\\n" "$PYTHON_CMD" "$PYTHON_VERSION"',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip().endswith("3.12.8")
+    assert str(preferred) in result.stdout
+
+
+def test_dex_install_python_windowsapps_is_rejected_then_fallback(tmp_path: Path) -> None:
+    apps = tmp_path / "Microsoft" / "WindowsApps"
+    real = tmp_path / "bin"
+    apps.mkdir(parents=True)
+    real.mkdir()
+    stub = apps / "python3"
+    _write_executable(
+        stub,
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    _write_executable(
+        real / "python",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.4"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": str(real),
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "DEX_INSTALL_PYTHON": str(stub),
+        }
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_resolve_python\nprintf "%s %s\\n" "$PYTHON_CMD" "$PYTHON_VERSION"',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip().endswith("3.12.4")
+    assert "WindowsApps" not in result.stdout
+
+
 def test_python_fallback_uses_py_dash_three_when_python3_is_missing(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -137,6 +282,7 @@ exit 0
 """,
     )
     env = os.environ.copy()
+    env.pop("DEX_INSTALL_PYTHON", None)
     env.update(
         {
             "PATH": str(bin_dir),
@@ -181,6 +327,7 @@ exit 0
 """,
     )
     env = os.environ.copy()
+    env.pop("DEX_INSTALL_PYTHON", None)
     env.update({"PATH": str(bin_dir), "DEX_INSTALL_LIB_ONLY": "1"})
     result = subprocess.run(
         [
@@ -248,6 +395,48 @@ def test_granola_windows_app_install_path_is_detected(tmp_path: Path) -> None:
     assert result.stdout.strip() == str(app)
 
 
+def test_granola_uses_shared_module_when_present(tmp_path: Path) -> None:
+    integrations = tmp_path / "core" / "integrations"
+    integrations.mkdir(parents=True)
+    (tmp_path / "core" / "__init__.py").write_text("", encoding="utf-8")
+    (integrations / "__init__.py").write_text("", encoding="utf-8")
+    (integrations / "granola_paths.py").write_text(
+        """import json, sys
+json.dump({
+    "installed": True,
+    "app_path": r"C:\\\\Users\\\\Joe\\\\AppData\\\\Local\\\\Programs\\\\@granolaelectron\\\\Granola.exe",
+    "app_path_posix": "/c/Users/Joe/AppData/Local/Programs/@granolaelectron/Granola.exe",
+    "data_path": None,
+    "data_path_posix": None,
+}, sys.stdout)
+sys.exit(0)
+""",
+        encoding="utf-8",
+    )
+    roaming = tmp_path / "AppData" / "Roaming" / "Granola"
+    roaming.mkdir(parents=True)
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\nPYTHON_CMD="{sys.executable}"\ndex_granola_detected',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env={
+            **os.environ,
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "APPDATA": str(tmp_path / "AppData" / "Roaming"),
+            "LOCALAPPDATA": str(tmp_path / "AppData" / "Local"),
+            "USERPROFILE": str(tmp_path),
+        },
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip() == "/c/Users/Joe/AppData/Local/Programs/@granolaelectron/Granola.exe"
+
+
 def test_venv_failure_writes_stderr_to_install_log_and_names_the_path(tmp_path: Path) -> None:
     root, environment = _windows_like_install_fixture(tmp_path, venv_fails=True)
     result = subprocess.run(
@@ -284,6 +473,9 @@ def test_spaces_in_install_log_path_are_quoted(tmp_path: Path) -> None:
 
 def test_install_sh_does_not_swallow_venv_or_pip_stderr() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "WindowsApps" in text
+    assert "DEX_INSTALL_PYTHON" in text
+    assert "core.integrations.granola_paths" in text
     assert "dex_run_logged \"python -m venv\"" in text
     assert "dex_run_logged \"pip install\"" in text
     assert "-m venv .venv 2>/dev/null" not in text
@@ -293,6 +485,9 @@ def test_install_sh_does_not_swallow_venv_or_pip_stderr() -> None:
 def test_install_ps1_covers_the_same_windows_install_contract() -> None:
     text = INSTALL_PS1.read_text(encoding="utf-8")
     assert "Resolve-DexPython" in text
+    assert "Test-DexWindowsAppsStub" in text
+    assert "DEX_INSTALL_PYTHON" in text
+    assert "handing off to install.sh" in text
     assert '@("-3")' in text or '"-3"' in text
     assert "python3" in text
     assert "AppData\\Roaming\\Granola" in text or 'Join-Path $env:APPDATA "Granola"' in text
@@ -380,6 +575,7 @@ exit 0
 
     log_path = tmp_path / "install.log"
     environment = os.environ.copy()
+    environment.pop("DEX_INSTALL_PYTHON", None)
     environment.update(
         {
             "PATH": f"{shim_dir}:/usr/bin:/bin",

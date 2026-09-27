@@ -58,6 +58,28 @@ dex_parse_python_version() {
     return 1
 }
 
+dex_is_windows_apps_stub() {
+    # Microsoft Store aliases live under WindowsApps and open the Store
+    # instead of running Python. Ignore them even if --version looks fine.
+    case "$1" in
+        *[Ww]indows[Aa]pps*) return 0 ;;
+        *[Ww]indows[Aa]pps\\*) return 0 ;;
+    esac
+    return 1
+}
+
+dex_to_posix_path() {
+    local raw="$1"
+    if command -v cygpath >/dev/null 2>&1; then
+        case "$raw" in
+            [A-Za-z]:\\*|[A-Za-z]:/*)
+                raw=$(cygpath -u "$raw" 2>/dev/null || printf '%s' "$raw")
+                ;;
+        esac
+    fi
+    printf '%s\n' "$raw"
+}
+
 dex_python_version_ok() {
     local output version major minor
     output=$("$@" --version 2>&1) || return 1
@@ -76,52 +98,64 @@ dex_python_version_ok() {
 
 dex_python_executable() {
     local resolved=""
-    resolved=$("$@" -c "import sys; print(sys.executable)" 2>/dev/null) || true
-    if [ -n "$resolved" ]; then
-        if command -v cygpath >/dev/null 2>&1; then
-            case "$resolved" in
-                [A-Za-z]:\\*|[A-Za-z]:/*)
-                    resolved=$(cygpath -u "$resolved" 2>/dev/null || printf '%s' "$resolved")
-                    ;;
-            esac
-        fi
-        printf '%s\n' "$resolved"
-        return 0
+    resolved=$("$@" -c "import sys; print(sys.executable)") || return 1
+    if [ -z "$resolved" ]; then
+        return 1
     fi
-    if [ "$#" -eq 1 ]; then
-        command -v "$1"
-        return 0
+    dex_to_posix_path "$resolved"
+}
+
+dex_accept_python() {
+    local version resolved first="$1"
+    shift
+    local found="$first"
+
+    found=$(dex_to_posix_path "$found")
+    if [ ! -e "$found" ]; then
+        found=$(command -v "$first") || return 1
+        found=$(dex_to_posix_path "$found")
     fi
-    return 1
+    if dex_is_windows_apps_stub "$found"; then
+        return 1
+    fi
+    if ! version=$(dex_python_version_ok "$found" "$@"); then
+        return 1
+    fi
+    if ! resolved=$(dex_python_executable "$found" "$@"); then
+        return 1
+    fi
+    if dex_is_windows_apps_stub "$resolved"; then
+        return 1
+    fi
+    PYTHON_CMD="$resolved"
+    PYTHON_VERSION="$version"
+    return 0
 }
 
 dex_resolve_python() {
     PYTHON_CMD=""
     PYTHON_VERSION=""
-    local version=""
+
+    if [ -n "${DEX_INSTALL_PYTHON:-}" ]; then
+        if dex_accept_python "$DEX_INSTALL_PYTHON"; then
+            return 0
+        fi
+    fi
 
     if command -v python3 >/dev/null 2>&1; then
-        if version=$(dex_python_version_ok python3); then
-            PYTHON_CMD=$(dex_python_executable python3) || PYTHON_CMD="python3"
-            PYTHON_VERSION="$version"
+        if dex_accept_python python3; then
             return 0
         fi
     fi
 
     if command -v py >/dev/null 2>&1; then
-        if version=$(dex_python_version_ok py -3); then
-            PYTHON_CMD=$(dex_python_executable py -3) || true
-            if [ -n "$PYTHON_CMD" ]; then
-                PYTHON_VERSION="$version"
-                return 0
-            fi
+        if dex_accept_python py -3; then
+            return 0
         fi
     fi
 
     if command -v python >/dev/null 2>&1; then
-        if version=$(dex_python_version_ok python); then
-            PYTHON_CMD=$(dex_python_executable python) || PYTHON_CMD="python"
-            PYTHON_VERSION="$version"
+        if dex_accept_python python; then
             return 0
         fi
     fi
@@ -147,11 +181,37 @@ dex_granola_candidates() {
     fi
 }
 
+dex_granola_via_shared_module() {
+    # Prefer the shared locator from the Granola Windows-sync work when it is
+    # already in this checkout. If that module is not here yet, return quietly
+    # and let the simple candidate walk below handle detection.
+    if [ -z "${PYTHON_CMD:-}" ] || [ ! -f "core/integrations/granola_paths.py" ]; then
+        return 1
+    fi
+    local path
+    path=$("$PYTHON_CMD" -m core.integrations.granola_paths --json | "$PYTHON_CMD" -c '
+import json, sys
+try:
+    payload = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+if not payload.get("installed"):
+    raise SystemExit(1)
+print(payload.get("app_path_posix") or payload.get("app_path") or payload.get("data_path_posix") or payload.get("data_path") or "")
+') || return 1
+    [ -n "$path" ] || return 1
+    printf '%s\n' "$path"
+}
+
 dex_granola_detected() {
     local candidate
+    if candidate=$(dex_granola_via_shared_module); then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
     while IFS= read -r candidate; do
         [ -n "$candidate" ] || continue
-        if [ -d "$candidate" ]; then
+        if [ -d "$candidate" ] || [ -f "$candidate" ]; then
             printf '%s\n' "$candidate"
             return 0
         fi
@@ -313,6 +373,7 @@ else
         echo "  4. Restart your terminal"
         echo "  5. Run ./install.sh again"
         echo "  The installer also looks for the Windows 'py -3' launcher."
+        echo "  The Microsoft Store python3 placeholder is ignored."
     else
         echo "Install Python 3.10+:"
         echo "  Mac: Download from https://www.python.org/downloads/"

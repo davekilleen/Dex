@@ -96,6 +96,7 @@ def test_install_instructions_detect_the_app_without_claiming_connection() -> No
     assert "/Applications/Granola.app" in install_text
     assert "APPDATA" in install_text
     assert "@granolaelectron" in install_text
+    assert "core.integrations.granola_paths" in install_text
     assert "Granola app detected" in install_text
     assert "/granola-setup" in install_text
     assert "If the app is present, the API key is configured" not in install_text
