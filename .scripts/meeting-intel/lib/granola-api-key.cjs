@@ -13,7 +13,7 @@ function getGranolaApiKey({ env = process.env, vaultRoot = DEFAULT_VAULT_ROOT } 
   try {
     const envPath = path.join(vaultRoot, '.env');
     if (!fs.existsSync(envPath)) return null;
-    const raw = fs.readFileSync(envPath, 'utf-8');
+    const raw = fs.readFileSync(envPath, 'utf-8').replace(/^\uFEFF/, '');
     for (const line of raw.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;

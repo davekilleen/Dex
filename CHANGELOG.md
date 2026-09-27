@@ -7,6 +7,16 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.21] — Dex can find Granola on a Windows PC (2026-09-27)
+
+Setup only looked for Granola in the Mac Applications folder. On a Windows PC the app was already there, and Dex still said it was not installed.
+
+**What this fixes for you:**
+
+* **Dex notices Granola on Windows.** First-run setup and the tool suggestions can see the Granola app on a Windows PC, including when you opened the installer from Git Bash.
+* **A miss has a real reason.** When Granola is not found, Dex records every place it looked so a later checkup can say why, instead of a blank "not detected."
+* **Meetings still come from the official Granola connection.** Dex does not read Granola's private local files. You connect with `/granola-setup` the same way as before.
+
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
 The last release made the morning plan and evening review do less work. It could not say how much less, because Dex had no clock on them: the only timings anyone had were one user's, taken by hand with a stopwatch. That same user had forty open tasks, twelve marked top priority, and most of them had come out of meeting notes. Every "think about pricing" and "look into the vendor" said in a meeting had become a task. This release fixes both. Thanks again to Michelle for the numbers.
