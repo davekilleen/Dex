@@ -131,17 +131,18 @@ def test_tty_is_rechecked_at_the_moment_of_each_consent(
     _nothing_written(anchored_vault)
 
 
-def test_flow_has_no_yes_flag_and_accepts_no_arguments() -> None:
-    # C8 (no bypass flag) + C12 (no version or tag argument): the parser
-    # defines nothing beyond --help. Adding ANY argument turns this red.
+def test_flow_has_no_yes_flag_and_rejects_consent_or_tag_arguments() -> None:
+    # C8: --yes must not exist. C12: a raw tag or --version-to-prove must
+    # not exist. DEX-135 adds --baseline/--dry-run for UNKNOWN identity
+    # only; they are not consent and they do not override VERIFIED.
     parser = reanchor_cli._parser()
     option_strings = {
         option
         for action in parser._actions
         for option in action.option_strings
     }
-    assert option_strings == {"-h", "--help"}
-    assert all(action.dest == "help" for action in parser._actions)
+    assert option_strings == {"-h", "--help", "--baseline", "--dry-run"}
+    assert "--yes" not in option_strings
 
     with pytest.raises(SystemExit):
         reanchor_cli.run(["--yes"])
@@ -159,9 +160,8 @@ def test_flow_reads_no_consent_from_environment_or_arguments() -> None:
     source = Path(reanchor_cli.__file__).read_text(encoding="utf-8")
     assert source.count("os.environ") == 1
     assert 'os.environ.get("VAULT_PATH")' in source
-    # The parser defines no arguments at all: no flag, no positional, nothing
-    # that could carry a consent, a version, a tag, or an operation.
-    assert "add_argument" not in source
+    assert "add_argument(\"--yes\"" not in source
+    assert 'add_argument("--yes"' not in source
     assert "operation=" not in source
 
 
@@ -447,3 +447,175 @@ def test_update_and_lifecycle_paths_never_reference_anchor_generation() -> None:
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         hits = [name for name in forbidden if name in source]
         assert not hits, f"{relative} references {hits}"
+
+
+# ---------------------------------------------------------------------------
+# DEX-135 — UNKNOWN identity can establish a baseline; VERIFIED is unchanged.
+# ---------------------------------------------------------------------------
+
+
+def _unknown_identity_vault(tmp_path: Path, *, customize: bytes | None = None) -> Path:
+    fixture = _release_repo(tmp_path)
+    vault = _vault_with_brain(tmp_path, fixture)
+    catalog = vault / "System/.release-catalog.json"
+    assert catalog.is_file()
+    catalog.unlink()
+    if customize is not None:
+        (vault / "core/feature.py").write_bytes(customize)
+    baseline = load_release_baseline(vault)
+    assert baseline.identity_state != "VERIFIED"
+    return vault
+
+
+def test_unknown_identity_establishes_baseline_with_confirmation(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    customized = b"user-changed feature bytes\n"
+    vault = _unknown_identity_vault(tmp_path, customize=customized)
+    original_feature = (vault / "core/feature.py").read_bytes()
+
+    return_code, output = _run_flow(
+        vault,
+        monkeypatch,
+        capsys,
+        stdin=_FakeTty("yes\nyes\n"),
+        arguments=["--baseline", "1.64.0"],
+    )
+
+    assert return_code == 0, output
+    assert "Starting version saved: v1.64.0" in output
+    assert "release-modified: core/feature.py" in output
+    assert (vault / "core/feature.py").read_bytes() == original_feature == customized
+    baseline = load_release_baseline(vault)
+    assert baseline.identity_state == "VERIFIED"
+    assert baseline.release_version == "1.64.0"
+    assert (vault / "System/.release-catalog.json").is_file()
+    from core.update.establish_baseline import RECEIPT_RELATIVE
+
+    assert (vault / RECEIPT_RELATIVE).is_file()
+
+
+def test_unknown_identity_dry_run_writes_nothing(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    vault = _unknown_identity_vault(tmp_path)
+    feature_before = (vault / "core/feature.py").read_bytes()
+
+    return_code, output = _run_flow(
+        vault,
+        monkeypatch,
+        capsys,
+        stdin=_FakeTty(""),
+        arguments=["--dry-run", "--baseline", "1.64.0"],
+    )
+
+    assert return_code == 0, output
+    assert "Look-only pass finished" in output
+    assert "File-by-file:" in output
+    assert not (vault / "System/.release-catalog.json").exists()
+    from core.update.establish_baseline import RECEIPT_RELATIVE
+
+    assert not (vault / RECEIPT_RELATIVE).exists()
+    assert (vault / "core/feature.py").read_bytes() == feature_before
+    assert load_release_baseline(vault).identity_state != "VERIFIED"
+
+
+def test_unknown_identity_refuses_without_confirmation(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    vault = _unknown_identity_vault(tmp_path)
+
+    return_code, output = _run_flow(
+        vault,
+        monkeypatch,
+        capsys,
+        stdin=_FakeTty("no\n"),
+        arguments=["--baseline", "1.64.0"],
+    )
+
+    assert return_code == 2
+    assert "nothing was changed" in output.casefold()
+    assert not (vault / "System/.release-catalog.json").exists()
+    assert load_release_baseline(vault).identity_state != "VERIFIED"
+
+
+def test_unknown_identity_refuses_when_a_second_catalog_already_exists(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    vault = _unknown_identity_vault(tmp_path)
+    other = vault / "core/lifecycle/catalog/release.json"
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text("{}\n", encoding="utf-8")
+
+    return_code, output = _run_flow(
+        vault,
+        monkeypatch,
+        capsys,
+        stdin=_FakeTty("yes\nyes\n"),
+        arguments=["--baseline", "1.64.0"],
+    )
+
+    assert return_code == 2
+    assert "won't add a second" in output
+    assert "Nothing was written" in output or "nothing was changed" in output.casefold()
+    assert load_release_baseline(vault).identity_state != "VERIFIED"
+
+
+def test_unknown_identity_rejects_invalid_baseline_version(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    vault = _unknown_identity_vault(tmp_path)
+
+    return_code, output = _run_flow(
+        vault,
+        monkeypatch,
+        capsys,
+        stdin=_FakeTty("yes\nyes\n"),
+        arguments=["--baseline", "9.9.9"],
+    )
+
+    assert return_code == 2
+    assert "can't use 9.9.9" in output or "not a version Dex has an official record" in output
+    assert "Nothing was changed" in output
+    assert not (vault / "System/.release-catalog.json").exists()
+    assert load_release_baseline(vault).identity_state != "VERIFIED"
+
+
+def test_unknown_identity_infers_best_match_without_baseline_flag(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    vault = _unknown_identity_vault(tmp_path)
+
+    return_code, output = _run_flow(
+        vault, monkeypatch, capsys, stdin=_FakeTty("yes\nyes\n")
+    )
+
+    assert return_code == 0, output
+    assert "closest match" in output
+    assert "Starting version saved: v1.64.0" in output
+    baseline = load_release_baseline(vault)
+    assert baseline.identity_state == "VERIFIED"
+    assert baseline.release_version == "1.64.0"
+
+
+def test_verified_path_refuses_baseline_override(
+    anchored_vault: Path, monkeypatch, capsys
+) -> None:
+    before = load_release_baseline(anchored_vault)
+    assert before.identity_state == "VERIFIED"
+    catalog_before = (anchored_vault / "System/.release-catalog.json").read_bytes()
+
+    return_code, output = _run_flow(
+        anchored_vault,
+        monkeypatch,
+        capsys,
+        stdin=_FakeTty("yes\nyes\n"),
+        arguments=["--baseline", "1.64.0"],
+    )
+
+    assert return_code == 2
+    assert "already has a verified version" in output
+    assert (anchored_vault / "System/.release-catalog.json").read_bytes() == catalog_before
+    after = load_release_baseline(anchored_vault)
+    assert after.identity_state == "VERIFIED"
+    assert after.release_version == before.release_version
