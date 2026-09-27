@@ -141,3 +141,73 @@ def test_linux_precheck_is_a_no_op() -> None:
     assert "ok" in result.stdout
     assert support.MESSAGE_W3 not in result.stdout
     assert support.MESSAGE_W4 not in result.stdout
+
+
+def test_python_probe_returns_nonzero_when_module_refuses(tmp_path: Path) -> None:
+    """A failed probe must not be turned into success by reading $? after `if !`."""
+    root = tmp_path / "dex"
+    (root / "core" / "utils").mkdir(parents=True)
+    (root / "core" / "utils" / "platform_support.py").write_text("# stub presence\n", encoding="utf-8")
+    log_path = tmp_path / "install.log"
+    log_path.write_text("", encoding="utf-8")
+    stub = tmp_path / "refuse-python"
+    _write_executable(
+        stub,
+        """#!/bin/sh
+echo '{"verdict":"unsupported"}'
+exit 7
+""",
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_support_python_probe',
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env={
+            **os.environ,
+            "DEX_SUPPORT_LIB_ONLY": "1",
+            "PYTHON_CMD": str(stub),
+            "DEX_INSTALL_LOG": str(log_path),
+        },
+    )
+    assert result.returncode == 7, result.stdout + result.stderr
+    assert "See the install log for the exact error:" in result.stdout
+    assert str(log_path) in result.stdout
+
+
+def test_python_probe_returns_zero_when_module_accepts(tmp_path: Path) -> None:
+    root = tmp_path / "dex"
+    (root / "core" / "utils").mkdir(parents=True)
+    (root / "core" / "utils" / "platform_support.py").write_text("# stub presence\n", encoding="utf-8")
+    stub = tmp_path / "ok-python"
+    _write_executable(
+        stub,
+        """#!/bin/sh
+echo '{"verdict":"supported"}'
+exit 0
+""",
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_support_python_probe\necho accepted',
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env={
+            **os.environ,
+            "DEX_SUPPORT_LIB_ONLY": "1",
+            "PYTHON_CMD": str(stub),
+        },
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "accepted" in result.stdout
+    assert "See the install log for the exact error:" not in result.stdout

@@ -78,18 +78,16 @@ dex_support_python_probe() {
     if [ ! -f "core/utils/platform_support.py" ] || [ -z "${PYTHON_CMD:-}" ]; then
         return 0
     fi
+    # Capture the probe's own exit code. `status=$?` after `if !` is always 0
+    # because the if-test already succeeded.
     local status=0
     if [ -n "${INSTALL_LOG:-}${DEX_INSTALL_LOG:-}" ]; then
         local log="${INSTALL_LOG:-$DEX_INSTALL_LOG}"
-        if ! "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >>"$log"; then
-            status=$?
-            dex_support_show_log
-            return "$status"
-        fi
-        return 0
+        "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >>"$log" || status=$?
+    else
+        "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >/dev/null || status=$?
     fi
-    if ! "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >/dev/null; then
-        status=$?
+    if [ "$status" -ne 0 ]; then
         dex_support_show_log
         return "$status"
     fi
