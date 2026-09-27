@@ -8,6 +8,34 @@ import shutil
 import subprocess
 from pathlib import Path
 
+
+def _git_bash() -> str:
+    """Return Git Bash, not the Windows Store/WSL ``System32\\bash.exe`` stub."""
+    if os.name != "nt":
+        return "bash"
+    which = shutil.which("bash")
+    if which:
+        lowered = which.lower()
+        if "system32" not in lowered and "windowsapps" not in lowered:
+            return which
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    for candidate in (
+        Path(program_files) / "Git" / "bin" / "bash.exe",
+        Path(program_files) / "Git" / "usr" / "bin" / "bash.exe",
+        Path(r"C:\Program Files\Git\bin\bash.exe"),
+    ):
+        if candidate.is_file():
+            return str(candidate)
+    return "bash"
+
+
+def _decode_windows_subprocess(raw: bytes) -> str:
+    if not raw:
+        return ""
+    if raw[:2] == b"\xff\xfe" or (b"\x00" in raw[:20]):
+        return raw.decode("utf-16-le", errors="replace")
+    return raw.decode("utf-8", errors="replace")
+
 import pytest
 
 from core.lifecycle import service
@@ -238,18 +266,19 @@ def test_real_migrator_completes_the_service_guided_journey() -> None:
     # Git Bash dirname does not treat backslashes as separators.
     script_arg = script.as_posix() if os.name == "nt" else str(script)
     fixture = subprocess.run(
-        ["bash", script_arg],
+        [_git_bash(), script_arg],
         cwd=REPO_ROOT,
         capture_output=True,
-        text=True,
         timeout=180,
     )
-    assert fixture.returncode == 0, fixture.stderr[-2000:]
+    stdout = _decode_windows_subprocess(fixture.stdout)
+    stderr = _decode_windows_subprocess(fixture.stderr)
+    assert fixture.returncode == 0, (stderr[-2000:] or stdout[-2000:])
     marker = "Fixture ready: "
     vault = Path(
         next(
             line.removeprefix(marker)
-            for line in fixture.stdout.splitlines()
+            for line in stdout.splitlines()
             if line.startswith(marker)
         )
     )

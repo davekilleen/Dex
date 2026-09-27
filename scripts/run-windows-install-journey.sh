@@ -38,16 +38,28 @@ STUB
   printf '%s\n' "$stub_dir"
 }
 
+ensure_official_release_ref() {
+  local dest="$1"
+  if git -C "$dest" rev-parse --verify 'refs/remotes/origin/release^{commit}' >/dev/null 2>&1; then
+    return 0
+  fi
+  if git -C "$dest" rev-parse --verify 'refs/remotes/official/release^{commit}' >/dev/null 2>&1; then
+    return 0
+  fi
+  # A shallow PR checkout has no origin/release. Fetch the official release
+  # branch by URL so the brain/vault split can prove history.
+  if ! git -C "$dest" remote | grep -qx official; then
+    git -C "$dest" remote add official https://github.com/davekilleen/Dex.git
+  fi
+  git -C "$dest" fetch --depth=1 official release
+}
+
 clone_into() {
   local dest_unix="$1"
   rm -rf "$dest_unix"
   mkdir -p "$(dirname "$dest_unix")"
   git clone --local --no-hardlinks "$GITHUB_WORKSPACE" "$dest_unix"
-  # Shallow GHA checkouts omit origin/release. install.sh's brain/vault split
-  # needs an official remote release ref before it will converge.
-  if ! git -C "$dest_unix" rev-parse --verify 'refs/remotes/origin/release^{commit}' >/dev/null 2>&1; then
-    git -C "$dest_unix" fetch --depth=1 origin refs/heads/release:refs/remotes/origin/release
-  fi
+  ensure_official_release_ref "$dest_unix"
 }
 
 run_install_sh() {
