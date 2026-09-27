@@ -1,4 +1,4 @@
-# Native Windows install + engine CI.
+# Native Windows install journey + engine CI.
 #
 # This is a SIGNAL job, not a merge gate. Joe's 2026-09-26 Windows 11 report
 # (Git Bash OSTYPE=cygwin, python.org Python 3.12, Dex 1.97.15) showed that
@@ -6,10 +6,10 @@
 # Windows. Parallel swarm PRs are fixing those bugs; this workflow will likely
 # fail until those land. That is expected.
 #
-# Do NOT add this job to branch protection, merge-queue required checks, or
-# build-release `needs` until those Windows fixes have merged and this job is
-# green on main. Follow-up: flip `continue-on-error` to false and add
-# `windows-install` to the required set.
+# Do NOT add these jobs to branch protection, merge-queue required checks, or
+# build-release `needs` until those Windows fixes have merged and this workflow
+# is green on main. Follow-up: flip `continue-on-error` to false and add
+# `windows-install-journey` to the required set.
 #
 # Why a separate workflow, not a job in ci.yml:
 # - Required Dex CI names stay untouched: quality, tests, portable-plugin-platforms.
@@ -41,16 +41,15 @@ permissions:
   contents: read
 
 jobs:
-  windows-install:
+  windows-install-journey:
     # Advisory until the Windows install swarm is green on main.
     # Separate workflow + continue-on-error means a red run cannot block merge
     # even if someone later lists this check by mistake.
     continue-on-error: true
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       VAULT_PATH: core/tests/fixtures/vault
-      # install.sh has `read -p` fallbacks; CI must never wait on a prompt.
       CI: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,7 +60,7 @@ jobs:
       # Official python.org Windows builds, same family Joe used — not the
       # Microsoft Store stub and not conda.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        id: setup-python
+        id: setup-python-312
         with:
           python-version: '3.12'
 
@@ -76,8 +75,7 @@ jobs:
           pip install pytest pyyaml python-dateutil requests "mcp>=1.0.0,<2.0.0"
 
       - name: Diagnose Git Bash Python layout
-        # GHA Git Bash is typically OSTYPE=msys. Joe's machine reported
-        # OSTYPE=cygwin. Print both so a missed Windows flavour is visible.
+        # GHA Git Bash often reports OSTYPE=cygwin (Joe's flavour). Print it.
         shell: bash
         run: |
           set -euo pipefail
@@ -86,12 +84,12 @@ jobs:
           echo "python3=$(command -v python3 || echo missing)"
           python --version
           python3 --version || echo "python3 --version failed (expected on some Windows layouts)"
-          echo "setup-python=${{ steps.setup-python.outputs.python-path }}"
+          echo "setup-python=${{ steps.setup-python-312.outputs.python-path }}"
           git --version
           node --version
 
-      - name: Transaction engine and lifecycle tests
-        id: engine-tests
+      - name: Transaction engine and lifecycle tests (Python 3.12)
+        id: engine-312
         continue-on-error: true
         shell: bash
         timeout-minutes: 12
@@ -108,24 +106,52 @@ jobs:
             core/tests/test_lifecycle_topology_migration.py \
             -m "not fuzz" -q --tb=line
 
-      - name: install.sh in Git Bash
-        id: install-bash
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: setup-python-313
+        with:
+          python-version: '3.13'
+
+      - name: Transaction engine and lifecycle tests (Python 3.13)
+        id: engine-313
+        continue-on-error: true
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            core/tests/test_transaction_core.py \
+            core/tests/test_adoption_transaction.py \
+            core/tests/test_provision_transaction.py \
+            core/tests/test_lifecycle_bridge.py \
+            core/tests/test_lifecycle_official_capabilities.py \
+            core/tests/test_lifecycle_relocated_vault.py \
+            core/tests/test_lifecycle_service_contract.py \
+            core/tests/test_lifecycle_topology_migration.py \
+            -m "not fuzz" -q --tb=line
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: install.sh Git Bash OSTYPE=cygwin with Store python3 stub
+        id: install-cygwin
         continue-on-error: true
         shell: bash
         timeout-minutes: 12
         env:
-          # PR code runs here. Do not hand the workflow token to the installer.
           GITHUB_TOKEN: ""
           GH_TOKEN: ""
-        run: |
-          set -euo pipefail
-          DEST="${RUNNER_TEMP}/dex-install-bash"
-          rm -rf "$DEST"
-          git clone --local --no-hardlinks "$GITHUB_WORKSPACE" "$DEST"
-          cd "$DEST"
-          echo "Running install.sh in isolated copy; OSTYPE=${OSTYPE:-unset}"
-          # Close stdin so a `read -p` cannot hang the runner.
-          bash ./install.sh </dev/null
+        run: bash scripts/run-windows-install-journey.sh install-cygwin-stub
+
+      - name: install.sh Git Bash OSTYPE=msys then activate/adopt/rewind
+        id: install-msys
+        continue-on-error: true
+        shell: bash
+        timeout-minutes: 12
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: bash scripts/run-windows-install-journey.sh install-msys-journey
 
       - name: install.ps1 in PowerShell
         id: install-ps1
@@ -137,40 +163,46 @@ jobs:
           GH_TOKEN: ""
         run: |
           $ErrorActionPreference = 'Stop'
-          $dest = Join-Path $env:RUNNER_TEMP 'dex-install-ps1'
+          $dest = Join-Path $env:RUNNER_TEMP 'Dex Vault\install-ps1'
           if (Test-Path -LiteralPath $dest) {
             Remove-Item -LiteralPath $dest -Recurse -Force
           }
+          New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
           git clone --local --no-hardlinks $env:GITHUB_WORKSPACE $dest
           Set-Location -LiteralPath $dest
           if (-not (Test-Path -LiteralPath '.\install.ps1')) {
             throw 'install.ps1 is missing from this checkout. The PowerShell install path cannot be exercised until that file lands.'
           }
-          # Close stdin so a prompt cannot hang the runner.
           $null | & .\install.ps1
 
       - name: Windows install verdict
         if: always()
         shell: bash
         env:
-          ENGINE: ${{ steps.engine-tests.outcome }}
-          INSTALL_BASH: ${{ steps.install-bash.outcome }}
+          ENGINE312: ${{ steps.engine-312.outcome }}
+          ENGINE313: ${{ steps.engine-313.outcome }}
+          INSTALL_CYGWIN: ${{ steps.install-cygwin.outcome }}
+          INSTALL_MSYS: ${{ steps.install-msys.outcome }}
           INSTALL_PS1: ${{ steps.install-ps1.outcome }}
         run: |
           set -euo pipefail
           {
-            echo "## Windows install CI (advisory)"
+            echo "## Windows install journey (advisory)"
             echo
-            echo "This job is **not required**. Do not add \`windows-install\` to branch protection until it is green on main."
+            echo "This job is **not required**. Do not add \`windows-install-journey\` to branch protection until it is green on main."
             echo
             echo "| Leg | Outcome |"
             echo "| --- | --- |"
-            echo "| Transaction + lifecycle tests | ${ENGINE} |"
-            echo "| install.sh (Git Bash) | ${INSTALL_BASH} |"
-            echo "| install.ps1 (PowerShell) | ${INSTALL_PS1} |"
+            echo "| Engine tests 3.12 | ${ENGINE312} |"
+            echo "| Engine tests 3.13 | ${ENGINE313} |"
+            echo "| install.sh OSTYPE=cygwin + Store stub | ${INSTALL_CYGWIN} |"
+            echo "| install.sh OSTYPE=msys + activate/adopt/rewind/CRLF | ${INSTALL_MSYS} |"
+            echo "| install.ps1 (PowerShell, spaced path) | ${INSTALL_PS1} |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "engine=${ENGINE} install.sh=${INSTALL_BASH} install.ps1=${INSTALL_PS1}"
-          if [ "$ENGINE" != "success" ] || [ "$INSTALL_BASH" != "success" ] || [ "$INSTALL_PS1" != "success" ]; then
+          echo "engine312=${ENGINE312} engine313=${ENGINE313} cygwin=${INSTALL_CYGWIN} msys=${INSTALL_MSYS} ps1=${INSTALL_PS1}"
+          if [ "$ENGINE312" != "success" ] || [ "$ENGINE313" != "success" ] \
+            || [ "$INSTALL_CYGWIN" != "success" ] || [ "$INSTALL_MSYS" != "success" ] \
+            || [ "$INSTALL_PS1" != "success" ]; then
             echo "One or more Windows legs failed. Expected until the Windows install swarm lands." >&2
             exit 1
           fi
