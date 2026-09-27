@@ -12,6 +12,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from core.mcp import work_server
 from core.paths import (
@@ -26,6 +27,8 @@ from core.utils.strict_yaml import load_yaml_path
 ADAPTERS_DIR = VAULT_ROOT / ".claude" / "hooks" / "adapters"
 _SERVICE_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 _TASK_ID_PATTERN = re.compile(r"^task-(\d{8})-\d{3,}$")
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:/")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _now_iso() -> str:
@@ -332,6 +335,111 @@ def _canonical_tasks() -> list[dict[str, Any]]:
     return work_server.parse_tasks_file(work_server.get_tasks_file())
 
 
+def _obsidian_vault_name(vault_root: Path | None = None) -> str | None:
+    """Return the Obsidian vault name, or None when it cannot be trusted."""
+    root = Path(vault_root) if vault_root is not None else Path(VAULT_ROOT)
+    try:
+        name = root.resolve().name
+    except (OSError, RuntimeError):
+        return None
+    name = str(name).strip()
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        return None
+    if _CONTROL_CHAR_RE.search(name) or "://" in name:
+        return None
+    return name
+
+
+def _normalize_source_path(raw: object) -> str | None:
+    """Return a vault-relative path, or None when the value is unsafe."""
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip().replace("\\", "/")
+    if not text or "://" in text or _CONTROL_CHAR_RE.search(text):
+        return None
+    if text.startswith("/") or _WINDOWS_DRIVE_RE.match(text):
+        return None
+    parts = [part for part in text.split("/") if part not in {"", "."}]
+    if not parts or any(part == ".." for part in parts):
+        return None
+    return "/".join(parts)
+
+
+def build_obsidian_open_uri(
+    file_path: str, vault_name: str | None = None
+) -> str | None:
+    """Build an obsidian://open URI, omitting vault= when the name is unknown."""
+    normalized = _normalize_source_path(file_path)
+    if not normalized:
+        return None
+    params: list[str] = []
+    candidate = str(vault_name).strip() if vault_name else ""
+    if (
+        candidate
+        and candidate not in {".", ".."}
+        and "/" not in candidate
+        and "\\" not in candidate
+        and "://" not in candidate
+        and not _CONTROL_CHAR_RE.search(candidate)
+    ):
+        params.append(f"vault={quote(candidate, safe='')}")
+    params.append(f"file={quote(normalized, safe='')}")
+    return "obsidian://open?" + "&".join(params)
+
+
+def _source_path_rank(path: str) -> int:
+    """Prefer meeting, project, and company pages over person pages."""
+    lowered = f"/{path.lower()}"
+    if "/meetings/" in lowered or lowered.startswith("/00-inbox/"):
+        return 0
+    if "/04-projects/" in lowered or "/projects/" in lowered:
+        return 1
+    if "/companies/" in lowered:
+        return 2
+    if "/people/" in lowered:
+        return 4
+    return 3
+
+
+def source_links_for_paths(
+    paths: list[str] | tuple[str, ...] | None,
+    vault_name: str | None = None,
+) -> list[dict[str, str]]:
+    """Turn source paths into vault-aware Obsidian links, primary first."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in paths or ():
+        path = _normalize_source_path(raw)
+        if path is None or path in seen:
+            continue
+        seen.add(path)
+        normalized.append(path)
+    normalized.sort(key=_source_path_rank)
+    links: list[dict[str, str]] = []
+    for path in normalized:
+        uri = build_obsidian_open_uri(path, vault_name)
+        if uri is None:
+            continue
+        label = Path(path).stem.replace("_", " ").strip() or path
+        links.append({"path": path, "uri": uri, "label": label})
+    return links
+
+
+def _task_for_external_create(task: dict[str, Any]) -> dict[str, Any]:
+    """Attach source links for adapters without changing the stored title."""
+    payload = dict(task)
+    paths = [str(path) for path in payload.get("source_paths") or [] if path]
+    if not paths and payload.get("raw_title"):
+        paths = work_server.extract_file_refs_from_task(str(payload["raw_title"]))
+    vault_name = _obsidian_vault_name()
+    links = source_links_for_paths(paths, vault_name)
+    payload["source_paths"] = [link["path"] for link in links]
+    payload["source_links"] = links
+    if vault_name:
+        payload["vault_name"] = vault_name
+    return payload
+
+
 def _task_id_date(task_id: object) -> date | None:
     match = _TASK_ID_PATTERN.fullmatch(str(task_id or ""))
     if not match:
@@ -481,7 +589,9 @@ def sync_external_tasks(
                 report["errors"].extend(_merge_recorded_mappings(service, service_state))
                 if mapped_id in mapping or task_id in mapping:
                     continue
-                external_id = _run_adapter(service, "create", runtime_settings, task)
+                external_id = _run_adapter(
+                    service, "create", runtime_settings, _task_for_external_create(task)
+                )
                 if external_id is None:
                     raise RuntimeError(f"{service} create returned no external ID")
                 report["errors"].extend(_merge_recorded_mappings(service, service_state))

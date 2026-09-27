@@ -28,6 +28,66 @@ function embedDexId(description, taskId) {
   return current ? `${current}\n${marker}` : marker;
 }
 
+function isSafeObsidianUri(uri) {
+  return typeof uri === 'string' && /^obsidian:\/\/open\?/.test(uri) && !/[\r\n\s<>"]/.test(uri);
+}
+
+function sourceLinkLabel(path) {
+  const base = String(path || '').replace(/\\/g, '/').split('/').pop() || 'Source note';
+  return base.replace(/\.md$/i, '').replace(/_/g, ' ').replace(/[\r\n[\]()]/g, '');
+}
+
+function buildObsidianOpenUri(filePath, vaultName) {
+  const file = String(filePath || '').replace(/\\/g, '/').trim();
+  const parts = file.split('/').filter((part) => part && part !== '.');
+  if (
+    !file ||
+    !parts.length ||
+    parts.includes('..') ||
+    file.includes('://') ||
+    file.startsWith('/') ||
+    /^[A-Za-z]:\//.test(file) ||
+    /[\r\n]/.test(file)
+  ) {
+    return '';
+  }
+  const query = [];
+  const vault = String(vaultName || '').trim();
+  if (
+    vault &&
+    vault !== '.' &&
+    vault !== '..' &&
+    !vault.includes('://') &&
+    !/[/\\]/.test(vault) &&
+    !/[\r\n]/.test(vault)
+  ) {
+    query.push(`vault=${encodeURIComponent(vault)}`);
+  }
+  query.push(`file=${encodeURIComponent(parts.join('/'))}`);
+  return `obsidian://open?${query.join('&')}`;
+}
+
+function formatSourceLinks(dexTask) {
+  const rendered = [];
+  if (Array.isArray(dexTask.source_links)) {
+    for (const link of dexTask.source_links) {
+      if (!link || typeof link !== 'object') continue;
+      const uri = isSafeObsidianUri(link.uri) ? link.uri : '';
+      if (!uri) continue;
+      const label = sourceLinkLabel(link.label || link.path || 'Source note');
+      rendered.push(`[${label}](${uri})`);
+    }
+  }
+  if (!rendered.length && Array.isArray(dexTask.source_paths)) {
+    for (const path of dexTask.source_paths) {
+      const uri = buildObsidianOpenUri(path, dexTask.vault_name);
+      if (!uri) continue;
+      rendered.push(`[${sourceLinkLabel(path)}](${uri})`);
+    }
+  }
+  return rendered.join('\n');
+}
+
 function extractDexId(description) {
   const match = String(description || '').match(DEX_ID_PATTERN);
   return match ? match[1] : null;
@@ -182,9 +242,13 @@ async function getCompletedTasks(sinceIso, untilIso, adapterConfig) {
 }
 
 function toExternal(dexTask, adapterConfig = {}) {
+  const parts = [];
+  if (dexTask.context) parts.push(String(dexTask.context));
+  const sourceBlock = formatSourceLinks(dexTask);
+  if (sourceBlock) parts.push(sourceBlock);
   return {
     content: dexTask.title,
-    description: embedDexId(dexTask.context || '', dexTask.task_id),
+    description: embedDexId(parts.join('\n\n'), dexTask.task_id),
     priority: DEX_TO_TODOIST_PRIORITY[dexTask.priority] || 2,
     due_string: dexTask.due || null,
     _project_name: configuredProjectName(dexTask, adapterConfig),
@@ -291,4 +355,7 @@ module.exports = {
   complete,
   getChanges,
   health,
+  embedDexId,
+  buildObsidianOpenUri,
+  formatSourceLinks,
 };
