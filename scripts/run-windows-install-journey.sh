@@ -117,14 +117,15 @@ case "$cmd" in
     cd "$DEST_UNIX"
     echo "OSTYPE_OVERRIDE=msys native_OSTYPE=${OSTYPE:-unset}"
     run_install_sh msys
-    # Official releases ship the generated catalog. A PR checkout does not.
-    # Activate needs that file; generate it from this tree so the journey
-    # matches a real release without changing install.sh.
+    # Official releases ship the generated catalog. A PR checkout does not,
+    # and the PR manifest is not a release manifest, so do not generate one
+    # here. Copy the catalog (and its hash table) from official/release.
     if [ ! -f "$DEST_UNIX/System/.release-catalog.json" ]; then
-      PYTHONPATH="$GITHUB_WORKSPACE" \
-        python "$GITHUB_WORKSPACE/scripts/generate-release-catalog.py" \
-        --release-root "$DEST_WIN" \
-        --contract-root "$GITHUB_WORKSPACE"
+      mkdir -p "$DEST_UNIX/System" "$DEST_UNIX/core/lifecycle/catalog"
+      git -C "$DEST_UNIX" show official/release:System/.release-catalog.json \
+        > "$DEST_UNIX/System/.release-catalog.json"
+      git -C "$DEST_UNIX" show official/release:core/lifecycle/catalog/release-hashes.json \
+        > "$DEST_UNIX/core/lifecycle/catalog/release-hashes.json" || true
     fi
     PYTHONPATH="$GITHUB_WORKSPACE" \
       python "$GITHUB_WORKSPACE/scripts/run-windows-lifecycle-journey.py" --vault-root "$DEST_WIN"
