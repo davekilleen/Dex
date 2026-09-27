@@ -29,7 +29,11 @@ function embedDexId(description, taskId) {
 }
 
 function isSafeObsidianUri(uri) {
-  return typeof uri === 'string' && /^obsidian:\/\/open\?/.test(uri) && !/[\r\n\s<>"]/.test(uri);
+  return (
+    typeof uri === 'string'
+    && /^obsidian:\/\/open\?(?:vault=[^&#]+&)?file=[^&#]+$/.test(uri)
+    && !/[\r\n\s<>"]/.test(uri)
+  );
 }
 
 function sourceLinkLabel(path) {

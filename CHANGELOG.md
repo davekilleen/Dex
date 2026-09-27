@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.21] — Todoist tasks keep a clean title and a way back to the note (2026-09-27)
+## Unreleased
 
 When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
 

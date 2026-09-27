@@ -178,6 +178,8 @@ test('formatSourceLinks ignores injected non-obsidian URIs', () => {
       source_links: [
         { label: 'Nope', uri: 'javascript:alert(1)' },
         { label: 'Also no', uri: 'obsidian://open?file=ok.md\njavascript:alert(1)' },
+        { label: 'Extra query', uri: 'obsidian://open?file=ok.md&redirect=https://evil.example' },
+        { label: 'Hash', uri: 'obsidian://open?file=ok.md#javascript:alert(1)' },
       ],
     }),
     '',
