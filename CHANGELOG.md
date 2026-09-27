@@ -7,68 +7,23 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.21] — (2026-09-27)
+## [1.97.21] — Dex on Windows can update again, and sessions keep their lessons (2026-09-27)
 
-## Unreleased
-
-Dex on Windows can update again after its first update
-
-On Windows, Dex's own record-keeping files had been saved with Windows line
-endings. That made Dex refuse its next update and every undo, and it also
-read files in a way that quietly changed their bytes before comparing them.
-Thanks to Joe for reporting this.
+The last release gave Dex a clock on its mornings and stopped turning a meeting remark into a task. This one is mostly Windows. After a first update, Dex's own record-keeping files had Windows line endings, so the next update and every undo refused — and Dex was reading those files in a way that quietly changed them before comparing. A Windows install could also die after files were already written, leaving a half-finished vault. Setup still looked for Granola only in the Mac Applications folder. Closing a session still lost the day's lessons unless you ran the evening review. A task sent to Todoist picked up a folder path as its name. Older copies of Dex that never recorded a version number could not start a repair. Features you already run every morning were still being offered as new. This release closes those. Thanks to Joe for the Windows update report, and to @mekuhl for the task-name report.
 
 **What this fixes for you:**
 
-* **Dex can update and undo again on Windows.** It repairs those record-keeping
-  files once, keeps a copy of each one first, and leaves your notes alone. A
-  file it cannot safely repair is left untouched and Doctor tells you what to
-  do. History files are reported, not rewritten.
-* **An undo copy taken before this repair is not put back on Windows.** Dex
-  marks those copies when the work starts — it does not guess from the clock —
-  and refuses to restore them, including after a crash. Your current files stay
-  as they are; use your own backup if you need to go back.
-* **Dex now reads its own files exactly as stored.** Line endings and binary
-  files are no longer rewritten on the way in. This is the other half of the
-  same repair.
+* **Dex can update and undo again on Windows.** It repairs those record-keeping files once, keeps a copy of each one first, and leaves your notes alone. A file it cannot safely repair is left untouched and Doctor tells you what to do. History files are reported, not rewritten. Dex now reads its own files exactly as they sit on disk, so line endings and files that are not plain text are no longer rewritten on the way in.
+* **An undo copy taken before this repair is not put back on Windows.** Dex marks those copies when the work starts — it does not guess from the clock — and refuses to restore them, including after a crash. Your current files stay as they are; use your own backup if you need to go back.
+* **A Windows install is less likely to leave a half-written vault.** Folder paths with spaces or quotes are written safely into config. Files Dex writes keep their real contents. If something fails, the real error stays visible instead of a vague crash.
+* **Dex notices Granola on Windows.** First-run setup and the tool suggestions can see the Granola app on a Windows PC, including when you opened the installer from Git Bash. When Granola is not found, Dex records every place it looked so a later checkup can say why. Meetings still come from the official Granola connection; Dex does not read Granola's private local files. You connect with `/granola-setup` the same way as before.
+* **Windows install writes are more careful.** Dex finds the trusted git program instead of guessing. If a write cannot be proven safe, it stops instead of leaving a half-written file.
+* **Closing a session keeps the obvious lessons.** When you end a Dex session the usual way, Dex writes down corrections and preferences it can spot, marked for you to confirm later. Saying "that's wrong" still saves it immediately. The evening review is the careful pass, not the only pass. The reminder that you have lessons waiting can finally see them.
+* **A task sent to Todoist keeps its real name.** Folder paths from your notes no longer get glued onto the title. The description has a link back to the note: if you use Obsidian it opens the source page, and if Dex cannot see the vault name the link still points at the file so it can open in the vault you already have open.
+* **Older copies of Dex can name the version they started from.** If checkup cannot tell which version is installed, the same guided repair now offers a look-only pass that lists every official file it compared and marks the ones you changed as customizations. Nothing is written until you say yes. A version number Dex has no official record for is refused. Only the version paperwork is saved — not your notes, and not the files you have changed.
+* **Using a feature now marks it as used.** Dex used to recommend things you already run, because nothing recorded that you had used them. Running a skill now ticks that box on your machine, so later suggestions skip what you already know. Nothing is sent.
 
-Setup only looked for Granola in the Mac Applications folder. On a Windows PC the app was already there, and Dex still said it was not installed.
-
-**What this fixes for you:**
-
-* **Dex notices Granola on Windows.** First-run setup and the tool suggestions can see the Granola app on a Windows PC, including when you opened the installer from Git Bash.
-* **A miss has a real reason.** When Granola is not found, Dex records every place it looked so a later checkup can say why, instead of a blank "not detected."
-* **Meetings still come from the official Granola connection.** Dex does not read Granola's private local files. You connect with `/granola-setup` the same way as before.
-
-### Lessons from a session are saved when you close it
-
-Dex used to say it learned from your sessions on its own. What it actually did was remember that a session ended, then wait for you to run the evening review before any of the useful bits were written down. Skip the review and the day file stayed empty of lessons. That is no longer true, and the wording now matches what happens.
-
-**What this fixes for you:**
-
-* **Closing a session keeps the obvious lessons.** When you end a Dex session the usual way, Dex writes down corrections and preferences it can spot, marked for you to confirm later.
-* **Saying "that's wrong" still saves it immediately.** You do not have to wait until you close the session. If you close a window instead of ending the session, that typed capture is the one that ran.
-* **The evening review is the careful pass, not the only pass.** `/daily-review` confirms what was already written and looks for anything the automatic pass missed.
-* **The reminder that you have lessons waiting can finally see them.** The nudge that appears when five or more are still pending now has real entries to count, not just a note that a session ended.
-
-Older copies of Dex can finally name the version they started from.
-
-If you started with Dex before it kept an official version record, checkup would say it could not tell which version was installed — and then stop. The guided update stayed closed, and the repair that checks your files against the official record would not run either. There was no safe way to set a starting version.
-
-**What this fixes for you:**
-
-* **You can set a starting version without losing your edits.** When Dex cannot tell which version is installed, the same guided repair now offers a look-only pass that lists every official file it compared and marks the ones you changed as customizations. Nothing is written until you say yes.
-* **A wrong version number is refused.** If you name a version Dex has no official record for, it stops and changes nothing.
-* **Your checkup points at this repair instead of dead-ending.** It tells you the look-only command to run in Terminal, and reminds you that only the version paperwork is saved — not your notes, and not the files you have changed.
-
-When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
-
-**What this fixes for you:**
-
-* **The Todoist title is just the task.** Folder paths from your notes no longer get glued onto the name.
-* **The description has a link back to the note.** If you use Obsidian, it opens the source page. If Dex cannot see the vault name, the link still points at the file so it can open in the vault you already have open.
-
-Reported by @mekuhl.
+Being honest about Windows: this is still hardening, not a finished supported install. Dex does not yet say which Windows setups it supports. A later release will.
 
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
