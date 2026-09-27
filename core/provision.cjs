@@ -5,7 +5,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const childProcess = require('node:child_process');
 const crypto = require('node:crypto');
-const yaml = require('js-yaml');
 const contract = require('./provision-contract.json');
 const portableContract = require('../packages/dex-contracts/dist/portable-vault.contract.json');
 
@@ -18,6 +17,12 @@ const PROFILE_KEYS = new Set([
 const CAPABILITY_CATALOG = path.join(
   __dirname, '..', '.claude', 'skills', '_available', 'capabilities',
 );
+
+function yamlLib() {
+  // Lifecycle-only callers (routeAdoptionThroughLifecycleService) never read
+  // YAML. Load js-yaml on first use so those paths work before npm ci.
+  return require('js-yaml');
+}
 
 function parseArgs(argv) {
   const options = { adopt: false, dryRun: false, json: false };
@@ -1412,7 +1417,7 @@ function provision(options) {
     }
     const overlay = loadProfileOverlay(options.profile);
     const templatePath = path.join(vaultRoot, 'System', 'user-profile-template.yaml');
-    const template = yaml.load(fs.readFileSync(templatePath, 'utf8')) || {};
+    const template = yamlLib().load(fs.readFileSync(templatePath, 'utf8')) || {};
     const freshProfile = buildFreshProfile(template, overlay);
     const profilePath = path.join(vaultRoot, 'System', 'user-profile.yaml');
     const markerPath = path.join(vaultRoot, 'System', '.onboarding-complete');
@@ -1422,7 +1427,7 @@ function provision(options) {
     provisionTransaction = options.dryRun ? null : new ProvisionTransaction(vaultRoot);
 
     if (fs.existsSync(profilePath)) {
-      profile = yaml.load(fs.readFileSync(profilePath, 'utf8')) || {};
+      profile = yamlLib().load(fs.readFileSync(profilePath, 'utf8')) || {};
       if (options.adopt) {
         profile.capabilities ||= {};
         for (const [room, enabled] of Object.entries(
@@ -1442,7 +1447,7 @@ function provision(options) {
           : freshProfile;
         writeIfChanged(
           profilePath,
-          yaml.dump(profile, { sortKeys: false, lineWidth: -1 }),
+          yamlLib().dump(profile, { sortKeys: false, lineWidth: -1 }),
           reporter,
           options.dryRun,
           provisionTransaction,
@@ -1467,7 +1472,7 @@ function provision(options) {
         if (deepFillMissing(profile, gapDefaults)) {
           writeIfChanged(
             profilePath,
-            yaml.dump(profile, { sortKeys: false, lineWidth: -1 }),
+            yamlLib().dump(profile, { sortKeys: false, lineWidth: -1 }),
             reporter,
             options.dryRun,
             provisionTransaction,
@@ -1477,7 +1482,7 @@ function provision(options) {
     } else {
       writeIfMissing(
         profilePath,
-        yaml.dump(freshProfile, { sortKeys: false, lineWidth: -1 }),
+        yamlLib().dump(freshProfile, { sortKeys: false, lineWidth: -1 }),
         reporter,
         options.dryRun,
         provisionTransaction,
@@ -1527,7 +1532,7 @@ function provision(options) {
       // keywords would kill pillar inference until they were hand-restored.
       let existingPillarsDocument = {};
       try {
-        const parsed = yaml.load(fs.readFileSync(pillarsPath, 'utf8'));
+        const parsed = yamlLib().load(fs.readFileSync(pillarsPath, 'utf8'));
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           existingPillarsDocument = parsed;
         }
@@ -1552,7 +1557,7 @@ function provision(options) {
         pillarsDocument.priority_limits = structuredClone(existingPillarsDocument.priority_limits);
       }
     }
-    const pillarsContent = yaml.dump(pillarsDocument, { sortKeys: false, lineWidth: -1 });
+    const pillarsContent = yamlLib().dump(pillarsDocument, { sortKeys: false, lineWidth: -1 });
     if (options.onboard) {
       reporter.summary.pillars_plan = structuredClone(pillarsDocument);
       writeIfChanged(
