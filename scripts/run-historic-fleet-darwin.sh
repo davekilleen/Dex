@@ -8,8 +8,9 @@ CANONICAL_PUBLIC_REMOTE="https://github.com/davekilleen/Dex.git"
 PINNED_FOUNDATION_TAG="dist/release/v1.81.16-281202d"
 MAX_DISK_KIB=$((50 * 1024 * 1024))
 # Every entry must still resolve on the public remote. The release-tag archive
-# renames tags from dist/release/ to dist/archive/ without moving the object, so
-# an archived start is updated here rather than dropped.
+# (docs/release-tag-archive.md) renames tags from dist/release/ to dist/archive/
+# without moving the object, so an archived start is updated here rather than
+# dropped.
 CANARY_STARTS=(
   "v1.51.0"
   "dist/release/v1.61.0-dc7d332"

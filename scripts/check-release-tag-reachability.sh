@@ -81,11 +81,11 @@ for SENTINEL in "${SENTINEL_VERSIONS[@]}"; do
 
   if [ "$NEWER_COUNT" -ge "$SHIPPED_TAG_BOUND" ]; then
     echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags; the shipped verifier bound is $SHIPPED_TAG_BOUND." >&2
-    echo "Do not move immutable release labels blindly; use the verified bridge-and-archive procedure before old installs go silent." >&2
+    echo "Do not move immutable release labels blindly; use the verified bridge-and-archive procedure in docs/release-tag-archive.md before old installs go silent." >&2
     FAILED=1
   elif [ "$NEWER_COUNT" -ge "$PREPUBLICATION_MARGIN" ] && [ "$CURRENT_VERSION_KIND" = "stable" ] && [ "$CURRENT_VERSION_PUBLISHED" -ne 1 ]; then
     echo "❌ v$SENTINEL has $NEWER_COUNT newer dist/release tags and current package version v$CURRENT_VERSION is not published; the pre-publication safety margin is $PREPUBLICATION_MARGIN." >&2
-    echo "This CI run may publish one more tag, so use the verified bridge-and-archive procedure before old installs go silent." >&2
+    echo "This CI run may publish one more tag, so use the verified bridge-and-archive procedure in docs/release-tag-archive.md before old installs go silent." >&2
     FAILED=1
   fi
 done
