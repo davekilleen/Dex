@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const {
+  CAPABILITY_CODE,
   resolveDexPython,
   resolveDexPythonStatus,
 } = require('../dex-python.cjs');
@@ -16,6 +17,11 @@ function executable(filePath) {
   fs.writeFileSync(filePath, '#!/bin/sh\nexit 0\n');
   fs.chmodSync(filePath, 0o755);
 }
+
+test('entity engine Python must be 3.11 or newer with PyYAML', () => {
+  assert.match(CAPABILITY_CODE, /version_info >= \(3,11\)/);
+  assert.doesNotMatch(CAPABILITY_CODE, /3,10/);
+});
 
 test('DEX_PYTHON wins over the vault virtualenv', (t) => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-python-'));
@@ -65,7 +71,7 @@ test('an executable DEX_PYTHON without the required capability is rejected once'
 
   assert.equal(first.path, null);
   assert.equal(first.feature_status, 'broken');
-  assert.match(first.user_message, /Python 3\.10.*PyYAML/i);
+  assert.match(first.user_message, /Python 3\.11.*PyYAML/i);
   assert.deepEqual(second, first);
   assert.equal(fs.readFileSync(marker, 'utf8'), 'x');
   assert.equal(resolveDexPython(vault, { DEX_PYTHON: configured }), null);

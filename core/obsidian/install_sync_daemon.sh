@@ -31,8 +31,8 @@ fi
 # launchd does not inherit the user's shell PATH. Pin the same supported
 # interpreter for dependency setup and the background job.
 PYTHON_BIN="$(command -v python3 || true)"
-if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c "import sys; raise SystemExit(sys.version_info < (3, 10))" 2>/dev/null; then
-    echo "Error: Obsidian sync requires Python 3.10 or newer."
+if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c "import sys; raise SystemExit(sys.version_info < (3, 11))" 2>/dev/null; then
+    echo "Error: Obsidian sync requires Python 3.11 or newer."
     echo "Install a current Python, then run this installer again."
     exit 1
 fi

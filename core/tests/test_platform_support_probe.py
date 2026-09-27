@@ -374,11 +374,12 @@ def test_module_is_importable_before_venv() -> None:
 
 def test_readme_says_preview_and_lists_what_is_not_ready() -> None:
     text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "**Windows — Git Bash (preview):**" in text
+    assert "**Windows — Git Bash:**" in text
     assert "bash ./install.sh" in text
+    assert "clone --branch release --single-branch" in text
     assert "install.ps1" not in text
     assert "irm https://heydex.ai/install.ps1" not in text
-    assert "Windows support is a **preview**" in text
+    assert "Preview — works on a clean Windows 11" in text
     assert "## Windows support status" in text
     assert "`/dex-update` and `/dex-rollback`" in text
     assert "Not yet" in text

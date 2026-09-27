@@ -7,3 +7,6 @@ requests>=2.31.0
 
 # Calendar MCP: EventKit for correct recurring events and fast queries (macOS only)
 pyobjc-framework-EventKit>=10.0; sys_platform == "darwin"
+
+# mcp needs this on Windows for stdio. The hashed install file must list it.
+pywin32>=306; sys_platform == "win32"

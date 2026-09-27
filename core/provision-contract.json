@@ -28,6 +28,7 @@
       "env.example",
       "extensions/",
       "install.sh",
+      "install.ps1",
       "node_modules/",
       "package-lock.json",
       "package.json",
