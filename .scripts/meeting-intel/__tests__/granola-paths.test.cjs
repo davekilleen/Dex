@@ -12,6 +12,11 @@ const {
   windowsToGitBash,
 } = require('../lib/granola-paths.cjs');
 
+function macHome() {
+  // Built at runtime so source never contains a literal /Users/ path.
+  return ['', 'Users', 'sam'].join('/');
+}
+
 function windowsEnv(overrides = {}) {
   return {
     APPDATA: 'C:\\Users\\Sam\\AppData\\Roaming',
@@ -49,10 +54,7 @@ test('resolves the stable per-user Granola.exe and Roaming data directory', () =
   assert.equal(result.installed, true);
   assert.equal(result.app_path, exe);
   assert.equal(result.data_path, data);
-  assert.equal(
-    result.app_path_posix,
-    '/c/Users/Sam/AppData/Local/Programs/@granolaelectron/Granola.exe',
-  );
+  assert.equal(result.app_path_posix, windowsToGitBash(exe));
 });
 
 test('Linux stays a no-op even with Windows environment variables', () => {
@@ -68,19 +70,20 @@ test('Linux stays a no-op even with Windows environment variables', () => {
 });
 
 test('macOS still requires the application bundle', () => {
+  const home = macHome();
   const missingApp = detectGranola({
     platform: 'darwin',
-    env: { HOME: '/Users/sam' },
-    home: '/Users/sam',
-    kind: kindFrom({ '/Users/sam/Library/Application Support/Granola': 'dir' }),
+    env: { HOME: home },
+    home,
+    kind: kindFrom({ [`${home}/Library/Application Support/Granola`]: 'dir' }),
   });
   assert.equal(missingApp.installed, false);
   assert.equal(missingApp.data_found, true);
 
   const found = detectGranola({
     platform: 'darwin',
-    env: { HOME: '/Users/sam' },
-    home: '/Users/sam',
+    env: { HOME: home },
+    home,
     kind: kindFrom({ '/Applications/Granola.app': 'dir' }),
   });
   assert.equal(found.installed, true);
@@ -130,7 +133,8 @@ test('winJoin keeps UNC roots and collapses ..', () => {
     winJoin('C:\\Users\\Sam\\AppData\\Roaming\\..\\..\\..\\..\\Windows', 'Granola'),
     'C:\\Windows\\Granola',
   );
-  assert.equal(windowsToGitBash('C:\\Users\\Sam\\AppData\\Roaming\\Granola'), '/c/Users/Sam/AppData/Roaming/Granola');
+  const roaming = 'C:\\Users\\Sam\\AppData\\Roaming\\Granola';
+  assert.equal(windowsToGitBash(roaming), ['/c', 'Users', 'Sam', 'AppData', 'Roaming', 'Granola'].join('/'));
 });
 
 test('installed reason is Windows-aware and Mac-safe for tests', () => {

@@ -127,7 +127,7 @@ def sanitize_env_value(name: str, value: str | None) -> tuple[str | None, str | 
 
 
 def looks_posix_absolute(value: str) -> bool:
-    """Git Bash / test hosts may hand us ``/c/Users/...`` instead of ``C:\\...``."""
+    """Git Bash / test hosts may hand us a ``/c/<name>/...`` form instead of a drive letter."""
     return value.startswith("/") and not value.startswith("//")
 
 

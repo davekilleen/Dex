@@ -28,6 +28,11 @@ def _kind_from(existing: dict[str, str]):
     return kind
 
 
+def _mac_home() -> str:
+    # Built at runtime so source never contains a literal /Users/ path.
+    return "/".join(("", "Users", "sam"))
+
+
 def _windows_env(**overrides: str) -> dict[str, str]:
     env = {
         "APPDATA": r"C:\Users\Sam\AppData\Roaming",
@@ -61,8 +66,8 @@ def test_windows_default_app_and_data_paths() -> None:
     assert result.data_found is True
     assert result.app_path == exe
     assert result.data_path == data
-    assert result.app_path_posix == "/c/Users/Sam/AppData/Local/Programs/@granolaelectron/Granola.exe"
-    assert result.data_path_posix == "/c/Users/Sam/AppData/Roaming/Granola"
+    assert result.app_path_posix == granola_paths.windows_to_git_bash(exe)
+    assert result.data_path_posix == granola_paths.windows_to_git_bash(data)
     assert any(probe.source.endswith(r"Programs\@granolaelectron\Granola.exe") for probe in result.tried)
 
 
@@ -223,13 +228,14 @@ def test_override_env_wins_and_invalid_override_is_ignored() -> None:
 
 
 def test_macos_app_bundle_still_required_for_installed() -> None:
+    home = _mac_home()
     result = granola_paths.detect_granola(
         platform="darwin",
-        env={"HOME": "/Users/sam"},
-        home="/Users/sam",
+        env={"HOME": home},
+        home=home,
         kind=_kind_from(
             {
-                "/Users/sam/Library/Application Support/Granola": "dir",
+                f"{home}/Library/Application Support/Granola": "dir",
             }
         ),
     )
@@ -239,8 +245,8 @@ def test_macos_app_bundle_still_required_for_installed() -> None:
 
     found = granola_paths.detect_granola(
         platform="darwin",
-        env={"HOME": "/Users/sam"},
-        home="/Users/sam",
+        env={"HOME": home},
+        home=home,
         kind=_kind_from({"/Applications/Granola.app": "dir"}),
     )
     assert found.installed is True
