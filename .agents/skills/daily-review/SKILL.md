@@ -327,16 +327,20 @@ Show how today's work moved weekly priorities:
 
 ## Step 7: Auto-Extract Session Learnings
 
-Scan today's conversation for learnings:
+Read `System/Session_Learnings/YYYY-MM-DD.md` first. Corrections said during
+the day, and obvious corrections/preferences spotted when a session closed,
+may already be there as pending entries. Do not write a second copy.
+
+Then scan today's conversation for anything those passes missed:
 
 1. **Mistakes or corrections** — Did something not work as expected?
 2. **Preferences mentioned** — Did you express how you like to work?
 3. **Documentation gaps** — Were there questions about how the system works?
 4. **Workflow inefficiencies** — Did any task take longer than it should?
 
-Write to `System/Session_Learnings/YYYY-MM-DD.md`.
+Write new entries to `System/Session_Learnings/YYYY-MM-DD.md`.
 
-Then ask: "I captured [N] learnings from today's session. Anything else you'd like to add?"
+Then ask: "I captured [N] learnings from today's session (including any already waiting). Anything else you'd like to add?"
 
 ---
 
