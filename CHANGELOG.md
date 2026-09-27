@@ -9,6 +9,17 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+### Lessons from a session are saved when you close it
+
+Dex used to say it learned from your sessions on its own. What it actually did was remember that a session ended, then wait for you to run the evening review before any of the useful bits were written down. Skip the review and the day file stayed empty of lessons. That is no longer true, and the wording now matches what happens.
+
+**What this fixes for you:**
+
+* **Closing a session keeps the obvious lessons.** When you end a Dex session the usual way, Dex writes down corrections and preferences it can spot, marked for you to confirm later.
+* **Saying "that's wrong" still saves it immediately.** You do not have to wait until you close the session. If you close a window instead of ending the session, that typed capture is the one that ran.
+* **The evening review is the careful pass, not the only pass.** `/daily-review` confirms what was already written and looks for anything the automatic pass missed.
+* **The reminder that you have lessons waiting can finally see them.** The nudge that appears when five or more are still pending now has real entries to count, not just a note that a session ended.
+
 Older copies of Dex can finally name the version they started from.
 
 If you started with Dex before it kept an official version record, checkup would say it could not tell which version was installed — and then stop. The guided update stayed closed, and the repair that checks your files against the official record would not run either. There was no safe way to set a starting version.

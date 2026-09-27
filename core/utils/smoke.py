@@ -101,6 +101,7 @@ RUNNER_FALLBACK_RELATIVES = (
     Path("core/portable_contract.py"),
     Path("core/utils/__init__.py"),
     Path("core/utils/dex_logger.py"),
+    Path("core/utils/file_lock.py"),
     Path("core/utils/os_flags.py"),
     Path("core/utils/release_channel.py"),
     Path("core/utils/smoke.py"),

@@ -10,7 +10,6 @@ go through the existing lifecycle transaction boundary.
 from __future__ import annotations
 
 import errno
-import fcntl
 import hashlib
 import json
 import os
@@ -27,6 +26,7 @@ from core.health.reporter import NormalizationResult, ReporterEnvelope, normaliz
 from core.lifecycle import service
 from core.transaction.engine import PlanEntry
 from core.transaction.fsync import fchmod
+from core.utils.file_lock import LOCK_EX, LOCK_NB, LOCK_UN, flock
 from core.utils.os_flags import binary_write_flags
 
 SNAPSHOT_CONTRACT = "dex.health.snapshot/v1"
@@ -369,7 +369,7 @@ class LatestPointer:
 
 
 class _RefreshCoordinator:
-    """POSIX advisory lock with kernel-recoverable stale ownership."""
+    """Advisory lock with kernel-recoverable stale ownership."""
 
     def __init__(self, root: Path, refresh_id: str, started_at: str) -> None:
         self.path = _coordination_lock_path(root)
@@ -384,7 +384,7 @@ class _RefreshCoordinator:
         )
         fchmod(descriptor, 0o600, path=self.path)
         try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            flock(descriptor, LOCK_EX | LOCK_NB)
         except OSError as error:
             if error.errno not in (errno.EACCES, errno.EAGAIN):
                 os.close(descriptor)
@@ -410,7 +410,7 @@ class _RefreshCoordinator:
             os.write(descriptor, body)
             os.fsync(descriptor)
         except BaseException:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            flock(descriptor, LOCK_UN)
             os.close(descriptor)
             raise
         self._descriptor = descriptor
@@ -421,7 +421,7 @@ class _RefreshCoordinator:
         if descriptor is None:
             return
         try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            flock(descriptor, LOCK_UN)
         finally:
             os.close(descriptor)
 
