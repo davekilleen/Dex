@@ -1561,6 +1561,31 @@ def test_legacy_delivery_reader_rejects_any_other_symlink(
         service.build_and_preview_delivered_release(vault, {})
 
 
+def test_windows_bridge_message_names_old_vaults_and_a_fresh_install(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(bridge.sys, "platform", "win32")
+    with pytest.raises(SystemExit) as raised:
+        bridge.main(["--vault", "."])
+    assert raised.value.code == 2
+    err = capsys.readouterr().err
+    assert (
+        "this one-time bridge is for Dex vaults created before v1.80 on macOS or Linux."
+        in err
+    )
+    assert "A Dex installed on Windows does not need it: run /dex-update instead." in err
+    assert (
+        "A pre-v1.80 vault cannot be moved to Windows with this tool; start from a fresh "
+        "Windows install and copy your notes across."
+    ) in err
+
+
+def test_installed_python_docstring_does_not_promise_a_windows_bridge() -> None:
+    doc = bridge._installed_python.__doc__ or ""
+    assert "Windows vaults never need this bridge (they are created post-foundation)" in doc
+    assert "Windows gets its own reviewed bridge" not in doc
+
+
 def test_bridge_success_copy_names_the_canonical_dex_update_command() -> None:
     source = Path(bridge.__file__).read_text(encoding="utf-8")
     assert "Run /dex-update" in source

@@ -1764,7 +1764,8 @@ def _installed_python(vault_root: Path) -> Path | None:
     The foundation lifecycle service needs the same runtime dependencies that
     the historical Dex installer already put in ``.venv``.  The bridge never
     downloads Python packages at update time.  This is deliberately a POSIX
-    seam; Windows gets its own reviewed bridge rather than guessed paths.
+    seam; Windows vaults never need this bridge (they are created
+    post-foundation).
     """
     venv = vault_root / ".venv"
     if venv.is_symlink() or (venv.exists() and not venv.is_dir()):
@@ -3248,7 +3249,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vault", type=Path, default=Path.cwd(), help="old Dex vault (defaults to current directory)")
     args = parser.parse_args(argv)
     if sys.platform.startswith("win"):
-        parser.error("this P0 bridge supports macOS and Linux only")
+        parser.error(
+            "this one-time bridge is for Dex vaults created before v1.80 on macOS or Linux. "
+            "A Dex installed on Windows does not need it: run /dex-update instead. "
+            "A pre-v1.80 vault cannot be moved to Windows with this tool; start from a fresh "
+            "Windows install and copy your notes across."
+        )
     try:
         _trusted_git_binary()
         vault = _validate_vault(args.vault)

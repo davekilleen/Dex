@@ -2,13 +2,140 @@
 # Dex PKM - Installation Script
 # This script sets up your development environment
 
-set -e
-
 # Quiet Node's noisy upstream deprecation warnings (e.g. DEP0040 "punycode is
 # deprecated") so first-run install output stays clean. These originate from
 # transitive dependencies / npm internals on newer Node versions, not from Dex,
 # and are harmless. Preserves any NODE_OPTIONS the user already set.
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--no-deprecation"
+
+# ---------------------------------------------------------------------------
+# Phase 3 support-policy hook. Full Windows installer mechanics (Python
+# fallback, Store stub, install.log, install.ps1) land with #755. Tests
+# source this file with DEX_SUPPORT_LIB_ONLY=1.
+# ---------------------------------------------------------------------------
+
+dex_support_uname() {
+    if [ -n "${DEX_TEST_UNAME:-}" ]; then
+        printf '%s\n' "$DEX_TEST_UNAME"
+        return 0
+    fi
+    uname -s 2>/dev/null || true
+}
+
+dex_support_proc_version() {
+    if [ -n "${DEX_TEST_PROC_VERSION+x}" ]; then
+        printf '%s\n' "$DEX_TEST_PROC_VERSION"
+        return 0
+    fi
+    if [ -f /proc/version ]; then
+        cat /proc/version
+    fi
+}
+
+dex_support_vault_path() {
+    if [ -n "${DEX_TEST_VAULT_PATH:-}" ]; then
+        printf '%s\n' "$DEX_TEST_VAULT_PATH"
+        return 0
+    fi
+    pwd
+}
+
+dex_support_show_log() {
+    local log="${INSTALL_LOG:-${DEX_INSTALL_LOG:-$(pwd)/System/.dex/install.log}}"
+    echo " See the install log for the exact error: $log"
+}
+
+dex_support_shell_precheck() {
+    # uname -s prefix CYGWIN ⇒ refuse. MINGW*/MSYS* ⇒ Git Bash launcher.
+    # OSTYPE=cygwin on Git Bash is not a refuse (Joe, 2026-09-26).
+    local uname_s proc vault
+    uname_s=$(dex_support_uname)
+    proc=$(dex_support_proc_version)
+    vault=$(dex_support_vault_path)
+    case "$uname_s" in
+        CYGWIN*|cygwin*)
+            echo "Dex on Windows runs in PowerShell or Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) or PowerShell in your Dex folder and run the installer there."
+            return 1
+            ;;
+        MINGW*|mingw*|MSYS*|msys*)
+            DEX_WINDOWS_LAUNCHER=1
+            ;;
+    esac
+    case "$proc" in
+        *[Mm]icrosoft*)
+            case "$vault" in
+                /mnt/[A-Za-z]|/mnt/[A-Za-z]/*)
+                    echo "Your Dex folder is on the Windows side of WSL (/mnt/...). Dex can't keep its files safe there. Either keep the folder in Linux (for example ~/Dex) and use Dex from WSL, or install Dex natively in Windows PowerShell."
+                    return 1
+                    ;;
+            esac
+            ;;
+    esac
+    return 0
+}
+
+dex_support_python_probe() {
+    if [ ! -f "core/utils/platform_support.py" ] || [ -z "${PYTHON_CMD:-}" ]; then
+        return 0
+    fi
+    local status=0
+    if [ -n "${INSTALL_LOG:-}${DEX_INSTALL_LOG:-}" ]; then
+        local log="${INSTALL_LOG:-$DEX_INSTALL_LOG}"
+        if ! "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >>"$log"; then
+            status=$?
+            dex_support_show_log
+            return "$status"
+        fi
+        return 0
+    fi
+    if ! "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >/dev/null; then
+        status=$?
+        dex_support_show_log
+        return "$status"
+    fi
+    return 0
+}
+
+dex_support_verify_venv_python() {
+    case "${DEX_WINDOWS_LAUNCHER:-}" in
+        1) ;;
+        *)
+            case "${OSTYPE:-}" in
+                msys*|cygwin*|win32*|mingw*) ;;
+                *)
+                    if [ -z "${WINDIR:-}" ]; then
+                        return 0
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+    local python=""
+    if [ -n "${VENV_PYTHON:-}" ] && [ -f "$VENV_PYTHON" ]; then
+        python="$VENV_PYTHON"
+    elif [ -f ".venv/Scripts/python.exe" ]; then
+        python=".venv/Scripts/python.exe"
+    else
+        return 0
+    fi
+    local plat
+    plat=$("$python" -c "import sys; print(sys.platform)" 2>/dev/null || true)
+    if [ "$plat" != "win32" ]; then
+        echo "Dex on Windows runs in PowerShell or Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) or PowerShell in your Dex folder and run the installer there."
+        echo "The Python in .venv printed '$plat', not win32."
+        dex_support_show_log
+        return 1
+    fi
+    return 0
+}
+
+if [ "${DEX_SUPPORT_LIB_ONLY:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
+set -e
+
+dex_support_shell_precheck
 
 echo "🚀 Setting up Dex..."
 echo ""
@@ -111,6 +238,7 @@ if [ -n "$PYTHON_CMD" ]; then
     fi
     
     echo "✅ Python $PYTHON_VERSION"
+    dex_support_python_probe
 
     # Determine venv paths for this platform
     if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
@@ -211,6 +339,7 @@ if [ -n "$PYTHON_CMD" ]; then
             read -p "Press Enter to continue setup (you can fix this later)..."
         fi
     fi
+    dex_support_verify_venv_python
 
     # Install dependencies into venv
     if [ -f "$VENV_PIP" ] && "$VENV_PIP" install -r core/mcp/requirements.txt --quiet 2>/dev/null; then

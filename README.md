@@ -36,11 +36,18 @@ A **vault** is the folder containing your personal Dex notes and configuration.
 curl -fsSL https://heydex.ai/install.sh | bash
 ```
 
-**Windows — PowerShell:**
+**Windows — PowerShell (preview):**
 
 ```powershell
 irm https://heydex.ai/install.ps1 | iex
 ```
+
+Windows support is a **preview** while we finish the Windows-specific work
+([status](docs/specs/windows-support-and-security.md#windows-support-status)). Install and
+first setup work; updating, undoing an update, and connected-service keys are still being
+completed. Requirements: Windows 10 22H2 or 11, Python 3.12 or 3.13 from python.org (not the
+Microsoft Store), Git for Windows installed for all users, and a Dex folder on your local `C:`
+drive. Calendar and background sync remain Mac-only.
 
 Then open the Dex folder in Claude Code or Cursor and say **"hi"**. Dex guides you through your role and priorities. [Installation help](https://heydex.ai/install/). If setup stops, keep the error message and use the help below; some prerequisites may already have been installed.
 
@@ -75,6 +82,18 @@ Dex's update service previews product changes and protects personal content thro
 - Ask **"Show me the Dex update preview"** or use `/dex-update` where the lifecycle service is available. Installing a plugin update and updating your vault are separate operations.
 - Use [the help guide](https://heydex.ai/help/) for setup, or [report a bug](https://github.com/davekilleen/dex/issues) without posting private vault contents. The [feedback guide](https://heydex.ai/help/feedback.html) explains reporting.
 - To stop using an app, close its Dex session and revoke its folder access or disable its plugin in that app. Keep the vault if you want your notes. Removing an app or plugin does not stop independently installed background jobs. New-app removal instructions remain pending native verification.
+
+## Windows support status
+
+| Area | Status today |
+| --- | --- |
+| Install (`install.ps1`, Git Bash `install.sh`) | Preview — works on a clean Windows 11 with python.org 3.12/3.13 |
+| First setup and daily use (notes, tasks, MCP tools) | Preview |
+| `/dex-update` and `/dex-rollback` | Not yet — a fix for how Dex read and wrote its own record files on Windows is in progress |
+| Connected-service keys (`.env`) and trusted local MCPs | Not yet — Windows file-permission checks are in progress |
+| Older vaults (before v1.80) moving to the current update engine | Not on Windows — start from a fresh install |
+| Calendar, background meeting sync, launch-at-login jobs | Mac only |
+| Supported shells and Pythons | PowerShell or Git Bash; python.org Python 3.12/3.13. Not supported: Cygwin, Microsoft Store Python, WSL folders under `/mnt` |
 
 ## Guides
 
@@ -203,7 +222,11 @@ python3 --version
 The repository installer is a **Bash script**. Run it from the Dex folder you opened in Step 1.
 
 - **Mac:** Open Cursor's **View → Terminal** in that folder.
-- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. PowerShell can run the version checks above, but cannot directly run this Bash installer. For the PowerShell installation route, use [Quick install](#quick-install-claude-code-or-cursor).
+- **Windows (preview):** Use **Git Bash**, supplied by Git for Windows, in that folder, or
+  PowerShell with the [Quick install](#quick-install-claude-code-or-cursor) route. Git Bash
+  must find the python.org Python (`python --version` prints 3.12 or 3.13); Cygwin and
+  Microsoft Store Python are not supported. The installer checks this and tells you what to
+  change.
 
 In the terminal selected above, run:
 
@@ -245,7 +268,8 @@ Open **System Settings** → **Privacy & Security** → **Calendars**. Turn **Cu
 That's it. The installer already set up the rest on Mac. Your meetings—including recurring ones like weekly 1:1s—will show on the correct days in Dex.
 
 **More detail and troubleshooting:** [Calendar_Setup.md](docs/Dex_System/Calendar_Setup.md) (in your vault after setup).
-**On Windows?** Calendar connection is supported on Mac via Apple Calendar. We don't have Windows instructions in this repo yet.
+**On Windows?** Calendar connection is Mac-only (Apple Calendar). Windows calendar support is
+not planned in this release; Dex will say so rather than pretend it checked.
 
 </details>
 
@@ -274,7 +298,7 @@ xcode-select --install
 
 ---
 
-### Windows: "python is not recognized" or "pip is not recognized"
+### Windows (Git Bash or PowerShell): "python is not recognized" or "pip is not recognized"
 
 This means Python wasn't added to your PATH during installation.
 
@@ -286,11 +310,11 @@ This means Python wasn't added to your PATH during installation.
 4. ⚠️ **CHECK THE BOX: "Add Python to PATH"** (on first screen)
 5. Complete installation
 6. **Restart your terminal completely** (close and reopen)
-7. Return to **Git Bash** in your Dex folder and run `bash ./install.sh` again
+7. Return to **Git Bash or PowerShell** in your Dex folder and run the installer again
 
 ---
 
-### Windows: "git is not recognized"
+### Windows (Git Bash or PowerShell): "git is not recognized"
 
 Git for Windows isn't installed.
 
@@ -299,7 +323,13 @@ Git for Windows isn't installed.
 1. Download from [git-scm.com/download/win](https://git-scm.com/download/win)
 2. Run installer with default options
 3. **Restart your terminal**
-4. Open **Git Bash** in your Dex folder and run `bash ./install.sh` again
+4. Open **Git Bash or PowerShell** in your Dex folder and run the installer again
+
+---
+
+### Windows: "this Dex copy's update engine doesn't match its release information"
+
+You have hit the record-file line-ending problem above; the fix arrives with the next release and repairs itself. Nothing in your notes is affected.
 
 ---
 
