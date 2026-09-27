@@ -19,6 +19,9 @@ A Windows 11 install from Git Bash could stop without a usable reason. Dex treat
 * **The fake Microsoft Store Python is skipped.** Windows sometimes puts a `python3` on the path that only opens the Store. Setup ignores that placeholder, checks the version on a real Python, and continues with that one.
 * **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
 * **PowerShell setup uses the same installer.** When Git Bash is there, the PowerShell script hands the Python it found to the shared setup script, so both doors finish the same way.
+* **Setup copies the official release.** The Windows installer takes the official release only, not the latest development copy.
+* **PowerShell no longer asks you to turn off its safety check.** Download Dex, review the script, and run it from that folder with a one-session setting that still checks signed scripts.
+* **Only the listed packages are installed.** Setup installs only the Node and Python package versions Dex listed.
 
 Older copies of Dex can finally name the version they started from.
 

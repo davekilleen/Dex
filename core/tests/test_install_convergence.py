@@ -37,6 +37,8 @@ def _install_fixture(
     (root / MIGRATOR).write_text("// exercised through the node shim\n", encoding="utf-8")
     (root / "core" / "mcp").mkdir()
     (root / "core" / "mcp" / "requirements.txt").write_text("", encoding="utf-8")
+    (root / "core" / "mcp" / "requirements.hash.txt").write_text("# fixture\n", encoding="utf-8")
+    (root / "package-lock.json").write_text('{ "lockfileVersion": 3 }\n', encoding="utf-8")
 
     if scenario == "post-split":
         (root / ".git").mkdir()

@@ -525,6 +525,24 @@ def test_install_sh_does_not_swallow_venv_or_pip_stderr() -> None:
     assert "dex_run_logged \"pip install\"" in text
     assert "-m venv .venv 2>/dev/null" not in text
     assert "2>/dev/null" not in text.split("Setting up Python environment")[1].split("Verifying Work MCP")[0]
+    assert "npm ci" in text
+    assert "pnpm install --frozen-lockfile" in text
+    assert "npm install\n" not in text
+    assert "--require-hashes" in text
+    assert "requirements.hash.txt" in text
+    assert "dex_support_python_probe" in text
+    assert "DEX_SUPPORT_LIB_ONLY" in text
+    assert "git clone" not in text
+
+
+def test_readme_does_not_recommend_bypass_or_remote_iex() -> None:
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "ExecutionPolicy Bypass" not in text
+    assert "irm https://heydex.ai/install.ps1 | iex" not in text
+    assert "clone --branch release --single-branch" in text
+    assert "RemoteSigned" in text
+    assert "-Scope Process" in text
+    assert "--require-hashes" in text
 
 
 def test_install_ps1_covers_the_same_windows_install_contract() -> None:
@@ -546,6 +564,17 @@ def test_install_ps1_covers_the_same_windows_install_contract() -> None:
     assert "v1-to-v2-brain-vault-split.cjs" in text
     assert "2>$null" not in text.split("Creating virtual environment")[1].split("Verifying Work MCP")[0]
     assert "LiteralPath" in text
+    assert "clone --branch release --single-branch" in text
+    assert "ExecutionPolicy Bypass" not in text
+    assert "RemoteSigned" in text
+    assert "-Scope Process" in text
+    assert "Do not pipe a remote script into iex" in text
+    assert '@("ci")' in text or '"ci"' in text
+    assert "--frozen-lockfile" in text
+    assert "--require-hashes" in text
+    assert "requirements.hash.txt" in text
+    assert "core.utils.platform_support" in text
+    assert "winget" not in text.lower()
 
 
 def test_install_ps1_is_classified_as_brain() -> None:
@@ -574,6 +603,8 @@ def _windows_like_install_fixture(
     )
     (root / "core" / "mcp").mkdir()
     (root / "core" / "mcp" / "requirements.txt").write_text("", encoding="utf-8")
+    (root / "core" / "mcp" / "requirements.hash.txt").write_text("# fixture\n", encoding="utf-8")
+    (root / "package-lock.json").write_text('{ "lockfileVersion": 3 }\n', encoding="utf-8")
 
     shim_dir = tmp_path / "bin"
     shim_dir.mkdir()

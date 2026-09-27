@@ -1,8 +1,8 @@
 # Dex PKM - Windows Installation Script
-# PowerShell twin of install.sh. Run from a Dex folder:
-#   powershell -ExecutionPolicy Bypass -File .\install.ps1
-# Or from an empty folder / via irm | iex, this script clones Dex first
-# and then runs the same install.
+# Download Dex from the release branch, review this file, then run it
+# from that folder:
+#   powershell -ExecutionPolicy RemoteSigned -Scope Process -File .\install.ps1
+# Do not pipe a remote script into iex.
 
 $ErrorActionPreference = "Stop"
 
@@ -219,6 +219,20 @@ function Resolve-DexVenvPaths {
     return @{ Python = $scriptsPython; Pip = $scriptsPip }
 }
 
+function Invoke-DexSupportPythonProbe {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$PythonCmd
+    )
+    $modulePath = Join-Path $Root "core\utils\platform_support.py"
+    if (-not (Test-Path -LiteralPath $modulePath)) {
+        return 0
+    }
+    return (Invoke-DexLogged -Label "platform_support" -FilePath $PythonCmd -ArgumentList @(
+        "-m", "core.utils.platform_support", "--json", "--vault", $Root
+    ))
+}
+
 function Install-DexRepository {
     param([Parameter(Mandatory = $true)][string]$Target)
     if (Test-Path -LiteralPath (Join-Path $Target "core\provision.cjs")) {
@@ -235,7 +249,7 @@ function Install-DexRepository {
         Write-Host "Download Git for Windows from: https://git-scm.com/download/win"
         throw "git missing"
     }
-    & $git.Source clone "https://github.com/davekilleen/dex.git" $Target
+    & $git.Source clone --branch release --single-branch "https://github.com/davekilleen/dex.git" $Target
     if ($LASTEXITCODE -ne 0) {
         throw "git clone failed"
     }
@@ -282,6 +296,10 @@ $PythonCmd = $python.Command
 $env:DEX_INSTALL_PYTHON = $PythonCmd
 if (-not $env:DEX_INSTALL_LOG) {
     $env:DEX_INSTALL_LOG = $script:InstallLog
+}
+if ((Invoke-DexSupportPythonProbe -Root $Root -PythonCmd $PythonCmd) -ne 0) {
+    Show-DexLoggedFailure "This computer is not a supported Dex setup"
+    exit 1
 }
 
 $bash = Get-Command bash -ErrorAction SilentlyContinue
@@ -342,18 +360,24 @@ if (-not $npx) {
 
 Write-Host ""
 Write-Host "Installing dependencies..."
-$npm = Get-Command pnpm -ErrorAction SilentlyContinue
-$npmLabel = "pnpm"
-if (-not $npm) {
-    $npm = Get-Command npm -ErrorAction SilentlyContinue
+$npmArgs = @()
+$npm = $null
+$npmLabel = ""
+if ((Test-Path -LiteralPath (Join-Path $Root "pnpm-lock.yaml")) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    $npm = Get-Command pnpm
+    $npmLabel = "pnpm"
+    $npmArgs = @("install", "--frozen-lockfile")
+} elseif ((Test-Path -LiteralPath (Join-Path $Root "package-lock.json")) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+    $npm = Get-Command npm
     $npmLabel = "npm"
+    $npmArgs = @("ci")
 }
 if (-not $npm) {
-    Write-Host "[X] Neither npm nor pnpm found"
+    Write-Host "[X] Need npm with package-lock.json, or pnpm with pnpm-lock.yaml"
     exit 1
 }
-Write-DexInstallLog "----- $npmLabel install -----"
-$npmOutput = & $npm.Source install 2>&1
+Write-DexInstallLog ("----- " + $npmLabel + " " + ($npmArgs -join " ") + " -----")
+$npmOutput = & $npm.Source @npmArgs 2>&1
 $npmStatus = $LASTEXITCODE
 if ($null -ne $npmOutput) {
     $npmOutput | ForEach-Object {
@@ -414,7 +438,7 @@ if (-not (Test-Path -LiteralPath $venvDir)) {
         Write-Host ""
         Write-Host "Try manually:"
         Write-Host "  `"$PythonCmd`" -m venv .venv"
-        Write-Host "  .venv\Scripts\pip.exe install -r core\mcp\requirements.txt"
+        Write-Host "  .venv\Scripts\pip.exe install --require-hashes -r core\mcp\requirements.hash.txt"
     }
 }
 $venv = Resolve-DexVenvPaths -Root $Root
@@ -422,7 +446,12 @@ $VenvPython = $venv.Python
 $VenvPip = $venv.Pip
 
 $workMcpStatus = "[!] Needs attention"
-if ((Test-Path -LiteralPath $VenvPip) -and ((Invoke-DexLogged -Label "pip install" -FilePath $VenvPip -ArgumentList @("install", "-r", "core/mcp/requirements.txt", "--quiet")) -eq 0)) {
+$hashedRequirements = Join-Path $Root "core\mcp\requirements.hash.txt"
+if (-not (Test-Path -LiteralPath $hashedRequirements)) {
+    Show-DexLoggedFailure "Hashed Python requirements are missing (core/mcp/requirements.hash.txt)"
+    exit 1
+}
+if ((Test-Path -LiteralPath $VenvPip) -and ((Invoke-DexLogged -Label "pip install" -FilePath $VenvPip -ArgumentList @("install", "--require-hashes", "-r", $hashedRequirements, "--quiet")) -eq 0)) {
     Write-Host "[OK] Work MCP dependencies installed"
 } else {
     if (-not (Test-Path -LiteralPath $VenvPip)) {
@@ -435,7 +464,7 @@ if ((Test-Path -LiteralPath $VenvPip) -and ((Invoke-DexLogged -Label "pip instal
     Write-Host ""
     Write-Host "Try manually:"
     Write-Host "  `"$PythonCmd`" -m venv .venv"
-    Write-Host "  $VenvPip install -r core\mcp\requirements.txt"
+    Write-Host "  $VenvPip install --require-hashes -r core\mcp\requirements.hash.txt"
 }
 
 Write-Host ""

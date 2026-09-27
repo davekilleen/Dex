@@ -242,7 +242,125 @@ dex_prompt_continue() {
     fi
 }
 
-if [ "${DEX_INSTALL_LIB_ONLY:-}" = "1" ]; then
+# Phase 3 (#761) support-policy hooks. The shared module lives in
+# core/utils/platform_support.py. If that file is not in this checkout yet,
+# the Python probe is a no-op so #761 can rebase on top.
+dex_support_uname() {
+    if [ -n "${DEX_TEST_UNAME:-}" ]; then
+        printf '%s\n' "$DEX_TEST_UNAME"
+        return 0
+    fi
+    uname -s 2>/dev/null || true
+}
+
+dex_support_proc_version() {
+    if [ -n "${DEX_TEST_PROC_VERSION+x}" ]; then
+        printf '%s\n' "$DEX_TEST_PROC_VERSION"
+        return 0
+    fi
+    if [ -f /proc/version ]; then
+        cat /proc/version
+    fi
+}
+
+dex_support_vault_path() {
+    if [ -n "${DEX_TEST_VAULT_PATH:-}" ]; then
+        printf '%s\n' "$DEX_TEST_VAULT_PATH"
+        return 0
+    fi
+    pwd
+}
+
+dex_support_show_log() {
+    local log="${INSTALL_LOG:-${DEX_INSTALL_LOG:-$(pwd)/System/.dex/install.log}}"
+    echo " See the install log for the exact error: $log"
+}
+
+dex_support_shell_precheck() {
+    # uname -s prefix CYGWIN ⇒ refuse. MINGW*/MSYS* ⇒ Git Bash launcher.
+    # OSTYPE=cygwin on Git Bash is not a refuse (Joe, 2026-09-26).
+    local uname_s proc vault
+    uname_s=$(dex_support_uname)
+    proc=$(dex_support_proc_version)
+    vault=$(dex_support_vault_path)
+    case "$uname_s" in
+        CYGWIN*|cygwin*)
+            echo "Dex on Windows runs in PowerShell or Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) or PowerShell in your Dex folder and run the installer there."
+            return 1
+            ;;
+        MINGW*|mingw*|MSYS*|msys*)
+            DEX_WINDOWS_LAUNCHER=1
+            ;;
+    esac
+    case "$proc" in
+        *[Mm]icrosoft*)
+            case "$vault" in
+                /mnt/[A-Za-z]|/mnt/[A-Za-z]/*)
+                    echo "Your Dex folder is on the Windows side of WSL (/mnt/...). Dex can't keep its files safe there. Either keep the folder in Linux (for example ~/Dex) and use Dex from WSL, or install Dex natively in Windows PowerShell."
+                    return 1
+                    ;;
+            esac
+            ;;
+    esac
+    return 0
+}
+
+dex_support_python_probe() {
+    if [ ! -f "core/utils/platform_support.py" ] || [ -z "${PYTHON_CMD:-}" ]; then
+        return 0
+    fi
+    local status=0
+    if [ -n "${INSTALL_LOG:-}${DEX_INSTALL_LOG:-}" ]; then
+        local log="${INSTALL_LOG:-$DEX_INSTALL_LOG}"
+        "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >>"$log" || status=$?
+    else
+        "$PYTHON_CMD" -m core.utils.platform_support --json --vault "$(pwd)" >/dev/null || status=$?
+    fi
+    if [ "$status" -ne 0 ]; then
+        dex_support_show_log
+        return "$status"
+    fi
+    return 0
+}
+
+dex_support_verify_venv_python() {
+    case "${DEX_WINDOWS_LAUNCHER:-}" in
+        1) ;;
+        *)
+            case "${OSTYPE:-}" in
+                msys*|cygwin*|win32*|mingw*) ;;
+                *)
+                    if [ -z "${WINDIR:-}" ]; then
+                        return 0
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+    local python=""
+    if [ -n "${VENV_PYTHON:-}" ] && [ -f "$VENV_PYTHON" ]; then
+        python="$VENV_PYTHON"
+    elif [ -f ".venv/Scripts/python.exe" ]; then
+        python=".venv/Scripts/python.exe"
+    else
+        return 0
+    fi
+    local plat
+    plat=$("$python" -c "import sys; print(sys.platform)" 2>/dev/null || true)
+    if [ "$plat" != "win32" ]; then
+        echo "Dex on Windows runs in PowerShell or Git Bash with a Python from python.org. Cygwin isn't supported. Open Git Bash (installed with Git for Windows) or PowerShell in your Dex folder and run the installer there."
+        echo "The Python in .venv printed '$plat', not win32."
+        dex_support_show_log
+        return 1
+    fi
+    return 0
+}
+
+dex_hashed_requirements() {
+    printf '%s\n' "core/mcp/requirements.hash.txt"
+}
+
+if [ "${DEX_INSTALL_LIB_ONLY:-}" = "1" ] || [ "${DEX_SUPPORT_LIB_ONLY:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
@@ -260,6 +378,9 @@ set -e
 
 dex_init_install_log
 dex_log "starting install"
+if ! dex_support_shell_precheck; then
+    exit 1
+fi
 
 echo "🚀 Setting up Dex..."
 echo ""
@@ -334,6 +455,9 @@ echo "✅ Node.js $(node -v)"
 # Windows python.org installs often expose `py -3` and `python`, not `python3`.
 if dex_resolve_python; then
     echo "✅ Python $PYTHON_VERSION"
+    if ! dex_support_python_probe; then
+        exit 1
+    fi
 
     dex_resolve_venv_paths
 else
@@ -368,24 +492,23 @@ if ! command -v npx >/dev/null 2>&1; then
     echo "   Try reinstalling Node.js from https://nodejs.org/"
 fi
 
-# Install Node dependencies. Keep the live output on screen (this step can
-# take a minute) and record the same lines in the install log.
+# Install Node dependencies from the committed lockfile only.
 echo ""
 echo "📦 Installing dependencies..."
-if command -v pnpm >/dev/null 2>&1; then
-    dex_log "----- pnpm install -----"
-    if ! pnpm install > >(tee -a "$INSTALL_LOG") 2>&1; then
+if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
+    dex_log "----- pnpm install --frozen-lockfile -----"
+    if ! pnpm install --frozen-lockfile > >(tee -a "$INSTALL_LOG") 2>&1; then
         dex_show_logged_failure "Could not install Node dependencies"
         exit 1
     fi
-elif command -v npm >/dev/null 2>&1; then
-    dex_log "----- npm install -----"
-    if ! npm install > >(tee -a "$INSTALL_LOG") 2>&1; then
+elif [ -f package-lock.json ] && command -v npm >/dev/null 2>&1; then
+    dex_log "----- npm ci -----"
+    if ! npm ci > >(tee -a "$INSTALL_LOG") 2>&1; then
         dex_show_logged_failure "Could not install Node dependencies"
         exit 1
     fi
 else
-    echo "❌ Neither npm nor pnpm found"
+    echo "❌ Need npm with package-lock.json, or pnpm with pnpm-lock.yaml"
     exit 1
 fi
 
@@ -444,16 +567,25 @@ if [ -n "$PYTHON_CMD" ]; then
             echo ""
             echo "Try manually:"
             echo "  \"$PYTHON_CMD\" -m venv .venv"
-            echo "  $VENV_PIP install -r core/mcp/requirements.txt"
+            echo "  $VENV_PIP install --require-hashes -r core/mcp/requirements.hash.txt"
             echo ""
             dex_prompt_continue
         fi
     fi
 
     dex_resolve_venv_paths
+    if ! dex_support_verify_venv_python; then
+        exit 1
+    fi
 
-    # Install dependencies into venv
-    if [ -f "$VENV_PIP" ] && dex_run_logged "pip install" "$VENV_PIP" install -r core/mcp/requirements.txt --quiet; then
+    HASHED_REQUIREMENTS="$(dex_hashed_requirements)"
+    if [ ! -f "$HASHED_REQUIREMENTS" ]; then
+        dex_show_logged_failure "Hashed Python requirements are missing ($HASHED_REQUIREMENTS)"
+        exit 1
+    fi
+
+    # Install dependencies into venv from the hashed pin file only.
+    if [ -f "$VENV_PIP" ] && dex_run_logged "pip install" "$VENV_PIP" install --require-hashes -r "$HASHED_REQUIREMENTS" --quiet; then
         echo "✅ Work MCP dependencies installed"
     else
         if [ ! -f "$VENV_PIP" ]; then
@@ -466,7 +598,7 @@ if [ -n "$PYTHON_CMD" ]; then
         echo ""
         echo "Try manually:"
         echo "  \"$PYTHON_CMD\" -m venv .venv"
-        echo "  $VENV_PIP install -r core/mcp/requirements.txt"
+        echo "  $VENV_PIP install --require-hashes -r $HASHED_REQUIREMENTS"
         echo ""
         dex_prompt_continue
     fi
