@@ -19,12 +19,8 @@ from typing import Callable, Literal
 
 from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
 from core.transaction.fsync import fsync_directory
+from core.utils.file_lock import LOCK_EX, LOCK_UN, flock
 from core.utils.local_git import git_env, git_output
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - history cleanup already requires Unix descriptor passing
-    fcntl = None
 
 HistoryResult = Literal[
     "optional-tool-unavailable",
@@ -540,20 +536,19 @@ class _HistoryLifecycleLock:
             os.close(self.backup_descriptor)
             self.backup_descriptor = -1
         if self.root_descriptor >= 0:
-            if fcntl is not None:
-                fcntl.flock(self.root_descriptor, fcntl.LOCK_UN)
-            os.close(self.root_descriptor)
-            self.root_descriptor = -1
+            try:
+                flock(self.root_descriptor, LOCK_UN)
+            finally:
+                os.close(self.root_descriptor)
+                self.root_descriptor = -1
 
 
 def _acquire_history_lifecycle_lock(root: Path, *, create: bool) -> _HistoryLifecycleLock:
-    if fcntl is None:
-        raise RuntimeError("history lifecycle locking is unavailable")
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     root_descriptor = os.open(root, flags)
     backup_descriptor = None
     try:
-        fcntl.flock(root_descriptor, fcntl.LOCK_EX)
+        flock(root_descriptor, LOCK_EX)
         backup_descriptor = _open_backup_root_at(root_descriptor, create=create)
         metadata = os.fstat(backup_descriptor)
         if not stat.S_ISDIR(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o700:
