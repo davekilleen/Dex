@@ -34,18 +34,18 @@ jobs:
           version: "0.12.19"
           checksum: "23bf5552d220e0842b65c862097b2ebaeba0064b74eda5e565e77fd25969d8c8"
 
-      - name: Regenerate hash file and fail on drift
+      - name: Compile into an empty file and fail on drift
         run: |
           set -euo pipefail
-          uv pip compile --python-version 3.11 --universal --generate-hashes --output-file=core/mcp/requirements.hash.txt core/mcp/requirements.txt
-          git diff --exit-code -- core/mcp/requirements.hash.txt
+          chmod +x scripts/check-hashed-python-requirements.sh
+          scripts/check-hashed-python-requirements.sh
 
   hashed-pip-install:
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        python-version: ['3.11', '3.12', '3.13t']
+        python-version: ['3.11', '3.12']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:

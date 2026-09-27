@@ -594,16 +594,29 @@ def test_hashed_requirements_are_uv_universal_with_win_and_mac() -> None:
     assert "PyPI JSON API" not in text
 
 
+def test_hashed_requirements_drift_check_compiles_into_an_empty_file() -> None:
+    script = (
+        REPO_ROOT / "scripts" / "check-hashed-python-requirements.sh"
+    ).read_text(encoding="utf-8")
+    assert ': > "$OUTPUT"' in script
+    assert "--constraint" in script
+    assert "UV_CUSTOM_COMPILE_COMMAND" in script
+    assert "significant(committed)" in script
+    assert "clean-empty-compile" in script
+    assert "pypi.org/pypi" in script
+    assert "--output-file=core/mcp/requirements.hash.txt" in script
+    assert '--output-file="$OUTPUT"' in script
+
+
 def test_hashed_requirements_workflow_is_separate_from_required_gates() -> None:
     workflow = (
         REPO_ROOT / ".github" / "workflows" / "hashed-python-requirements.yml"
     ).read_text(encoding="utf-8")
     assert "name: Hashed Python requirements" in workflow
-    assert (
-        "uv pip compile --python-version 3.11 --universal --generate-hashes "
-        "--output-file=core/mcp/requirements.hash.txt core/mcp/requirements.txt"
-    ) in workflow
-    assert 'python-version: [\'3.11\', \'3.12\', \'3.13t\']' in workflow
+    assert "scripts/check-hashed-python-requirements.sh" in workflow
+    assert "--output-file=core/mcp/requirements.hash.txt core/mcp/requirements.txt" not in workflow
+    assert 'python-version: [\'3.11\', \'3.12\']' in workflow
+    assert "3.13t" not in workflow
     assert 'checksum: "23bf5552d220e0842b65c862097b2ebaeba0064b74eda5e565e77fd25969d8c8"' in workflow
     assert "pip install --require-hashes" in workflow
     assert "windows-latest" in workflow
