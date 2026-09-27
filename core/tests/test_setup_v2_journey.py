@@ -196,9 +196,12 @@ def test_preview_mode_is_easy_to_start_and_offered_on_existing_vault() -> None:
 
 def test_preview_feedback_is_copy_only_and_three_questions() -> None:
     hour = _read(HOUR)
-    assert "DRAFT COPY PENDING APPROVAL" in hour
-    assert "Nothing is sent from here" in hour
-    assert "copy your answers back" in hour
+    assert "### Optional feedback" in hour
+    assert "DRAFT COPY PENDING APPROVAL" not in hour
+    assert (
+        "If you have a minute, copy your answers back to whoever asked you to try this. "
+        "Nothing is sent from here."
+    ) in hour
     questions = [
         "Did Dex already feel like it understood your working world, or did this still feel like a setup form?",
         "Was there a moment you wanted to stop — and was it easy to stop there?",
@@ -208,3 +211,5 @@ def test_preview_feedback_is_copy_only_and_three_questions() -> None:
         assert question in hour
     spoken = "\n".join(_spoken_lines(hour))
     assert spoken.count("?") >= 3
+    assert "Thanks for trying the new first hour." in spoken
+    assert "You can skip this." in spoken

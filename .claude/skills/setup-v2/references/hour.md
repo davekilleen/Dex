@@ -223,7 +223,7 @@ After the clean stop or if they leave early — always:
 
 Leftover temp folders are wiped on the next start if this sitting ends early.
 
-### Optional feedback — DRAFT COPY PENDING APPROVAL
+### Optional feedback
 
 Do not write this anywhere. Do not send it. They copy the answers back to whoever asked them to try this.
 
