@@ -169,10 +169,11 @@ def test_manifest_only_probe_is_unknown_without_counts_or_records(
     encoded = json.dumps(result.structured_detail, sort_keys=True)
 
     assert result.verdict == "UNKNOWN"
-    assert result.detail == (
+    assert result.detail.startswith(
         "I couldn't verify which Dex version is installed, so I can't tell you "
         "what you've changed."
     )
+    assert "python3 -m core.update.reanchor_cli --dry-run" in result.detail
     assert result.structured_detail is not None
     assert result.structured_detail["incomplete_reasons"] == [
         "baseline-not-verified"
@@ -307,9 +308,11 @@ def test_doctor_skill_offers_the_reanchor_flow_without_running_it() -> None:
     # (its consent gates are TTY reads, so the model cannot answer them), and
     # the wording is flagged as founder copy pending approval.
     assert "python3 -m core.update.reanchor_cli" in section
+    assert "python3 -m core.update.reanchor_cli --dry-run" in section
     assert "Never attempt to run it through Bash" in section
     assert "FOUNDER COPY - DRAFT PENDING APPROVAL" in section
     assert "`rejected`" in section and "`verified`" in section
+    assert "couldn't verify which version is installed" in section
 
 
 def test_doctor_skill_requires_blocked_count_in_first_summary_sentence() -> None:
