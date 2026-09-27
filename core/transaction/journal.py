@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.transaction.fsync import fsync_directory
+from core.utils.os_flags import binary_write_flags
 
 SCHEMA_VERSION = 2
 PREVIOUS_SCHEMA_VERSION = 1
@@ -87,7 +88,9 @@ class Journal:
 
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         descriptor = os.open(
-            self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
+            self.path,
+            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_APPEND),
+            0o600,
         )
         try:
             os.write(descriptor, line.encode("utf-8"))
@@ -116,7 +119,9 @@ class Journal:
         else:
             # A complete, hash-valid entry merely missing its newline: keep
             # it and finish the line so the next append starts fresh.
-            descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND)
+            descriptor = os.open(
+                self.path, binary_write_flags(os.O_WRONLY | os.O_APPEND)
+            )
             try:
                 os.write(descriptor, b"\n")
                 os.fsync(descriptor)
