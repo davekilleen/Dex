@@ -45,8 +45,9 @@ POSIX today (must stay the only live writer):
 Windows cannot use that API. A future implementation must be **as strong as**
 that chain, not a pathname fallback:
 
-1. Open each component with `FILE_FLAG_OPEN_REPARSE_POINT` (do not follow
-   symlinks or junctions). Refuse `FILE_ATTRIBUTE_REPARSE_POINT`.
+1. Open each component without following reparse points. The exact Windows
+   reparse tags — including cloud-placeholder tags — are specified in
+   spec #719 §3.3. This note does not invent a local tag list.
 2. Hold a directory handle across the walk. Identify each handle with
    `GetFileInformationByHandle` (volume serial + file index), and compare
    before/after like today’s `(st_dev, st_ino)` pin.
@@ -68,17 +69,15 @@ depend on this chain.
 POSIX `0600` / `0400` / `0700` are not Windows access control. The CRT maps
 mode bits to the read-only attribute. A writable file often stats as `0o666`.
 
-Honest options (pick one in a later reviewed change; do not mix them):
-
-| Option | Meaning |
-|---|---|
-| Fail closed | Require the POSIX primitives (`fchmod`, owner-only mode, `getuid`). Windows refuses. **This is the current authorised behaviour.** |
-| Windows ACL writer | After exclusive create, set a DACL that is owner-only (no Users/Everyone write), then verify with `GetSecurityInfo`. Do not treat `0o666` as `0o600`. |
-| Dual assertion | On POSIX, keep exact `S_IMODE` / uid / gid. On Windows, assert the DACL and owner SID. Never skip both. |
+**Dex never changes Windows ACLs** (spec #719 §3.1.1). This PR fails closed:
+require the POSIX primitives (`fchmod`, owner-only mode, `getuid`). Windows
+refuses. A later reviewed writer may assert an existing DACL; it must not
+set one.
 
 Forbidden: skip the mode/owner check on Windows and still tell the user the
 file is `0600`. Forbidden: accept group/other-writable POSIX bits on macOS or
-Linux because Windows cannot enforce them.
+Linux because Windows cannot enforce them. Forbidden: Dex rewriting a Windows
+ACL to look like `0600`.
 
 ---
 
@@ -122,15 +121,17 @@ This PR calls `trusted_git_binary()` from `core.utils.local_git`.
 degrade as before. A present registry still fail-closes when Git is
 indeterminate.
 
-**#749 is merged** (`17d9c880`). The helper now has the Windows Known Folder
-candidate list, uses `core.hooksPath=//./NUL` on Windows, distrusts Cygwin
-`/usr/bin/git`, and ignores the current folder and ambient PATH shims. This
-call site uses that helper as-is.
+**#749 is merged** (`17d9c880`). On Windows, resolution **relies on #749’s
+Known Folder candidate list**. It is not correct to say this helper “ignores
+the current folder”: on the old main resolver, `os.defpath` is `.;C:\bin`, so
+cwd was still searchable. Do not blank `os.defpath` in tests to hide that.
+
+`load_trusted_mcp_registry` now requires contained no-follow **before** any
+Git call, so Windows never runs Git from this module.
 
 The three `protect_trust_registry.py` copies still have their own PATH
 resolver. They are out of this PR (digest-identical copies; do not edit
-one without the others, and they are not the Windows cwd-search surface
-Dex Security called out).
+one without the others).
 
 ---
 
@@ -142,6 +143,9 @@ Dex Security called out).
 - Windows (and any host missing `O_NOFOLLOW` / `dir_fd` / `fchmod`): fail
   closed with a logged reason (`os.name`, which primitive is missing). No
   secret or registry bytes in the log. No crash on `fchmod` / `getuid`.
-- Git lookup in `trust_registry` goes through `trusted_git_binary()`; cwd
-  and ambient PATH shims are ignored.
-- No `O_BINARY`, no digest change, no skipped POSIX control.
+- Git lookup in `trust_registry` goes through `trusted_git_binary()`, which
+  on Windows uses #749’s Known Folder candidate list. Contained no-follow
+  is required before any Git call, so this module does not run Git on Windows.
+- This PR is a fail-closed gate, not byte-exact I/O. `O_BINARY` moves to
+  spec #719 Phase 5.
+- No digest change, no skipped POSIX control.

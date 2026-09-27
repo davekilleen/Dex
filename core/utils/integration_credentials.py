@@ -280,7 +280,7 @@ def _validate_env_metadata(metadata: os.stat_result) -> None:
         raise ValueError("vault .env must be one regular file")
     if stat.S_IMODE(metadata.st_mode) != 0o600:
         raise ValueError("vault .env must have owner-only 0600 permissions")
-    if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
+    if not hasattr(os, "getuid") or metadata.st_uid != os.getuid():
         raise ValueError("vault .env must be owned by the current user")
     if metadata.st_size > MAX_ENV_BYTES:
         raise ValueError("vault .env exceeds the local credential bound")
@@ -327,6 +327,13 @@ def read_vault_env(vault_root: Path) -> dict[str, str]:
 
 def inspect_vault_env_authority(vault_root: Path) -> EnvAuthorityInspection:
     """Return a redacted, repairable finding for the local `.env` authority."""
+    if os.name == "nt":
+        return EnvAuthorityInspection(
+            False,
+            "unsupported-platform",
+            "Windows cannot prove owner-only .env authority the way macOS and Linux can. "
+            "Dex refuses rather than giving Unix permission advice that does not apply here.",
+        )
     try:
         read_vault_env(vault_root)
     except (OSError, UnicodeDecodeError, ValueError) as error:

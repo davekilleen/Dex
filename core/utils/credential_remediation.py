@@ -1106,7 +1106,8 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
         return MigrationResult("refused")
     if env_metadata is not None and (
         stat.S_IMODE(env_metadata.st_mode) != 0o600
-        or (hasattr(os, "getuid") and env_metadata.st_uid != os.getuid())
+        or not hasattr(os, "getuid")
+        or env_metadata.st_uid != os.getuid()
     ):
         return MigrationResult("refused")
     if env_raw:
@@ -1129,9 +1130,9 @@ def migrate_legacy_credentials(vault_root: Path) -> MigrationResult:
             env_raw, stat.S_IMODE(env_metadata.st_mode), env_metadata.st_uid, env_metadata.st_gid,
         )
     )
-    env_owner = env_preimage.owner if env_preimage else config_preimage.owner
-    if hasattr(os, "getuid") and hasattr(os, "getgid"):
-        env_owner = os.getuid(), os.getgid()
+    if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+        return MigrationResult("refused")
+    env_owner = os.getuid(), os.getgid()
     journal = CredentialJournal.create(
         config_preimage=config_preimage,
         env_preimage=env_preimage,

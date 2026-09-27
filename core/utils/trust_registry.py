@@ -256,7 +256,7 @@ def _parse_registry(content: bytes) -> dict[str, TrustedMcpEntry]:
 
 
 def _git_executable() -> Path | None:
-    """Resolve Git via trusted_git_binary — never ambient PATH or cwd (Windows)."""
+    """Resolve Git via trusted_git_binary (Windows: #749 Known Folder list)."""
     try:
         return trusted_git_binary()
     except RuntimeError:
@@ -391,6 +391,7 @@ def load_trusted_mcp_registry(vault_root: Path) -> TrustedMcpRegistry:
         return TrustedMcpRegistry(entries={}, present=False)
     descriptor: int | None = None
     try:
+        _require_contained_nofollow("trust registry load")
         tracked = _registry_is_git_tracked(vault_root)
         if tracked is True:
             raise TrustRegistryError(
