@@ -59,3 +59,10 @@ memory/
 # config as UNAVAILABLE by design.
 System/knowledge-half-life.yaml
 System/knowledge-half-life.example.yaml
+
+# install.ps1 is the first new top-level path since the pinned update
+# foundation. Every installed contract before this change refuses it as
+# unclassified, so a release carrying it cannot update any existing vault.
+# Hold it back until installed contracts know the path. First-time Windows
+# setup still uses the copy next to this checkout, not the release tree.
+install.ps1

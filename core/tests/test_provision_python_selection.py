@@ -15,11 +15,17 @@ def test_provisioner_resolves_vault_venv_before_system_python() -> None:
     assert "function vaultPython" in source
     assert ".venv" in source
     assert "resolveStagePython(vaultRoot, 'DEX_PROVISION_PYTHON')" in source
+    assert "sys.version_info >= (3, 11)" in source
+    assert "Dex setup needs Python 3.11 or newer" in source
+    assert "install Python 3.11+" in source
+    assert "sys.version_info >= (3, 10)" not in source
+    assert "Python 3.10" not in source
 
 
 def test_onboarding_server_refuses_old_python_before_importing_paths() -> None:
     source = ONBOARDING_SERVER.read_text(encoding="utf-8")
-    version_check = source.index("sys.version_info < (3, 10)")
+    version_check = source.index("sys.version_info < (3, 11)")
     paths_import = source.index("from core.paths import")
     assert version_check < paths_import
-    assert "Dex setup needs Python 3.10 or newer" in source
+    assert "Dex setup needs Python 3.11 or newer" in source
+    assert "sys.version_info < (3, 10)" not in source

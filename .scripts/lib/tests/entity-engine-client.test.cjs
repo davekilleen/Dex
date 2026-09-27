@@ -1022,7 +1022,7 @@ test('an incapable configured interpreter is surfaced but remains transient', (t
 
   assert.equal(result.ok, false);
   assert.equal(result.feature_status, 'broken');
-  assert.match(result.user_message, /Python 3\.10.*PyYAML/i);
+  assert.match(result.user_message, /Python 3\.11.*PyYAML/i);
   const pending = JSON.parse(fs.readFileSync(pendingStorePath(vault), 'utf8'));
   assert.equal(pending.batches[0].ops[0].permanent_attempts, 0);
   assert.equal(pending.batches[0].ops[0].transient_attempts, 1);

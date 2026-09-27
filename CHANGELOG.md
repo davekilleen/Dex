@@ -9,6 +9,20 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+A Windows 11 install from Git Bash could stop without a usable reason. Dex treated that shell as if it were a Mac, looked in the wrong place for Python, and hid the real error. A report from Joe on 26 September made this visible.
+
+**What this fixes for you:**
+
+* **Windows is recognized, including Git Bash.** Setup now finds the Windows Python folder instead of treating Git Bash as a Mac.
+* **Granola is checked the shared way.** When the shared locator is already in the folder, setup uses it on Windows and Mac. If that file is not here yet, setup skips the check with a short note and continues.
+* **Python from python.org is found.** Setup tries every usual Windows Python command and checks the version before continuing.
+* **The fake Microsoft Store Python is skipped.** Windows sometimes puts a `python3` on the path that only opens the Store. Setup ignores that placeholder, checks the version on a real Python, and continues with that one.
+* **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
+* **Setup copies the official release.** The Windows installer takes the official release only, not the latest development copy.
+* **On Windows, run setup from Git Bash.** After you clone the official release, open Git Bash in that folder and run `bash ./install.sh`. That is the same installer Mac uses, and it is the file the official release includes.
+* **Only the listed packages are installed.** Setup installs only the Node and Python package versions Dex listed, including the Windows and Mac extras those packages need.
+* **Setup needs Python 3.11 or newer.** The listed packages no longer install on 3.10, so setup says so instead of accepting a version it cannot finish.
+
 The Windows install check could stop with a file-lock error, even after Dex started using the Windows lock instead of the Mac one.
 
 **What this fixes for you:**

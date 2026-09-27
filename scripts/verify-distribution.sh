@@ -81,7 +81,7 @@ fi
 # Check 6: Verify critical files exist
 echo ""
 echo "✓ Checking critical distribution files..."
-REQUIRED_FILES=("README.md" ".gitignore" "install.sh" "System/.mcp.json.example" "env.example")
+REQUIRED_FILES=("README.md" ".gitignore" "install.sh" "install.ps1" "System/.mcp.json.example" "env.example")
 for file in "${REQUIRED_FILES[@]}"; do
     if [ ! -f "$file" ]; then
         echo "  ❌ ERROR: Missing required file: $file"

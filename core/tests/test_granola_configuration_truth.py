@@ -93,7 +93,9 @@ def test_meeting_intel_auth_points_missing_keys_to_granola_setup(tmp_path: Path)
 def test_install_instructions_detect_the_app_without_claiming_connection() -> None:
     install_text = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
 
-    assert "/Applications/Granola.app" in install_text
+    assert "core.integrations.granola_paths" in install_text
+    assert "--json" in install_text
+    assert "Granola app check skipped" in install_text
     assert "Granola app detected" in install_text
     assert "/granola-setup" in install_text
     assert "If the app is present, the API key is configured" not in install_text
