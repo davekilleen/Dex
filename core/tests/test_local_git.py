@@ -100,10 +100,18 @@ def _present_windows_binaries(monkeypatch, present: dict[str, str]) -> None:
     monkeypatch.setattr(local_git, "_passes_windows_trust_checks", usable)
 
 
+def _assert_win_path(actual, expected) -> None:
+    """Compare Windows paths by ntpath-normalised form, not slash spelling."""
+    assert local_git._windows_lexical_key(os.fspath(actual)) == local_git._windows_lexical_key(
+        os.fspath(expected)
+    )
+
+
 def _hooks_setting(joined: str) -> None:
     if local_git._is_windows_like():
         assert "core.hooksPath=/dev/null" not in joined
-        assert "dex-git-hooks-" in joined
+        assert "core.hooksPath=NUL" in joined
+        assert "dex-git-hooks-" not in joined
         return
     assert "core.hooksPath=/dev/null" in joined
 
@@ -132,11 +140,12 @@ def test_local_git_command_policy_disables_execution_surfaces(tmp_path, monkeypa
         observed.update(command=command, kwargs=kwargs)
         return subprocess.CompletedProcess(command, 0, b"ok", b"")
 
+    git = Path("/usr/bin/git")
     monkeypatch.setattr(local_git.subprocess, "run", run)
-    monkeypatch.setattr(local_git, "trusted_git_binary", lambda: Path("/usr/bin/git"))
+    monkeypatch.setattr(local_git, "trusted_git_binary", lambda: git)
     assert local_git.git_output(tmp_path, "status", profile="read-only") == b"ok"
     command = observed["command"]
-    assert command[0] == "/usr/bin/git"
+    assert Path(command[0]) == git
     joined = " ".join(command)
     for setting in (
         "credential.helper=",
@@ -236,6 +245,10 @@ def test_planted_pre_commit_hook_is_not_run(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert not marker.exists()
+    if local_git._is_windows_like():
+        assert local_git._hooks_path_config() == "core.hooksPath=NUL"
+    else:
+        assert local_git._hooks_path_config() == "core.hooksPath=/dev/null"
 
 
 def test_windows_closed_list_comes_from_known_folders_not_hardcoded_c():
@@ -251,7 +264,7 @@ def test_windows_accepts_each_c_drive_candidate(monkeypatch, candidate):
     _force_windows(monkeypatch)
     _use_folders(monkeypatch, C_DRIVE_FOLDERS)
     _present_windows_binaries(monkeypatch, {candidate: candidate})
-    assert os.fspath(local_git.trusted_git_binary()) == candidate
+    _assert_win_path(local_git.trusted_git_binary(), candidate)
 
 
 @pytest.mark.parametrize("candidate", D_DRIVE_CANDIDATES)
@@ -259,8 +272,8 @@ def test_windows_accepts_program_files_on_d_when_known_folder_is_d(monkeypatch, 
     _force_windows(monkeypatch)
     _use_folders(monkeypatch, D_DRIVE_FOLDERS)
     _present_windows_binaries(monkeypatch, {candidate: candidate})
-    assert os.fspath(local_git.trusted_git_binary()) == candidate
-    assert local_git.canonical_windows_git_path(candidate, D_DRIVE_FOLDERS) == candidate
+    _assert_win_path(local_git.trusted_git_binary(), candidate)
+    _assert_win_path(local_git.canonical_windows_git_path(candidate, D_DRIVE_FOLDERS), candidate)
     assert local_git.canonical_windows_git_path(candidate, C_DRIVE_FOLDERS) is None
 
 
@@ -299,7 +312,7 @@ def test_windows_keeps_per_user_localappdata_git_and_states_the_bar(monkeypatch)
     _force_windows(monkeypatch)
     _use_folders(monkeypatch, C_DRIVE_FOLDERS)
     _present_windows_binaries(monkeypatch, {LOCALAPPDATA_GIT: LOCALAPPDATA_GIT})
-    assert os.fspath(local_git.trusted_git_binary()) == LOCALAPPDATA_GIT
+    _assert_win_path(local_git.trusted_git_binary(), LOCALAPPDATA_GIT)
 
 
 def test_windows_localappdata_env_does_not_inject_a_candidate(monkeypatch):
@@ -443,8 +456,11 @@ def test_windows_cygwin_python_opens_drive_letter_closed_candidate(monkeypatch):
     _use_folders(monkeypatch, C_DRIVE_FOLDERS)
     canonical = "C:/Program Files/Git/cmd/git.exe"
     _present_windows_binaries(monkeypatch, {canonical: canonical})
-    assert os.fspath(local_git.trusted_git_binary()) == canonical
-    assert local_git.canonical_windows_git_path("/cygdrive/c/Program Files/Git/cmd/git.exe") == canonical
+    _assert_win_path(local_git.trusted_git_binary(), canonical)
+    _assert_win_path(
+        local_git.canonical_windows_git_path("/cygdrive/c/Program Files/Git/cmd/git.exe"),
+        canonical,
+    )
 
 
 def test_windows_rejects_symlink_junction_and_reparse(monkeypatch):
@@ -505,7 +521,7 @@ def test_windows_accepts_extended_prefix_on_resolved_closed_path(monkeypatch):
         "C:/Program Files/Git/cmd/git.exe"
     )
     assert local_git.canonical_windows_git_path(r"\\?\UNC\server\share\Git\cmd\git.exe") is None
-    assert os.fspath(local_git.trusted_git_binary()) == "C:/Program Files/Git/cmd/git.exe"
+    _assert_win_path(local_git.trusted_git_binary(), "C:/Program Files/Git/cmd/git.exe")
 
 
 def test_windows_accepts_case_insensitive_closed_list_match(monkeypatch):
@@ -513,8 +529,8 @@ def test_windows_accepts_case_insensitive_closed_list_match(monkeypatch):
     _use_folders(monkeypatch, C_DRIVE_FOLDERS)
     on_disk = "C:/PROGRAM FILES/GIT/CMD/GIT.EXE"
     _present_windows_binaries(monkeypatch, {C_DRIVE_CANDIDATES[0]: on_disk})
-    assert local_git.canonical_windows_git_path(on_disk) == "C:/PROGRAM FILES/GIT/CMD/GIT.EXE"
-    assert os.fspath(local_git.trusted_git_binary()) == on_disk
+    _assert_win_path(local_git.canonical_windows_git_path(on_disk), "C:/PROGRAM FILES/GIT/CMD/GIT.EXE")
+    _assert_win_path(local_git.trusted_git_binary(), on_disk)
 
 
 def test_windows_git_env_path_is_only_trusted_git_dir_and_system32(monkeypatch):
@@ -537,21 +553,17 @@ def test_windows_git_env_path_is_only_trusted_git_dir_and_system32(monkeypatch):
     assert local_git._windows_lexical_key(env["HOME"]) == local_git._windows_lexical_key("C:/Users/Sam")
 
 
-def test_windows_git_env_home_falls_back_to_validated_userprofile(monkeypatch):
+def test_windows_git_env_home_empty_when_profile_lookup_fails(monkeypatch):
     _force_windows(monkeypatch)
     _use_folders(monkeypatch, C_DRIVE_FOLDERS._replace(profile=None))
     monkeypatch.setenv("USERPROFILE", r"E:\Users\Pat")
     env = local_git.git_env(git=Path("C:/Program Files/Git/cmd/git.exe"))
-    assert local_git._windows_lexical_key(env["HOME"]) == local_git._windows_lexical_key("E:/Users/Pat")
-    monkeypatch.setenv("USERPROFILE", "/usr/bin")
-    env = local_git.git_env(git=Path("C:/Program Files/Git/cmd/git.exe"))
     assert env["HOME"] == ""
 
 
-def test_windows_hooks_path_is_dex_controlled_empty_directory(tmp_path, monkeypatch):
+def test_windows_hooks_path_is_nul(tmp_path, monkeypatch):
     _force_windows(monkeypatch)
     _use_folders(monkeypatch, C_DRIVE_FOLDERS)
-    monkeypatch.setattr(local_git, "_WINDOWS_HOOKS_DIR", None)
     observed = {}
 
     def run(command, **kwargs):
@@ -562,12 +574,27 @@ def test_windows_hooks_path_is_dex_controlled_empty_directory(tmp_path, monkeypa
     monkeypatch.setattr(local_git, "trusted_git_binary", lambda: Path("C:/Program Files/Git/cmd/git.exe"))
     local_git.git_output(tmp_path, "status", profile="read-only")
     joined = " ".join(observed["command"])
+    assert "core.hooksPath=NUL" in joined
     assert "core.hooksPath=/dev/null" not in joined
-    hooks = local_git.windows_empty_hooks_directory()
-    assert hooks.is_dir()
-    assert hooks.name.startswith("dex-git-hooks-")
-    assert list(hooks.iterdir()) == []
-    assert f"core.hooksPath={hooks.as_posix()}" in joined
+    assert "dex-git-hooks-" not in joined
+    source = Path(local_git.__file__).read_text(encoding="utf-8")
+    assert "mkdtemp" not in source
+    assert "windows_empty_hooks_directory" not in source
+
+
+def test_windows_missing_windll_refuses_cleanly(monkeypatch):
+    import ctypes
+
+    _force_windows(monkeypatch, platform="cygwin")
+
+    def no_windll(*_args, **_kwargs):
+        raise AttributeError("WinDLL")
+
+    monkeypatch.setattr(ctypes, "WinDLL", no_windll, raising=False)
+    assert local_git._sh_get_known_folder(local_git._FOLDERID_PROGRAM_FILES) is None
+    assert local_git.windows_git_candidate_texts() == ()
+    with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
+        local_git.trusted_git_binary()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows drive-root /dev/null hook plant")
@@ -609,6 +636,7 @@ def test_windows_planted_drive_dev_null_hook_is_not_run(tmp_path):
                 local_git._hooks_path_config(),
             ]
         )
+        assert local_git._hooks_path_config() == "core.hooksPath=NUL"
         assert "core.hooksPath=/dev/null" not in joined
     finally:
         try:
@@ -650,7 +678,16 @@ def test_macos_linux_behaviour_is_unchanged_and_still_uses_defpath(monkeypatch):
     monkeypatch.setattr(local_git.shutil, "which", wrapped)
     binary = local_git.trusted_git_binary()
     assert observed == {"name": "git", "path": os.defpath}
-    assert binary in {Path("/usr/bin/git").resolve(), Path("/bin/git").resolve(), binary}
+    trusted = {Path("/usr/bin/git").resolve(), Path("/bin/git").resolve()}
+    discovered = real_which("git", path=os.defpath)
+    if discovered:
+        try:
+            trusted.add(Path(discovered).resolve(strict=True))
+        except OSError:
+            pass
+    assert binary in trusted
+    assert binary.is_file()
+    assert os.access(binary, os.X_OK)
     assert "Program Files" not in os.fspath(binary)
     assert local_git.windows_git_candidate_texts() == ()
     assert local_git.windows_git_candidate_texts(C_DRIVE_FOLDERS) == C_DRIVE_CANDIDATES

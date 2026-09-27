@@ -8,7 +8,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -73,9 +72,6 @@ class WindowsFolders(NamedTuple):
     local_app_data: str | None
     system32: str | None
     profile: str | None
-
-
-_WINDOWS_HOOKS_DIR: Path | None = None
 
 
 def _is_windows_like() -> bool:
@@ -209,22 +205,23 @@ def _sh_get_known_folder(folder_guid: str) -> str | None:
     try:
         shell32 = ctypes.WinDLL("shell32", use_last_error=True)
         ole32 = ctypes.WinDLL("ole32", use_last_error=True)
-    except OSError:
+        get_known = ctypes.WINFUNCTYPE(
+            ctypes.HRESULT,
+            ctypes.POINTER(GUID),
+            wintypes.DWORD,
+            wintypes.HANDLE,
+            ctypes.POINTER(ctypes.c_wchar_p),
+        )(("SHGetKnownFolderPath", shell32))
+        free = ctypes.WINFUNCTYPE(None, ctypes.c_void_p)(("CoTaskMemFree", ole32))
+    except (OSError, AttributeError, TypeError, ValueError):
+        # Cygwin/MSYS Python often has ctypes but no WinDLL. Refuse cleanly.
         return None
-    get_known = ctypes.WINFUNCTYPE(
-        ctypes.HRESULT,
-        ctypes.POINTER(GUID),
-        wintypes.DWORD,
-        wintypes.HANDLE,
-        ctypes.POINTER(ctypes.c_wchar_p),
-    )(("SHGetKnownFolderPath", shell32))
-    free = ctypes.WINFUNCTYPE(None, ctypes.c_void_p)(("CoTaskMemFree", ole32))
     data1, data2, data3, data4 = parsed
     folder_id = GUID(data1, data2, data3, (wintypes.BYTE * 8).from_buffer_copy(data4))
     path_ptr = ctypes.c_wchar_p()
     try:
         status = get_known(ctypes.byref(folder_id), 0, None, ctypes.byref(path_ptr))
-    except (OSError, TypeError, ValueError):
+    except (OSError, AttributeError, TypeError, ValueError):
         return None
     if status != 0 or not path_ptr.value:
         if path_ptr:
@@ -419,32 +416,26 @@ def trusted_git_binary() -> Path:
     return _trusted_posix_git_binary()
 
 
-def windows_empty_hooks_directory() -> Path:
-    """Empty directory Dex creates for Windows ``core.hooksPath``.
-
-    On Windows, ``/dev/null`` is not the POSIX sink. Git treats hooksPath as a
-    directory, so ``core.hooksPath=/dev/null`` can become ``<drive>:\\dev\\null``
-    and run a planted ``pre-commit``. Autosave runs ``commit`` and ``update-ref``.
-    """
-    global _WINDOWS_HOOKS_DIR
-    if _WINDOWS_HOOKS_DIR is not None and _WINDOWS_HOOKS_DIR.is_dir():
-        return _WINDOWS_HOOKS_DIR
-    created = Path(tempfile.mkdtemp(prefix="dex-git-hooks-"))
-    _WINDOWS_HOOKS_DIR = created
-    return created
-
-
 def _hooks_path_config() -> str:
+    """Disable hooks without an env-derived temp directory.
+
+    On Windows, ``/dev/null`` is not the POSIX sink — Git treats hooksPath as a
+    directory, so it can become ``<drive>:\\dev\\null`` and run a planted
+    ``pre-commit``. ``NUL`` is the Windows null device (not a creatable folder).
+    Autosave runs ``commit`` and ``update-ref``.
+    """
     if _is_windows_like():
-        return f"core.hooksPath={windows_empty_hooks_directory().as_posix()}"
+        return "core.hooksPath=NUL"
     return "core.hooksPath=/dev/null"
 
 
 def _windows_home(folders: WindowsFolders) -> str:
-    """USERPROFILE location from the Known Folder, else a validated USERPROFILE."""
-    if folders.profile:
-        return folders.profile
-    return _drive_letter_windows_path(os.environ.get("USERPROFILE", "")) or ""
+    """Known Folder profile only. Leave HOME empty if that lookup fails.
+
+    USERPROFILE is env-derived. It is not checked for existence, ownership, or
+    a profiles-directory prefix, so it is not used as a fallback.
+    """
+    return folders.profile or ""
 
 
 def _windows_path_dirs(git: Path, folders: WindowsFolders) -> tuple[str, ...]:

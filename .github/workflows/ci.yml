@@ -234,7 +234,6 @@ jobs:
   # block merge or release jobs, which depend on `test-results` only.
   windows-trusted-git:
     runs-on: windows-latest
-    continue-on-error: true
     env:
       VAULT_PATH: core/tests/fixtures/vault
     steps:
