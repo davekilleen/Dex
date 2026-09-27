@@ -472,3 +472,25 @@ def test_lifecycle_1_2_callers_resolve_unchanged_operations() -> None:
         name: str(inspect.signature(getattr(service, name)))
         for name in expected_signatures
     } == expected_signatures
+
+
+def test_prepare_keeps_the_real_bridge_error_in_the_debug_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    from core.lifecycle import bridge as bridge_module
+    from core.lifecycle import service as service_module
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise BridgeActivationError("catalog digest mismatch: deadbeef")
+
+    monkeypatch.setattr(bridge_module, "prepare_vault", boom)
+    with caplog.at_level(logging.DEBUG, logger="core.lifecycle.service"):
+        with pytest.raises(PlanRejected, match="run /dex-doctor") as raised:
+            service_module._prepare(tmp_path)
+    assert "catalog digest mismatch: deadbeef" in caplog.text
+    assert isinstance(raised.value.__cause__, BridgeActivationError)
+    assert "deadbeef" in str(raised.value.__cause__)

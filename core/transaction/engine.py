@@ -38,7 +38,11 @@ from pathlib import Path
 from core import portable_contract
 from core.lifecycle.filesystem import bounded_read
 from core.path_safety import unsafe_existing_parent
-from core.transaction.fsync import fsync_directory
+from core.transaction.fsync import (
+    fsync_directory,
+    fsync_file,
+    posix_permission_bits_apply,
+)
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
@@ -90,6 +94,21 @@ class PlanEntry:
 def _stop_seam(seam: str) -> None:
     if os.environ.get("DEX_TX_TEST_STOP_AFTER") == seam:
         os._exit(137)
+
+
+def _posix_permission_bits_apply() -> bool:
+    """Whether this OS stores the POSIX permission bits we verify.
+
+    Windows does not. ``os.chmod(path, 0o600)`` only maps the owner-write
+    bit onto FILE_ATTRIBUTE_READONLY; ``stat().st_mode & 0o777`` then
+    reports a synthetic mode (commonly 0o666). A check for 0o600 would
+    fail a write that actually succeeded, which is how a Windows install
+    can die in transaction verify after every file is already on disk.
+
+    macOS and Linux store the bits for real. The check stays load-bearing
+    there — a planned 0o600 that lands as 0o644 is still a verify failure.
+    """
+    return posix_permission_bits_apply()
 
 
 def _unsafe_infrastructure_directory(vault_root: Path, directory: Path) -> str | None:
@@ -465,7 +484,11 @@ class Transaction:
             and target.is_file()
             and hashlib.sha256(self._read_entry_bytes(entry)).hexdigest()
             == entry.expected_current_sha256
-            and (not check_mode or target.stat().st_mode & 0o777 == entry.mode)
+            and (
+                not check_mode
+                or not _posix_permission_bits_apply()
+                or target.stat().st_mode & 0o777 == entry.mode
+            )
         )
 
     def _read_entry_bytes(self, entry: PlanEntry) -> bytes:
@@ -497,12 +520,11 @@ class Transaction:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.parent / f".{target.name}.tx-{self.tx_id}"
         shutil.copyfile(staged, temporary)
+        # Flush data while the temp is still writable. On Windows, chmod
+        # of a no-write mode (0o444) would set FILE_ATTRIBUTE_READONLY and
+        # then O_RDWR fsync would fail; fsync-then-chmod keeps durability.
+        fsync_file(temporary)
         os.chmod(temporary, entry.mode)
-        descriptor = os.open(temporary, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
         if entry.expected_current_sha256 is not None:
             try:
                 self._verify_content_precondition(
@@ -556,12 +578,13 @@ class Transaction:
             digest = hashlib.sha256(self._read_entry_bytes(entry)).hexdigest()
             if digest != entry.sha256():
                 raise TransactionError(f"verification failed for {entry.relative}: applied bytes do not match the plan")
-            actual_mode = target.stat().st_mode & 0o777
-            if actual_mode != entry.mode:
-                raise TransactionError(
-                    f"verification failed for {entry.relative}: applied mode "
-                    f"{oct(actual_mode)} does not match planned {oct(entry.mode)}"
-                )
+            if _posix_permission_bits_apply():
+                actual_mode = target.stat().st_mode & 0o777
+                if actual_mode != entry.mode:
+                    raise TransactionError(
+                        f"verification failed for {entry.relative}: applied mode "
+                        f"{oct(actual_mode)} does not match planned {oct(entry.mode)}"
+                    )
         self.journal.append("VERIFY-DONE")
 
     def _commit_phase(self) -> dict:
