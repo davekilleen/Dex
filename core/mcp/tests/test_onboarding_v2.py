@@ -39,8 +39,8 @@ def _timed_week_events() -> list[dict]:
             "start": datetime(2026, 7, 28, 10, 0),
             "end": datetime(2026, 7, 28, 10, 30),
             "attendees": [
-                {"name": "Alex", "email": "alex@acme.com", "is_current_user": True},
-                {"name": "Sam", "email": "sam@acme.com"},
+                {"name": "Jane", "email": "jane@acme.com", "is_current_user": True},
+                {"name": "John", "email": "john@acme.com"},
             ],
         },
         {
@@ -306,7 +306,7 @@ def test_default_entity_offer_still_caps_at_five(
     for index in range(8):
         attendee = [{
             "name": f"Person {index}",
-            "email": f"p{index}@acme.com",
+            "email": f"person{index}@example.com",
             "location": "external",
         }]
         meetings.extend(
