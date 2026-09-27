@@ -1092,6 +1092,14 @@ def rewind_adoption(
             "the adoption snapshot is no longer available under keep-last-3 retention; "
             "this adoption can no longer be rewound"
         )
+    from core.transaction.byte_mode_flag import (
+        MESSAGE_REWIND_REFUSED,
+        restore_is_refused,
+    )
+
+    tx_dir = snapshot_root.parent
+    if restore_is_refused(tx_dir):
+        raise _rewind_refuse(MESSAGE_REWIND_REFUSED)
     _verify_adoption_commit(root, validated)
     previous_commit = _delivered_release_previous_commit(root, validated)
     plan, restored = _snapshot_rewind_plan(root, validated, current_modes)

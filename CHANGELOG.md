@@ -15,6 +15,27 @@ The Windows install check could stop with a file-lock error, even after Dex star
 
 * **Windows install and update history work again.** Dex was calling the Windows file lock the wrong way, so the install check failed and anything that writes the update history failed with it. The call now matches what Windows expects, and the Windows install check would catch it if this slipped again.
 
+Dex on Windows can update again after its first update
+
+On Windows, Dex's own record-keeping files had been saved with Windows line
+endings. That made Dex refuse its next update and every undo, and it also
+read files in a way that quietly changed their bytes before comparing them.
+Thanks to Joe for reporting this.
+
+**What this fixes for you:**
+
+* **Dex can update and undo again on Windows.** It repairs those record-keeping
+  files once, keeps a copy of each one first, and leaves your notes alone. A
+  file it cannot safely repair is left untouched and Doctor tells you what to
+  do. History files are reported, not rewritten.
+* **An undo copy taken before this repair is not put back on Windows.** Dex
+  marks those copies when the work starts — it does not guess from the clock —
+  and refuses to restore them, including after a crash. Your current files stay
+  as they are; use your own backup if you need to go back.
+* **Dex now reads its own files exactly as stored.** Line endings and binary
+  files are no longer rewritten on the way in. This is the other half of the
+  same repair.
+
 Setup only looked for Granola in the Mac Applications folder. On a Windows PC the app was already there, and Dex still said it was not installed.
 
 **What this fixes for you:**

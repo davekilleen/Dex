@@ -1039,7 +1039,13 @@ def _release_payload_loader(release_root: str | Path):
 
 def _prepare(vault_root: str | Path, release_root: str | Path | None = None) -> None:
     from core.lifecycle.bridge import BridgeActivationError, prepare_vault
+    from core.lifecycle.byte_mode import ByteModeBlocked
+    from core.lifecycle.byte_mode import ensure as ensure_byte_mode
 
+    try:
+        ensure_byte_mode(Path(vault_root))
+    except ByteModeBlocked as error:
+        raise PlanRejected(str(error)) from None
     recover_committed_adoption_evidence(Path(vault_root))
     try:
         prepare_vault(vault_root, release_root=release_root)

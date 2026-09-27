@@ -232,6 +232,7 @@ def _transaction_paths(tx_id: str, *, writes_payload: bool, snapshot_blob: bool)
     root = f"System/.dex/tx/{tx_id}"
     paths = {
         root,
+        f"{root}/byte-mode.json",
         f"{root}/journal.jsonl",
         f"{root}/snapshot",
         f"{root}/snapshot/manifest.json",

@@ -139,6 +139,13 @@ you" next time, without nagging.
 breaking. Dex explains the refusal in plain language and leaves everything untouched.
 Run `/dex-doctor` for a full health check.
 
+**Windows said the update engine doesn't match, or undo is refused?** Dex's own
+bookkeeping files were sometimes saved with Windows line endings, which made the
+next update and every undo fail. Dex now repairs those files once, keeps a copy
+first, and does not touch your notes. If a file cannot be repaired safely, Dex
+stops and asks you to run `/dex-doctor`. An undo copy taken before that repair
+is not restored on Windows — use your own backup if you need to go back.
+
 **Do I need a GitHub account, git, or Terminal?** No.
 
 **What about my custom MCP servers and personal instructions?** They're classified as
