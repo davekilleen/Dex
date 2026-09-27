@@ -273,12 +273,8 @@ def test_onboarding_check_granola_uses_windows_locator(monkeypatch) -> None:
         "default_kind",
         _kind_from({exe: "file"}),
     )
-    monkeypatch.setattr(
-        onboarding_server.os,
-        "environ",
-        _windows_env(),
-        raising=False,
-    )
+    for key, value in _windows_env().items():
+        monkeypatch.setenv(key, value)
 
     detected = onboarding_server.check_granola()
     assert detected["installed"] is True
@@ -290,7 +286,7 @@ def test_onboarding_check_granola_uses_windows_locator(monkeypatch) -> None:
 def test_onboarding_granola_detection_checks_the_application(monkeypatch, tmp_path: Path) -> None:
     app_path = tmp_path / "Granola.app"
     monkeypatch.setattr(onboarding_server.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(onboarding_server, "GRANOLA_APP_PATH", app_path, raising=False)
+    monkeypatch.setenv("DEX_GRANOLA_APP", str(app_path))
 
     assert onboarding_server.check_granola()["installed"] is False
 

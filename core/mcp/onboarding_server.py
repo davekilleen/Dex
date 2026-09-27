@@ -108,7 +108,6 @@ except ImportError:
     def working_day_names():
         return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
-GRANOLA_APP_PATH = Path("/Applications/Granola.app")
 ONBOARDING_STEPS = 8
 REQUIRED_ONBOARDING_STEPS = tuple(range(1, 8))
 STEP_NAMES = {
@@ -545,32 +544,13 @@ def check_calendar_app() -> Dict[str, Any]:
 def check_granola() -> Dict[str, Any]:
     """Check whether the Granola desktop application is installed.
 
-    Path resolution lives in ``core.integrations.granola_paths`` so Windows
-    Git Bash / Cygwin, native Windows, and macOS share one locator. Linux
-    stays a no-op.
+    All platform path logic lives in ``core.integrations.granola_paths``.
+    This wrapper only forwards the host platform so Windows Git Bash /
+    Cygwin, native Windows, and macOS share one locator. Linux stays a no-op.
     """
-    try:
-        from core.integrations.granola_paths import check_granola_status
-    except ImportError:
-        if platform.system() == "Darwin" and GRANOLA_APP_PATH.exists():
-            return {
-                "installed": True,
-                "app_found": True,
-                "path": str(GRANOLA_APP_PATH),
-                "setup": "/granola-setup",
-            }
-        return {
-            "installed": False,
-            "app_found": False,
-            "optional": True,
-            "setup": "/granola-setup",
-        }
+    from core.integrations.granola_paths import check_granola_status
 
-    extra_env = os.environ
-    if platform.system() == "Darwin" and str(GRANOLA_APP_PATH) != "/Applications/Granola.app":
-        extra_env = dict(os.environ)
-        extra_env["DEX_GRANOLA_APP"] = str(GRANOLA_APP_PATH)
-    return check_granola_status(platform=platform.system(), env=extra_env)
+    return check_granola_status(platform=platform.system())
 
 def _completed_profile_capability_states() -> Dict[str, bool]:
     """Room choices already recorded by a vault that completed onboarding.
