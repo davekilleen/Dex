@@ -898,15 +898,22 @@ Focus on architecture questions, not syntax nitpicks. I trust the team on detail
 
 ### Learning Capture Workflow
 
+**While you work, and when a session ends cleanly:**
+
+Obvious corrections (as you say them) and other clear corrections or preferences
+(from the recorded session) are written to `System/Session_Learnings/YYYY-MM-DD.md`
+and marked pending. Closing a window instead of ending the session skips the
+close-of-session pass; the as-you-type capture still ran.
+
 **During `/daily-review`:**
 
-1. Claude scans session transcript
+1. Claude reads today's learning file first, then scans for anything missed
 2. Asks: "Anything to capture?"
    - Mistakes or corrections
    - Preferences mentioned
    - Doc gaps discovered
    - Workflow inefficiencies
-3. Writes to `System/Session_Learnings/YYYY-MM-DD.md`:
+3. Writes any new entries to `System/Session_Learnings/YYYY-MM-DD.md`:
 
 ```markdown
 ## [14:32] - Folder structure confusion
