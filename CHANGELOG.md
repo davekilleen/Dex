@@ -20,6 +20,15 @@ Dex used to say it learned from your sessions on its own. What it actually did w
 * **The evening review is the careful pass, not the only pass.** `/daily-review` confirms what was already written and looks for anything the automatic pass missed.
 * **The reminder that you have lessons waiting can finally see them.** The nudge that appears when five or more are still pending now has real entries to count, not just a note that a session ended.
 
+When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
+
+**What this fixes for you:**
+
+* **The Todoist title is just the task.** Folder paths from your notes no longer get glued onto the name.
+* **The description has a link back to the note.** If you use Obsidian, it opens the source page. If Dex cannot see the vault name, the link still points at the file so it can open in the vault you already have open.
+
+Reported by @mekuhl.
+
 ## [1.97.20] — Dex times its own mornings, and a meeting remark is no longer a task (2026-09-25)
 
 The last release made the morning plan and evening review do less work. It could not say how much less, because Dex had no clock on them: the only timings anyone had were one user's, taken by hand with a stopwatch. That same user had forty open tasks, twelve marked top priority, and most of them had come out of meeting notes. Every "think about pricing" and "look into the vendor" said in a meeting had become a task. This release fixes both. Thanks again to Michelle for the numbers.
