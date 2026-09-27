@@ -127,12 +127,12 @@ def test_windowsapps_match_requires_a_path_segment() -> None:
     assert nearby.returncode == 0, nearby.stderr
     assert nearby.stdout.strip() == "real"
     store = _source_helpers(
-        'if dex_is_windows_apps_stub "/c/Users/Joe/AppData/Local/Microsoft/WindowsApps/python3.exe"; then echo stub; else echo real; fi'
+        'if dex_is_windows_apps_stub "/c/AppData/Local/Microsoft/WindowsApps/python3.exe"; then echo stub; else echo real; fi'
     )
     assert store.returncode == 0, store.stderr
     assert store.stdout.strip() == "stub"
     store_win = _source_helpers(
-        r'if dex_is_windows_apps_stub "C:\Users\Joe\AppData\Local\Microsoft\WindowsApps\python3.exe"; then echo stub; else echo real; fi'
+        r'if dex_is_windows_apps_stub "C:\AppData\Local\Microsoft\WindowsApps\python3.exe"; then echo stub; else echo real; fi'
     )
     assert store_win.returncode == 0, store_win.stderr
     assert store_win.stdout.strip() == "stub"
@@ -448,8 +448,8 @@ def test_granola_uses_shared_module_when_present(tmp_path: Path) -> None:
         """import json, sys
 json.dump({
     "installed": True,
-    "app_path": r"C:\\\\Users\\\\Joe\\\\AppData\\\\Local\\\\Programs\\\\@granolaelectron\\\\Granola.exe",
-    "app_path_posix": "/c/Users/Joe/AppData/Local/Programs/@granolaelectron/Granola.exe",
+    "app_path": r"C:\\\\AppData\\\\Local\\\\Programs\\\\@granolaelectron\\\\Granola.exe",
+    "app_path_posix": "/c/AppData/Local/Programs/@granolaelectron/Granola.exe",
     "data_path": None,
     "data_path_posix": None,
 }, sys.stdout)
@@ -478,7 +478,7 @@ sys.exit(0)
         },
     )
     assert result.returncode == 0, result.stderr + result.stdout
-    assert result.stdout.strip() == "/c/Users/Joe/AppData/Local/Programs/@granolaelectron/Granola.exe"
+    assert result.stdout.strip() == "/c/AppData/Local/Programs/@granolaelectron/Granola.exe"
 
 
 def test_venv_failure_writes_stderr_to_install_log_and_names_the_path(tmp_path: Path) -> None:
