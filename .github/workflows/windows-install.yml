@@ -158,24 +158,12 @@ jobs:
       - name: install.ps1 in PowerShell
         id: install-ps1
         continue-on-error: true
-        shell: pwsh
+        shell: bash
         timeout-minutes: 12
         env:
           GITHUB_TOKEN: ""
           GH_TOKEN: ""
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $dest = Join-Path $env:RUNNER_TEMP 'Dex Vault\install-ps1'
-          if (Test-Path -LiteralPath $dest) {
-            Remove-Item -LiteralPath $dest -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
-          git clone --local --no-hardlinks $env:GITHUB_WORKSPACE $dest
-          Set-Location -LiteralPath $dest
-          if (-not (Test-Path -LiteralPath '.\install.ps1')) {
-            throw 'install.ps1 is missing from this checkout. The PowerShell install path cannot be exercised until that file lands.'
-          }
-          $null | & .\install.ps1
+        run: bash scripts/run-windows-install-journey.sh install-ps1-negative
 
       - name: Windows install verdict
         if: always()
@@ -199,7 +187,7 @@ jobs:
             echo "| Engine tests 3.13 | ${ENGINE313} |"
             echo "| install.sh OSTYPE=cygwin + Store stub | ${INSTALL_CYGWIN} |"
             echo "| install.sh OSTYPE=msys + activate/adopt/rewind/CRLF | ${INSTALL_MSYS} |"
-            echo "| install.ps1 (PowerShell, spaced path) | ${INSTALL_PS1} |"
+            echo "| install.ps1 (PowerShell, provenance refusal) | ${INSTALL_PS1} |"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "engine312=${ENGINE312} engine313=${ENGINE313} cygwin=${INSTALL_CYGWIN} msys=${INSTALL_MSYS} ps1=${INSTALL_PS1}"
           if [ "$ENGINE312" != "success" ] || [ "$ENGINE313" != "success" ] \

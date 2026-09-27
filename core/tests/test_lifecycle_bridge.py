@@ -88,8 +88,8 @@ def test_baseline_import_is_read_only_and_activation_is_atomic(
     if posix_permission_bits_apply():
         assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
     else:
-        # Windows cannot store 0o600. chmod still runs; NTFS ACLs are the
-        # equivalent owner-only protection and the record stays owner-writable.
+        # Windows does not express POSIX modes (stat reports 0o666). chmod
+        # still runs; ACL hardening is tracked separately.
         assert stat.S_IMODE(activation_path.stat().st_mode) == 0o666
     assert protected.read_bytes() == before
     assert stat.S_IMODE((vault / "System").stat().st_mode) == system_mode
@@ -199,8 +199,8 @@ def test_stale_activation_from_a_previous_release_is_rerecorded(
     if posix_permission_bits_apply():
         assert stat.S_IMODE(activation_path.stat().st_mode) == 0o600
     else:
-        # Windows cannot store 0o600. chmod still runs; NTFS ACLs are the
-        # equivalent owner-only protection and the record stays owner-writable.
+        # Windows does not express POSIX modes (stat reports 0o666). chmod
+        # still runs; ACL hardening is tracked separately.
         assert stat.S_IMODE(activation_path.stat().st_mode) == 0o666
     assert not list(activation_path.parent.glob(".activation.json.tmp-*"))
     assert activate_vault(vault) == refreshed

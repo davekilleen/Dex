@@ -9,6 +9,7 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+* **The Windows install check now treats a refused unofficial copy as the expected result, and it only ignores the setup log when checking line endings.**
 * **Windows install checks can finish.** Dex now writes its private history files the same way on a PC as on a Mac, so those checks no longer fail after a successful write.
 
 ### We now say plainly what works on Windows

@@ -210,7 +210,7 @@ def test_single_item_happy_path_returns_exact_rewind_receipt(tmp_path: Path) -> 
         ".claude/skills/alpha/SKILL.md"
     ]
     # PreviewWrite documents this fixed, intentionally token-independent side effect.
-    # Windows cannot store 0o644; NTFS ACLs are the equivalent and stat reports 0o666.
+    # Windows does not express POSIX modes (stat reports 0o666). ACL hardening is tracked separately.
     expected_mode = 0o644 if posix_permission_bits_apply() else 0o666
     assert stat.S_IMODE(target.stat().st_mode) == expected_mode
 
