@@ -86,6 +86,34 @@ clone_into() {
   ensure_official_release_ref "$dest_unix"
 }
 
+# The brain/vault split drops remotes, so official/release is gone afterwards.
+# Stash the generated catalog from that ref before install.sh runs.
+stash_official_catalog() {
+  local dest="$1"
+  local stash_dir
+  stash_dir="$(unix_path "$(python -c "import os; from pathlib import Path; print(Path(os.environ['RUNNER_TEMP']) / 'official-release-catalog')")")"
+  mkdir -p "$stash_dir/System" "$stash_dir/core/lifecycle/catalog"
+  git -C "$dest" show official/release:System/.release-catalog.json \
+    > "$stash_dir/System/.release-catalog.json"
+  git -C "$dest" show official/release:core/lifecycle/catalog/release-hashes.json \
+    > "$stash_dir/core/lifecycle/catalog/release-hashes.json" || true
+  printf '%s\n' "$stash_dir"
+}
+
+restore_official_catalog() {
+  local dest="$1"
+  local stash_dir="$2"
+  if [ -f "$dest/System/.release-catalog.json" ]; then
+    return 0
+  fi
+  mkdir -p "$dest/System" "$dest/core/lifecycle/catalog"
+  cp "$stash_dir/System/.release-catalog.json" "$dest/System/.release-catalog.json"
+  if [ -f "$stash_dir/core/lifecycle/catalog/release-hashes.json" ]; then
+    cp "$stash_dir/core/lifecycle/catalog/release-hashes.json" \
+      "$dest/core/lifecycle/catalog/release-hashes.json"
+  fi
+}
+
 run_install_sh() {
   local ostype_value="$1"
   # Close stdin so install.sh cannot hang on read -p.
@@ -114,19 +142,11 @@ case "$cmd" in
     echo "vault_path_windows=$DEST_WIN"
     echo "vault_path_unix=$DEST_UNIX"
     clone_into "$DEST_UNIX"
+    CATALOG_STASH="$(stash_official_catalog "$DEST_UNIX")"
     cd "$DEST_UNIX"
     echo "OSTYPE_OVERRIDE=msys native_OSTYPE=${OSTYPE:-unset}"
     run_install_sh msys
-    # Official releases ship the generated catalog. A PR checkout does not,
-    # and the PR manifest is not a release manifest, so do not generate one
-    # here. Copy the catalog (and its hash table) from official/release.
-    if [ ! -f "$DEST_UNIX/System/.release-catalog.json" ]; then
-      mkdir -p "$DEST_UNIX/System" "$DEST_UNIX/core/lifecycle/catalog"
-      git -C "$DEST_UNIX" show official/release:System/.release-catalog.json \
-        > "$DEST_UNIX/System/.release-catalog.json"
-      git -C "$DEST_UNIX" show official/release:core/lifecycle/catalog/release-hashes.json \
-        > "$DEST_UNIX/core/lifecycle/catalog/release-hashes.json" || true
-    fi
+    restore_official_catalog "$DEST_UNIX" "$CATALOG_STASH"
     PYTHONPATH="$GITHUB_WORKSPACE" \
       python "$GITHUB_WORKSPACE/scripts/run-windows-lifecycle-journey.py" --vault-root "$DEST_WIN"
     ;;
