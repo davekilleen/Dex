@@ -34,6 +34,16 @@
       "System/.dex/release-anchor.receipt.json"
     ]
   },
+  "establish_baseline": {
+    "version": 0,
+    "action": "write-establish-baseline",
+    "seam_paths": [
+      "System/.installed-files.manifest",
+      "System/.release-catalog.json",
+      "core/lifecycle/catalog/release-hashes.json",
+      "System/.dex/established-baseline.receipt.json"
+    ]
+  },
   "hard_deny": [
     ".env",
     ".env.*",

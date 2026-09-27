@@ -20,6 +20,16 @@ A Windows 11 install from Git Bash could stop without a usable reason. Dex treat
 * **If something fails, you get a short message and a log file.** The real error is written to a log in your Dex folder so you can share it, instead of a blank failure.
 * **PowerShell setup uses the same installer.** When Git Bash is there, the PowerShell script hands the Python it found to the shared setup script, so both doors finish the same way.
 
+Older copies of Dex can finally name the version they started from.
+
+If you started with Dex before it kept an official version record, checkup would say it could not tell which version was installed — and then stop. The guided update stayed closed, and the repair that checks your files against the official record would not run either. There was no safe way to set a starting version.
+
+**What this fixes for you:**
+
+* **You can set a starting version without losing your edits.** When Dex cannot tell which version is installed, the same guided repair now offers a look-only pass that lists every official file it compared and marks the ones you changed as customizations. Nothing is written until you say yes.
+* **A wrong version number is refused.** If you name a version Dex has no official record for, it stops and changes nothing.
+* **Your checkup points at this repair instead of dead-ending.** It tells you the look-only command to run in Terminal, and reminds you that only the version paperwork is saved — not your notes, and not the files you have changed.
+
 When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
 
 **What this fixes for you:**

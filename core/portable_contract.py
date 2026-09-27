@@ -594,6 +594,18 @@ RELEASE_ANCHOR_SEAM_PATHS = (
     RELEASE_ANCHOR_RECEIPT_RELATIVE,
 )
 
+# DEX-135: UNKNOWN-identity baseline establishment writes only these
+# generated identity records plus an audit receipt. Exact paths only —
+# never a directory or prefix grant.
+ESTABLISH_BASELINE_SEAMS_VERSION = 0
+ESTABLISH_BASELINE_RECEIPT_RELATIVE = "System/.dex/established-baseline.receipt.json"
+ESTABLISH_BASELINE_SEAM_PATHS = (
+    "System/.installed-files.manifest",
+    "System/.release-catalog.json",
+    "core/lifecycle/catalog/release-hashes.json",
+    ESTABLISH_BASELINE_RECEIPT_RELATIVE,
+)
+
 # Transition capsules snapshot the two reset-owned config files before a
 # re-onboarding mutates them. They live outside the update lane's capsule root
 # because its status projection treats every entry there as an update capsule.
@@ -669,6 +681,7 @@ def update_write_verdict(
         "conflict-resolution",
         "adoption-rewind",
         "release-anchor",
+        "establish-baseline",
         "usage-log",
     ):
         raise ValueError(f"unknown write operation: {operation}")
@@ -1091,6 +1104,53 @@ def update_write_verdict(
             resolution.rule_id if resolution is not None else None,
         )
 
+    if operation == "establish-baseline":
+        # Same terminating shape as release-anchor: exact identity-record
+        # paths only. Falling through would let this repair write brain
+        # files wholesale.
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        if candidate in ESTABLISH_BASELINE_SEAM_PATHS:
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-establish-baseline",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-establish-baseline",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
+        )
+
     if operation == "conflict-resolution":
         try:
             denied = is_denied(path)
@@ -1382,6 +1442,7 @@ def build_contract_schema(
             "mutation_policy",
             "customization_migration",
             "release_anchor",
+            "establish_baseline",
             "hard_deny",
             "vault_regions",
             "rules",
@@ -1444,6 +1505,25 @@ def build_contract_schema(
                     "action": {"const": "write-release-anchor"},
                     # Deliberately no seam_prefixes: the anchor seam grants
                     # exact file paths only (review §2.11).
+                    "seam_paths": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                        "uniqueItems": True,
+                    },
+                },
+            },
+            "establish_baseline": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "version",
+                    "action",
+                    "seam_paths",
+                ],
+                "properties": {
+                    "version": {"const": ESTABLISH_BASELINE_SEAMS_VERSION},
+                    "action": {"const": "write-establish-baseline"},
                     "seam_paths": {
                         "type": "array",
                         "items": {"type": "string", "minLength": 1},
@@ -1541,6 +1621,11 @@ def build_contract_document(
             "version": RELEASE_ANCHOR_SEAMS_VERSION,
             "action": "write-release-anchor",
             "seam_paths": list(RELEASE_ANCHOR_SEAM_PATHS),
+        },
+        "establish_baseline": {
+            "version": ESTABLISH_BASELINE_SEAMS_VERSION,
+            "action": "write-establish-baseline",
+            "seam_paths": list(ESTABLISH_BASELINE_SEAM_PATHS),
         },
         "hard_deny": list(HARD_DENY_PATTERNS),
         "vault_regions": list(VAULT_REGIONS),

@@ -251,6 +251,9 @@ The assessment's `release_baseline` object carries `anchor_state`:
 - `absent` with `release-identity-unproved` exclusions present — offer the
   re-anchor flow below. This is the guided repair those exclusions' guidance
   points at.
+- identity not `VERIFIED` (Doctor says it couldn't verify which version is installed) — this is the older-fork case, not the unproved-files case.
+  Do not stop at "I can't tell you what you've changed." Offer the
+  starting-version repair below. Never run it yourself.
 
 The re-anchor flow is deliberately interactive: it asks for an explicit yes
 before it runs and again before it writes, and it refuses anything that is
@@ -269,6 +272,24 @@ terminal window, from their vault folder:
 >
 > It shows you everything before saving anything, and if it can't prove your
 > version from what's on this computer it stops without changing a thing.
+
+When Doctor could not verify which version is installed at all, offer this
+starting-version repair instead of the dead-end above. Same rules: the
+person runs it in their own terminal; you never run it, never pipe answers
+into it, and never treat its refusal as an error:
+
+> Dex can't tell which version is installed in this vault, so the protected
+> update stays closed. There's a guided repair that sets a starting version
+> from the official record — it only writes the version paperwork, never
+> your notes or the files you have changed. Open the Terminal app in your
+> Dex vault folder and run:
+>
+> `python3 -m core.update.reanchor_cli --dry-run`
+>
+> That only looks, and lists every file it compared. If the list looks
+> right, run the same command without `--dry-run` (add `--baseline VERSION`
+> if you know the official version). It asks for your yes before it saves
+> anything.
 
 After the user reports back (or on the next Doctor run), re-read the deep
 assessment rather than assuming the outcome. If the flow said it couldn't

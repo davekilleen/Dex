@@ -28,6 +28,7 @@ from core.update.journey_protocol import (
     JourneyProtocolError,
     load_update_journey_protocol,
 )
+from core.utils.os_flags import binary_write_flags
 from scripts import release_fleet
 from scripts.dex_update_bridge import FOUNDATION
 
@@ -1029,7 +1030,9 @@ del _platform_receipt_boundary
 def _write_exclusive(path: Path, content: bytes, *, mode: int) -> None:
     if not path.parent.is_dir():
         raise release_fleet.FleetError(f"acceptance output parent does not exist: {path.parent}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    flags = binary_write_flags(
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    )
     try:
         descriptor = os.open(path, flags, mode)
     except FileExistsError as error:

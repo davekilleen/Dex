@@ -12,6 +12,7 @@
     "mutation_policy",
     "customization_migration",
     "release_anchor",
+    "establish_baseline",
     "hard_deny",
     "vault_regions",
     "rules",
@@ -129,6 +130,32 @@
         },
         "action": {
           "const": "write-release-anchor"
+        },
+        "seam_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "establish_baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "action",
+        "seam_paths"
+      ],
+      "properties": {
+        "version": {
+          "const": 0
+        },
+        "action": {
+          "const": "write-establish-baseline"
         },
         "seam_paths": {
           "type": "array",
