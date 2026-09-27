@@ -13,7 +13,7 @@ This audit is grounded in **current `main`** and in **open draft PR #621**. It d
 
 | Source | Identity | Role |
 |---|---|---|
-| Current `main` | `aab02b19a91ccbe44d1952a08788b37cf506b7cc` (`## main...origin/main`) | Shipped first setup |
+| Current `main` (branch base) | `836c01b401dead214460d1db971b07a1a3b76067` | Shipped first setup. Two commits after the first evidence pass (`aab02b19`): #751 Todoist titles, #752 Windows CI. Neither touches onboarding. |
 | PR #621 head | `20c9dc526dfc6b2cc37c7d295eefb754739ddaa2` on `cursor/first-hour-onboarding-spec-b76d` | Preview prototype + product contract |
 | Closed #617 | parked 2026-08-27 | Earlier draft of the same preview; not a second design |
 | Shipped flow | `core/onboarding/FLOW.md` (947 lines) | Single source of truth for `/setup` |
