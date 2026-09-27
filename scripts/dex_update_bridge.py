@@ -2986,12 +2986,7 @@ def _repair_relocated_split(vault_root: Path) -> bool:
     rewritten["environment"] = {**environment, "DEX_VAULT": str(root)}
     data = (json.dumps(rewritten, sort_keys=True, indent=2) + "\n").encode("utf-8")
     temporary = target.parent / f".{target.name}.relocated-{os.getpid()}"
-    descriptor = os.open(
-        temporary,
-        # Bootstrap script: cannot import core.utils.os_flags at module load.
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0),
-        0o600,
-    )
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         os.write(descriptor, data)
         os.fsync(descriptor)

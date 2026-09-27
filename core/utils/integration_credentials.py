@@ -13,7 +13,6 @@ from typing import Any, Callable
 
 import yaml
 
-from core.utils.os_flags import binary_write_flags
 from core.utils.strict_yaml import load_yaml_bytes
 
 _NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -367,7 +366,7 @@ def update_vault_env(
         expected = updated_env_bytes(original, updates)
         descriptor = os.open(
             temporary,
-            binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
             0o600,
             dir_fd=root_fd,
         )
