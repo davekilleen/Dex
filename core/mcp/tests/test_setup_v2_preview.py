@@ -101,12 +101,12 @@ def _existing_vault(root: Path) -> Path:
     (system / "user-profile.yaml").write_text(
         yaml.safe_dump(
             {
-                "name": "Jordan Lee",
+                "name": "Jane Doe",
                 "role": "Product lead",
-                "company": "Northwind",
+                "company": "Example Co",
                 "company_size": "startup",
-                "email_domain": "northwind.example",
-                "work_email": "jordan@northwind.example",
+                "email_domain": "example.com",
+                "work_email": "jane@example.com",
                 "entity_creation": {"mode": "suggest"},
                 "capabilities": {
                     "career": {"enabled": True},
@@ -154,7 +154,7 @@ def _existing_vault(root: Path) -> Path:
             {
                 "completed": True,
                 "completed_at": "2026-03-01T12:00:00.000Z",
-                "user_name": "Jordan Lee",
+                "user_name": "Jane Doe",
                 "role": "Product lead",
             }
         )
@@ -231,7 +231,7 @@ def _run_preview_journey() -> dict[str, object]:
         (1, {"name": "Alex Rivera"}),
         (2, {"role": "Product Manager", "role_group": "product"}),
         (3, {"company": "Northwind", "company_size": "startup"}),
-        (4, {"email_domain": "northwind.example"}),
+        (4, {"email_domain": "example.com"}),
         (5, {"pillars": ["Customer retention", "Product strategy"]}),
         (6, {"communication": {}}),
         (
