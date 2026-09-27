@@ -557,7 +557,7 @@ test('resolveStagePython refuses a too-old system python in plain words', () => 
       try {
         assert.throws(
           () => provisionLib.resolveStagePython(vault, 'DEX_PROVISION_PYTHON'),
-          error => /Python 3\.10/.test(error.message) && /too old/.test(error.message),
+          error => /Python 3\.11/.test(error.message) && /too old/.test(error.message),
         );
       } finally {
         process.env.PATH = previousPath;

@@ -36,11 +36,15 @@ A **vault** is the folder containing your personal Dex notes and configuration.
 curl -fsSL https://heydex.ai/install.sh | bash
 ```
 
-**Windows — PowerShell:**
+**Windows — Git Bash:**
 
-```powershell
-irm https://heydex.ai/install.ps1 | iex
+```bash
+git clone --branch release --single-branch https://github.com/davekilleen/dex.git Dex
+cd Dex
+bash ./install.sh
 ```
+
+Clone the official release, review `install.sh`, then run it from Git Bash in that folder. Git Bash comes with Git for Windows. Do not pipe a remote script into `iex`.
 
 Then open the Dex folder in Claude Code or Cursor and say **"hi"**. Dex guides you through your role and priorities. [Installation help](https://heydex.ai/install/). If setup stops, keep the error message and use the help below; some prerequisites may already have been installed.
 
@@ -76,6 +80,18 @@ Dex's update service previews product changes and protects personal content thro
 - Use [the help guide](https://heydex.ai/help/) for setup, or [report a bug](https://github.com/davekilleen/dex/issues) without posting private vault contents. The [feedback guide](https://heydex.ai/help/feedback.html) explains reporting.
 - To stop using an app, close its Dex session and revoke its folder access or disable its plugin in that app. Keep the vault if you want your notes. Removing an app or plugin does not stop independently installed background jobs. New-app removal instructions remain pending native verification.
 
+## Windows support status
+
+| Area | Status today |
+| --- | --- |
+| Install (Git Bash `install.sh`) | Preview — works on a clean Windows 11 with python.org 3.12/3.13 |
+| First setup and daily use (notes, tasks, MCP tools) | Preview |
+| `/dex-update` and `/dex-rollback` | Not yet — a fix for how Dex read and wrote its own record files on Windows is in progress |
+| Connected-service keys (`.env`) and trusted local MCPs | Not yet — Windows file-permission checks are in progress |
+| Older vaults (before v1.80) moving to the current update engine | Not on Windows — start from a fresh install |
+| Calendar, background meeting sync, launch-at-login jobs | Mac only |
+| Supported shells and Pythons | Git Bash; python.org Python 3.12/3.13. Not supported: Cygwin, Microsoft Store Python, WSL folders under `/mnt` |
+
 ## Guides
 
 - [System guide](docs/Dex_System/Dex_System_Guide.md): planning, meetings, people, tasks and reviews.
@@ -109,14 +125,14 @@ Prefer to see every step, or the quick install hit a snag? This section does the
    - **Mac:** Installs automatically when needed (you'll see a prompt)
    - **Windows:** Download from [git-scm.com/download/win](https://git-scm.com/download/win)
 3. **[Node.js](https://nodejs.org/)** - Download the "LTS" version and install (this enables the system's automation features)
-4. **[Python 3.10+](https://www.python.org/downloads/)** - Download and install (required for MCP servers and task sync)
-   - **Minimum version:** Python 3.10 or newer
+4. **[Python 3.11+](https://www.python.org/downloads/)** - Download and install (required for MCP servers and task sync)
+   - **Minimum version:** Python 3.11 or newer
    - **Windows users:** ⚠️ During installation, check the box "Add Python to PATH" - this is critical
    - **Mac users with old Python:** If you have Python 3.9 or older, download fresh from python.org
 
 All installers walk you through setup with default options.
 
-**Why Python 3.10+?** The MCP SDK (Model Context Protocol) requires Python 3.10 or newer. This powers the Work MCP server that enables task sync - task updates through its tools can synchronize related pages. Manual checkbox edits need the separately configured sync service.
+**Why Python 3.11+?** The listed Python packages Dex installs need Python 3.11 or newer. This powers the Work MCP server that enables task sync - task updates through its tools can synchronize related pages. Manual checkbox edits need the separately configured sync service.
 
 **Mac users:** If this is your first time using command-line tools, macOS will prompt you to install "Command Line Developer Tools" during setup. Click **Install** when prompted - it's safe and required. Takes 2-3 minutes.
 
@@ -164,9 +180,9 @@ python3 --version
 
 **Windows users:** Try `python --version` if `python3` doesn't work.
 
-**You should see a response like:** `Python 3.10.x` or higher (3.11, 3.12, etc.)
+**You should see a response like:** `Python 3.11.x` or higher (3.12, 3.13, etc.)
 
-**If you see Python 3.9 or older:** The MCP SDK requires Python 3.10+. Download and install a newer version:
+**If you see Python 3.10 or older:** Dex setup needs Python 3.11+. Download and install a newer version:
 - **Mac/Windows:** Download from [python.org](https://www.python.org/downloads/) (get the latest stable version)
 - After installing, restart your terminal and check the version again
 
@@ -174,7 +190,7 @@ python3 --version
 - **Windows:** Python likely isn't in your PATH. Reinstall from [python.org](https://www.python.org/downloads/) and check "Add Python to PATH" during installation. Restart your terminal after.
 - **Mac:** Download Python from [python.org](https://www.python.org/downloads/), install it, then restart your terminal.
 
-**Why Python 3.10+ matters:** It powers the MCP servers that sync tasks everywhere. Check off a task in a meeting note → it updates in your Tasks.md, person pages, and project files automatically. Python 3.9 and older won't work - you need 3.10 or newer.
+**Why Python 3.11+ matters:** It powers the MCP servers that sync tasks everywhere. Check off a task in a meeting note → it updates in your Tasks.md, person pages, and project files automatically. Python 3.10 and older won't work - you need 3.11 or newer.
 
 ---
 
@@ -203,9 +219,9 @@ python3 --version
 The repository installer is a **Bash script**. Run it from the Dex folder you opened in Step 1.
 
 - **Mac:** Open Cursor's **View → Terminal** in that folder.
-- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. PowerShell can run the version checks above, but cannot directly run this Bash installer. For the PowerShell installation route, use [Quick install](#quick-install-claude-code-or-cursor).
+- **Windows:** Use **Git Bash**, supplied by Git for Windows, in that folder. Select the Git Bash terminal profile in Cursor, or open Git Bash separately and navigate to the folder. See [Quick install](#quick-install-claude-code-or-cursor).
 
-In the terminal selected above, run:
+In Git Bash:
 
 ```bash
 bash ./install.sh
@@ -226,7 +242,7 @@ bash ./install.sh
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r core/mcp/requirements.txt
+.venv/bin/pip install --require-hashes -r core/mcp/requirements.hash.txt
 ```
 
 Then restart Cursor.
@@ -245,7 +261,8 @@ Open **System Settings** → **Privacy & Security** → **Calendars**. Turn **Cu
 That's it. The installer already set up the rest on Mac. Your meetings—including recurring ones like weekly 1:1s—will show on the correct days in Dex.
 
 **More detail and troubleshooting:** [Calendar_Setup.md](docs/Dex_System/Calendar_Setup.md) (in your vault after setup).
-**On Windows?** Calendar connection is supported on Mac via Apple Calendar. We don't have Windows instructions in this repo yet.
+**On Windows?** Calendar connection is Mac-only (Apple Calendar). Windows calendar support is
+not planned in this release; Dex will say so rather than pretend it checked.
 
 </details>
 
@@ -274,7 +291,7 @@ xcode-select --install
 
 ---
 
-### Windows: "python is not recognized" or "pip is not recognized"
+### Windows (Git Bash): "python is not recognized" or "pip is not recognized"
 
 This means Python wasn't added to your PATH during installation.
 
@@ -290,7 +307,7 @@ This means Python wasn't added to your PATH during installation.
 
 ---
 
-### Windows: "git is not recognized"
+### Windows (Git Bash): "git is not recognized"
 
 Git for Windows isn't installed.
 
@@ -303,6 +320,12 @@ Git for Windows isn't installed.
 
 ---
 
+### Windows: "this Dex copy's update engine doesn't match its release information"
+
+You have hit the record-file line-ending problem above; the fix arrives with the next release and repairs itself. Nothing in your notes is affected.
+
+---
+
 ### All Platforms: "Could not install Python dependencies"
 
 The installer tries two methods automatically. If both fail, your pip version might be too old.
@@ -312,15 +335,15 @@ The installer tries two methods automatically. If both fail, your pip version mi
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r core/mcp/requirements.txt
+.venv/bin/pip install --require-hashes -r core/mcp/requirements.hash.txt
 ```
 
-**Windows — PowerShell, in your Dex folder:**
+**Windows — Git Bash, in your Dex folder:**
 
-```powershell
+```bash
 python -m venv .venv
-.venv\Scripts\pip install --upgrade pip
-.venv\Scripts\pip install -r core/mcp/requirements.txt
+.venv/Scripts/pip install --upgrade pip
+.venv/Scripts/pip install --require-hashes -r core/mcp/requirements.hash.txt
 ```
 
 ---
@@ -336,7 +359,7 @@ This means the Python MCP servers can't start. Reinstall dependencies using the 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r core/mcp/requirements.txt
+.venv/bin/pip install --require-hashes -r core/mcp/requirements.hash.txt
 ```
 
 Then **restart Cursor completely** (Cmd+Q and reopen, or File → Quit).
@@ -379,7 +402,7 @@ If `/daily-plan` doesn't show your meetings, or your recurring meetings (e.g. we
 
 1. **Add Google to the Calendar app** — Open **Calendar** (Mac's built-in app) → **Calendar** → **Add Account…** → **Google** → sign in. Dex reads from this app.
 2. **Let Cursor see your calendar** — **System Settings** → **Privacy & Security** → **Calendars** → turn **Cursor** on, then click **Cursor** and set access to **Full** (not "Add Only"). Restart Cursor after changing it.
-3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `.venv/bin/pip install -r core/mcp/requirements.txt`, then restart Cursor.
+3. **If you skipped the installer or fixed Python yourself** — The installer normally sets up calendar support on Mac. If you didn't run it or installed packages by hand, in Terminal run: `.venv/bin/pip install --require-hashes -r core/mcp/requirements.hash.txt`, then restart Cursor.
 
 See **[Calendar_Setup.md](docs/Dex_System/Calendar_Setup.md)** for the full guide.
 

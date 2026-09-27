@@ -43,7 +43,7 @@ Dex uses the "framework model" - users maintain their own repo with the main Dex
 **User setup (one time):**
 
 ```bash
-git clone https://github.com/davekilleen/dex.git my-dex
+git clone --branch release --single-branch https://github.com/davekilleen/dex.git my-dex
 cd my-dex
 git remote rename origin upstream    # Main repo becomes "upstream"
 git remote add origin <their-repo>   # Optional: their backup

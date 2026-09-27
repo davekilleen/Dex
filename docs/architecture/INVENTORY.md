@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 6d5695ba82baf522cf5013c87ac935640abfc5449eaa846edbf74716f255fed9 -->
+<!-- Content SHA-256: c4d7a73ca53b268f6e7e6f55c6db98d934b3444c5dea63ee39022aeb904cf3b5 -->
 
 # Architecture Inventory
 
@@ -153,13 +153,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 46 | `replace` |
+| `brain` | 47 | `replace` |
 | `seed` | 40 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
 
-<details><summary><code>brain</code> declared paths (46)</summary>
+<details><summary><code>brain</code> declared paths (47)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -197,6 +197,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `core/data/sync-folder-markers.json` (file; `brain-sync-folder-markers`)
 - `core/harnesses/templates/product-AGENTS.md` (file; `brain-product-agents-template`)
 - `docs` (dir; `brain-docs`)
+- `install.ps1` (file; `brain-install-ps1`)
 - `install.sh` (file; `brain-install`)
 - `package-lock.json` (file; `brain-package-lock`)
 - `package.json` (file; `brain-package-json`)

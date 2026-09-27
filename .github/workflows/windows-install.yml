@@ -68,9 +68,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Node dependencies
-        run: npm ci
-
       - name: Install Python test dependencies
         # Bounded set only: requirements-dev.txt pulls apple-mail-mcp, a macOS
         # seam that does not belong on this runner and would waste minutes.

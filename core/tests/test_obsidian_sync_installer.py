@@ -104,7 +104,7 @@ def test_installer_rejects_python_older_than_runtime_requires(tmp_path: Path) ->
     result, plist, _calls = _run_installer(tmp_path, supported_python=False)
 
     assert result.returncode == 1
-    assert "Python 3.10 or newer" in result.stdout
+    assert "Python 3.11 or newer" in result.stdout
     assert not plist.exists()
 
 
