@@ -37,6 +37,7 @@ from pathlib import Path
 
 from core.path_safety import unsafe_existing_parent
 from core.transaction.fsync import fsync_directory
+from core.utils.os_flags import binary_write_flags
 
 LOCK_RELATIVE = Path("System") / ".dex" / "mutation.lock"
 _MAX_ACQUIRE_ATTEMPTS = 32
@@ -203,7 +204,9 @@ def acquire_owned_lock(vault_root: Path, kind: str):
 
     for _attempt in range(_MAX_ACQUIRE_ATTEMPTS):
         try:
-            descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            descriptor = os.open(
+                lock, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+            )
         except OSError as error:
             if error.errno != errno.EEXIST:
                 raise

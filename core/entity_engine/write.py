@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterable, Literal, Mapping
 
 from core.paths import COMPANIES_DIR, PEOPLE_DIR
+from core.utils.os_flags import binary_write_flags
 
 from .contract import (
     RELATIONSHIP_TYPES,
@@ -492,7 +493,7 @@ def create_page_if_absent(
         flags |= os.O_NOFOLLOW
     payload = content.encode("utf-8")
     try:
-        descriptor = os.open(page_path, flags, 0o666)
+        descriptor = os.open(page_path, binary_write_flags(flags), 0o666)
     except FileExistsError:
         return Result("exists", False)
     try:

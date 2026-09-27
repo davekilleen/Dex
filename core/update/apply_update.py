@@ -25,6 +25,7 @@ from core import portable_contract
 from core.transaction.engine import PlanEntry, Transaction
 from core.utils import release_channel
 from core.utils.local_git import git_output
+from core.utils.os_flags import binary_write_flags
 
 MANIFEST_RELATIVE = "System/.installed-files.manifest"
 TOPOLOGY_RELATIVE = Path("System/.dex/topology.json")
@@ -891,7 +892,9 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     data = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
     temporary = path.parent / f".{path.name}.update-{os.getpid()}"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(
+        temporary, binary_write_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL), 0o600
+    )
     try:
         os.write(descriptor, data)
         os.fsync(descriptor)
