@@ -51,7 +51,7 @@
     "darwin"
   ],
   "runner": {
-    "sha256": "56b3b9cfcd6dd02ab84c76382c8364d51d3cb0463562c55323caedf8cc7cdba8",
+    "sha256": "5dd0c8b3a699a6de2a66386524731c5f7da0c80084f76a116978d2c7263b30b4",
     "source_path": "scripts/release_fleet.py"
   },
   "schema_version": 1
