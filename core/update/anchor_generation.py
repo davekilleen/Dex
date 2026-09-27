@@ -425,7 +425,7 @@ def generate_release_anchor(vault_root: Path) -> AnchorGeneration:
         tag_object=source.tag_object,
         commit=source.commit,
         tree=source.tree,
-        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        manifest_sha256=catalog.release.manifest.sha256,
         catalog_sha256=catalog.integrity.catalog_sha256,
         files=rows,
     )

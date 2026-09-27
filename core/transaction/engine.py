@@ -25,6 +25,7 @@ crash window.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -42,8 +43,23 @@ from core.transaction.fsync import fsync_directory
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
 from core.transaction.snapshot import Snapshot
+from core.utils.os_flags import binary_read_flags
 
 TX_ROOT_RELATIVE = Path("System") / ".dex" / "tx"
+_LOG = logging.getLogger(__name__)
+_WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED = False
+
+
+def _log_windows_planned_content_shortcut_once() -> None:
+    """Explain once why the planned-content shortcut is refused on Windows."""
+    global _WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED
+    if _WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED:
+        return
+    _WINDOWS_PLANNED_CONTENT_SHORTCUT_LOGGED = True
+    _LOG.debug(
+        "Windows planned-content probe refuses the no-follow shortcut until "
+        "the handle-verified open lands"
+    )
 
 
 # Operations that only append their own small receipt. They are committed and
@@ -631,6 +647,11 @@ class Transaction:
     ) -> bool:
         if max_bytes is not None and planned_size > max_bytes:
             return False
+        if os.name == "nt":
+            # Phase 4 replaces this with the handle-verified open. Until then
+            # refuse the shortcut so recovery never follows a reparse point.
+            _log_windows_planned_content_shortcut_once()
+            return False
         try:
             nofollow = os.O_NOFOLLOW
         except AttributeError:
@@ -638,7 +659,7 @@ class Transaction:
         try:
             descriptor = os.open(
                 target,
-                os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0),
+                binary_read_flags(os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0)),
             )
         except OSError:
             return False

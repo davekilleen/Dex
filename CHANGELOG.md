@@ -9,6 +9,24 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+held until the Windows record repair lands
+
+On Windows, Dex was reading its own files in a way that quietly changed their
+bytes before comparing them — line endings rewritten, and some files cut short
+at a special Windows end-of-file mark. That made Dex treat its own shipped
+files as edited, and it is why a Windows vault can refuse its next update.
+
+This change starts reading those files exactly as they sit on disk. It must
+not ship on its own: older Windows vaults still have bookkeeping files that
+need the follow-on repair first.
+
+**What this fixes for you:**
+
+* **Dex now reads its own files exactly as stored.** Line endings and binary
+  files are no longer rewritten on the way in. This is the first half of the
+  Windows repair; the second half puts existing Windows bookkeeping files
+  back into a readable form before any release can carry this change.
+
 When a task was sent to Todoist, the title picked up the raw folder path of the note it came from, and the description had no clickable way back. You had to go find the page yourself.
 
 **What this fixes for you:**

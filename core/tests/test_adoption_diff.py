@@ -6,8 +6,15 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from core.lifecycle.inventory import build_inventory
-from core.tests.lifecycle_test_helpers import catalog_for, write_file, write_manifest
+from core.tests.lifecycle_test_helpers import (
+    catalog_for,
+    ctrl_z_binary_blob,
+    write_file,
+    write_manifest,
+)
 
 
 def test_diff_reports_modified_missing_and_unprovable_separately(tmp_path: Path) -> None:
@@ -38,6 +45,7 @@ def test_diff_reports_modified_missing_and_unprovable_separately(tmp_path: Path)
     }
 
 
+@pytest.mark.windows_supported
 def test_windows_crlf_checkout_still_proves_release_identity(tmp_path: Path) -> None:
     """Issue #256 defense in depth: an existing Windows checkout with Git's
     core.autocrlf=true carries EVERY tracked text file as CRLF — the
@@ -53,17 +61,19 @@ def test_windows_crlf_checkout_still_proves_release_identity(tmp_path: Path) -> 
     tracked_lf = b"release bytes\nsecond line\n"
     edited_lf = b"the shipped bytes\n"
     dormant_lf = b"---\nname: dormant-skill\n---\nrelease payload\n"
+    binary_blob = ctrl_z_binary_blob()
     dormant_source = ".claude/skills/_available/sales/dormant/SKILL.md"
     dormant_target = ".claude/skills/dormant/SKILL.md"
 
     manifest = write_manifest(
-        vault, ["core/feature.py", "core/edited.py", dormant_source]
+        vault, ["core/feature.py", "core/edited.py", "core/ctrl-z.bin", dormant_source]
     )
     catalog = catalog_for(
         manifest,
         {
             "core/feature.py": tracked_lf,
             "core/edited.py": edited_lf,
+            "core/ctrl-z.bin": binary_blob,
             dormant_target: dormant_lf,
         },
     )
@@ -98,6 +108,7 @@ def test_windows_crlf_checkout_still_proves_release_identity(tmp_path: Path) -> 
     write_file(vault, "core/feature.py", crlf(tracked_lf))
     write_file(vault, dormant_source, crlf(dormant_lf))
     write_file(vault, "core/edited.py", crlf(b"a real user edit\n"))
+    write_file(vault, "core/ctrl-z.bin", binary_blob)
     (vault / "System/.installed-files.manifest").write_bytes(crlf(manifest))
 
     report = build_inventory(vault, catalog=catalog)
@@ -107,6 +118,9 @@ def test_windows_crlf_checkout_still_proves_release_identity(tmp_path: Path) -> 
     assert not report.baseline.errors
     # Line-ending skew alone is never a user modification…
     assert by_path["core/feature.py"].release_state == "stock-unmodified"
+    # A binary file with Ctrl-Z at offset 100 is still stock when read exact.
+    assert by_path["core/ctrl-z.bin"].release_state == "stock-unmodified"
+    assert by_path["core/ctrl-z.bin"].sha256 == hashlib.sha256(binary_blob).hexdigest()
     # …but genuinely different content still is, even in CRLF form.
     assert by_path["core/edited.py"].release_state == "stock-modified"
     modified = [
