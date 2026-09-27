@@ -104,6 +104,7 @@ jobs:
             core/tests/test_lifecycle_relocated_vault.py \
             core/tests/test_lifecycle_service_contract.py \
             core/tests/test_lifecycle_topology_migration.py \
+            core/tests/test_windows_binary_credential_trust_writes.py \
             -m "not fuzz" -q --tb=line
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
