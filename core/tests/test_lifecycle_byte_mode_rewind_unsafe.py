@@ -13,6 +13,7 @@ from core.lifecycle.engine import (
     rewind_adoption,
 )
 from core.tests.test_adoption_rewind import CREATED_PATH, EXISTING_PATH, _committed_adoption
+from core.transaction import byte_mode_flag
 from core.transaction.byte_mode_flag import (
     HASH_READ_MODE_PRE_REPAIR,
     MESSAGE_REWIND_REFUSED,
@@ -40,7 +41,7 @@ def test_rewind_adoption_refuses_pre_repair_snapshot_on_windows(
 ) -> None:
     vault, receipt = _committed_adoption(tmp_path)
     _pre_repair_tx_dir(vault, receipt.transaction_id)
-    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(byte_mode_flag, "windows_restore_guard_active", lambda: True)
 
     with pytest.raises(AdoptionRewindError, match="will not restore") as error:
         rewind_adoption(vault, receipt, rewind_acknowledgement_token(receipt))
@@ -79,7 +80,7 @@ def test_crash_recovery_rollback_refuses_pre_repair_snapshot_on_windows(
     if existing.is_file():
         existing.unlink()
     write_operation_flag(transaction.tx_dir, HASH_READ_MODE_PRE_REPAIR)
-    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(byte_mode_flag, "windows_restore_guard_active", lambda: True)
 
     with pytest.raises(PreRepairRestoreRefused, match="will not restore"):
         transaction.rollback()

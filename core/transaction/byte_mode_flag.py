@@ -102,9 +102,14 @@ def snapshot_is_pre_repair(tx_dir: Path) -> bool:
     return mode != HASH_READ_MODE_BINARY
 
 
+def windows_restore_guard_active() -> bool:
+    """True on native Windows. Isolated so tests can flip it without Path."""
+    return os.name == "nt"
+
+
 def restore_is_refused(tx_dir: Path) -> bool:
     """Windows-only refuse: missing or pre-repair flag. POSIX always allows."""
-    return os.name == "nt" and snapshot_is_pre_repair(tx_dir)
+    return windows_restore_guard_active() and snapshot_is_pre_repair(tx_dir)
 
 
 def refuse_pre_repair_restore(tx_dir: Path) -> None:

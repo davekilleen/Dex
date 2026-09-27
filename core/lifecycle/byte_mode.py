@@ -307,13 +307,18 @@ def _committed_tx_ids(vault_root: Path) -> list[str]:
 
 
 def _ledger_last_seq(vault_root: Path) -> int:
+    """Read last_seq without taking the ledger lock.
+
+    Apply already holds the write lock; calling ``project_state`` here would
+    deadlock on a second flock of the same file.
+    """
     ledger_root = Path(vault_root) / LEDGER_RELATIVE
     if not ledger_root.exists():
         return 0
     try:
-        from core.lifecycle.ledger import project_state
+        from core.lifecycle.ledger import _project_state_unlocked
 
-        state = project_state(Path(vault_root))
+        state = _project_state_unlocked(Path(vault_root))
         last_seq = state.get("last_seq", 0)
         return last_seq if type(last_seq) is int and last_seq >= 0 else 0
     except Exception:
@@ -810,6 +815,12 @@ def rollback(vault_root: Path) -> dict[str, object]:
     release = acquire_owned_lock(root, "byte-mode")
     try:
         with _ledger_write_lock(root):
+            locked_seq = _ledger_last_seq(root)
+            locked_txs = set(_committed_tx_ids(root))
+            if locked_seq != recorded_seq or locked_txs != recorded_tx_set:
+                raise ByteModeRollbackRefused(
+                    MESSAGE_ROLLBACK_REFUSED.format(quarantine=quarantine_relative)
+                )
             restored = _rollback_locked(root, marker, quarantine)
     finally:
         release()
