@@ -104,7 +104,7 @@ REJECTED_WINDOWS_LOCATIONS = (
     "C:/Program Files (x86)/Git/bin/git.exe",
     r"C:\PROGRA~1\Git\cmd\git.exe",
     "C:/PROGRA~1/Git/cmd/git.exe",
-    r"\\?\C:\Program Files\Git\cmd\git.exe",
+    r"\\?\UNC\server\share\Git\cmd\git.exe",
     r"\\server\share\Git\cmd\git.exe",
     "/c/evil/Git/cmd/git.exe",
     "/cygdrive/c/evil/Git/cmd/git.exe",
@@ -246,13 +246,25 @@ def test_windows_native_python_does_not_open_git_bash_spellings(monkeypatch):
         local_git.trusted_git_binary()
 
 
-def test_windows_cygwin_python_opens_mapped_alias_of_closed_candidate(monkeypatch):
-    _force_windows(monkeypatch, platform="cygwin")
-    alias = "/cygdrive/c/Program Files/Git/cmd/git.exe"
-    canonical = "C:/Program Files/Git/cmd/git.exe"
+@pytest.mark.parametrize("platform", ("cygwin", "msys"))
+def test_windows_posix_python_does_not_open_git_bash_or_cygwin_aliases(monkeypatch, platform):
+    _force_windows(monkeypatch, platform=platform)
+    alias = (
+        "/cygdrive/c/Program Files/Git/cmd/git.exe"
+        if platform == "cygwin"
+        else "/c/Program Files/Git/cmd/git.exe"
+    )
     _present_windows_binaries(monkeypatch, {alias: alias})
-    assert os.fspath(local_git.trusted_git_binary()) == alias
-    assert local_git.canonical_windows_git_path(alias) == canonical
+    with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
+        local_git.trusted_git_binary()
+
+
+def test_windows_cygwin_python_opens_drive_letter_closed_candidate(monkeypatch):
+    _force_windows(monkeypatch, platform="cygwin")
+    canonical = "C:/Program Files/Git/cmd/git.exe"
+    _present_windows_binaries(monkeypatch, {canonical: canonical})
+    assert os.fspath(local_git.trusted_git_binary()) == canonical
+    assert local_git.canonical_windows_git_path("/cygdrive/c/Program Files/Git/cmd/git.exe") == canonical
 
 
 def test_windows_rejects_symlink_junction_and_reparse(monkeypatch):
@@ -290,6 +302,34 @@ def test_windows_rejects_realpath_that_escapes_the_closed_list(monkeypatch):
     with pytest.raises(RuntimeError, match="trusted absolute local Git is unavailable"):
         local_git.trusted_git_binary()
     assert candidate.as_posix().startswith("C:/")
+
+
+def test_windows_accepts_extended_prefix_on_resolved_closed_path(monkeypatch):
+    _force_windows(monkeypatch)
+    monkeypatch.setattr(local_git, "_path_is_symlink", lambda _path: False)
+    monkeypatch.setattr(local_git, "_path_is_junction", lambda _path: False)
+    monkeypatch.setattr(local_git, "_path_is_reparse_point", lambda _path: False)
+    monkeypatch.setattr(local_git, "_path_is_file", lambda _path: True)
+    monkeypatch.setattr(local_git, "_path_access_execute", lambda _path: True)
+    monkeypatch.setattr(
+        local_git,
+        "_path_resolve_strict",
+        lambda _path: Path(r"\\?\C:\Program Files\Git\cmd\git.exe"),
+    )
+    assert local_git.canonical_windows_git_path(r"\\?\C:\Program Files\Git\cmd\git.exe") == (
+        "C:/Program Files/Git/cmd/git.exe"
+    )
+    assert local_git.canonical_windows_git_path(r"\\?\UNC\server\share\Git\cmd\git.exe") is None
+    assert os.fspath(local_git.trusted_git_binary()) == "C:/Program Files/Git/cmd/git.exe"
+
+
+@pytest.mark.parametrize(
+    "folder",
+    ("C:/", "C:/evil", "C:/Users/Sam/AppData", "C:/Users/Sam/AppData/Roaming", "/c/evil"),
+)
+def test_windows_known_folder_must_be_appdata_local(folder):
+    assert local_git.is_windows_local_app_data_folder(folder) is False
+    assert local_git.is_windows_local_app_data_folder("C:/Users/Sam/AppData/Local") is True
 
 
 def test_windows_accepts_case_insensitive_closed_list_match(monkeypatch):

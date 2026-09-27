@@ -49,9 +49,9 @@ _WINDOWS_LIKE_PLATFORMS = frozenset({"win32", "cygwin", "msys"})
 # - No "not world-writable" bit check: Program Files is usually admin-only, but
 #   this code does not read ACLs.
 # - os.access(X_OK) is weak on Windows (often true for any existing file).
-# - Intermediate junctions are detected after resolve() by requiring the
-#   realpath to remain a closed-list member; we do not walk every parent with
-#   a no-follow descriptor (dir_fd is POSIX).
+# - Intermediate junctions: the leaf and each parent are rejected if they are
+#   a symlink, junction, or reparse point. After resolve() the realpath must
+#   still be a closed-list member. We do not have POSIX dir_fd no-follow.
 # - Same-user planting in LocalAppData\Programs is possible because that
 #   directory is user-writable. The path is still included because it is the
 #   official Git for Windows per-user location, and the prefix comes from the
@@ -107,14 +107,31 @@ def windows_path_to_posix_alias(text: str, *, flavor: str) -> str | None:
     return None
 
 
+def _strip_win32_namespace_prefix(text: str) -> str:
+    """Drop a `\\\\?\\` or `\\\\.\\` prefix only when a drive-letter path remains.
+
+    `Path.resolve()` on Windows often returns `\\\\?\\C:\\Program Files\\...`.
+    That spelling is not a second trust root. UNC extended paths stay untouched
+    so they fail the closed-list check.
+    """
+    normalized = text.replace("/", "\\")
+    if normalized.startswith("\\\\?\\UNC\\") or normalized.startswith("\\\\.\\UNC\\"):
+        return text
+    for prefix in ("\\\\?\\", "\\\\.\\"):
+        if normalized.startswith(prefix):
+            return normalized[len(prefix) :]
+    return text
+
+
 def _drive_letter_windows_path(text: str) -> str | None:
     """Return `X:/...` for a Windows drive path or a Git Bash/Cygwin alias."""
     if "\x00" in text:
         return None
-    if _WINDOWS_ABS.match(text):
-        mapped = f"{text[0].upper()}:/{text[2:].replace(chr(92), '/').lstrip('/')}"
+    stripped = _strip_win32_namespace_prefix(text)
+    if _WINDOWS_ABS.match(stripped):
+        mapped = f"{stripped[0].upper()}:/{stripped[2:].replace(chr(92), '/').lstrip('/')}"
     else:
-        mapped = posix_windows_alias_to_drive_path(text)
+        mapped = posix_windows_alias_to_drive_path(stripped)
         if mapped is None:
             return None
     if _windows_has_dot_or_empty_component(mapped) or _windows_has_short_name_component(mapped):
@@ -185,9 +202,17 @@ def _windows_local_app_data() -> str | None:
     if not value or "\x00" in value:
         return None
     drive_path = _drive_letter_windows_path(value)
-    if drive_path is None:
+    if drive_path is None or not is_windows_local_app_data_folder(drive_path):
         return None
     return drive_path
+
+
+def is_windows_local_app_data_folder(text: str) -> bool:
+    """True only for a drive-letter path whose final components are AppData\\Local."""
+    drive_path = _drive_letter_windows_path(text)
+    if drive_path is None:
+        return False
+    return _windows_lexical_key(drive_path).endswith(ntpath.normcase("\\appdata\\local"))
 
 
 def windows_git_candidate_texts() -> tuple[str, ...]:
@@ -227,21 +252,17 @@ def canonical_windows_git_path(text: str) -> str | None:
 def _windows_probe_texts(candidate: str) -> tuple[str, ...]:
     """Paths we may open for one closed candidate.
 
-    Native Windows Python (win32) opens only the drive-letter form. Opening a
-    Git Bash spelling there would touch `\\c\\Program Files\\...` on the current
-    drive — a plantable location, not Git for Windows. Cygwin/MSYS Python may
-    only see the POSIX alias, so that spelling is opened there after it maps
-    back to the same closed candidate.
+    Only the drive-letter form is opened, including on Cygwin/MSYS Python.
+    Opening a Git Bash spelling on native Windows would touch
+    `\\c\\Program Files\\...` on the current drive — a plantable location.
+    Opening `/cygdrive/c/...` would also trust a remappable Cygwin mount.
+    Aliases are still recognised by `canonical_windows_git_path` so a
+    resolved POSIX spelling of the same closed file is accepted.
     """
     canonical = canonical_windows_git_path(candidate)
     if canonical is None:
         return ()
-    texts = [canonical]
-    if sys.platform in {"cygwin", "msys"}:
-        alias = windows_path_to_posix_alias(canonical, flavor=sys.platform)
-        if alias is not None and canonical_windows_git_path(alias) == canonical:
-            texts.append(alias)
-    return tuple(texts)
+    return (canonical,)
 
 
 def _path_is_symlink(path: Path) -> bool:
@@ -275,10 +296,23 @@ def _path_resolve_strict(path: Path) -> Path:
     return path.resolve(strict=True)
 
 
+def _windows_path_has_reparse_in_chain(path: Path) -> bool:
+    """Fail closed if the leaf or any parent is a symlink, junction, or reparse point."""
+    current = path
+    for _ in range(64):
+        if _path_is_symlink(current) or _path_is_junction(current) or _path_is_reparse_point(current):
+            return True
+        parent = current.parent
+        if parent == current:
+            return False
+        current = parent
+    return True
+
+
 def _passes_windows_trust_checks(path: Path) -> Path | None:
     """Apply the POSIX file/symlink/execute/realpath checks, adapted for Windows."""
     try:
-        if _path_is_symlink(path) or _path_is_junction(path) or _path_is_reparse_point(path):
+        if _windows_path_has_reparse_in_chain(path):
             return None
         if not _path_is_file(path) or not _path_access_execute(path):
             return None
@@ -295,9 +329,10 @@ def _trusted_windows_git_binary() -> Path:
             accepted = _passes_windows_trust_checks(Path(text))
             if accepted is None:
                 continue
-            if canonical_windows_git_path(os.fspath(accepted)) is None:
+            resolved_canonical = canonical_windows_git_path(os.fspath(accepted))
+            if resolved_canonical is None:
                 continue
-            return accepted
+            return Path(resolved_canonical)
     raise RuntimeError("trusted absolute local Git is unavailable")
 
 
