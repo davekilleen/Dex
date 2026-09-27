@@ -106,7 +106,7 @@ def test_install_instructions_detect_the_app_without_claiming_connection() -> No
 def test_onboarding_granola_detection_checks_the_application(monkeypatch, tmp_path: Path) -> None:
     app_path = tmp_path / "Granola.app"
     monkeypatch.setattr(onboarding_server.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(onboarding_server, "GRANOLA_APP_PATH", app_path, raising=False)
+    monkeypatch.setenv("DEX_GRANOLA_APP", str(app_path))
 
     assert onboarding_server.check_granola()["installed"] is False
 
@@ -115,6 +115,15 @@ def test_onboarding_granola_detection_checks_the_application(monkeypatch, tmp_pa
     assert detected["installed"] is True
     assert detected["app_found"] is True
     assert detected["path"] == str(app_path)
+
+
+def test_onboarding_server_does_not_hardcode_the_mac_granola_app() -> None:
+    text = (REPO_ROOT / "core" / "mcp" / "onboarding_server.py").read_text(
+        encoding="utf-8"
+    )
+    assert "/Applications/Granola.app" not in text
+    assert "GRANOLA_APP_PATH" not in text
+    assert "check_granola_status" in text
 
 
 @pytest.mark.parametrize(

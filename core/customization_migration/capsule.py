@@ -35,6 +35,7 @@ from core.customization_migration.state import (
 )
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
 from core.transaction.engine import PlanEntry, Transaction
+from core.transaction.fsync import fchmod, fsync_directory
 from core.transaction.lock import acquire_owned_lock
 from core.utils.os_flags import binary_write_flags
 
@@ -558,16 +559,15 @@ def _append_event(path: Path, event: MigrationEvent) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    directory = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    fsync_directory(path.parent)
 
 
 def _ensure_layout(capsule_dir: Path) -> None:
     def secure_directory(directory: Path) -> None:
         directory.mkdir(mode=0o700, exist_ok=True)
+        if os.name == "nt":
+            fsync_directory(directory)
+            return
         descriptor = os.open(
             directory,
             os.O_RDONLY
@@ -577,10 +577,10 @@ def _ensure_layout(capsule_dir: Path) -> None:
         try:
             if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
                 raise CapsuleError(f"capsule layout path is not a directory: {directory}")
-            os.fchmod(descriptor, 0o700)
-            os.fsync(descriptor)
+            fchmod(descriptor, 0o700, path=directory)
         finally:
             os.close(descriptor)
+        fsync_directory(directory)
 
     capsule_root = capsule_dir.parent
     capsule_root.mkdir(parents=True, exist_ok=True, mode=0o700)

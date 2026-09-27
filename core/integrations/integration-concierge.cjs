@@ -18,7 +18,7 @@
  * - Calendar signatures: "Teams meeting", "Zoom Meeting" in event titles
  * - Email patterns: @gmail.com, @outlook.com in person pages
  * - File patterns: .ics attachments, Jira ticket IDs (PROJ-123)
- * - Installed macOS app bundles
+ * - Installed macOS app bundles, plus the Windows Granola locator
  * - Configured MCP servers
  */
 
@@ -27,6 +27,7 @@ const os = require('os');
 const path = require('path');
 
 const { loadPaths } = require('../runtime/paths.cjs');
+const { detectGranola, installedAppReason } = require('./granola_paths.cjs');
 
 const _paths = loadPaths();
 const VAULT_ROOT = _paths.VAULT_ROOT || process.env.DEX_PROJECT_DIR || process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || path.resolve(__dirname, '../..');
@@ -227,42 +228,51 @@ const INTEGRATIONS = {
 
 function scanInstalledApps() {
   const hasAppDirOverride = process.env.DEX_APP_DIRS !== undefined;
-  if (process.platform !== 'darwin' && !hasAppDirOverride) return {};
+  const matches = {};
 
-  try {
-    const appDirs = hasAppDirOverride
-      ? process.env.DEX_APP_DIRS.split(path.delimiter).filter(Boolean)
-      : ['/Applications', path.join(os.homedir(), 'Applications')];
-    const installedApps = [];
+  if (process.platform === 'darwin' || hasAppDirOverride) {
+    try {
+      const appDirs = hasAppDirOverride
+        ? process.env.DEX_APP_DIRS.split(path.delimiter).filter(Boolean)
+        : ['/Applications', path.join(os.homedir(), 'Applications')];
+      const installedApps = [];
 
-    for (const appDir of appDirs) {
-      try {
-        if (!fs.existsSync(appDir)) continue;
-        for (const basename of fs.readdirSync(appDir)) {
-          if (fs.existsSync(path.join(appDir, basename))) {
-            installedApps.push(basename);
+      for (const appDir of appDirs) {
+        try {
+          if (!fs.existsSync(appDir)) continue;
+          for (const basename of fs.readdirSync(appDir)) {
+            if (fs.existsSync(path.join(appDir, basename))) {
+              installedApps.push(basename);
+            }
           }
+        } catch {
+          // Missing or unreadable app directories are expected — skip silently.
         }
-      } catch {
-        // Missing or unreadable app directories are expected — skip silently.
       }
-    }
 
-    const matches = {};
-    for (const [key, integration] of Object.entries(INTEGRATIONS)) {
-      if (!integration.apps) continue;
+      for (const [key, integration] of Object.entries(INTEGRATIONS)) {
+        if (!integration.apps) continue;
 
-      const matchedApps = integration.apps
-        .map(app => installedApps.find(installed => installed.toLowerCase() === app.toLowerCase()))
-        .filter(Boolean);
-      if (matchedApps.length > 0) {
-        matches[key] = [...new Set(matchedApps)];
+        const matchedApps = integration.apps
+          .map(app => installedApps.find(installed => installed.toLowerCase() === app.toLowerCase()))
+          .filter(Boolean);
+        if (matchedApps.length > 0) {
+          matches[key] = [...new Set(matchedApps)];
+        }
       }
+    } catch {
+      // App-folder scanning is best-effort; Windows Granola detection still runs.
     }
-    return matches;
-  } catch {
-    return {};
   }
+
+  if (!hasAppDirOverride && !matches.granola) {
+    const granola = detectGranola({ env: process.env });
+    if (granola.installed) {
+      matches.granola = [granola.app_path ? path.basename(granola.app_path) : 'Granola'];
+    }
+  }
+
+  return matches;
 }
 
 function scanMcpConfig() {
@@ -566,7 +576,7 @@ function generateRecommendations(signals) {
       installedApps: data.installedApps,
       configuredMcp: data.configuredMcp,
       reason: data.installedApps.length > 0
-        ? 'installed on your Mac'
+        ? installedAppReason()
         : data.configuredMcp.length > 0
           ? 'already set up but not switched on yet'
           : data.mentions > 0

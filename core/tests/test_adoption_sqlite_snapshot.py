@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -681,3 +682,36 @@ def test_restore_fsyncs_removed_sidecars_before_atomic_replace(
         (4, "row-3"),
     ]
     assert fsynced_directories == [destination.parent, destination.parent]
+
+
+def test_sqlite_snapshot_fsyncs_before_applying_chmod(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows fsync on a read-only handle fails after chmod of 0o600 maps
+    to FILE_ATTRIBUTE_READONLY. Flush first, then set the mode."""
+    from core.lifecycle import sqlite_snapshot as sqlite_snapshot_module
+
+    source = tmp_path / "source.sqlite3"
+    _create_database(source)
+    snapshot_dir = tmp_path / "snapshot"
+    order: list[str] = []
+    real_fsync = sqlite_snapshot_module.fsync_file
+    real_chmod = sqlite_snapshot_module.os.chmod
+
+    def record_fsync(path: Path) -> None:
+        if Path(path).name == BACKUP_NAME:
+            order.append("fsync")
+        real_fsync(path)
+
+    def record_chmod(path: str | bytes | os.PathLike[str], mode: int) -> None:
+        if Path(path).name == BACKUP_NAME:
+            order.append("chmod")
+        real_chmod(path, mode)
+
+    monkeypatch.setattr(sqlite_snapshot_module, "fsync_file", record_fsync)
+    monkeypatch.setattr(sqlite_snapshot_module.os, "chmod", record_chmod)
+
+    snapshot_sqlite(source, snapshot_dir)
+
+    assert order == ["fsync", "chmod"]

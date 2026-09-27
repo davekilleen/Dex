@@ -35,3 +35,10 @@ test('Granola API key uses environment before the vault .env file', t => {
   );
   assert.equal(getGranolaApiKey({ env: {}, vaultRoot }), 'grn_file');
 });
+
+test('Granola API key ignores a UTF-8 BOM from a Windows-created .env', t => {
+  const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-granola-key-bom-'));
+  t.after(() => fs.rmSync(vaultRoot, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(vaultRoot, '.env'), '\uFEFFGRANOLA_API_KEY=grn_bom\n');
+  assert.equal(getGranolaApiKey({ env: {}, vaultRoot }), 'grn_bom');
+});

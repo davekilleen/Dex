@@ -25,6 +25,7 @@ from pathlib import Path
 from core.health.reporter import NormalizationResult, ReporterEnvelope, normalize_report
 from core.lifecycle import service
 from core.transaction.engine import PlanEntry
+from core.transaction.fsync import fchmod
 from core.utils.file_lock import LOCK_EX, LOCK_NB, LOCK_UN, flock
 from core.utils.os_flags import binary_write_flags
 
@@ -381,7 +382,7 @@ class _RefreshCoordinator:
         descriptor = os.open(
             self.path, binary_write_flags(os.O_RDWR | os.O_CREAT), 0o600
         )
-        os.fchmod(descriptor, 0o600)
+        fchmod(descriptor, 0o600, path=self.path)
         try:
             flock(descriptor, LOCK_EX | LOCK_NB)
         except OSError as error:

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from core.paths import HISTORY_BACKUPS_RELATIVE_PARTS
-from core.transaction.fsync import fsync_directory
+from core.transaction.fsync import fchmod, fsync_directory, posix_permission_bits_apply
 from core.utils.file_lock import LOCK_EX, LOCK_UN, flock
 from core.utils.local_git import git_env, git_output
 from core.utils.os_flags import binary_write_flags
@@ -251,7 +251,10 @@ def _write_restrictive(path: Path, data: bytes) -> None:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != 0o600:
+    if path.read_bytes() != data or (
+        posix_permission_bits_apply()
+        and stat.S_IMODE(path.stat().st_mode) != 0o600
+    ):
         raise OSError("restrictive history artifact readback failed")
     fsync_directory(path.parent)
 
@@ -260,13 +263,16 @@ def _atomic_replace(path: Path, data: bytes, mode: int, error: str) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            os.fchmod(handle.fileno(), mode)
+            fchmod(handle.fileno(), mode, path=temporary)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         fsync_directory(path.parent)
-        if path.read_bytes() != data or stat.S_IMODE(path.stat().st_mode) != mode:
+        if path.read_bytes() != data or (
+            posix_permission_bits_apply()
+            and stat.S_IMODE(path.stat().st_mode) != mode
+        ):
             raise OSError(error)
     finally:
         Path(temporary).unlink(missing_ok=True)

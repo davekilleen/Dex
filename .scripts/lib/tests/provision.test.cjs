@@ -605,6 +605,58 @@ test('onboard provision transaction runs through the vault virtualenv python', (
   });
 });
 
+test('jsonEscapeVaultPath makes a Windows vault path legal inside JSON', () => {
+  const windowsPath = 'C:\\Users\\Joe\\Dex "Vault"';
+  const escaped = provisionLib.jsonEscapeVaultPath(windowsPath);
+  assert.equal(JSON.parse(`"${escaped}"`), windowsPath);
+  assert.throws(() => JSON.parse(`{"p":"${windowsPath}"}`));
+  assert.deepEqual(JSON.parse(`{"p":"${escaped}"}`), { p: windowsPath });
+});
+
+test('pathExports survives a JSON round-trip with Windows backslashes and quotes', () => {
+  const windowsPath = 'C:\\Users\\Joe\\Dex "Vault"';
+  const parsed = JSON.parse(JSON.stringify(provisionLib.pathExports(windowsPath)));
+  assert.equal(parsed.VAULT_ROOT, windowsPath);
+});
+
+test('configuredMcp JSON-escapes backslashes and quotes in the vault path', () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-provision-winpath-'));
+  const vault = path.join(parent, 'Joe "Vault"\\notes');
+  fs.mkdirSync(path.join(vault, 'System'), { recursive: true });
+  fs.copyFileSync(
+    path.join(repoRoot, 'System', '.mcp.json.example'),
+    path.join(vault, 'System', '.mcp.json.example'),
+  );
+  try {
+    const mcp = provisionLib.configuredMcp(vault);
+    assert.equal(mcp.mcpServers['work-mcp'].env.VAULT_PATH, vault);
+    assert.equal(
+      JSON.parse(JSON.stringify(mcp)).mcpServers['work-mcp'].env.VAULT_PATH,
+      vault,
+    );
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('provision keeps the real JSON-parse cause in the debug log', () => {
+  withVault(vault => {
+    const fakePython = path.join(vault, 'fake-python');
+    fs.writeFileSync(fakePython, '#!/bin/sh\nprintf \'not-json from authority\\n\'\n');
+    fs.chmodSync(fakePython, 0o755);
+    const result = runProvision(vault, [], { DEX_CAPABILITY_PYTHON: fakePython });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /provision debug:/);
+    assert.match(result.stderr, /not-json from authority|JSON|Unexpected|SyntaxError/i);
+  });
+});
+
+test('provision never interpolates an unescaped vault path into JSON text', () => {
+  const source = fs.readFileSync(provisionScript, 'utf8');
+  assert.match(source, /function jsonEscapeVaultPath/);
+  assert.doesNotMatch(source, /replaceAll\(['"]\{\{VAULT_PATH\}\}['"],\s*vaultRoot\)/);
+});
+
 test('missing shipped paths produce one clear non-zero failure', () => {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-provision-missing-'));
   try {
