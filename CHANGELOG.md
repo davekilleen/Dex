@@ -20,7 +20,7 @@ The last release made Windows an honest preview and let Dex update again after t
 * **Windows install checks can finish.** Dex now writes its private history files the same way on a PC as on a Mac, so those checks no longer fail after a successful write.
 * **A refused unofficial copy is the expected result.** The Windows install check treats that refusal as success, and it only ignores the setup log when checking line endings — not other files.
 
-Being honest about Windows: this is still a preview, not a finished supported install. Calendar and background sync stay Mac-only. Connected-service keys are still being completed. This release does not treat the Windows install as fully verified end to end.
+Being honest about Windows: this is still a preview, not a finished supported install. Calendar and background sync stay Mac-only. Connected-service keys are still being completed. The Windows install-and-first-use check on this release passed.
 
 ## [1.97.22] — Dex on Windows can update again, and now says what works (2026-09-27)
 
