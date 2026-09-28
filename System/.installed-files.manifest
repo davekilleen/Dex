@@ -905,10 +905,12 @@
 .github/pull_request_template.md
 .github/workflows/ci.yml
 .github/workflows/claude-review.yml
+.github/workflows/hashed-python-requirements.yml
 .github/workflows/historic-fleet-darwin.yml
 .github/workflows/nightly-quality.yml
 .github/workflows/release-asset-prober.yml
 .github/workflows/release.yml
+.github/workflows/windows-install.yml
 .gitignore
 .obsidian/app.json
 .scripts/auto-link-people.cjs
@@ -939,6 +941,7 @@
 .scripts/meeting-intel/__tests__/entity-creation.test.cjs
 .scripts/meeting-intel/__tests__/entity-phase.test.cjs
 .scripts/meeting-intel/__tests__/gardener.test.cjs
+.scripts/meeting-intel/__tests__/granola-paths.test.cjs
 .scripts/meeting-intel/__tests__/meeting-note-filenames.test.cjs
 .scripts/meeting-intel/__tests__/suggestion-actions.test.cjs
 .scripts/meeting-intel/__tests__/sync-attendees.test.cjs
@@ -959,6 +962,7 @@
 .scripts/meeting-intel/lib/entity-phase.cjs
 .scripts/meeting-intel/lib/gardener.cjs
 .scripts/meeting-intel/lib/granola-api-key.cjs
+.scripts/meeting-intel/lib/granola-paths.cjs
 .scripts/meeting-intel/lib/suggestion-actions.cjs
 .scripts/meeting-intel/sync-from-granola.cjs
 .scripts/meeting-intel/verify-entities.cjs
@@ -1153,6 +1157,8 @@ core/integrations/connection-manager/presence.test.cjs
 core/integrations/connection-manager/token-store.cjs
 core/integrations/detect.py
 core/integrations/google/setup.py
+core/integrations/granola_paths.cjs
+core/integrations/granola_paths.py
 core/integrations/integration-concierge.cjs
 core/integrations/notion/setup.py
 core/integrations/pipedrive/pipedrive_server.py
@@ -1167,6 +1173,7 @@ core/lens_catalog_discovery.py
 core/lens_catalog_sources.py
 core/lifecycle/__init__.py
 core/lifecycle/bridge.py
+core/lifecycle/byte_mode.py
 core/lifecycle/catalog.py
 core/lifecycle/catalog/README.md
 core/lifecycle/catalog/bridge-release.json
@@ -1205,6 +1212,7 @@ core/mcp/customization_migration_server.py
 core/mcp/dex_improvements_server.py
 core/mcp/granola_server.py
 core/mcp/onboarding_server.py
+core/mcp/requirements.hash.txt
 core/mcp/requirements.txt
 core/mcp/resume_parser.py
 core/mcp/resume_server.py
@@ -1291,7 +1299,11 @@ core/soft_promise.py
 core/tests/__init__.py
 core/tests/brain-vault-migrator-integration.test.cjs
 core/tests/brain-vault-migrator-unit.test.cjs
+core/tests/byte_mode_helpers.py
 core/tests/conftest.py
+core/tests/fixtures/byte-mode/activation.crlf.json
+core/tests/fixtures/byte-mode/event.crlf.json
+core/tests/fixtures/byte-mode/receipt.crlf.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.expected.json
 core/tests/fixtures/entity_pages/01-frontmatter-only.md
 core/tests/fixtures/entity_pages/02-pipe-table.expected.json
@@ -1320,6 +1332,7 @@ core/tests/fixtures/entity_pages/render-company.input.json
 core/tests/fixtures/entity_pages/render-person.expected.md
 core/tests/fixtures/entity_pages/render-person.input.json
 core/tests/fixtures/google_workspace_mcp_pair.py
+core/tests/fixtures/granola/windows-data-dir/Local State
 core/tests/fixtures/release-catalog-v1.96.2-historic-shape.json
 core/tests/fixtures/release-catalog-v1.96.2-installed-files.manifest
 core/tests/fixtures/release-catalog-v1.96.2-tag-split.json
@@ -1443,6 +1456,7 @@ core/tests/test_diff_gate_fetch.py
 core/tests/test_distribution_artifacts.py
 core/tests/test_docs_bridge.py
 core/tests/test_doctor.py
+core/tests/test_doctor_platform_support.py
 core/tests/test_doctor_transition_capsules.py
 core/tests/test_entity_engine.py
 core/tests/test_entity_engine_cli.py
@@ -1454,6 +1468,7 @@ core/tests/test_feature_status.py
 core/tests/test_feedback_client_script.py
 core/tests/test_feedback_sweep.py
 core/tests/test_feedback_trigger_routing.py
+core/tests/test_file_lock.py
 core/tests/test_first_run_trigger.py
 core/tests/test_fiscal_year_goal_anchors.py
 core/tests/test_fixture_vault.py
@@ -1465,6 +1480,7 @@ core/tests/test_golden_journeys.py
 core/tests/test_google_workspace_setup_instruction_contract.py
 core/tests/test_google_workspace_setup_truth.py
 core/tests/test_granola_configuration_truth.py
+core/tests/test_granola_paths.py
 core/tests/test_granola_server.py
 core/tests/test_harness_golden_journeys.py
 core/tests/test_harness_onboarding_receipt.py
@@ -1491,6 +1507,7 @@ core/tests/test_initiative_kickoff_skill.py
 core/tests/test_install_adoption_python.py
 core/tests/test_install_convergence.py
 core/tests/test_install_harness_detection.py
+core/tests/test_install_windows.py
 core/tests/test_instructed_tools_gate.py
 core/tests/test_instruction_honesty.py
 core/tests/test_integration_credentials.py
@@ -1505,7 +1522,17 @@ core/tests/test_lens_catalog_discovery.py
 core/tests/test_lens_catalog_enriched_discovery.py
 core/tests/test_lens_catalog_release_truth.py
 core/tests/test_lens_catalog_sources.py
+core/tests/test_lifecycle_activation_re_recorded_after_byte_mode.py
 core/tests/test_lifecycle_bridge.py
+core/tests/test_lifecycle_byte_mode_apply_preserves_identity.py
+core/tests/test_lifecycle_byte_mode_detects_crlf_tail.py
+core/tests/test_lifecycle_byte_mode_doctor_and_cli.py
+core/tests/test_lifecycle_byte_mode_fixtures.py
+core/tests/test_lifecycle_byte_mode_idempotent.py
+core/tests/test_lifecycle_byte_mode_ledger_detect_and_block.py
+core/tests/test_lifecycle_byte_mode_rewind_unsafe.py
+core/tests/test_lifecycle_byte_mode_rollback_guard.py
+core/tests/test_lifecycle_filesystem_binary_read_flags.py
 core/tests/test_lifecycle_official_capabilities.py
 core/tests/test_lifecycle_relocated_vault.py
 core/tests/test_lifecycle_service_contract.py
@@ -1533,11 +1560,13 @@ core/tests/test_obsidian_wikilink_migration.py
 core/tests/test_onboarding_calendar.py
 core/tests/test_onboarding_context_lifecycle.py
 core/tests/test_onboarding_flow_portability.py
+core/tests/test_os_flags.py
 core/tests/test_path_contract.py
 core/tests/test_paths.py
 core/tests/test_people_index_v2.py
 core/tests/test_pii_gate.py
 core/tests/test_pipedrive_server.py
+core/tests/test_platform_support_probe.py
 core/tests/test_portable_contract.py
 core/tests/test_pr_report.py
 core/tests/test_preflight_never_spawned.py
@@ -1581,6 +1610,8 @@ core/tests/test_ritual_timing.py
 core/tests/test_safe_autosave.py
 core/tests/test_security_gate.py
 core/tests/test_session_health.py
+core/tests/test_session_lesson_extract.py
+core/tests/test_session_lesson_honesty.py
 core/tests/test_session_memory_server.py
 core/tests/test_setup_credential_disclosure.py
 core/tests/test_shipped_seed_policy.py
@@ -1595,15 +1626,18 @@ core/tests/test_split_probe_regression.py
 core/tests/test_sync_daemon.py
 core/tests/test_task_id_not_reused_after_archive.py
 core/tests/test_task_id_rollover.py
+core/tests/test_task_source_refs.py
 core/tests/test_task_sync.py
 core/tests/test_temperature.py
 core/tests/test_tracked_ignored.py
 core/tests/test_transaction_core.py
+core/tests/test_transaction_engine_planned_content_probe.py
 core/tests/test_transcript_ingest.py
 core/tests/test_transcript_reconcile.py
 core/tests/test_transition_capsule.py
 core/tests/test_trust_wizards.py
 core/tests/test_trusted_mcp_safety.py
+core/tests/test_update_anchor_binds_release_manifest_digest.py
 core/tests/test_update_bridge_historic_compatibility.py
 core/tests/test_update_checker.py
 core/tests/test_update_checker_real_installs.py
@@ -1613,6 +1647,8 @@ core/tests/test_usage_tracking.py
 core/tests/test_wave3_mature_skill_amendments.py
 core/tests/test_wave3_role_skill_contracts.py
 core/tests/test_week_review_clear_completed_tasks_instruction_contract.py
+core/tests/test_windows_binary_credential_trust_writes.py
+core/tests/test_windows_install_workflow.py
 core/tests/test_wispr_auth.py
 core/tests/test_wispr_client.py
 core/tests/test_wispr_pipeline.py
@@ -1631,6 +1667,7 @@ core/tests/test_work_server_weekly_priority_creation.py
 core/tests/test_working_week.py
 core/tests/vault_observed_writes.py
 core/transaction/__init__.py
+core/transaction/byte_mode_flag.py
 core/transaction/engine.py
 core/transaction/fsync.py
 core/transaction/journal.py
@@ -1639,6 +1676,7 @@ core/transaction/snapshot.py
 core/update/__init__.py
 core/update/anchor_generation.py
 core/update/apply_update.py
+core/update/establish_baseline.py
 core/update/journey-protocol-v1.json
 core/update/journey_protocol.py
 core/update/reanchor_cli.py
@@ -1656,6 +1694,7 @@ core/utils/doctor.py
 core/utils/entity_pages.py
 core/utils/feature_status.py
 core/utils/feedback_sweep.py
+core/utils/file_lock.py
 core/utils/freshness.py
 core/utils/health_session.py
 core/utils/health_telemetry.py
@@ -1668,7 +1707,9 @@ core/utils/manifest.py
 core/utils/mcp_handshake.py
 core/utils/mcp_session_lifecycle.py
 core/utils/nudge_calendar.py
+core/utils/os_flags.py
 core/utils/page_generators.py
+core/utils/platform_support.py
 core/utils/preflight.py
 core/utils/qmd_indexer.py
 core/utils/qmd_query.py
@@ -1679,6 +1720,7 @@ core/utils/release_notes_sweep.py
 core/utils/ritual_timing.py
 core/utils/safe_autosave.py
 core/utils/session_health.py
+core/utils/session_lesson_extract.py
 core/utils/skill_freshness.py
 core/utils/smoke.py
 core/utils/strict_yaml.py
@@ -1734,12 +1776,14 @@ docs/plans/2026-07-24-customization-migration-mcp.md
 docs/plans/2026-08-25-harness-portable-dex.md
 docs/plans/2026-08-27-cursor-cloud-dex-everywhere-handover.md
 docs/plans/2026-08-27-dex-everywhere-codex-evidence.md
+docs/plans/2026-09-27-windows-contained-writes.md
 docs/portable-vault-contract-design.md
 docs/press/2026-08-25-dex-everywhere-unreleased.md
 docs/release-channels-build-infrastructure.md
 docs/release-fleet-acceptance.md
 docs/solutions/architecture-patterns/trust-engine-and-verification-methodology.md
 docs/solutions/connection-manager-live-account-gate.md
+docs/specs/windows-support-and-security.md
 docs/superpowers/plans/2026-07-12-task-sync-bridge.md
 docs/superpowers/plans/2026-07-23-conflict-resolution-ux.md
 docs/superpowers/plans/2026-07-23-entity-engine-bridge-reliability.md
@@ -1760,6 +1804,7 @@ docs/testing-governance.md
 docs/testing-hardening-merge-runbook.md
 docs/transaction-core-design.md
 env.example
+install.ps1
 install.sh
 package-lock.json
 package.json
@@ -2129,6 +2174,7 @@ scripts/check-coverage-threshold.py
 scripts/check-doc-drift.sh
 scripts/check-founder-content.py
 scripts/check-founder-content.sh
+scripts/check-hashed-python-requirements.sh
 scripts/check-instructed-tools.py
 scripts/check-path-consistency.sh
 scripts/check-path-contract-usage.sh
@@ -2180,6 +2226,8 @@ scripts/release_publish.py
 scripts/render-health-page.py
 scripts/resolve-distignore-files.sh
 scripts/run-historic-fleet-darwin.sh
+scripts/run-windows-install-journey.sh
+scripts/run-windows-lifecycle-journey.py
 scripts/security-allowlist.txt
 scripts/security-gate.sh
 scripts/security-scan.py
