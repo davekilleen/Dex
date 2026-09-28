@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.23] — (2026-09-28)
+
 ## Unreleased
 
 The optional Windows setup check now runs in Git Bash, and Doctor on a Mac or Linux computer treats Python older than 3.11 as unsupported.
