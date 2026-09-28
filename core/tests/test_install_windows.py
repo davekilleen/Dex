@@ -559,6 +559,8 @@ def test_readme_does_not_recommend_bypass_or_remote_iex() -> None:
     assert "Git Bash" in text
     assert "bash ./install.sh" in text
     assert "--require-hashes" in text
+    assert "PowerShell" not in text
+    assert "```powershell" not in text
 
 
 def test_installers_require_python_3_11() -> None:

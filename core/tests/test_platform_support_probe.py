@@ -249,13 +249,15 @@ def test_arm64_is_informational_warning() -> None:
 def test_macos_and_linux_stay_supported() -> None:
     mac = _probe(
         sys_platform="darwin",
-        version_info=(3, 12, 0),
+        version_info=(3, 11, 0),
         base_prefix="/usr/local",
         vault_root="/home/joe/Dex",
         uname_s="Darwin",
     )
     assert mac.family == "macos"
+    assert mac.python_ok is True
     assert mac.verdict == "supported"
+    assert mac.message_ids() == []
     linux = _probe(
         sys_platform="linux",
         version_info=(3, 11, 9),
@@ -268,6 +270,7 @@ def test_macos_and_linux_stay_supported() -> None:
     assert linux.family == "linux"
     assert linux.python_ok is True
     assert linux.verdict == "supported"
+    assert linux.message_ids() == []
 
 
 def test_posix_python_310_is_below_the_311_floor() -> None:
@@ -281,6 +284,10 @@ def test_posix_python_310_is_below_the_311_floor() -> None:
         uname_s="Linux",
     )
     assert linux.python_ok is False
+    assert linux.verdict == "unsupported"
+    assert linux.message_ids() == ["P1"]
+    assert "Python 3.11 or newer" in linux.messages[0].text
+    assert "You have 3.10.12" in linux.messages[0].text
     mac = _probe(
         sys_platform="darwin",
         version_info=(3, 10, 14),
@@ -289,6 +296,9 @@ def test_posix_python_310_is_below_the_311_floor() -> None:
         uname_s="Darwin",
     )
     assert mac.python_ok is False
+    assert mac.verdict == "unsupported"
+    assert mac.message_ids() == ["P1"]
+    assert mac.messages[0].text == support.MESSAGE_POSIX_PYTHON.format(version="3.10.14")
     assert support.POSIX_PYTHON_MIN == (3, 11)
 
 
@@ -385,6 +395,9 @@ def test_readme_says_preview_and_lists_what_is_not_ready() -> None:
     assert "Not yet" in text
     assert "Microsoft Store Python" in text
     assert "Calendar connection is Mac-only" in text
+    assert "PowerShell" not in text
+    assert "```powershell" not in text
+    assert "Open **Git Bash**" in text
     spec = (REPO_ROOT / "docs" / "specs" / "windows-support-and-security.md").read_text(
         encoding="utf-8"
     )

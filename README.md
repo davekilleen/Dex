@@ -138,7 +138,7 @@ All installers walk you through setup with default options.
 
 ### About the Command Line
 
-You'll use something called a "command line" (or "Terminal" on Mac, "PowerShell" on Windows) during setup. This is a text-based way to give your computer instructions - think of it as typing commands instead of clicking buttons.
+You'll use something called a "command line" (or "Terminal" on Mac, "Git Bash" on Windows) during setup. This is a text-based way to give your computer instructions - think of it as typing commands instead of clicking buttons.
 
 **Don't worry if this feels unfamiliar.** You'll copy and paste a few commands, press Enter, and you're done. Takes less than 2 minutes.
 
@@ -146,7 +146,7 @@ You'll use something called a "command line" (or "Terminal" on Mac, "PowerShell"
 
 Want to verify everything's ready? Open your command line:
 - **Mac:** Press `Cmd+Space`, type "Terminal", press Enter
-- **Windows:** Press `Win+R`, type "powershell", press Enter
+- **Windows:** Open **Git Bash** (it comes with Git for Windows). Press `Win`, type "Git Bash", press Enter
 
 Copy and paste this line **exactly as you see it**, then press Enter:
 
