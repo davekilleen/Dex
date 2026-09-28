@@ -7,14 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.23] — (2026-09-28)
-
 ## Unreleased
 
-The optional Windows setup check now runs in Git Bash, and Doctor on a Mac or Linux computer treats Python older than 3.11 as unsupported.
+## [1.97.23] — Windows install checks can finish, and old Python is refused (2026-09-28)
 
-* **The Windows install check now treats a refused unofficial copy as the expected result, and it only ignores the setup log when checking line endings.**
+The last release made Windows an honest preview and let Dex update again after the first Windows update. Two leftover annoyances were still sitting in the open. The optional Windows setup check still pointed people at the wrong place to confirm git. Doctor on a Mac or Linux computer could treat an old Python as fine, then fail later. And the Windows install check could still stop after a successful write, because Dex saved its private history files the Windows way. This release closes those.
+
+**What this fixes for you:**
+
+* **The optional Windows setup check now uses Git Bash.** Confirming git is installed matches the only install path: clone the official release, then run `bash ./install.sh`. It no longer points that check at a different shell.
+* **Doctor refuses Python older than 3.11 on a Mac or Linux computer.** Checkup now says 3.11 or newer is needed, instead of looking healthy and failing later. Windows still needs 3.12 or 3.13 from python.org.
 * **Windows install checks can finish.** Dex now writes its private history files the same way on a PC as on a Mac, so those checks no longer fail after a successful write.
+* **A refused unofficial copy is the expected result.** The Windows install check treats that refusal as success, and it only ignores the setup log when checking line endings — not other files.
+
+Being honest about Windows: this is still a preview, not a finished supported install. Calendar and background sync stay Mac-only. Connected-service keys are still being completed. This release does not treat the Windows install as fully verified end to end.
 
 ## [1.97.22] — Dex on Windows can update again, and now says what works (2026-09-27)
 
