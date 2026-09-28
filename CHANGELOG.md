@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+The optional Windows setup check now runs in Git Bash, and Doctor on a Mac or Linux computer treats Python older than 3.11 as unsupported.
+
 ## [1.97.22] — Dex on Windows can update again, and now says what works (2026-09-27)
 
 The last release gave Dex a clock on its mornings and stopped turning a meeting remark into a task. This one is mostly Windows. Setup pages made a one-line install look finished; it is a preview. After a first update, Dex's own record-keeping files had Windows line endings, so the next update and every undo refused. A Windows install from Git Bash could stop without a usable reason, or die after files were already written. Setup still looked for Granola only in the Mac Applications folder. Closing a session still lost the day's lessons unless you ran the evening review. A task sent to Todoist picked up a folder path as its name. Older copies of Dex that never recorded a version number could not start a repair. Features you already run every morning were still being offered as new. This release closes those. Thanks to Joe for the Windows reports, and to @mekuhl for the task-name report.

@@ -60,8 +60,12 @@ MESSAGE_W8 = (
 MESSAGE_W9 = (
     "You're on Windows for ARM. Dex should work but isn't tested there yet."
 )
+MESSAGE_POSIX_PYTHON = (
+    "Dex needs Python 3.11 or newer. You have {version}. Install Python "
+    "3.11 or newer, then run the installer again."
+)
 
-REFUSE_IDS = frozenset({"W1", "W2", "W3", "W4", "W6"})
+REFUSE_IDS = frozenset({"W1", "W2", "W3", "W4", "W6", "P1"})
 WARN_IDS = frozenset({"W7", "W8", "W9"})
 
 _STORE_MARKERS = ("windowsapps", "pythonsoftwarefoundation.python")
@@ -74,7 +78,7 @@ _SYNC_ENV_KEYS = {
 
 @dataclass(frozen=True)
 class SupportMessage:
-    """One user-facing support message, identified as W1–W9."""
+    """One user-facing support message, identified as W1–W9 or P1."""
 
     id: str
     text: str
@@ -474,6 +478,13 @@ def probe(
             )
         if cpu.lower() in {"arm64", "aarch64"}:
             messages.append(SupportMessage(id="W9", text=MESSAGE_W9))
+    elif not python_ok and plat not in {"cygwin", "msys"}:
+        messages.append(
+            SupportMessage(
+                id="P1",
+                text=MESSAGE_POSIX_PYTHON.format(version=_format_version(info)),
+            )
+        )
 
     seen: set[str] = set()
     unique: list[SupportMessage] = []
