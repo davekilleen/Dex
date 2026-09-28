@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_PATH="$0"
+if command -v cygpath >/dev/null 2>&1; then
+  SCRIPT_PATH="$(cygpath -u "$SCRIPT_PATH")"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WITH_MERGE=false
@@ -23,21 +27,41 @@ if [ "$WITH_MERGE" = true ] && [ "$NO_GIT" = true ]; then
   exit 2
 fi
 
-FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/dex-aged-vault.XXXXXX")"
+# Git Bash sets TMPDIR=/tmp, which Python's pathlib cannot open on Windows.
+# Prefer the native TEMP folder, then print a Windows path at the end.
+if command -v cygpath >/dev/null 2>&1; then
+  _tmp="$(cygpath -u "${TEMP:-${TMP:-${TMPDIR:-/tmp}}}")"
+else
+  _tmp="${TMPDIR:-${TEMP:-/tmp}}"
+fi
+FIXTURE_ROOT="$(mktemp -d "${_tmp}/dex-aged-vault.XXXXXX")"
 UPSTREAM="$FIXTURE_ROOT/upstream"
 VAULT="$FIXTURE_ROOT/Dex Vault - Aged"
 
 # Use Git's local transport instead of the direct object-directory copier. Node's
 # test runner builds several fixtures in parallel; --no-local gives each fixture
 # an independently received object store without touching the network.
+# A clone of a detached/shallow checkout can land on the default branch tip
+# (not the worktree HEAD). Pin to the live commit so CLAUDE.md still has
+# USER_EXTENSIONS markers.
+SOURCE_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 git clone --no-local --quiet "$REPO_ROOT" "$UPSTREAM"
-git -C "$UPSTREAM" checkout -B main HEAD --quiet
+if ! git -C "$UPSTREAM" cat-file -e "$SOURCE_HEAD^{commit}" 2>/dev/null; then
+  git -C "$UPSTREAM" fetch --no-tags "$REPO_ROOT" "$SOURCE_HEAD"
+fi
+# Windows Git may rewrite checked-out text to CRLF; the fixture editor
+# looks for USER_EXTENSIONS markers and must see the worktree bytes.
+git -C "$UPSTREAM" config core.autocrlf false
+git -C "$UPSTREAM" checkout --force -B main "$SOURCE_HEAD" --quiet
 git -C "$UPSTREAM" config user.name "Dex Fixture Builder"
 git -C "$UPSTREAM" config user.email "fixture-builder@example.com"
 
 # Include the live migrator even while it is still uncommitted in this worktree.
 # The contract, tracked-ignore policy, and transition metadata come from v1.63.
+# CLAUDE.md is copied from the live worktree so USER_EXTENSIONS markers match
+# this checkout when the clone otherwise lands on another tip.
 D1_FILES=(
+  CLAUDE.md
   core/data/sync-folder-markers.json
   core/migrations/sync-folder-detector.cjs
   core/migrations/v1-to-v2-brain-vault-split.cjs
@@ -53,6 +77,12 @@ if ! git -C "$UPSTREAM" diff --cached --quiet; then
   git -C "$UPSTREAM" commit --quiet -m "release: seed brain vault migration"
 fi
 
+# Always collapse to a single complete root. A shallow PR merge commit's
+# parents are not in the object store; copying that commit into a new repo
+# drops .git/shallow and P8 fsck reports broken links.
+_tree="$(git -C "$UPSTREAM" rev-parse 'HEAD^{tree}')"
+_root="$(git -C "$UPSTREAM" commit-tree "$_tree" -m "fixture: self-contained source tree")"
+git -C "$UPSTREAM" checkout --force -B main "$_root" --quiet
 git -C "$UPSTREAM" branch -f release HEAD
 
 if [ "$NO_GIT" = true ]; then
@@ -64,6 +94,7 @@ else
   git clone --no-local --quiet --branch release "$UPSTREAM" "$VAULT"
   git -C "$VAULT" config user.name "Long-time Dex User"
   git -C "$VAULT" config user.email "user@example.com"
+  git -C "$VAULT" config core.autocrlf false
   git -C "$VAULT" remote rename origin upstream
   git -C "$VAULT" remote set-url upstream https://github.com/davekilleen/Dex.git
   git -C "$VAULT" remote add private-backup https://example.invalid/private-dex-vault.git
@@ -126,13 +157,16 @@ const path = require('node:path');
 const vault = process.env.VAULT;
 const claudePath = path.join(vault, 'CLAUDE.md');
 const source = fs.readFileSync(claudePath, 'utf8');
-const start = '## USER_EXTENSIONS_START\n';
+const start = '## USER_EXTENSIONS_START';
 const end = '## USER_EXTENSIONS_END';
 const before = source.indexOf(start);
 const after = source.indexOf(end, before + start.length);
 if (before < 0 || after < 0) throw new Error('Fixture source CLAUDE.md has no extension markers');
+let insertAt = before + start.length;
+if (source.startsWith('\r', insertAt)) insertAt += 1;
+if (source.startsWith('\n', insertAt)) insertAt += 1;
 const custom = 'Always answer with the fixture sentinel: café.\nKeep  two spaces.  \n';
-fs.writeFileSync(claudePath, source.slice(0, before + start.length) + custom + source.slice(after));
+fs.writeFileSync(claudePath, source.slice(0, insertAt) + custom + source.slice(after));
 fs.writeFileSync(
   path.join(vault, '.mcp.json'),
   JSON.stringify({
@@ -198,4 +232,8 @@ if [ "$WITH_MERGE" = true ]; then
   fi
 fi
 
-printf 'Fixture ready: %s\n' "$VAULT"
+if command -v cygpath >/dev/null 2>&1; then
+  printf 'Fixture ready: %s\n' "$(cygpath -w "$VAULT")"
+else
+  printf 'Fixture ready: %s\n' "$VAULT"
+fi

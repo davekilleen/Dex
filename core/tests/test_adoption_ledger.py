@@ -642,3 +642,21 @@ def test_ledger_failure_after_rewind_reports_without_rolling_back_commit(
 
     assert (vault / EXISTING_PATH).read_bytes() == OLD
     assert not (vault / CREATED_PATH).exists()
+
+
+def test_ledger_writes_use_binary_flags_so_commitments_stay_canonical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.tests.test_os_flags import WINDOWS_O_BINARY, _simulate_windows_crt_translation
+
+    seen_flags = _simulate_windows_crt_translation(monkeypatch)
+    vault = _new_vault(tmp_path / "vault")
+    register_install(vault, UUID("12345678-1234-4678-9234-567812345678"))
+
+    commitments = sorted((vault / "System/.dex/ledger/commitments").glob("*.sha256"))
+    assert commitments
+    raw = commitments[0].read_bytes()
+    assert raw.endswith(b"\n")
+    assert b"\r\n" not in raw
+    assert any(flags & WINDOWS_O_BINARY for flags in seen_flags)
+    project_state(vault)

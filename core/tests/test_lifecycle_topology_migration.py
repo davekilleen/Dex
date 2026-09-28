@@ -3,9 +3,67 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
+
+
+def _git_bash() -> str:
+    """Return Git Bash. Never the WSL ``System32\\bash.exe`` launcher."""
+    if os.name != "nt":
+        return "bash"
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    candidates = [
+        Path(program_files) / "Git" / "bin" / "bash.exe",
+        Path(program_files) / "Git" / "usr" / "bin" / "bash.exe",
+        Path(program_files_x86) / "Git" / "bin" / "bash.exe",
+        Path(program_files_x86) / "Git" / "usr" / "bin" / "bash.exe",
+        Path(r"C:\Program Files\Git\bin\bash.exe"),
+        Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
+    ]
+    if local_app:
+        candidates.append(Path(local_app) / "Programs" / "Git" / "bin" / "bash.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    which = shutil.which("bash")
+    if which:
+        lowered = which.lower().replace("/", "\\")
+        if "system32" in lowered or "windowsapps" in lowered:
+            raise FileNotFoundError(
+                "bash resolved to the WSL or Store launcher; Git Bash is required."
+            )
+        return which
+    raise FileNotFoundError("Git Bash was not found.")
+
+
+def _decode_windows_subprocess(raw: bytes) -> str:
+    if not raw:
+        return ""
+    if raw[:2] == b"\xff\xfe" or (b"\x00" in raw[:20]):
+        return raw.decode("utf-16-le", errors="replace")
+    return raw.decode("utf-8", errors="replace")
+
+
+def _native_fixture_path(raw: str) -> Path:
+    """Turn a Git Bash path into one pathlib can open on Windows."""
+    candidate = Path(raw)
+    if candidate.exists() or os.name != "nt":
+        return candidate
+    converted = subprocess.run(
+        [_git_bash(), "-lc", 'cygpath -w "$DEX_FIXTURE_PATH"'],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env={**os.environ, "DEX_FIXTURE_PATH": raw},
+    )
+    text = (converted.stdout or "").strip()
+    if converted.returncode == 0 and text:
+        return Path(text)
+    return candidate
 
 import pytest
 
@@ -233,22 +291,25 @@ def test_dex_update_skill_routes_the_guided_migration_through_service() -> None:
 
 
 def test_real_migrator_completes_the_service_guided_journey() -> None:
+    script = REPO_ROOT / "scripts/make-aged-vault-fixture.sh"
+    # Git Bash dirname does not treat backslashes as separators.
+    script_arg = script.as_posix() if os.name == "nt" else str(script)
     fixture = subprocess.run(
-        ["bash", str(REPO_ROOT / "scripts/make-aged-vault-fixture.sh")],
+        [_git_bash(), script_arg],
         cwd=REPO_ROOT,
         capture_output=True,
-        text=True,
-        check=True,
         timeout=180,
     )
+    stdout = _decode_windows_subprocess(fixture.stdout)
+    stderr = _decode_windows_subprocess(fixture.stderr)
+    assert fixture.returncode == 0, (stderr[-2000:] or stdout[-2000:])
     marker = "Fixture ready: "
-    vault = Path(
-        next(
-            line.removeprefix(marker)
-            for line in fixture.stdout.splitlines()
-            if line.startswith(marker)
-        )
+    reported = next(
+        line.removeprefix(marker)
+        for line in stdout.splitlines()
+        if line.startswith(marker)
     )
+    vault = _native_fixture_path(reported)
     task_path = vault / "03-Tasks/Tasks.md"
     task_bytes = task_path.read_bytes()
     try:
@@ -265,4 +326,4 @@ def test_real_migrator_completes_the_service_guided_journey() -> None:
         assert (vault / ".dex/pre-split-archive.git").is_dir()
         assert (vault / executed["receipt_path"]).is_file()
     finally:
-        shutil.rmtree(vault)
+        shutil.rmtree(vault, ignore_errors=True)

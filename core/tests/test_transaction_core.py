@@ -829,7 +829,14 @@ def test_resume_removes_expected_absent_publish_when_temp_is_gone_but_target_mat
 
     Transaction.resume(vault)
 
-    assert not target.exists()
+    if os.name == "nt":
+        # Recovery cannot use the planned-content shortcut on Windows until
+        # the handle-verified open lands (O_NOFOLLOW is absent; following a
+        # reparse point would be unsafe). The published file is left in place.
+        assert target.exists()
+        assert target.read_bytes() == planned
+    else:
+        assert not target.exists()
 
 
 def test_resume_rehydrates_a_receipt_read_cap_before_comparing_a_target(
@@ -863,7 +870,13 @@ def test_resume_rehydrates_a_receipt_read_cap_before_comparing_a_target(
 
     Transaction.resume(vault)
 
-    assert not target.exists()
+    if os.name == "nt":
+        # Same Windows refuse as the expected-absent publish resume: without
+        # O_NOFOLLOW the content-match shortcut is unsafe, so the file stays.
+        assert target.exists()
+        assert target.read_bytes() == planned
+    else:
+        assert not target.exists()
 
 
 def test_engine_analytics_receipt_requires_its_exact_bounded_read_limit(

@@ -602,7 +602,7 @@ def test_archive_removal_is_previewed_approved_and_receipted(tmp_path: Path) -> 
     vault = tmp_path / "vault"
     archive = vault / ".dex/pre-split-archive.git"
     archive.mkdir(parents=True)
-    (archive / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (archive / "HEAD").write_bytes(b"ref: refs/heads/main\n")
     (archive / "objects").mkdir()
     (archive / "objects" / "sample").write_bytes(b"archive bytes")
 

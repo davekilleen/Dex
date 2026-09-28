@@ -175,9 +175,8 @@ def test_runs_real_install_paths_and_engine_suites() -> None:
     assert "install-msys-journey" in msys["run"]
     assert msys["continue-on-error"] is True
 
-    assert ps1["shell"] == "pwsh"
-    assert r"Dex Vault\install-ps1" in ps1["run"]
-    assert r".\install.ps1" in ps1["run"]
+    assert ps1["shell"] == "bash"
+    assert "install-ps1-negative" in ps1["run"]
     assert ps1["continue-on-error"] is True
 
     for engine in (engine_312, engine_313):
@@ -197,7 +196,24 @@ def test_journey_script_covers_store_stub_spaced_path_and_both_ostypes() -> None
     assert "run_install_sh cygwin" in source
     assert "run_install_sh msys" in source
     assert "run-windows-lifecycle-journey.py" in source
+    assert "install-ps1-negative" in source
+    assert "pwsh -NoProfile -NonInteractive -File ./install.ps1" in source
+    assert (
+        "Dex could not prove that the local release branch contains only official release history"
+        in source
+    )
     subprocess.run(["bash", "-n", str(JOURNEY_SCRIPT)], check=True)
+
+
+def test_journey_script_never_copies_unofficial_workspace_release_ref() -> None:
+    source = JOURNEY_SCRIPT.read_text(encoding="utf-8")
+    assert "https://github.com/davekilleen/Dex.git" in source
+    assert "+refs/heads/release:refs/remotes/official/release" in source
+    assert "refusing unofficial workspace fallback" in source
+    assert "Reuse a release ref already present on the workspace" not in source
+    assert 'git -C "$workspace" fetch' not in source
+    assert 'git -C "$workspace" rev-parse' not in source
+    assert 'git -C "$dest" fetch --update-shallow "$workspace"' not in source
 
 
 def test_lifecycle_journey_script_activates_adopts_rewinds_and_scans_crlf() -> None:
@@ -206,6 +222,8 @@ def test_lifecycle_journey_script_activates_adopts_rewinds_and_scans_crlf() -> N
     assert "execute_approved_adoption" in source
     assert "rewind_adoption_by_receipt" in source
     assert "\\r\\n" in source or r"\r\n" in source
+    assert 'path.name == "install.log"' in source
+    assert 'path.name.endswith(".log")' not in source
 
 
 def test_crlf_scan_flags_crlf_under_system_dex(tmp_path: Path) -> None:
@@ -221,7 +239,10 @@ def test_crlf_scan_flags_crlf_under_system_dex(tmp_path: Path) -> None:
     dex = vault / "System" / ".dex"
     dex.mkdir(parents=True)
     (dex / "ok.json").write_bytes(b'{"a":1}\n')
+    (dex / "install.log").write_bytes(b"ok\r\n")
     assert module._scan_crlf(vault) == []
+    (dex / "other.log").write_bytes(b"bad\r\n")
+    assert "System/.dex/other.log" in module._scan_crlf(vault)
     (dex / "bad.json").write_bytes(b'{"a":1}\r\n')
     assert "System/.dex/bad.json" in module._scan_crlf(vault)
 
