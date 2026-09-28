@@ -1574,6 +1574,7 @@ core/tests/test_preflight_paths.py
 core/tests/test_process_meetings_capture_calendar_wiring.py
 core/tests/test_process_meetings_soft_commitment_wiring.py
 core/tests/test_product_agents_bootstrap.py
+core/tests/test_provision_js_yaml_missing.py
 core/tests/test_provision_parity.py
 core/tests/test_provision_python_selection.py
 core/tests/test_provision_transaction.py
