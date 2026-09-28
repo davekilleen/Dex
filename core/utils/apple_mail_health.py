@@ -266,7 +266,7 @@ def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
 
 
-def _index_state(index: Path) -> tuple[int, tuple[str, ...]]:
+def _index_state(index: Path) -> tuple[int, tuple[str, ...], str | None]:
     uri = index.resolve().as_uri() + "?mode=ro"
     with sqlite3.connect(uri, uri=True, timeout=2) as connection:
         quick_check = connection.execute("PRAGMA quick_check").fetchone()
@@ -320,9 +320,18 @@ def _index_state(index: Path) -> tuple[int, tuple[str, ...]]:
              AND state.mailbox = indexed.mailbox
             """
         ).fetchall()
+        # Index freshness is "when did a sync last run", which is the NEWEST
+        # timestamp in sync_state, not the oldest per-mailbox one.
+        # apple_mail_mcp/index/sync.py writes last_sync only for mailboxes that
+        # actually changed, and writes the ("_global", "_sync") row when a sync
+        # ran and found nothing.  So a per-mailbox last_sync records when that
+        # mailbox last CHANGED, never when it was last CHECKED, and any quiet
+        # mailbox (Deleted Items, Junk) crosses the staleness limit and stays
+        # across it forever while search is perfectly current.
+        newest_sync = connection.execute("SELECT MAX(last_sync) FROM sync_state").fetchone()[0]
     if email_count and (not required_syncs or any(row[0] is None for row in required_syncs)):
         raise sqlite3.DatabaseError("one or more indexed mailboxes has no successful sync")
-    return email_count, tuple(str(row[0]) for row in required_syncs)
+    return email_count, tuple(str(row[0]) for row in required_syncs), (str(newest_sync) if newest_sync else None)
 
 
 def _sync_age(now: datetime, raw_timestamp: str) -> timedelta:
@@ -492,7 +501,7 @@ def probe(context: Context) -> Result:
     if permissions:
         return permissions
     try:
-        email_count, required_syncs = _index_state(index)
+        email_count, required_syncs, newest_sync = _index_state(index)
     except (OSError, sqlite3.DatabaseError, ValueError) as error:
         detail = _one_line(error)
         return Result(
@@ -514,7 +523,9 @@ def probe(context: Context) -> Result:
             user_message="Mail search's local index contains no messages. " + APPLE_MAIL_INDEX_REBUILD_FIX,
         )
     try:
-        age = max(_sync_age(context.now, last_sync) for last_sync in required_syncs)
+        age = _sync_age(context.now, newest_sync) if newest_sync else max(
+            _sync_age(context.now, last_sync) for last_sync in required_syncs
+        )
     except ValueError as error:
         detail = _one_line(error)
         return Result(
