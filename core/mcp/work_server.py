@@ -181,8 +181,6 @@ _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 from core import capabilities as capability_rooms
-from core.context.person_context import get_person_context as get_person_context_payload
-from core.context.session_boot import build_session_boot
 from core.action_dates import (
     I_OWE_DATE_FIELD,
     WAITING_ON_DATE_FIELD,
@@ -191,6 +189,8 @@ from core.action_dates import (
     owed_status,
     read_ambiguous_action_date,
 )
+from core.context.person_context import get_person_context as get_person_context_payload
+from core.context.session_boot import build_session_boot
 from core.entity_engine import (
     create_page_if_absent,
     fingerprint_page,
