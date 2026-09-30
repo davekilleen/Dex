@@ -9,6 +9,22 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+A checkup could sit for minutes with only two lines on screen, so a long
+check looked like a freeze. That also made an update wait without saying
+which step it was on. Thanks to Michelle Wright for the original report.
+
+**What this fixes for you:**
+
+* **Checkup names each step as it starts.** You see which check is running,
+  then when Dex is summarizing and saving. If it ever sits still, the last
+  named step is the one to mention.
+
+When work tools appeared but never started, Dex only said Task Manager cannot start. That did not tell you what to do.
+
+**What this fixes for you:**
+
+* **When work tools appear but never start, you get the next step.** Dex already noticed when Task Manager showed up as available but never actually started. It now says the chat app never started it, tells you to start a new session, and says reinstalling will not start it. Dex still cannot start it for you.
+
 A follow-up date on a person page was doing two jobs, so a wait looked late
 the same way a promise you had not kept did. And an earlier update started
 putting new daily plans in a new inbox folder, so a vault that already kept

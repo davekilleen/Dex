@@ -95,7 +95,9 @@ Before applying an update, collect the deep Doctor report with
 `python3 core/utils/doctor.py --deep`. JSON is stdout-only; progress is stderr.
 This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
 Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
-ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`.
+ran completely. While it runs, stderr prints `Checking this Dex install (read-only)...`,
+then names each check as it starts (for example `Checking customizations.assessment...`).
+If a run sits still, the last named check is the one that is stuck.
 If the collector itself fails to run: that IS the
 finding. Report it first, with the error. Use that report to decide whether to offer this
 branch. Offer it when `customization_assessment.completeness` is `OK` and

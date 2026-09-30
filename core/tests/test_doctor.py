@@ -1769,7 +1769,10 @@ def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, 
     monkeypatch.setattr(
         doctor,
         "_apply_t1_heals",
-        lambda _context: ({"vault.structure": ["regenerated core/paths.json"]}, []),
+        lambda _context, **_kwargs: (
+            {"vault.structure": ["regenerated core/paths.json"]},
+            [],
+        ),
     )
 
     def explode(_context):
@@ -1790,7 +1793,11 @@ def test_heal_does_not_overwrite_a_raising_structure_probe_with_ok(monkeypatch, 
 def test_main_heal_flag_invokes_t1_and_still_returns_json(monkeypatch, context, capsys):
     _stub_probes(monkeypatch)
     calls = []
-    monkeypatch.setattr(doctor, "_apply_t1_heals", lambda candidate: (calls.append(candidate) or {}, []))
+    monkeypatch.setattr(
+        doctor,
+        "_apply_t1_heals",
+        lambda candidate, **_kwargs: (calls.append(candidate) or {}, []),
+    )
 
     assert doctor.main(["--heal"], context=context) == 0
     assert json.loads(capsys.readouterr().out)["mode"] == "quick"
@@ -1803,7 +1810,7 @@ def test_main_heal_reports_progress_before_repairs_and_checks(
     """A stuck step must not leave the person staring at an empty terminal."""
     observed_stderr = []
 
-    def heal(_context):
+    def heal(_context, **_kwargs):
         observed_stderr.append(capsys.readouterr().err)
         return {}, []
 
@@ -1814,15 +1821,17 @@ def test_main_heal_reports_progress_before_repairs_and_checks(
     _stub_probes(monkeypatch)
     monkeypatch.setattr(doctor, "_apply_t1_heals", heal)
     monkeypatch.setattr(doctor, "_probe_vault_structure", first_probe)
+    monkeypatch.setattr(doctor, "_write_last_run", lambda *_args, **_kwargs: None)
 
     assert doctor.main(["--heal"], context=context) == 0
     captured = capsys.readouterr()
 
-    assert observed_stderr == [
-        f"{doctor.HEAL_PROGRESS}\n",
-        f"{doctor.CHECK_PROGRESS}\n",
-    ]
-    assert captured.err == ""
+    assert observed_stderr[0] == f"{doctor.START_PROGRESS}\n{doctor.HEAL_PROGRESS}\n"
+    assert observed_stderr[1] == (
+        f"{doctor.CHECK_PROGRESS}\n{doctor._check_progress(doctor.QUICK_CHECKS[0])}\n"
+    )
+    assert doctor.ADOPTION_PROGRESS in captured.err
+    assert doctor.SAVE_PROGRESS in captured.err
     assert json.loads(captured.out)["mode"] == "quick"
 
 
@@ -1845,6 +1854,82 @@ def test_collect_runs_probes_in_process_without_shared_timeout_threads(
     assert seen == [caller]
     assert _check(report, "vault.structure")["verdict"] == "OK"
     assert capsys.readouterr().err == ""
+
+
+def test_collect_without_progress_stays_silent(monkeypatch, context, capsys):
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_write_last_run", lambda *_args, **_kwargs: None)
+
+    doctor.collect(heal=True, context=context)
+
+    assert capsys.readouterr().err == ""
+
+
+def test_main_names_each_selected_check_before_it_runs(monkeypatch, context, capsys):
+    seen: list[str] = []
+
+    def drift(_context):
+        seen.append(capsys.readouterr().err)
+        return doctor.ProbeResult("OK", "Stub probe completed.")
+
+    _stub_probes(monkeypatch)
+    monkeypatch.setattr(doctor, "_probe_core_drift", drift)
+    monkeypatch.setattr(doctor, "_write_last_run", lambda *_args, **_kwargs: None)
+
+    assert doctor.main(["--only", "core.drift"], context=context) == 0
+    captured = capsys.readouterr()
+
+    assert seen == [
+        f"{doctor.START_PROGRESS}\n{doctor.CHECK_PROGRESS}\nChecking core.drift...\n"
+    ]
+    assert "Checking vault.structure..." not in captured.err
+    assert doctor.ADOPTION_PROGRESS in captured.err
+    assert doctor.SAVE_PROGRESS in captured.err
+    assert json.loads(captured.out)["mode"] == "quick"
+
+
+def test_main_rejects_verbose_as_unknown_flag(capsys):
+    with pytest.raises(SystemExit) as raised:
+        doctor.main(["--verbose"])
+    assert raised.value.code == 2
+    assert "unrecognized arguments: --verbose" in capsys.readouterr().err
+
+
+def test_heal_stages_are_named_before_each_repair(monkeypatch, context, capsys):
+    seen: list[str] = []
+
+    def executables(_context):
+        seen.append(capsys.readouterr().err)
+        return []
+
+    (context.vault_root / "core" / "paths.json").write_text("{}\n")
+    for name in doctor.PARA_PATH_NAMES:
+        context.core_path(name).mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(doctor, "_paths_export_for", lambda _context: {})
+    monkeypatch.setattr(doctor, "_repo_shipped_executables", executables)
+    monkeypatch.setattr(doctor, "_env_permission_finding", lambda _context: None)
+    monkeypatch.setattr(doctor, "_acknowledge_resolved_preflight_errors", lambda _context: 0)
+    monkeypatch.setattr(doctor, "_heal_claude_composition", lambda _context: None)
+    monkeypatch.setattr(
+        doctor,
+        "_probe_capability_rooms",
+        lambda _context: doctor.ProbeResult("OK", "rooms"),
+    )
+
+    doctor._apply_t1_heals(context, progress=True)
+
+    assert seen == [
+        f"{doctor._heal_stage_progress(doctor.HEAL_STAGE_PATHS)}\n"
+        f"{doctor._heal_stage_progress(doctor.HEAL_STAGE_EXECUTABLES)}\n"
+    ]
+    leftover = capsys.readouterr().err
+    for stage in (
+        doctor.HEAL_STAGE_ENV,
+        doctor.HEAL_STAGE_PREFLIGHT,
+        doctor.HEAL_STAGE_ROOMS,
+        doctor.HEAL_STAGE_COMPOSITION,
+    ):
+        assert doctor._heal_stage_progress(stage) in leftover
 
 
 def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, context):
@@ -1885,6 +1970,7 @@ def test_doctor_skill_keeps_collector_stderr_visible():
     skill = (REPO_ROOT / ".claude/skills/dex-doctor/SKILL.md").read_text(encoding="utf-8")
     assert "doctor.py --heal 2>/dev/null" not in skill
     assert "python3 core/utils/doctor.py --heal" in skill
+    assert "names each check as it starts" in skill
 
 
 def test_main_deep_flag_runs_the_deep_registry(monkeypatch, context, capsys):

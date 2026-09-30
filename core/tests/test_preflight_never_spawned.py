@@ -1,9 +1,9 @@
 """Configured work-mcp with no live process must not stay silent.
 
 When sibling core Python MCP processes are running and Task Manager is listed
-but has no process, preflight and Doctor reuse the existing
-"Task Manager cannot start" voice. An idle machine with no MCP processes stays
-quiet so this notice cannot false-alarm a checkup outside a live session.
+but has no process, preflight and Doctor use the never-spawned next-step voice.
+An idle machine with no MCP processes stays quiet so this notice cannot
+false-alarm a checkup outside a live session.
 """
 
 from __future__ import annotations
@@ -53,8 +53,8 @@ def test_never_spawned_when_siblings_live_and_work_mcp_has_no_process(
 
     assert notice == {
         "status": "error",
-        "error": "Task Manager cannot start",
-        "humanError": "Task Manager cannot start",
+        "error": preflight.NEVER_SPAWNED_HUMAN_ERROR,
+        "humanError": preflight.NEVER_SPAWNED_HUMAN_ERROR,
     }
 
 
@@ -103,7 +103,7 @@ def test_ps_scan_replaces_undecodable_command_lines_and_still_notices(
 
     assert cmdlines is not None
     assert any("not utf8" in line for line in cmdlines)
-    assert health["servers"]["work-mcp"]["humanError"] == "Task Manager cannot start"
+    assert health["servers"]["work-mcp"]["humanError"] == preflight.NEVER_SPAWNED_HUMAN_ERROR
 
 
 def test_ps_scan_stays_quiet_when_command_lines_cannot_be_decoded(
@@ -173,7 +173,7 @@ def test_never_spawned_accepts_isolated_entries_without_mcp_json(
     )
 
     assert notice is not None
-    assert notice["humanError"] == "Task Manager cannot start"
+    assert notice["humanError"] == preflight.NEVER_SPAWNED_HUMAN_ERROR
     assert not (tmp_path / ".mcp.json").exists()
 
 
@@ -211,12 +211,20 @@ def test_overlay_is_fresh_and_not_written_to_the_health_cache(
     health = preflight.run_preflight()
     cached = json.loads((tmp_path / ".logs" / "mcp-health.json").read_text())
 
-    assert health["servers"]["work-mcp"]["humanError"] == "Task Manager cannot start"
+    assert health["servers"]["work-mcp"]["humanError"] == preflight.NEVER_SPAWNED_HUMAN_ERROR
     assert cached["servers"]["work-mcp"]["status"] == "ok"
     assert "humanError" not in cached["servers"]["work-mcp"]
 
 
-def test_session_preflight_output_uses_existing_task_manager_voice(
+def test_never_spawned_voice_names_the_next_step() -> None:
+    message = preflight.NEVER_SPAWNED_HUMAN_ERROR
+    assert "listed" in message
+    assert "never started" in message
+    assert "Start a new session" in message
+    assert "Reinstalling Dex will not start it" in message
+
+
+def test_session_preflight_output_uses_never_spawned_next_step_voice(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
@@ -230,7 +238,8 @@ def test_session_preflight_output_uses_existing_task_manager_voice(
 
     output = preflight.format_output(preflight.run_preflight())
 
-    assert "Task Manager cannot start" in output
+    assert preflight.NEVER_SPAWNED_HUMAN_ERROR in output
+    assert "Start a new session" in output
     assert "Say: 'health check' to investigate" in output
 
 
@@ -258,4 +267,4 @@ def test_doctor_preflight_queue_reports_never_spawned_work_mcp(
     result = doctor._probe_preflight_queue(context)
 
     assert result.verdict == "BROKEN"
-    assert "Task Manager cannot start" in result.detail
+    assert preflight.NEVER_SPAWNED_HUMAN_ERROR in result.detail
