@@ -11,14 +11,27 @@ import os
 import re
 from pathlib import Path
 
-DEFAULT_DAILY_PLANS_RELATIVE = "00-Inbox/Daily_Plans"
-FOLDER_MAP_RELATIVE = "System/folder-paths.yaml"
+from core.paths import (
+    ARCHIVES_DIR,
+    DAILY_PLANS_DIR,
+    INBOX_DIR,
+    MEETINGS_DIR,
+    SYSTEM_DIR,
+    VAULT_ROOT,
+)
+
+# Vault-relative PARA roots derived from the canonical core.paths constants
+# (POSIX strings, computed at import time). Using these instead of raw PARA
+# path literals keeps the path-contract gate satisfied.
+DEFAULT_DAILY_PLANS_RELATIVE = DAILY_PLANS_DIR.relative_to(VAULT_ROOT).as_posix()
+FOLDER_MAP_RELATIVE = (SYSTEM_DIR / "folder-paths.yaml").relative_to(VAULT_ROOT).as_posix()
+_MEETINGS_RELATIVE = MEETINGS_DIR.relative_to(VAULT_ROOT).as_posix()
 DATED_DAILY_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 DAILY_PLAN_TYPE = re.compile(r"(?m)^type:\s*daily-plan\s*$")
 DAILY_PLAN_HEADING = re.compile(r"(?im)^#\s+daily plan\b")
 LEGACY_CANDIDATES = (
-    "07-Archives/Plans",
-    "00-Inbox/Daily_Prep",
+    (ARCHIVES_DIR / "Plans").relative_to(VAULT_ROOT).as_posix(),
+    (INBOX_DIR / "Daily_Prep").relative_to(VAULT_ROOT).as_posix(),
 )
 PLAN_FOLDER_NAMES = frozenset(
     {
@@ -118,7 +131,7 @@ def _collect_plan_directories(vault_root: Path) -> dict[str, list[Path]]:
         if rel_dir is None:
             dirnames[:] = []
             continue
-        if rel_dir == "00-Inbox/Meetings" or rel_dir.startswith("00-Inbox/Meetings/"):
+        if rel_dir == _MEETINGS_RELATIVE or rel_dir.startswith(f"{_MEETINGS_RELATIVE}/"):
             dirnames[:] = []
             continue
         dirnames[:] = [
