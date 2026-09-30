@@ -693,8 +693,21 @@ DEEP_CHECKS = (
     CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
+START_PROGRESS = "Starting Dex checkup..."
 HEAL_PROGRESS = "Apply safe Tier-1 repairs before checking."
 CHECK_PROGRESS = "Checking this Dex install (read-only)..."
+ADOPTION_PROGRESS = "Summarizing what Dex can adopt..."
+SAVE_PROGRESS = "Saving the checkup result..."
+SNAPSHOT_PROGRESS = "Publishing the latest health snapshot..."
+
+HEAL_STAGE_PATHS = "paths.export"
+HEAL_STAGE_EXECUTABLES = "scripts.permissions"
+HEAL_STAGE_ENV = "vault.env"
+HEAL_STAGE_ENTITIES = "entity.engine"
+HEAL_STAGE_PREFLIGHT = "preflight.queue"
+HEAL_STAGE_ROOMS = "capabilities.rooms"
+HEAL_STAGE_COMPOSITION = "config.claude_composition"
+HEAL_STAGE_COMMIT = "tier-1.commit"
 
 
 def _progress(message: str) -> None:
@@ -705,6 +718,19 @@ def _progress(message: str) -> None:
     long; heals are not time-boxed and must finish or fail in-thread.
     """
     print(message, file=sys.stderr, flush=True)
+
+
+def _progress_if(enabled: bool, message: str) -> None:
+    if enabled:
+        _progress(message)
+
+
+def _check_progress(definition: CheckDefinition) -> str:
+    return f"Checking {definition.id}..."
+
+
+def _heal_stage_progress(stage: str) -> str:
+    return f"Healing {stage}..."
 
 
 def _one_line(value: object) -> str:
@@ -889,7 +915,11 @@ def _t1_stage(
         return None
 
 
-def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[str]]:
+def _apply_t1_heals(
+    context: DoctorContext,
+    *,
+    progress: bool = False,
+) -> tuple[dict[str, list[str]], list[str]]:
     """Preview and apply contract-authorized Tier-1 repairs through the service.
 
     Returns applied actions keyed by the check id they belong to — routing on
@@ -900,6 +930,9 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
     planned: list[PlanEntry] = []
     planned_paths_export = False
     planned_executables: list[str] = []
+
+    def announce(stage: str) -> None:
+        _progress_if(progress, _heal_stage_progress(stage))
 
     missing_directories = [context.core_path(name) for name in PARA_PATH_NAMES if not context.core_path(name).is_dir()]
     if missing_directories:
@@ -933,12 +966,14 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
             )
             planned_paths_export = True
 
+    announce(HEAL_STAGE_PATHS)
     _t1_stage(
         errors,
         "Path-export heal failed",
         _plan_paths_export,
     )
 
+    announce(HEAL_STAGE_EXECUTABLES)
     shipped_executables = _t1_stage(
         errors,
         "Executable-mode heal failed",
@@ -980,6 +1015,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 "tightened .env to owner-only permissions"
             )
 
+    announce(HEAL_STAGE_ENV)
     _t1_stage(
         errors,
         ".env permission heal failed",
@@ -998,6 +1034,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                     f"re-queued {requeued} dead-lettered entity {noun} with retry counters reset"
                 )
 
+        announce(HEAL_STAGE_ENTITIES)
         _t1_stage(
             errors,
             "Entity-write heal failed",
@@ -1012,6 +1049,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 f"acknowledged {acknowledged} resolved preflight {noun}"
             )
 
+    announce(HEAL_STAGE_PREFLIGHT)
     _t1_stage(
         errors,
         "Preflight-queue heal failed",
@@ -1037,6 +1075,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                 "reconciled capability room assets without deleting user content"
             )
 
+    announce(HEAL_STAGE_ROOMS)
     _t1_stage(
         errors,
         "Capability-room heal failed",
@@ -1048,6 +1087,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
         if composition_action:
             actions.setdefault("config.claude_composition", []).append(composition_action)
 
+    announce(HEAL_STAGE_COMPOSITION)
     _t1_stage(
         errors,
         "CLAUDE.md refresh failed",
@@ -1075,6 +1115,7 @@ def _apply_t1_heals(context: DoctorContext) -> tuple[dict[str, list[str]], list[
                     f"restored executable {noun} on {', '.join(planned_executables)}"
                 )
 
+        announce(HEAL_STAGE_COMMIT)
         _t1_stage(
             errors,
             "Tier-1 transaction failed",
@@ -1122,6 +1163,7 @@ def collect(
     check alone instead of paying for every live probe. An unknown id is an
     error rather than a silently empty report.
     """
+    _progress_if(progress, START_PROGRESS)
     context = context or DoctorContext.from_environment()
     definitions = [*QUICK_CHECKS, *DEEP_CHECKS] if deep else list(QUICK_CHECKS)
     if only:
@@ -1143,17 +1185,15 @@ def collect(
 
     t1_actions: dict[str, list[str]] = {}
     if heal:
-        if progress:
-            _progress(HEAL_PROGRESS)
+        _progress_if(progress, HEAL_PROGRESS)
         try:
-            t1_actions, t1_errors = _apply_t1_heals(context)
+            t1_actions, t1_errors = _apply_t1_heals(context, progress=progress)
             if t1_errors:
                 failed.append({"id": "doctor.self", "error": "; ".join(t1_errors)})
         except Exception as error:
             failed.append({"id": "doctor.self", "error": _one_line(error)})
 
-    if progress:
-        _progress(CHECK_PROGRESS)
+    _progress_if(progress, CHECK_PROGRESS)
     # One classification pass over ~/Library/LaunchAgents is shared by
     # jobs.loaded and jobs.fresh instead of re-parsing every plist twice.
     _begin_launch_agent_scan_scope(context)
@@ -1161,6 +1201,7 @@ def collect(
         for definition in definitions:
             if definition.id == "doctor.self":
                 continue
+            _progress_if(progress, _check_progress(definition))
             try:
                 result = globals()[definition.probe](context)
             except Exception as error:
@@ -1263,6 +1304,7 @@ def collect(
     results["doctor.self"] = self_result
 
     checks = [_result_json(definition, results[definition.id]) for definition in definitions]
+    _progress_if(progress, ADOPTION_PROGRESS)
     adoption = collect_adoption_report(context)
     report = {
         "generated_at": context.now.isoformat(),
@@ -1292,6 +1334,7 @@ def collect(
                 migration_status_result.structured_detail
             )
 
+    _progress_if(progress, SAVE_PROGRESS)
     try:
         _write_last_run(report, context)
     except Exception as error:
@@ -6630,6 +6673,7 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
     # A narrowed run answers one question; it must not overwrite the whole-system
     # snapshot that the health pulse and Doctor's summary read.
     if args.deep and not args.only:
+        _progress(SNAPSHOT_PROGRESS)
         _publish_health_snapshot(report, context)
     print(output)
     return 0
