@@ -424,9 +424,48 @@ def scan_evidence_directory(evidence_dir: Path, date_range: Optional[Tuple[date,
 # LADDER FILE PARSING
 # ============================================================================
 
-def parse_ladder_file(filepath: Path) -> Dict[str, Any]:
+def _target_level_section(content: str, target_level: Optional[str] = None) -> tuple[str, str]:
+    """
+    Read the structured target-level section from a career-setup ladder.
+
+    A well-formed ladder uses ``## Target Level: {name}`` plus ``###``
+    competency headings. Prefer an explicit target-level argument, then the
+    file's Target Level field, then any heading that names that level.
+    """
+    file_target_level = extract_field(content, "Target Level")
+    selected = (target_level or "").strip() or file_target_level
+    candidates: list[str] = []
+    if selected:
+        candidates.append(f"## Target Level: {selected}")
+    if file_target_level and file_target_level != selected:
+        candidates.append(f"## Target Level: {file_target_level}")
+    candidates.append("## Target Level")
+
+    for heading in candidates:
+        section = extract_section(content, heading)
+        if section and find_competency_headings(section, level=3):
+            return selected or file_target_level, section
+
+    if selected:
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("##") and selected.lower() in stripped.lower():
+                section = extract_section(content, stripped)
+                if section and find_competency_headings(section, level=3):
+                    return selected, section
+
+    heading = candidates[0]
+    return selected or file_target_level, extract_section(content, heading)
+
+
+def parse_ladder_file(filepath: Path, target_level: Optional[str] = None) -> Dict[str, Any]:
     """
     Parse career ladder markdown and extract competency structure.
+
+    Args:
+        filepath: Career_Ladder.md
+        target_level: Optional level name. When set, read that structured
+            ``## Target Level: …`` section even if the metadata field differs.
     
     Returns:
         Dict with ladder metadata and competencies
@@ -450,12 +489,9 @@ def parse_ladder_file(filepath: Path) -> Dict[str, Any]:
     # Extract metadata
     company = extract_field(content, "Company")
     current_level = extract_field(content, "Current Level")
-    target_level = extract_field(content, "Target Level")
+    file_target_level = extract_field(content, "Target Level")
     last_updated = extract_field(content, "Last Updated")
-    
-    # Find target level section
-    target_section_heading = f"## Target Level: {target_level}" if target_level else "## Target Level"
-    target_section = extract_section(content, target_section_heading)
+    resolved_target_level, target_section = _target_level_section(content, target_level)
     
     # Parse competencies (### headings under target level)
     competencies = []
@@ -474,7 +510,7 @@ def parse_ladder_file(filepath: Path) -> Dict[str, Any]:
         "filepath": str(filepath),
         "company": company,
         "current_level": current_level,
-        "target_level": target_level,
+        "target_level": resolved_target_level or file_target_level,
         "last_updated": last_updated,
         "competencies": competencies,
         "competency_count": len(competencies)

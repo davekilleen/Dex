@@ -249,7 +249,7 @@ def test_existing_unreadable_career_ladder_reports_broken(monkeypatch, tmp_path)
     monkeypatch.setattr(
         career_server,
         "parse_ladder_file",
-        lambda _path: {"error": "Could not parse career ladder"},
+        lambda _path, target_level=None: {"error": "Could not parse career ladder"},
     )
 
     payload = _decode_tool_result(
@@ -275,7 +275,11 @@ def test_career_ladder_without_competencies_reports_broken(monkeypatch, tmp_path
     monkeypatch.setattr(career_server, "EVIDENCE_DIR", evidence_dir)
     monkeypatch.setattr(career_server, "LADDER_FILE", ladder_file)
     monkeypatch.setattr(career_server, "USER_PROFILE_FILE", profile_file)
-    monkeypatch.setattr(career_server, "parse_ladder_file", lambda _path: ladder_data)
+    monkeypatch.setattr(
+        career_server,
+        "parse_ladder_file",
+        lambda _path, target_level=None: ladder_data,
+    )
 
     payload = _decode_tool_result(
         asyncio.run(career_server.handle_call_tool("analyze_coverage", {}))
