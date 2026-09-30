@@ -9,38 +9,18 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
-A checkup could sit for minutes with only two lines on screen, so a long
-check looked like a freeze. That also made an update wait without saying
-which step it was on. Thanks to Michelle Wright for the original report.
+## [1.97.24] — Checkup names each step, and a wait is not overdue (2026-09-30)
+
+A checkup could sit for minutes with only two lines on screen, so a long check looked like a freeze. A follow-up date on a person page was doing two jobs, so a wait looked late the same way a promise you had not kept did. And an earlier update started putting new daily plans in a new inbox folder, so a vault that already kept those plans somewhere else looked like they had moved. Work tools could still appear without starting, and a reminder that happened to say "wrong" could be filed as a lesson you never gave. Mail search checkup could also call a current index broken just because one quiet mailbox had not changed in a day. This release closes those. Thanks to Michelle Wright for the checkup, dates, and daily-plan reports, and to Chris Jackson for the lesson and Mail reports.
 
 **What this fixes for you:**
 
-* **Checkup names each step as it starts.** You see which check is running,
-  then when Dex is summarizing and saving. If it ever sits still, the last
-  named step is the one to mention.
-
-When work tools appeared but never started, Dex only said Task Manager cannot start. That did not tell you what to do.
-
-**What this fixes for you:**
-
+* **Checkup names each step as it starts.** You see which check is running, then when Dex is summarizing and saving. If it ever sits still, the last named step is the one to mention.
 * **When work tools appear but never start, you get the next step.** Dex already noticed when Task Manager showed up as available but never actually started. It now says the chat app never started it, tells you to start a new session, and says reinstalling will not start it. Dex still cannot start it for you.
-
-A follow-up date on a person page was doing two jobs, so a wait looked late
-the same way a promise you had not kept did. And an earlier update started
-putting new daily plans in a new inbox folder, so a vault that already kept
-those plans somewhere else looked like it had moved them. This build splits
-the dates and leaves an existing daily-plan folder where it is. Thanks to
-Michelle Wright for both reports (DEX-159, DEX-165).
-
-**What this fixes for you:**
-
-* **A wait is not overdue.** Person pages now have two dates: one for something
-  you owe, and one for something you are waiting on. Only the date you owe can
-  be overdue. A leftover single follow-up date with no direction is left
-  unmarked until you say which it is.
-* **Updating Dex no longer moves your daily plans.** If your plans already live
-  in a folder you chose, an update keeps writing there. A brand-new Dex folder
-  still uses the inbox location.
+* **A wait is not overdue.** Person pages now have two dates: one for something you owe, and one for something you are waiting on. Only the date you owe can be overdue. A leftover single follow-up date with no direction is left unmarked until you say which it is.
+* **Updating Dex no longer moves your daily plans.** If your plans already live in a folder you chose, an update keeps writing there. A brand-new Dex folder still uses the inbox location.
+* **A reminder is not a correction.** Dex no longer files a system note or reminder as something you said was wrong. Only your own words count, including a pasted correction. A real correction that arrives alongside a reminder is still saved.
+* **Mail search checkup no longer calls a current index broken.** One quiet mailbox that has not received mail for a day no longer fails the check. Freshness is when mail was last checked, not when Junk last changed. If nothing has been checked at all within a day, the check still says so.
 
 ## [1.97.23] — Windows install checks can finish, and old Python is refused (2026-09-28)
 
