@@ -105,7 +105,9 @@ cd "$VAULT_PATH" && .venv/bin/python core/utils/doctor.py --heal \
 This returns JSON on stdout: every check with a verdict (`OK` / `OFF` / `BROKEN` / `UNKNOWN`), any
 Tier-1 heals already applied, and an `instruments` block saying whether the doctor itself
 ran completely. While it runs, stderr prints `Apply safe Tier-1 repairs before checking.`
-then `Checking this Dex install (read-only)...`.
+then `Checking this Dex install (read-only)...`, then names each check as it starts
+(for example `Checking core.drift...`). JSON stays on stdout until the end. If a run
+sits still, the last named check is the one that is stuck. `--verbose` is not a flag.
 
 **If the collector itself fails to run:** that IS the finding. Report it first, with the
 error, and continue with whatever manual checks you can do — do not present a partial

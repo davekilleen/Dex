@@ -9,6 +9,16 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+A checkup could sit for minutes with only two lines on screen, so a long
+check looked like a freeze. That also made an update wait without saying
+which step it was on. Thanks to Michelle Wright for the original report.
+
+**What this fixes for you:**
+
+* **Checkup names each step as it starts.** You see which check is running,
+  then when Dex is summarizing and saving. If it ever sits still, the last
+  named step is the one to mention.
+
 When work tools appeared but never started, Dex only said Task Manager cannot start. That did not tell you what to do.
 
 **What this fixes for you:**
