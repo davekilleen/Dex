@@ -7,6 +7,8 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.24] — (2026-09-30)
+
 ## Unreleased
 
 A checkup could sit for minutes with only two lines on screen, so a long

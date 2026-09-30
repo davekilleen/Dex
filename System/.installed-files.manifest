@@ -1040,6 +1040,7 @@ System/trusted-mcps.example.yaml
 System/usage_log.md
 System/user-profile-template.yaml
 core/__init__.py
+core/action_dates.py
 core/analytics_events.py
 core/backup/__init__.py
 core/backup/backup_vault.py
@@ -1067,6 +1068,7 @@ core/customization_migration/staging.py
 core/customization_migration/state.py
 core/customization_migration/transition.py
 core/customization_migration/verification.py
+core/daily_plans_location.py
 core/data/freemail_domains.json
 core/data/multi_part_tlds.json
 core/data/sync-folder-markers.json
@@ -1376,6 +1378,7 @@ core/tests/provision-working-week.test.cjs
 core/tests/support/__init__.py
 core/tests/support/vault_builder.py
 core/tests/sync-folder-detector.test.cjs
+core/tests/test_action_dates.py
 core/tests/test_adoption_cli.py
 core/tests/test_adoption_diff.py
 core/tests/test_adoption_doctor_journey.py
@@ -1444,6 +1447,7 @@ core/tests/test_customization_verification.py
 core/tests/test_daily_plan_email_intelligence.py
 core/tests/test_daily_plan_inbox_path_contract.py
 core/tests/test_daily_plan_relationships_surface.py
+core/tests/test_daily_plans_location.py
 core/tests/test_detect_flaky_tests_gate.py
 core/tests/test_dex_improvements_server.py
 core/tests/test_dex_lens_catalog_generation.py
