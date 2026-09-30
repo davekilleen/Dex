@@ -19,7 +19,9 @@ Governing rule: **do not rebuild the data layer.** The Work MCP already ships th
 
 ## Step 1 — Scan (existing tool, don't reinvent)
 
-Call `get_commitments_due(date_range=$RANGE)`. It returns `commitments_due_today`, `commitments_due_this_week`, and `commitments_no_date` — each item carries `commitment`, `due_date`, `source` (the meeting file or person page), and, for person-page items, `to_person`.
+Call `get_commitments_due(date_range=$RANGE)`. It returns `commitments_due_today`, `commitments_due_this_week`, `commitments_no_date`, plus `owed_overdue`, `waiting_stale`, and `ambiguous_action_dates`. Each item carries `commitment`, `due_date`, `source` (the meeting file or person page), and, for person-page items, `to_person`.
+
+Person-page dates are split. Only `i_owe_date` can be overdue (`owed_overdue` / due today). `waiting_on_date` is a wait — list it under asks you received, never as overdue. A leftover `next_action_date` is `ambiguous_action_dates`: show it as undirected and do not mark it overdue. When writing a date on a person page, set `i_owe_date` or `waiting_on_date`, never `next_action_date`.
 
 If `get_commitments_due` returns a `feature_status` other than `ok`, follow the standard contract (surface the user-facing message it returns; never invent a result). If it errors or the Work MCP is unavailable, say so plainly and stop — do not fabricate a commitments list.
 

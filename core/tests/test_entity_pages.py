@@ -596,6 +596,9 @@ def test_existing_python_consumers_delegate_to_shared_contract(tmp_path: Path) -
         "role": "Lead",
         "email": "lead@example.com",
         "last_interaction": "2026-07-03",
+        "i_owe_date": None,
+        "waiting_on_date": None,
+        "next_action_date": None,
     }
     assert generate_person_page(
         "Legacy_Person", role="Lead", company="Acme", email="LEAD@EXAMPLE.COM", notes="Known."

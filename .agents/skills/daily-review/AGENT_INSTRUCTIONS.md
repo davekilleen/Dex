@@ -137,7 +137,7 @@ If not connected or unhealthy, skip silently.
 
 ## Step 3: Daily Plan Completion Tracking
 
-1. Read `00-Inbox/Daily_Plans/{{TARGET_DATE}}.md` if it exists
+1. Read today's plan from the resolved daily-plan folder (folder-paths `daily_plans`, else the existing dated-plan folder, else `00-Inbox/Daily_Plans/{{TARGET_DATE}}.md`) if it exists
 2. Extract the planned focus items from "Today's Focus"
 3. For each, check `03-Tasks/Tasks.md` completion timestamps and the modified
    files for evidence; classify as Complete, In Progress (estimate %), or Not

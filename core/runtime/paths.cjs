@@ -12,6 +12,124 @@ const path = require('path');
  * Load vault path constants from core/paths.json, falling back to hardcoded PARA defaults.
  * @returns {Record<string, string>} Object mapping path constant names to absolute directory/file paths
  */
+const DATED_DAILY = /^\d{4}-\d{2}-\d{2}\.md$/;
+const DAILY_PLAN_TYPE = /^type:\s*daily-plan\s*$/m;
+const DAILY_PLAN_HEADING = /^#\s+daily plan\b/im;
+const PLAN_FOLDER_NAMES = new Set([
+  'daily_plans', 'daily-plans', 'dailyplans', 'daily_prep', 'daily-prep',
+  'dailyprep', 'daily', 'plans',
+]);
+const DEFAULT_DAILY_PLANS = '00-Inbox/Daily_Plans';
+
+function normalizeRelative(value) {
+  const text = String(value || '').trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+  if (!text || text.startsWith('#') || text.startsWith('/') || text.startsWith('~')) return null;
+  const parts = [];
+  for (const part of text.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..' || part.startsWith('.')) return null;
+    parts.push(part);
+  }
+  return parts.length ? parts.join('/') : null;
+}
+
+function folderMapDailyPlans(vaultRoot) {
+  const mapPath = path.join(vaultRoot, 'System', 'folder-paths.yaml');
+  if (!fs.existsSync(mapPath)) return null;
+  let text = '';
+  try {
+    text = fs.readFileSync(mapPath, 'utf8');
+  } catch (e) {
+    return null;
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || !line.includes(':')) continue;
+    const sep = line.indexOf(':');
+    if (line.slice(0, sep).trim() !== 'daily_plans') continue;
+    return normalizeRelative(line.slice(sep + 1).split(' #')[0]);
+  }
+  return null;
+}
+
+function looksLikeDailyPlan(filePath, parentName) {
+  let sample = '';
+  try {
+    sample = fs.readFileSync(filePath, 'utf8').slice(0, 4000);
+  } catch (e) {
+    return false;
+  }
+  if (DAILY_PLAN_TYPE.test(sample) || DAILY_PLAN_HEADING.test(sample)) return true;
+  return PLAN_FOLDER_NAMES.has(String(parentName || '').toLowerCase().replace(/-/g, '_'));
+}
+
+function detectExistingDailyPlans(vaultRoot) {
+  const mapped = folderMapDailyPlans(vaultRoot);
+  if (mapped && mapped !== DEFAULT_DAILY_PLANS) return mapped;
+  const groups = new Map();
+  const stack = [vaultRoot];
+  let walked = 0;
+  while (stack.length && walked < 400) {
+    const current = stack.pop();
+    walked += 1;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch (e) {
+      continue;
+    }
+    const relDir = path.relative(vaultRoot, current).split(path.sep).join('/');
+    if (relDir === '00-Inbox/Meetings' || relDir.startsWith('00-Inbox/Meetings/')) continue;
+    const parentName = path.basename(current);
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        const folded = entry.name.toLowerCase();
+        if (['.git', '.dex', '.claude', '.agents', '.scripts', '.cursor', 'node_modules', 'core', 'packages', 'scripts', 'docs', 'system', 'meetings'].includes(folded)) {
+          continue;
+        }
+        stack.push(full);
+        continue;
+      }
+      if (!entry.isFile() || !DATED_DAILY.test(entry.name)) continue;
+      if (!looksLikeDailyPlan(full, parentName)) continue;
+      const key = relDir === '' ? '.' : relDir;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(full);
+    }
+  }
+  if ((groups.get(DEFAULT_DAILY_PLANS) || []).length) return null;
+  for (const candidate of ['07-Archives/Plans', '00-Inbox/Daily_Prep']) {
+    if ((groups.get(candidate) || []).length) return candidate;
+  }
+  const others = [...groups.entries()].filter(([key, files]) => key !== DEFAULT_DAILY_PLANS && files.length);
+  if (others.length === 1) return others[0][0];
+  if (!others.length) return null;
+  others.sort((a, b) => {
+    const newest = (files) => files.reduce((max, file) => {
+      try {
+        return Math.max(max, fs.statSync(file).mtimeMs);
+      } catch (e) {
+        return max;
+      }
+    }, 0);
+    return newest(b[1]) - newest(a[1]) || b[1].length - a[1].length || a[0].localeCompare(b[0]);
+  });
+  return others[0][0];
+}
+
+function resolveDailyPlansDir(vaultRoot) {
+  const mapped = folderMapDailyPlans(vaultRoot);
+  if (mapped) return path.join(vaultRoot, mapped);
+  const detected = detectExistingDailyPlans(vaultRoot);
+  return path.join(vaultRoot, detected || DEFAULT_DAILY_PLANS);
+}
+
+function withResolvedDailyPlans(vaultRoot, paths) {
+  return { ...paths, DAILY_PLANS_DIR: resolveDailyPlansDir(vaultRoot) };
+}
+
 function loadPaths() {
   // Resolve per call: one long-lived harness process may serve more than one
   // vault. Relative VAULT_PATH values (as CI exports) still become absolute.
@@ -22,14 +140,14 @@ function loadPaths() {
   const jsonPath = path.join(VAULT_ROOT, 'core', 'paths.json');
   if (fs.existsSync(jsonPath)) {
     try {
-      return JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      return withResolvedDailyPlans(VAULT_ROOT, JSON.parse(fs.readFileSync(jsonPath, 'utf-8')));
     } catch (e) {
       // Fall through to hardcoded defaults
     }
   }
 
   // Hardcoded fallback (mirrors core/paths.py)
-  return {
+  return withResolvedDailyPlans(VAULT_ROOT, {
     VAULT_ROOT,
     INBOX_DIR: path.join(VAULT_ROOT, '00-Inbox'),
     QUARTER_GOALS_DIR: path.join(VAULT_ROOT, '01-Quarter_Goals'),
@@ -62,7 +180,7 @@ function loadPaths() {
     ENTITY_SUGGESTIONS_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-suggestions.json'),
     ENTITY_PENDING_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-pending.json'),
     ENTITY_VERIFICATION_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-verification.json'),
-  };
+  });
 }
 
-module.exports = { loadPaths };
+module.exports = { loadPaths, resolveDailyPlansDir };

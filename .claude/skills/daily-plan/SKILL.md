@@ -40,7 +40,7 @@ Agent tool, using the self-contained prompt in this skill's
    mechanical gathering, so it runs on the fast tier declared by this skill's
    `model_routing.steps.data-gathering`; the judgement calls stay in this
    conversation on the default model.
-4. Verify it wrote the draft plan to `00-Inbox/Daily_Plans/YYYY-MM-DD.md`, then run
+4. Verify it wrote the draft plan to the resolved daily-plan folder (see Daily plan folder), then run
    the remaining interactive steps from its findings and present the plan.
 5. **Close out every `<!-- NEEDS TASK -->` line in the draft.** The subagent
    never creates tasks, so a focus candidate with no existing task is written
@@ -445,7 +445,8 @@ If items found, surface:
 
 Also gather:
 - **Calendar**: Today's meetings with times and attendees
-- **Tasks**: P0, P1, started-but-not-completed, overdue
+- **Tasks**: P0, P1, started-but-not-completed, overdue (task `Due:` dates only)
+- **People dates**: `i_owe_date` can be overdue. `waiting_on_date` is a wait/nudge, never overdue. A leftover `next_action_date` has no direction — do not mark it overdue.
 - **Week Priorities**: This week's Top 3
 - **Work Summary**: Quarterly goals context (if enabled)
 - **People**: Context for meeting attendees
@@ -613,7 +614,9 @@ Flag potential issues:
 item maps to a Tasks.md task — create the task first if needed). If the item is not a
 task at all, drop both the placeholder and the `- [ ]` checkbox for that line.
 
-Create `00-Inbox/Daily_Plans/YYYY-MM-DD.md`:
+**Daily plan folder.** Default for a new vault is `00-Inbox/Daily_Plans/`. If `System/folder-paths.yaml` has `daily_plans:`, write there. If dated `YYYY-MM-DD.md` daily plans already live in one other folder, keep using that folder — do not move those files and do not start a second copy in the inbox. New vaults with no existing plans use `00-Inbox/Daily_Plans/`.
+
+Create `{daily-plan-folder}/YYYY-MM-DD.md` (default `00-Inbox/Daily_Plans/YYYY-MM-DD.md`):
 
 ```markdown
 ---

@@ -8,6 +8,8 @@ emails: ["jose@example.com"]
 aliases: ["Pepe"]
 location: external
 last_interaction: null
+i_owe_date: null
+waiting_on_date: null
 dex_pinned: {}
 dex_last_written:
   type: person
@@ -19,6 +21,8 @@ dex_last_written:
   aliases: ["Pepe"]
   location: external
   last_interaction: null
+  i_owe_date: null
+  waiting_on_date: null
 ---
 # José García
 

@@ -6,7 +6,8 @@ const yaml = require('js-yaml');
 
 const CANONICAL_FIELDS = new Set([
   'type', 'name', 'role', 'company', 'company_page', 'emails', 'aliases',
-  'location', 'last_interaction', 'domains', 'website', 'status',
+  'location', 'last_interaction', 'i_owe_date', 'waiting_on_date',
+  'domains', 'website', 'status',
 ]);
 const RELATIONSHIP_TYPES = [
   'works_at', 'reports_to', 'part_of', 'stakeholder_on', 'deal_with', 'related_to',
@@ -22,7 +23,11 @@ const LABELS = {
   type: 'type', name: 'name', role: 'role', company: 'company',
   'company page': 'company_page', email: 'emails', emails: 'emails', aliases: 'aliases',
   location: 'location', 'last interaction': 'last_interaction',
-  'last interaction date': 'last_interaction', website: 'website', domain: 'domains',
+  'last interaction date': 'last_interaction',
+  'i owe date': 'i_owe_date', 'i owe this': 'i_owe_date',
+  'waiting on date': 'waiting_on_date', 'waiting on them': 'waiting_on_date',
+  'waiting on until': 'waiting_on_date',
+  website: 'website', domain: 'domains',
   domains: 'domains', status: 'status', stage: 'status',
 };
 
@@ -30,6 +35,7 @@ function emptyResult() {
   return {
     type: null, name: null, role: null, company: null, company_page: null,
     emails: [], aliases: [], location: null, last_interaction: null,
+    i_owe_date: null, waiting_on_date: null,
     domains: [], website: null, status: null, touches: [], last_touched: null,
     quarantined: false, exclude_from_matching: false, declared_non_entity: false,
     source_formats: [],
@@ -113,7 +119,7 @@ function normaliseField(key, value) {
   value = normaliseScalar(value);
   if (key === 'type') return value === 'person' || value === 'company' ? value : null;
   if (key === 'location') return ['internal', 'external', 'unknown'].includes(value) ? value : null;
-  if (key === 'last_interaction' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  if (['last_interaction', 'i_owe_date', 'waiting_on_date'].includes(key) && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   return value;
 }
 
@@ -244,7 +250,7 @@ function inferType(_filePath, values) {
   if (values.declared_non_entity) return null;
   // Folder location is not person-hood. A note under People/ stays a note
   // unless the page itself declares a person/company record or fields.
-  if (['role', 'company', 'company_page', 'emails', 'last_interaction'].some(key => values[key] && values[key].length !== 0)) return 'person';
+  if (['role', 'company', 'company_page', 'emails', 'last_interaction', 'i_owe_date', 'waiting_on_date'].some(key => values[key] && values[key].length !== 0)) return 'person';
   if (['domains', 'website', 'status'].some(key => values[key] && values[key].length !== 0)) return 'company';
   return null;
 }
@@ -676,11 +682,13 @@ function renderPersonPage(name, role = null, company = null, emails = null, alia
     '---', 'type: person', `name: ${quoted(name)}`, `role: ${role ? quoted(role) : 'null'}`,
     `company: ${company ? quoted(company) : 'null'}`, 'company_page: null',
     `emails: ${cleanEmails}`, `aliases: ${cleanAliases}`,
-    `location: ${location}`, 'last_interaction: null', 'dex_pinned: {}', 'dex_last_written:',
+    `location: ${location}`, 'last_interaction: null', 'i_owe_date: null',
+    'waiting_on_date: null', 'dex_pinned: {}', 'dex_last_written:',
     '  type: person', `  name: ${quoted(name)}`, `  role: ${role ? quoted(role) : 'null'}`,
     `  company: ${company ? quoted(company) : 'null'}`, '  company_page: null',
     `  emails: ${cleanEmails}`, `  aliases: ${cleanAliases}`, `  location: ${location}`,
-    '  last_interaction: null', '---', `# ${name}`, '', '## Notes', '',
+    '  last_interaction: null', '  i_owe_date: null', '  waiting_on_date: null',
+    '---', `# ${name}`, '', '## Notes', '',
   ];
   if (notes) lines.push(notes, '');
   lines.push('## Recent Interactions', '', '<!-- dex:auto:recent-interactions -->',

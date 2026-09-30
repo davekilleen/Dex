@@ -10,6 +10,8 @@
   "aliases": [],
   "location": null,
   "last_interaction": null,
+  "i_owe_date": null,
+  "waiting_on_date": null,
   "domains": [],
   "website": null,
   "status": null,

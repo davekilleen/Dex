@@ -117,7 +117,7 @@ If items found:
 - `System/Session_Learnings/*.md` — Auto-captured session learnings
 
 ### 5. Daily Plans & Reviews
-- `00-Inbox/Daily_Plans/YYYY-MM-DD.md` — This week's daily plans (primary record of planning ritual)
+- Resolved daily-plan folder (`System/folder-paths.yaml` `daily_plans`, else the folder that already holds dated daily plans, else `00-Inbox/Daily_Plans/YYYY-MM-DD.md`) — This week's daily plans (primary record of planning ritual)
 - `07-Archives/Reviews/Daily_Review_YYYY-MM-DD.md` — This week's reviews
 
 ### 6. Journals (If Enabled)
@@ -241,7 +241,7 @@ For each goal:
 
 ### 4. Daily Completion Rate Trend
 
-**First check `00-Inbox/Daily_Plans/` for this week's daily plans.** Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
+**First check the resolved daily-plan folder** (`daily_plans` in `System/folder-paths.yaml`, else the folder that already holds dated daily plans, else `00-Inbox/Daily_Plans/`) for this week's daily plans. Count how many days had a `/daily-plan` generated. If daily reviews also exist, cross-reference plan focus items against review completion. If only plans exist (no corresponding review), still count the plan as evidence of the planning ritual and note which focus items were checked off in the plan file itself.
 Calculate completion trends:
 
 > "**Daily plan completion this week:**

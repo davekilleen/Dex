@@ -23,6 +23,8 @@ def _fields_for(page: Path, entity_type: str) -> tuple[dict, bool]:
             "aliases",
             "location",
             "last_interaction",
+            "i_owe_date",
+            "waiting_on_date",
         )
         fields = {key: parsed[key] for key in keys}
         fields["name"] = fields["name"] or page.stem.replace("_", " ")

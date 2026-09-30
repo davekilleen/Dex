@@ -183,6 +183,14 @@ if _repo_root not in sys.path:
 from core import capabilities as capability_rooms
 from core.context.person_context import get_person_context as get_person_context_payload
 from core.context.session_boot import build_session_boot
+from core.action_dates import (
+    I_OWE_DATE_FIELD,
+    WAITING_ON_DATE_FIELD,
+    is_owed_overdue,
+    is_waiting_stale,
+    owed_status,
+    read_ambiguous_action_date,
+)
 from core.entity_engine import (
     create_page_if_absent,
     fingerprint_page,
@@ -1359,6 +1367,10 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
         return {}
 
     entity = parse_entity_page(filepath)
+    try:
+        page_text = filepath.read_text(encoding='utf-8')
+    except OSError:
+        page_text = ''
     return {
         'name': entity.get('name') or filepath.stem.replace('_', ' '),
         'filepath': str(filepath),
@@ -1367,6 +1379,9 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
         'role': entity.get('role'),
         'email': (entity.get('emails') or [None])[0],
         'last_interaction': entity.get('last_interaction'),
+        'i_owe_date': entity.get('i_owe_date'),
+        'waiting_on_date': entity.get('waiting_on_date'),
+        'next_action_date': read_ambiguous_action_date(page_text),
     }
 
 def find_people_at_company(company_name: str) -> List[Dict[str, Any]]:
@@ -4235,6 +4250,9 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
         'commitments_due_today': [],
         'commitments_due_this_week': [],
         'commitments_no_date': [],
+        'owed_overdue': [],
+        'waiting_stale': [],
+        'ambiguous_action_dates': [],
         'sources_scanned': []
     }
     
@@ -4288,6 +4306,45 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
         
         for person_file in people_subdir.glob('*.md'):
             try:
+                person = parse_person_page(person_file)
+                person_name = person.get('name') or person_file.stem.replace('_', ' ')
+                source = f"Person: {person_name}"
+                if is_owed_overdue(person, today=today):
+                    result['owed_overdue'].append({
+                        'commitment': f"Something owed to {person_name}",
+                        'due_date': person.get(I_OWE_DATE_FIELD),
+                        'source': source,
+                        'to_person': person_name,
+                        'date_kind': 'owed',
+                    })
+                elif owed_status(person, today=today) == 'owed_due':
+                    due = person.get(I_OWE_DATE_FIELD)
+                    if due == today.isoformat():
+                        result['commitments_due_today'].append({
+                            'commitment': f"Something owed to {person_name}",
+                            'due_date': due,
+                            'source': source,
+                            'to_person': person_name,
+                            'date_kind': 'owed',
+                        })
+                if is_waiting_stale(person, today=today):
+                    result['waiting_stale'].append({
+                        'commitment': f"Waiting on {person_name}",
+                        'due_date': person.get(WAITING_ON_DATE_FIELD),
+                        'source': source,
+                        'to_person': person_name,
+                        'date_kind': 'waiting',
+                    })
+                leftover = person.get('next_action_date')
+                if leftover and not person.get(I_OWE_DATE_FIELD) and not person.get(WAITING_ON_DATE_FIELD):
+                    result['ambiguous_action_dates'].append({
+                        'commitment': f"Follow-up with {person_name} has one undirected date",
+                        'due_date': leftover,
+                        'source': source,
+                        'to_person': person_name,
+                        'date_kind': 'ambiguous',
+                    })
+
                 content = read_vault_text(person_file)
                 
                 # Look for "Open Items" or "Action Items" sections
@@ -4301,8 +4358,8 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
                             result['commitments_no_date'].append({
                                 'commitment': item_text,
                                 'due_date': None,
-                                'source': f"Person: {person_file.stem.replace('_', ' ')}",
-                                'to_person': person_file.stem.replace('_', ' ')
+                                'source': source,
+                                'to_person': person_name
                             })
             except Exception:
                 continue

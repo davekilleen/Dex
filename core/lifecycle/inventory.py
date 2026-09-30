@@ -40,6 +40,7 @@ FOLDER_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 DEFAULT_FOLDER_PATHS: dict[str, str] = {
     "inbox": "00-Inbox",
     "meetings": "00-Inbox/Meetings",
+    "daily_plans": "00-Inbox/Daily_Plans",
     "goals": "01-Quarter_Goals",
     "priorities": "02-Week_Priorities",
     "tasks": "03-Tasks",

@@ -834,6 +834,8 @@ def test_quarantined_page_is_findable_without_trusting_frontmatter(
             "emails": [],
             "first_name": "broken",
             "last_interaction": None,
+            "i_owe_date": None,
+            "waiting_on_date": None,
             "name": "Broken Profile",
             "path": "05-Areas/People/External/Broken_Profile.md",
             "role": None,
