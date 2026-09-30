@@ -568,11 +568,6 @@ def test_apple_mail_search_uses_configured_sync_freshness_not_file_mtime(
 @pytest.mark.parametrize(
     ("second_sync", "expected_detail"),
     [
-        pytest.param(
-            (NOW - timedelta(hours=48)).isoformat(),
-            "configured 24-hour freshness limit",
-            id="mixed-fresh-and-stale",
-        ),
         pytest.param(None, "has no successful sync", id="mixed-fresh-and-missing"),
     ],
 )
@@ -597,6 +592,71 @@ def test_apple_mail_search_checks_every_indexed_mailbox_sync(
 
     assert result.verdict == "BROKEN"
     assert expected_detail in result.detail
+
+
+def _add_global_sync_row(path, *, last_sync):
+    # apple-mail-mcp writes this row when a sync ran and no mailbox changed.
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO sync_state (account, mailbox, last_sync, message_count) "
+            "VALUES ('_global', '_sync', ?, 0)",
+            (last_sync,),
+        )
+
+
+def test_apple_mail_search_is_ok_when_a_quiet_mailbox_has_not_changed_in_days(context):
+    # apple-mail-mcp stamps last_sync only on mailboxes whose mail changed, so a
+    # quiet mailbox (Junk, Deleted Items) keeps an old stamp while every sync
+    # still checks it. Freshness is when a sync last ran: the newest stamp.
+    _register_apple_mail_user_scope(context)
+    index = _write_real_apple_mail_index(
+        context.home / ".apple-mail-mcp" / "index.db",
+        last_sync=(NOW - timedelta(hours=1)).isoformat(),
+    )
+    _add_indexed_mailbox(
+        index,
+        account="Second",
+        mailbox="Junk",
+        last_sync=(NOW - timedelta(days=5)).isoformat(),
+    )
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "OK"
+    assert "last synced 1 hour ago" in result.detail
+
+
+def test_apple_mail_search_is_ok_after_a_sync_that_found_no_changes(context):
+    _register_apple_mail_user_scope(context)
+    index = _write_real_apple_mail_index(
+        context.home / ".apple-mail-mcp" / "index.db",
+        last_sync=(NOW - timedelta(days=3)).isoformat(),
+    )
+    _add_global_sync_row(index, last_sync=(NOW - timedelta(hours=1)).isoformat())
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "OK"
+
+
+def test_apple_mail_search_is_broken_when_no_sync_has_run_recently(context):
+    _register_apple_mail_user_scope(context)
+    index = _write_real_apple_mail_index(
+        context.home / ".apple-mail-mcp" / "index.db",
+        last_sync=(NOW - timedelta(hours=48)).isoformat(),
+    )
+    _add_indexed_mailbox(
+        index,
+        account="Second",
+        mailbox="Archive",
+        last_sync=(NOW - timedelta(hours=30)).isoformat(),
+    )
+    _add_global_sync_row(index, last_sync=(NOW - timedelta(hours=26)).isoformat())
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert "configured 24-hour freshness limit" in result.detail
 
 
 @pytest.mark.parametrize(
