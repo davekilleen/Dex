@@ -1368,7 +1368,7 @@ def parse_person_page(filepath: Path) -> Dict[str, Any]:
 
     entity = parse_entity_page(filepath)
     try:
-        page_text = filepath.read_text(encoding='utf-8')
+        page_text = read_vault_text(filepath)
     except OSError:
         page_text = ''
     return {
