@@ -65,8 +65,12 @@ SERVER_MODULES = {
 }
 
 WORK_MCP_NAME = "work-mcp"
-# Existing Doctor / error-queue voice. Do not invent a new tester sentence.
-NEVER_SPAWNED_HUMAN_ERROR = "Task Manager cannot start"
+# Listed-but-never-started is a host spawn miss. Name the next step; Dex
+# cannot launch the process, and reinstalling will not start it.
+NEVER_SPAWNED_HUMAN_ERROR = (
+    "Task Manager is listed but the chat app never started it. "
+    "Start a new session. Reinstalling Dex will not start it."
+)
 
 # Human-friendly names
 SERVER_LABELS = {
