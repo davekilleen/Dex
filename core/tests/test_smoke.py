@@ -276,7 +276,7 @@ def test_mcp_startup_reports_never_spawned_work_mcp_in_existing_voice(
 
     assert result == {
         "verdict": "BROKEN",
-        "detail": "work-mcp: BROKEN — Task Manager cannot start",
+        "detail": f"work-mcp: BROKEN — {preflight.NEVER_SPAWNED_HUMAN_ERROR}",
     }
 
 
@@ -331,7 +331,7 @@ def test_mcp_startup_reports_never_spawned_work_mcp_without_isolated_mcp_json(
     result = smoke._journey_mcp_startup(vault, tmp_path / "release")
 
     assert result["verdict"] == "BROKEN"
-    assert "work-mcp: BROKEN — Task Manager cannot start" in result["detail"]
+    assert f"work-mcp: BROKEN — {preflight.NEVER_SPAWNED_HUMAN_ERROR}" in result["detail"]
     assert "calendar-mcp: OK" in result["detail"]
 
 

@@ -19,6 +19,12 @@ which step it was on. Thanks to Michelle Wright for the original report.
   then when Dex is summarizing and saving. If it ever sits still, the last
   named step is the one to mention.
 
+When work tools appeared but never started, Dex only said Task Manager cannot start. That did not tell you what to do.
+
+**What this fixes for you:**
+
+* **When work tools appear but never start, you get the next step.** Dex already noticed when Task Manager showed up as available but never actually started. It now says the chat app never started it, tells you to start a new session, and says reinstalling will not start it. Dex still cannot start it for you.
+
 ## [1.97.23] — Windows install checks can finish, and old Python is refused (2026-09-28)
 
 The last release made Windows an honest preview and let Dex update again after the first Windows update. Two leftover annoyances were still sitting in the open. The optional Windows setup check still pointed people at the wrong place to confirm git. Doctor on a Mac or Linux computer could treat an old Python as fine, then fail later. And the Windows install check could still stop after a successful write, because Dex saved its private history files the Windows way. This release closes those.
