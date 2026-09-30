@@ -38,6 +38,13 @@
     [ -t 0 ] || PAYLOAD="$(cat 2>/dev/null || true)"
     [ -n "$PAYLOAD" ] || exit 0
 
+    # Machine-generated text (notifications, reminders, scheduled-task preambles)
+    # is NOT screened here. This grep is only a cheap pre-filter on the raw
+    # payload, so most prompts exit without starting Python. The Python step
+    # strips machine text first and re-tests the same wording against what is
+    # left, so a correction that arrives alongside a notification is still
+    # recorded, and a notification's own prose never is.
+
     # Cheap gate. Matched against the RAW JSON payload, not a parsed prompt:
     # this only decides whether starting Python is worth it. Note the word
     # boundaries are [^[:alnum:]] rather than whitespace, because in JSON a

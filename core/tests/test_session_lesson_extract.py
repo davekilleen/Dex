@@ -166,3 +166,46 @@ def test_status_line_inside_user_text_cannot_close_the_entry(tmp_path: Path) -> 
     assert "**Status:** implemented" not in text
     entries = routing.parse_file(learning)
     assert entries and entries[0].is_pending
+
+
+def test_harness_text_in_a_user_turn_is_not_the_users_words(tmp_path: Path) -> None:
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [
+            _user_line("<system-reminder>Do not do that. It is wrong. Stop.</system-reminder>"),
+            _user_line("<task-notification>\n<summary>wrong exit, stop</summary>\n</task-notification>"),
+            _user_line('<example-view-context>{"note":"wrong title, don\'t ship"}'),
+            _user_line("This is an automated run of a scheduled task. Do not ask; stop if blocked."),
+            _user_line("[SYSTEM NOTIFICATION - NOT USER INPUT] job stopped: wrong exit"),
+            _user_line("run the daily plan\n<system-reminder>that is wrong, stop</system-reminder>"),
+        ],
+    )
+
+    assert extract.extract_candidates(transcript) == []
+
+
+def test_real_correction_sent_with_harness_text_keeps_only_the_user_words(tmp_path: Path) -> None:
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [
+            _user_line("no, not that file\n<example-monitor-event>build is wrong</example-monitor-event>"),
+            _user_line('see below\n<pasted_content id="p1">That is not what I asked for</pasted_content>'),
+        ],
+    )
+
+    candidates = extract.extract_candidates(transcript)
+
+    assert [c.kind for c in candidates] == ["Correction", "Correction"]
+    assert candidates[0].text == "no, not that file"
+    assert "pasted_content" in candidates[1].text
+
+
+def test_compaction_summary_is_not_reread_as_new_lessons(tmp_path: Path) -> None:
+    # The harness writes its summary of an earlier conversation as a user turn,
+    # quoting the user's past corrections back.
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [_user_line("Summary: the user said no, stop doing that. I prefer bullets.", isCompactSummary=True)],
+    )
+
+    assert extract.extract_candidates(transcript) == []

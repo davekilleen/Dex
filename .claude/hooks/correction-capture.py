@@ -21,6 +21,7 @@ Design notes worth keeping:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +44,58 @@ def _prompt(payload: dict) -> str:
     return ""
 
 
+# Text the harness writes into a submitted prompt is not the user's words. The
+# bash gate greps the raw payload, so a long enough machine block trips an
+# inclusive correction pattern on its own prose: CI events, task notifications
+# and the slide viewer's live state have all been filed as "corrections" this
+# way. Naming the offending markers one at a time never kept up, so match the
+# CLASS: every harness block is a lowercase tag with at least one hyphen, and
+# an unclosed one runs to the end of the text. User-pasted text arrives as
+# <pasted_content> (underscore) and is deliberately NOT matched, because a
+# pasted correction can be the user's own words.
+#
+# Stripping here rather than excluding in the gate keeps a REAL correction that
+# arrives with a reminder appended: what survives the strip is what is tested
+# and recorded. Keep in step with core/utils/session_lesson_extract.py.
+MACHINE_BLOCK = re.compile(
+    r"<([a-z]+(?:-[a-z]+)+)\b[^>]*>"
+    r".*?(?:</\1>|\Z)",
+    re.DOTALL,
+)
+
+
+def _strip_machine_blocks(text: str) -> str:
+    return MACHINE_BLOCK.sub("", text).strip()
+
+
+# The same wording the bash gate greps for, applied AFTER machine text is gone.
+# The gate reads the raw payload, so a notification that happens to say "wrong"
+# or "don't" gets a prompt this far; re-testing here is what stops the user's
+# unrelated words ("run the daily plan") being recorded as a correction.
+# Keep in step with the grep pattern in correction-capture.sh.
+CORRECTION = re.compile(
+    r"(^|[^0-9A-Za-z])(no|nope|stop|wrong|incorrect)([^0-9A-Za-z]|$)"
+    r"|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what"
+    r"|why (did|are|didn'?t) you|again[,.]|i (told|said) you"
+    r"|keep (doing|writing|failing)|stupid|come on|actually,",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Machine prose that does not arrive inside a tag, checked against what is LEFT
+# after stripping, so it can never throw away a real correction sent with it.
+MACHINE_PHRASES = (
+    "[SYSTEM NOTIFICATION - NOT USER INPUT]",
+    "automated run of a scheduled task",
+    "This is an automated background-task event",
+)
+
+
+def _is_correction(text: str) -> bool:
+    if any(phrase in text for phrase in MACHINE_PHRASES):
+        return False
+    return bool(CORRECTION.search(text))
+
+
 def _truncate(text: str) -> str:
     if len(text) <= MAX_CHARS:
         return text
@@ -57,8 +110,8 @@ def main() -> int:
     if not isinstance(payload, dict):
         return 0
 
-    prompt = _prompt(payload)
-    if not prompt:
+    prompt = _strip_machine_blocks(_prompt(payload))
+    if not prompt or not _is_correction(prompt):
         return 0
 
     vault = _vault_root()

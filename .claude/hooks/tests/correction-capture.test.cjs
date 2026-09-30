@@ -144,3 +144,51 @@ test('stays silent when there is no vault to write to', (t) => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '', 'a hook that cannot record must not say so on every prompt');
 });
+
+// Text the harness writes into a prompt is not the user's words. These use
+// invented payloads shaped like the real ones: a tag with a hyphen, closed or not.
+
+test('ignores correction wording that only appears inside a harness block', (t) => {
+  const vault = sandbox(t);
+
+  submit(vault, 'run the daily plan\n<system-reminder>Do not do that. It is wrong. Stop.</system-reminder>');
+  submit(vault, '<task-notification>\n<status>failed</status>\n<summary>wrong exit code, stop</summary>\n</task-notification>');
+
+  assert.equal(captured(vault), '', 'machine prose is not a correction from the user');
+});
+
+test('ignores an unclosed harness block, which runs to the end of the text', (t) => {
+  const vault = sandbox(t);
+
+  submit(vault, 'thanks\n<example-view-context>{"note":"wrong title, don\'t ship"}');
+
+  assert.equal(captured(vault), '');
+});
+
+test('keeps a real correction that arrives with a harness block, and records only the user words', (t) => {
+  const vault = sandbox(t);
+
+  submit(vault, 'no, that is not the file I meant\n<example-monitor-event>build is wrong</example-monitor-event>');
+  const text = captured(vault);
+
+  assert.match(text, /- Correction/u);
+  assert.ok(text.includes('no, that is not the file I meant'));
+  assert.ok(!text.includes('build is wrong'), 'the harness block must not be recorded as the user words');
+});
+
+test('ignores untagged machine preambles', (t) => {
+  const vault = sandbox(t);
+
+  submit(vault, 'This is an automated run of a scheduled task. Do not ask questions; stop if blocked.');
+  submit(vault, '[SYSTEM NOTIFICATION - NOT USER INPUT] background job stopped: wrong exit');
+
+  assert.equal(captured(vault), '');
+});
+
+test('keeps pasted content, because a pasted correction can be the user words', (t) => {
+  const vault = sandbox(t);
+
+  submit(vault, 'see below\n<pasted_content id="p1">That is not what I asked for</pasted_content>');
+
+  assert.match(captured(vault), /- Correction/u);
+});

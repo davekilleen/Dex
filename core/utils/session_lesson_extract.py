@@ -54,6 +54,30 @@ _SECRETISH = re.compile(
 )
 _STATUS_LINE = re.compile(r"^\*\*Status:\*\*", re.IGNORECASE)
 
+# Text the harness writes into a user turn is not the user's words, so it is
+# removed BEFORE anything is classified. Harness blocks are lowercase tags with
+# at least one hyphen (<system-reminder>, <task-notification>,
+# <artifact-view-context>, ...); an unclosed one runs to the end of the text.
+# User-pasted text arrives as <pasted_content> (underscore) and is kept, because
+# a pasted correction can be the user's own words. Keep in step with
+# .claude/hooks/correction-capture.py.
+_MACHINE_BLOCK = re.compile(r"<([a-z]+(?:-[a-z]+)+)\b[^>]*>.*?(?:</\1>|\Z)", re.DOTALL)
+# Machine prose that arrives without a tag. Checked on what is LEFT after the
+# strip, so it can never discard a real correction sent alongside a block.
+_MACHINE_PHRASES = (
+    "[SYSTEM NOTIFICATION - NOT USER INPUT]",
+    "automated run of a scheduled task",
+    "This is an automated background-task event",
+)
+
+
+def strip_machine_text(text: str) -> str:
+    """Return only the user's own words, or '' if nothing of theirs is left."""
+    remainder = _MACHINE_BLOCK.sub("", text).strip()
+    if any(phrase in remainder for phrase in _MACHINE_PHRASES):
+        return ""
+    return remainder
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -128,7 +152,10 @@ def user_texts_from_record(record: object) -> list[str]:
     """Pull user-authored text from one Claude Code / Cursor JSONL record."""
     if not isinstance(record, dict):
         return []
-    if record.get("isMeta") or record.get("isSidechain"):
+    # isCompactSummary: the harness's own summary of an earlier conversation,
+    # written as a user turn. It quotes the user's past corrections back, so
+    # reading it would re-file every one of them as new.
+    if record.get("isMeta") or record.get("isSidechain") or record.get("isCompactSummary"):
         return []
     typ = str(record.get("type") or "").lower()
     message = record.get("message")
@@ -146,7 +173,8 @@ def user_texts_from_record(record: object) -> list[str]:
     if isinstance(prompt, str) and prompt.strip():
         if typ in {"", "user", "human", "userpromptsubmit"} or role == "user":
             texts.append(prompt)
-    return [part.strip() for part in texts if isinstance(part, str) and part.strip()]
+    cleaned = (strip_machine_text(part) for part in texts if isinstance(part, str))
+    return [part for part in cleaned if part]
 
 
 def _read_transcript_bytes(path: Path, max_bytes: int) -> bytes:
