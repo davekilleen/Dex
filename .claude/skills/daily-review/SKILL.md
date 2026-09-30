@@ -220,7 +220,7 @@ Use: reminders_clear_completed(list_name="Dex Today")
 
 ### 3.1 Find Today's Plan
 
-Look for `00-Inbox/Daily_Plans/YYYY-MM-DD.md` (today's date).
+Look for today's plan in the resolved daily-plan folder: `System/folder-paths.yaml` `daily_plans` if set, otherwise the folder that already holds dated daily plans, otherwise `00-Inbox/Daily_Plans/YYYY-MM-DD.md`. Do not treat a leftover `next_action_date` as overdue; only `i_owe_date` can be overdue.
 
 ### 3.2 Extract Planned Focus
 

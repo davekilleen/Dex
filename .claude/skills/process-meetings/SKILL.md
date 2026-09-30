@@ -288,6 +288,8 @@ For each participant in synced meetings:
    aliases: []
    location: {internal|external}
    last_interaction: {meeting date}
+   i_owe_date: null
+   waiting_on_date: null
    ---
    # {Name}
 
@@ -309,6 +311,7 @@ For each participant in synced meetings:
    - Add new meeting link under "## Recent Interactions"
    - Keep max 20 entries (remove oldest if needed)
    - Update "Last Interaction" in frontmatter
+   - If the meeting created a dated follow-up the user owes, set `i_owe_date`. If it is a date they are waiting on someone else, set `waiting_on_date`. Never write `next_action_date`, and never treat a waiting date as overdue.
 
 ### Step 4: Update Company Pages
 

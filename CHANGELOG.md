@@ -25,6 +25,23 @@ When work tools appeared but never started, Dex only said Task Manager cannot st
 
 * **When work tools appear but never start, you get the next step.** Dex already noticed when Task Manager showed up as available but never actually started. It now says the chat app never started it, tells you to start a new session, and says reinstalling will not start it. Dex still cannot start it for you.
 
+A follow-up date on a person page was doing two jobs, so a wait looked late
+the same way a promise you had not kept did. And an earlier update started
+putting new daily plans in a new inbox folder, so a vault that already kept
+those plans somewhere else looked like it had moved them. This build splits
+the dates and leaves an existing daily-plan folder where it is. Thanks to
+Michelle Wright for both reports (DEX-159, DEX-165).
+
+**What this fixes for you:**
+
+* **A wait is not overdue.** Person pages now have two dates: one for something
+  you owe, and one for something you are waiting on. Only the date you owe can
+  be overdue. A leftover single follow-up date with no direction is left
+  unmarked until you say which it is.
+* **Updating Dex no longer moves your daily plans.** If your plans already live
+  in a folder you chose, an update keeps writing there. A brand-new Dex folder
+  still uses the inbox location.
+
 ## [1.97.23] — Windows install checks can finish, and old Python is refused (2026-09-28)
 
 The last release made Windows an honest preview and let Dex update again after the first Windows update. Two leftover annoyances were still sitting in the open. The optional Windows setup check still pointed people at the wrong place to confirm git. Doctor on a Mac or Linux computer could treat an old Python as fine, then fail later. And the Windows install check could still stop after a successful write, because Dex saved its private history files the Windows way. This release closes those.

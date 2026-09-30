@@ -10,7 +10,7 @@ conversation.
 
 **Target date:** {{TARGET_DATE}} ({{DAY_NAME}}, {{MONTH}} {{DD}})
 
-**Write the draft plan to:** `00-Inbox/Daily_Plans/{{TARGET_DATE}}.md`
+**Write the draft plan to the resolved daily-plan folder.** Default is `00-Inbox/Daily_Plans/{{TARGET_DATE}}.md`. If `System/folder-paths.yaml` has `daily_plans:`, use that folder. If dated daily plans already exist in one other folder, write there and do not move them to the inbox default.
 
 **Note:** PostToolUse hooks from the parent skill do not fire in this subagent
 context. Do not rely on hook-driven side effects for any write you make.
@@ -275,7 +275,7 @@ cooling entities or relationship suggestions from the feeds in 1.4.
 
 ## Phase 3: Write the Draft Plan
 
-Write the complete draft to `00-Inbox/Daily_Plans/{{TARGET_DATE}}.md` using the
+Write the complete draft to the resolved daily-plan folder (default `00-Inbox/Daily_Plans/{{TARGET_DATE}}.md`) using the
 plan template from this skill's `SKILL.md` (Step 7: frontmatter, TL;DR, Week
 Progress, Today's Shape, Commitments Due, Today's Focus, Meetings with Context,
 Task Scheduling, Heads Up). Heads Up must include the previous-working-day
@@ -299,7 +299,7 @@ After writing the draft, return a structured summary to the conversation:
 ```
 AGENT COMPLETE
 
-Draft plan written: 00-Inbox/Daily_Plans/{{TARGET_DATE}}.md
+Draft plan written: {resolved daily-plan folder}/{{TARGET_DATE}}.md (default 00-Inbox/Daily_Plans/{{TARGET_DATE}}.md)
 
 Summary:
 - Meetings today: [N], day type [stacked/moderate/open]

@@ -25,6 +25,10 @@
 
 **Last interaction:** {{Date and brief note}}
 
+**I owe this by:** {{YYYY-MM-DD or blank — a date you owe them; this is the only date that can be overdue}}
+
+**Waiting on them until:** {{YYYY-MM-DD or blank — a date they owe you; never treat this as overdue}}
+
 ---
 
 ## What They Care About

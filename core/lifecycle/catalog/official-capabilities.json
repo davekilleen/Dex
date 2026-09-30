@@ -174,8 +174,8 @@
         {
           "path": ".claude/skills/delegate-check/SKILL.md",
           "source_path": ".claude/skills/delegate-check/SKILL.md",
-          "sha256": "c4cc8a0bb2c7b48edddf3aa809a0756fa123fb6f6be8c60076357454b96edc34",
-          "byte_size": 4435
+          "sha256": "8ca93f17bea811be69b9e8eadf6f46f235699e34d1e12118809a46d7274716c5",
+          "byte_size": 4783
         }
       ],
       "dependencies": [],

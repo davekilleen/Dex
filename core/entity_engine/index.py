@@ -350,6 +350,8 @@ def _person_compatibility_entry(
         "type": source.people_type or "external",
         "path": source.relative_path,
         "last_interaction": parsed.get("last_interaction"),
+        "i_owe_date": parsed.get("i_owe_date"),
+        "waiting_on_date": parsed.get("waiting_on_date"),
         "tags": tags,
         "status": "populated" if has_content else "stub",
     }
@@ -471,6 +473,8 @@ def _project_source(
                 "type": source.people_type or "external",
                 "path": source.relative_path,
                 "last_interaction": None,
+                "i_owe_date": None,
+                "waiting_on_date": None,
                 "tags": [],
                 "status": "quarantined",
             }

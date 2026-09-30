@@ -21,6 +21,8 @@ PERSON_FIELDS = (
     "aliases",
     "location",
     "last_interaction",
+    "i_owe_date",
+    "waiting_on_date",
 )
 COMPANY_FIELDS = ("type", "name", "domains", "website", "status")
 CANONICAL_FIELD_ORDER = tuple(dict.fromkeys(PERSON_FIELDS + COMPANY_FIELDS))
@@ -60,6 +62,11 @@ _FIELD_LABELS = {
     "location": "location",
     "last interaction": "last_interaction",
     "last interaction date": "last_interaction",
+    "i owe date": "i_owe_date",
+    "i owe this": "i_owe_date",
+    "waiting on date": "waiting_on_date",
+    "waiting on them": "waiting_on_date",
+    "waiting on until": "waiting_on_date",
     "website": "website",
     "domain": "domains",
     "domains": "domains",
@@ -114,6 +121,8 @@ def _empty_result() -> dict[str, Any]:
         "aliases": [],
         "location": None,
         "last_interaction": None,
+        "i_owe_date": None,
+        "waiting_on_date": None,
         "domains": [],
         "website": None,
         "status": None,
@@ -155,7 +164,7 @@ def _normalise_field(key: str, value: Any) -> Any:
         return value if value in {"person", "company"} else None
     if key == "location":
         return value if value in {"internal", "external", "unknown"} else None
-    if key == "last_interaction" and value and not re.fullmatch(
+    if key in {"last_interaction", "i_owe_date", "waiting_on_date"} and value and not re.fullmatch(
         r"\d{4}-\d{2}-\d{2}", value
     ):
         return None
@@ -392,7 +401,15 @@ def _infer_type(values: dict[str, Any]) -> str | None:
     # unless the page itself declares a person/company record or fields.
     if any(
         values.get(key)
-        for key in ("role", "company", "company_page", "emails", "last_interaction")
+        for key in (
+            "role",
+            "company",
+            "company_page",
+            "emails",
+            "last_interaction",
+            "i_owe_date",
+            "waiting_on_date",
+        )
     ):
         return "person"
     if any(values.get(key) for key in ("domains", "website", "status")):
@@ -785,6 +802,8 @@ def render_person_page(
         f"aliases: {clean_aliases}",
         f"location: {clean_location}",
         "last_interaction: null",
+        "i_owe_date: null",
+        "waiting_on_date: null",
         "dex_pinned: {}",
         "dex_last_written:",
         "  type: person",
@@ -796,6 +815,8 @@ def render_person_page(
         f"  aliases: {clean_aliases}",
         f"  location: {clean_location}",
         "  last_interaction: null",
+        "  i_owe_date: null",
+        "  waiting_on_date: null",
         "---",
         f"# {name}",
         "",

@@ -173,7 +173,7 @@ Configured archive workflows move plans and reviews here:
 - Weekly reviews → after `/week-review` runs
 - Quarterly reviews → after `/quarter-review` runs
 
-Daily plans stay in `00-Inbox/Daily_Plans/` so today's plan is with the rest of today's capture.
+Daily plans stay in `00-Inbox/Daily_Plans/` so today's plan is with the rest of today's capture. If a vault already keeps daily plans in another folder, an update leaves that folder where it is.
 
 ### Manual Archiving
 

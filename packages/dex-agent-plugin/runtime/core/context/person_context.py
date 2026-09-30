@@ -33,7 +33,7 @@ FILE_REF = re.compile(
 OPEN_ITEM = re.compile(r"^- \[ \] (.+)$", re.MULTILINE)
 MEETING_HINTS = ("meeting", "attendee", "call with", "met with")
 PERSON_FIELD = re.compile(
-    r"^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction)"
+    r"^(?:\|\s*(?:\*\*)?)?(name|role|company|last[_ ]interaction|i[_ ]owe[_ ]date|waiting[_ ]on[_ ]date)"
     r"(?:\*\*)?\s*(?:\||:)\s*(.*?)(?:\s*\|)?$",
     re.IGNORECASE,
 )
@@ -108,6 +108,8 @@ def _portable_person_fields(content: str) -> dict[str, str | None]:
         "role": None,
         "company": None,
         "last_interaction": None,
+        "i_owe_date": None,
+        "waiting_on_date": None,
     }
     for raw_line in content.splitlines():
         line = raw_line.strip()
@@ -146,6 +148,8 @@ def _parse_person_page(path: Path) -> dict[str, Any] | None:
         "role": entity.get("role"),
         "company": entity.get("company"),
         "last_interaction": entity.get("last_interaction"),
+        "i_owe_date": entity.get("i_owe_date"),
+        "waiting_on_date": entity.get("waiting_on_date"),
         "open_items": _open_items(content),
         "path": str(path),
     }
@@ -278,6 +282,12 @@ def format_person_context_block(people: Any) -> str:
             last_interaction = str(person.get("last_interaction") or "").strip()
             if last_interaction:
                 lines.append(f"  Last interaction: {last_interaction}")
+            i_owe_date = str(person.get("i_owe_date") or "").strip()
+            if i_owe_date:
+                lines.append(f"  I owe this by: {i_owe_date}")
+            waiting_on_date = str(person.get("waiting_on_date") or "").strip()
+            if waiting_on_date:
+                lines.append(f"  Waiting on them until: {waiting_on_date}")
             open_items = person.get("open_items")
             if isinstance(open_items, list) and open_items:
                 lines.append(f"  Open items: {len(open_items)}")

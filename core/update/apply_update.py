@@ -22,6 +22,7 @@ from time import monotonic as _monotonic
 from typing import Any, Callable
 
 from core import portable_contract
+from core.daily_plans_location import skip_default_daily_plans_seed
 from core.transaction.engine import PlanEntry, Transaction
 from core.transaction.fsync import fsync_directory
 from core.utils import release_channel
@@ -828,6 +829,9 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
             )
         if verdict.ownership == "brain":
             target_brain.add(entry.path)
+        if skip_default_daily_plans_seed(entry.path, root):
+            untouched.append(entry.path)
+            continue
         if not verdict.allowed:
             untouched.append(entry.path)
             continue

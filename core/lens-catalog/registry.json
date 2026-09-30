@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "853d63f53ec554382c72d510721c91726c67a80beaf7cb755f799e950878548f",
-        "byte_size": 34881
+        "sha256": "8cd21a4b9f80cc5542db1fedcfffc62a81f88cd58e3d96ebcfe8f73a4c90d44c",
+        "byte_size": 35513
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "e9759f65c85a9f8e684f9ec9b19a264411467e9cf3d08fdc29b0536dcdb4b146",
-        "byte_size": 23978
+        "sha256": "26ee88a5f79365c3c5381a67e5f28633a0cef97f2928a1f05dd0248c82c45054",
+        "byte_size": 24250
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [
@@ -339,8 +339,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/relationship-radar/SKILL.md",
-        "sha256": "e28b91f08f068368a8d66dc51e090fa807ab3f7fa0ec88c62de10344ea44f78e",
-        "byte_size": 5811
+        "sha256": "87eb495956b2a7322a8801cbb918a8064f3855af0b614f064b8ab09db896ffe9",
+        "byte_size": 5942
       },
       "value": "Shows important relationships that are going quiet so the person can reconnect before silence becomes a problem.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "7e2a3db97372aadb71f280f1c9008d293e71c1a8f38884ec5f8f9f02c889837c",
-        "byte_size": 20209
+        "sha256": "37d76c82d26e6f4a16d76ef1a43ab5a92f0f611f2b1e9aaf66263862586ec8a5",
+        "byte_size": 20449
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "4ff1217a2343c98b4c439a065737303c684028b23b2bb7071b327ea78f20b6c2",
-        "byte_size": 20157
+        "sha256": "1e2bc4815bff2e2800b4d1eddf55c3ad799d319a9bc0b0aec4cbce41771248e7",
+        "byte_size": 20424
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
@@ -804,8 +804,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/commitments/SKILL.md",
-        "sha256": "8936fea6f6e7a0e8a3f67bbe3fbede95dde26e752f339d86fa34e01d9dfc90b7",
-        "byte_size": 6092
+        "sha256": "365d32f45d8cb63a4af7693ff07d1452e1559365559eab993e64cd67b26be8ab",
+        "byte_size": 6541
       },
       "value": "Pulls the small promises — “I’ll send that over”, “can you review this” — out of meetings and notes into one list of who owes what, and tracks only the ones the person confirms are real.",
       "jobs_served": [
@@ -878,8 +878,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/delegate-check/SKILL.md",
-        "sha256": "c4cc8a0bb2c7b48edddf3aa809a0756fa123fb6f6be8c60076357454b96edc34",
-        "byte_size": 4435
+        "sha256": "8ca93f17bea811be69b9e8eadf6f46f235699e34d1e12118809a46d7274716c5",
+        "byte_size": 4783
       },
       "value": "Shows what was handed to other people, what is moving, what is stuck and the one short nudge worth sending — and reports silence as unknown rather than as progress.",
       "jobs_served": [

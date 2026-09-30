@@ -53,8 +53,8 @@ For each open delegation, capture:
 - **What:** the result the user handed off
 - **Who:** the person responsible
 - **Handed off:** the date or source meeting, when known
-- **Expected:** the promised or useful check-in date, when known
-- **Status:** moving, waiting, due soon, overdue, or unclear
+- **Expected:** the promised or useful check-in date, when known — read `waiting_on_date` on the person page for a wait, `i_owe_date` only for something the user still owes
+- **Status:** moving, waiting, due soon, overdue, or unclear. Overdue is only for something the user owes (`i_owe_date` or a task they own). A past `waiting_on_date` is "waiting past the check-in" / nudge them, not overdue. A leftover `next_action_date` has no direction — do not mark it overdue.
 - **Last touch:** the latest relevant update
 - **Next nudge:** one specific, proportionate follow-up
 

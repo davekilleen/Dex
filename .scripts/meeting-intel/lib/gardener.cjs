@@ -164,7 +164,7 @@ function meetingSignals(meetingsDir) {
 }
 
 function buildSignal(entity, pageText, meetings) {
-  const fields = ['name', 'role', 'company', 'emails', 'location', 'last_interaction'];
+  const fields = ['name', 'role', 'company', 'emails', 'location', 'last_interaction', 'i_owe_date', 'waiting_on_date'];
   const lines = ['PERSON:'];
   for (const field of fields) {
     const value = entity[field];

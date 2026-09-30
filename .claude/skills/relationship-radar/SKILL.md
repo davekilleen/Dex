@@ -7,7 +7,7 @@ description: "Spot the relationships going cold — people you were in regular c
 
 Relationships decay quietly — the person you spoke to every week three months ago just… stopped coming up. This surfaces who is going cold while you can still do something about it, ranked by how long it's been.
 
-**Honest scope (read this):** today the radar reads the signal that exists now — each person page's recorded **last-interaction date**, corroborated by **meeting recency**. It does *not* yet have the entity engine's automatic "temperature / what's cooling" surface — that isn't built. So the radar is only as good as the last-interaction dates on your person pages, and it says so plainly when the signal is thin rather than inventing a coldness score. When the entity temperature surface ships, this skill gets richer; it does not block on it.
+**Honest scope (read this):** today the radar reads the signal that exists now — each person page's recorded **last-interaction date**, corroborated by **meeting recency**. It does *not* yet have the entity engine's automatic "temperature / what's cooling" surface — that isn't built. So the radar is only as good as the last-interaction dates on your person pages, and it says so plainly when the signal is thin rather than inventing a coldness score. When the entity temperature surface ships, this skill gets richer; it does not block on it. Do **not** use `i_owe_date`, `waiting_on_date`, or `next_action_date` as coldness — those are follow-up dates, not last contact.
 
 ---
 
