@@ -14,16 +14,14 @@ manifest:
 
 # Atlassian Setup
 
-Connect your Jira and Confluence to Dex so your daily plans, project health checks, meeting prep, and weekly reviews get richer context from your Atlassian workspace.
+Connect your Jira and Confluence to Dex so this session can query your Atlassian workspace when you ask, and optionally keep Dex tasks in sync with Jira issues.
 
 ## What This Enables
 
 Once connected, Dex can:
-- **Daily Plan:** See your Jira sprint status, assigned tickets, and overdue items
-- **Project Health:** Sprint velocity, epic progress, blocked tickets across projects
-- **Meeting Prep:** Surface Jira tickets and Confluence docs relevant to attendees
-- **Week Review:** Tickets closed this week, sprint progress, velocity trends
-- **Task Sync:** Bi-directional sync between Dex tasks and Jira issues (optional)
+- **Ask Jira / Confluence in this session:** search issues and pages through the Atlassian connector. That is on-demand, not a standing dashboard.
+- **Task sync (optional):** keep Dex tasks and Jira issues in sync when you turn that on. This is the one automatic write path.
+- **Not a silent upgrade to other skills.** `/daily-plan`, `/project-health`, `/meeting-prep`, `/week-review`, and `/triage` do not currently add sprint status, velocity, blocked tickets, or Confluence docs on their own. Do not promise those surfaces. If the user wants Jira or Confluence context there, they ask, and Dex uses the connector in that turn.
 
 ## Privacy
 
@@ -67,8 +65,9 @@ No API tokens to manage -- it uses the standard Atlassian authorization flow.
 - About 3 minutes
 
 **What gets connected:**
-- **Jira:** Your assigned issues, sprint status, project health
-- **Confluence:** Search for docs relevant to meetings and projects (read-only)
+- **Jira:** Dex can search your issues when you ask, and optionally sync Dex tasks with Jira
+- **Confluence:** Dex can search pages when you ask (read-only)
+- Morning plans, project health, meeting prep, and week review do **not** automatically grow a Jira or Confluence section from this setup alone
 
 **Ready to go?**
 ```
@@ -152,9 +151,9 @@ Save the selected `cloud_id` for API calls.
 **Which Jira project should Dex sync with?**
 
 This is the project where your tasks and issues live. I'll use it for:
-- Sprint status in your daily plan
 - Task sync (if you enable it)
-- Project health checks
+- On-demand Jira searches in this session
+- Not an automatic sprint widget in `/daily-plan` or `/project-health`
 
 **Enter a project key** (e.g., ACME, PROD, ENG) or say "show me what's available"
 ```
@@ -168,8 +167,9 @@ If they say "show me what's available":
 ```
 **Want to connect Confluence too?** (Optional)
 
-If connected, Dex will search Confluence docs when prepping for meetings --
-finding relevant pages shared with attendees or related to your projects.
+If connected, Dex can search that Confluence space when you ask — including
+during meeting prep if you want docs looked up. `/meeting-prep` does not add a
+Confluence section on its own.
 
 **Enter a space key** (e.g., TEAM, DOCS, KB) or say "skip" or "show me what's available"
 ```
@@ -239,9 +239,10 @@ Show a brief summary:
 **Quick test results:**
 - Jira project [KEY]: Found, [N] open issues assigned to you
 - Confluence space [KEY]: Found, [N] pages accessible
-- Sprint status: [Current sprint name], [N] days remaining
+- Live Jira lookup in this session: working
+  # Optional: if a current sprint is visible, name it. A missing sprint is not a failed setup.
 
-Everything looks good!
+These checks prove the connector answers. They do not add a sprint block to /daily-plan.
 ```
 
 If any test fails, troubleshoot before proceeding.
@@ -251,31 +252,28 @@ If any test fails, troubleshoot before proceeding.
 ```
 **Atlassian is connected!**
 
-Here's what changes now:
+Here's what that actually means:
 
-- **Daily Plan** (`/daily-plan`) shows Jira sprint status and assigned tickets
-- **Project Health** (`/project-health`) includes sprint velocity and blocked tickets
-- **Meeting Prep** (`/meeting-prep`) surfaces Jira tickets and Confluence docs for attendees
-- **Week Review** (`/week-review`) includes tickets closed and sprint progress
-
-Trust level: [auto/ask/read-only]
+- Dex can search Jira and Confluence in this session when you ask
+- Task sync is [on / off] at trust level [auto/ask/read-only]
+- `/daily-plan`, `/project-health`, `/meeting-prep`, `/week-review`, and `/triage` do not automatically show sprint status, velocity, or Confluence docs. Ask if you want that looked up.
 
 You can adjust settings anytime by running `/atlassian-setup` again.
 ```
 
 ---
 
-## Capability Cascade
+## What other skills actually do
 
-When Atlassian is connected, these skills automatically gain new powers:
+These skills do **not** grow an automatic Jira or Confluence section when Atlassian is connected. Say so if the user asks. Dex can still query the connector in that turn if they want a lookup.
 
-| Skill | What Atlassian Adds |
-|-------|---------------------|
-| `/daily-plan` | Sprint status, assigned tickets, overdue issues |
-| `/project-health` | Sprint velocity, epic progress, blocked tickets |
-| `/meeting-prep` | Jira tickets involving attendees, Confluence docs |
-| `/week-review` | Tickets closed, sprint velocity, progress trends |
-| `/triage` | Incoming Jira issues to triage alongside inbox |
+| Skill | Honest Atlassian behavior |
+|-------|---------------------------|
+| `/daily-plan` | No sprint status or assigned-ticket block unless the user asks for a Jira lookup |
+| `/project-health` | No velocity, epic, or blocked-ticket block unless the user asks |
+| `/meeting-prep` | No automatic Jira/Confluence attendee section unless the user asks |
+| `/week-review` | No tickets-closed or sprint-progress block unless the user asks |
+| `/triage` | Inbox routing only; incoming Jira issues are not pulled in automatically |
 
 ---
 
@@ -333,4 +331,4 @@ If user wants to disconnect:
    atlassian:
      enabled: false
    ```
-2. Confirm: "Atlassian is disconnected. Your daily plans and meeting prep will no longer include Jira/Confluence context. Run `/atlassian-setup` anytime to reconnect."
+2. Confirm: "Atlassian is disconnected. Dex will no longer query Jira or Confluence, and task sync is off. Run `/atlassian-setup` anytime to reconnect."

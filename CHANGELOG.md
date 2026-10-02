@@ -9,6 +9,16 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Connecting Jira sounded like your morning plan would grow a ticket board it does not have. A skill you built for yourself was offered as a command Claude cannot run. A French "I'll follow up" was missed. A drafted email could be named two different ways, so a later send missed it. And turning a skill off was described with a switch Claude does not actually have.
+
+**What this fixes for you:**
+
+* **A skill you make for yourself is asked for in plain words.** Claude does not add it to the slash menu. Dex says that now, instead of "type /that-name".
+* **Connecting Jira does not pretend your morning plan grew a sprint section.** Dex can look up tickets when you ask. Keeping Dex tasks in sync with Jira still works if you turn that on. Your daily plan, project health, meeting prep, and week review do not automatically add Jira or Confluence blocks.
+* **French "I'll get back to you" is caught the same way English is.** If the note is in another language, Dex says it cannot scan that phrasing instead of staying silent.
+* **A drafted email keeps one name.** The name Gmail gave the draft is the one used to edit or send. The name of the message itself is not treated as the draft.
+* **Turning a skill off uses Claude's own menu.** Open the skills list, highlight it, press Space until it is off. That is the same place Claude's unused-skill report points you. A made-up off-switch in settings does nothing.
+
 ## [1.97.24] — Checkup names each step, and a wait is not overdue (2026-09-30)
 
 A checkup could sit for minutes with only two lines on screen, so a long check looked like a freeze. A follow-up date on a person page was doing two jobs, so a wait looked late the same way a promise you had not kept did. And an earlier update started putting new daily plans in a new inbox folder, so a vault that already kept those plans somewhere else looked like they had moved. Work tools could still appear without starting, and a reminder that happened to say "wrong" could be filed as a lesson you never gave. Mail search checkup could also call a current index broken just because one quiet mailbox had not changed in a day. This release closes those. Thanks to Michelle Wright for the checkup, dates, and daily-plan reports, and to Chris Jackson for the lesson and Mail reports.

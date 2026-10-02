@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "26ee88a5f79365c3c5381a67e5f28633a0cef97f2928a1f05dd0248c82c45054",
-        "byte_size": 24250
+        "sha256": "876d3354a88b1d1abed993f52a07e7fb4d218c2864e5cf034b421a6b20648419",
+        "byte_size": 24414
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [
@@ -267,8 +267,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-doctor/SKILL.md",
-        "sha256": "d45ee9cb6f9a74f091722e956ec70ebdee9b97e70b9e3c7cc3ff99492ea7e969",
-        "byte_size": 22056
+        "sha256": "4621d60d165424877b9e01be5333dd833e98e75850220f7fd24581c647536565",
+        "byte_size": 23297
       },
       "value": "Gives the person an honest system check: what works, what is off, what is broken and what should not be guessed.",
       "jobs_served": [
@@ -4255,8 +4255,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/atlassian-setup/SKILL.md",
-        "sha256": "949643c5b72e537696131eeb3ed5c0dd24054734e033a259f00dec5e8cc44edc",
-        "byte_size": 9902
+        "sha256": "3844a212bb2003d3443962584d2b11c142939bdcd1476ba0c822d5950aa8b528",
+        "byte_size": 10694
       },
       "value": "Connect Jira and Confluence for project tracking and knowledge search.",
       "jobs_served": [
@@ -4443,8 +4443,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/create-skill/SKILL.md",
-        "sha256": "4a6092982deb5e9ceda17f946f724a25ea3dd9bcb07e453ca956a1077dac2096",
-        "byte_size": 10287
+        "sha256": "d26589ae01cfe19fedd19de45dc7c1cd4e96d7120b597d5c3fd413c8b3cadcf6",
+        "byte_size": 11926
       },
       "value": "Author a new Dex skill.",
       "jobs_served": [
@@ -5560,8 +5560,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/google-workspace-setup/SKILL.md",
-        "sha256": "3a4a727558dfce1c5eecb832964deb38d8c806e7f4007908ee1fd707eae060d0",
-        "byte_size": 17086
+        "sha256": "be12fa1254b9866f8ccc9c80411bd277d5ec9918e340c9cea6c30d768d7ac95c",
+        "byte_size": 18435
       },
       "value": "Connect Google Workspace (Gmail, Calendar, Docs) for email-aware planning and meeting prep.",
       "jobs_served": [
