@@ -213,6 +213,41 @@ def test_update_task_status_marks_weekly_priority_when_linked_tasks_finish(
     assert priority["tasks_total"] == 1
 
 
+def test_omitted_quarter_continues_the_file_and_listing_stays_visible(
+    planning_vault,
+):
+    """Last-quarter IDs must stay visible, and a new goal continues them.
+
+    After a quarter rolls over, a file still holding Q3-2026-goal-1 is the
+    page the user can see. create without quarter= must not start a Q4
+    series at -goal-1, and get_quarterly_goals() must not hide that page.
+    """
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "### 1. Ship the launch — **Test Pillar** ^Q3-2026-goal-1\n\n"
+        "### 2. Hand written goal without an anchor — **Test Pillar**\n",
+        encoding="utf-8",
+    )
+
+    created = _call(
+        "create_quarterly_goal",
+        {
+            "title": "A brand new goal",
+            "pillar": "pillar_1",
+            "success_criteria": "The new goal is reachable.",
+        },
+    )
+    listed = _call("get_quarterly_goals")
+
+    assert created["success"] is True
+    assert created["goal_id"] == "Q3-2026-goal-2"
+    assert listed["quarter"] == "Q3 2026"
+    assert {goal["goal_id"] for goal in listed["goals"]} >= {
+        "Q3-2026-goal-1",
+        "Q3-2026-goal-2",
+    }
+
+
 def test_create_quarterly_goal_honors_explicit_quarter(planning_vault):
     result = _call(
         "create_quarterly_goal",

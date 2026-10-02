@@ -2704,6 +2704,43 @@ def _quarter_from_goal_id(goal_id: Optional[str]) -> str:
     return f"Q{match.group(1)} {match.group(2)}"
 
 
+def _quarter_already_in_file(goals: List[Dict[str, Any]]) -> Optional[str]:
+    """Quarter a goals file is already written for, from labels or IDs."""
+    for goal in goals:
+        label = _normalize_quarter_label(str(goal.get('quarter') or ''))
+        if not label:
+            label = _quarter_from_goal_id(goal.get('goal_id'))
+        if label:
+            return label
+    return None
+
+
+def _quarters_adjacent_to_today(today: date) -> set:
+    """Last, live, and next fiscal quarter names for `today`."""
+    q1_start_month = _q1_start_month_from_profile()
+    live_start, live_end = _fiscal_quarter_window(today, q1_start_month)
+    return {
+        _fiscal_quarter_label(live_start - timedelta(days=1), q1_start_month),
+        _fiscal_quarter_label(today, q1_start_month),
+        _fiscal_quarter_label(live_end + timedelta(days=1), q1_start_month),
+    }
+
+
+def _inheritable_file_quarter(
+    goals: List[Dict[str, Any]], today: date
+) -> Optional[str]:
+    """File quarter only when it is last, live, or next.
+
+    After a rollover the page on disk still names last quarter. Keep using it
+    so a new goal continues those IDs and listing does not hide the page.
+    Expired seeds (Q1 2026) and far-future labels are never inherited.
+    """
+    inherited = _quarter_already_in_file(goals)
+    if inherited and inherited in _quarters_adjacent_to_today(today):
+        return inherited
+    return None
+
+
 def _declared_planning_quarter(today: date) -> Optional[str]:
     """The quarter the user says they are planning, when it is safe to use.
 
@@ -6959,8 +6996,15 @@ async def _handle_call_tool_inner(
                 }, indent=2))]
             quarter = normalized
         else:
-            quarter_info = get_quarter_info()
-            quarter = quarter_info['quarter']
+            existing = (
+                parse_quarterly_goals(QUARTER_GOALS_FILE)
+                if QUARTER_GOALS_FILE.exists()
+                else []
+            )
+            quarter = (
+                _inheritable_file_quarter(existing, _tz_today())
+                or get_quarter_info()['quarter']
+            )
         
         # Create the goal
         goal_data = {
@@ -6997,6 +7041,15 @@ async def _handle_call_tool_inner(
             if declared and declared != quarter:
                 if any(goal.get('quarter') == declared for goal in goals):
                     quarter = declared
+            # Same complaint after a quarter rolls over: IDs from the file
+            # still on disk name last quarter. Do not hide those goals when
+            # the caller did not ask for a specific quarter. An unlabelled
+            # neighbour must not block that — those goals show for any
+            # quarter. Expired and far-future file labels stay ignored.
+            if not any(goal.get('quarter') == quarter for goal in goals):
+                inherited = _inheritable_file_quarter(goals, _tz_today())
+                if inherited:
+                    quarter = inherited
         
         # Filter by quarter and completion
         filtered_goals = []
