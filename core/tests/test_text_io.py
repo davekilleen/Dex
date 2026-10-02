@@ -8,7 +8,6 @@ import pytest
 
 from core.utils import text_io
 
-
 ORIGINAL = "# Tasks\n\n## 📝 Notes\nKeep this.\n"
 EMOJI = "📝"
 
