@@ -9,7 +9,7 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
-Connecting Jira sounded like your morning plan would grow a ticket board it does not have. A skill you built for yourself was offered as a command Claude cannot run. A French "I'll follow up" was missed. A drafted email could be named two different ways, so a later send missed it. And turning a skill off was described with a switch Claude does not actually have.
+Connecting Jira sounded like your morning plan would grow a ticket board it does not have. A skill you built for yourself was offered as a command Claude cannot run. A French "I'll follow up" was missed. A drafted email could be named two different ways, so a later send missed it. Turning a skill off was described with a switch Claude does not actually have. A nightly health check could also stop with a raw error when an optional room file or a Python package was missing, instead of saying the vault install was incomplete. And after meetings synced from Granola, the check that people and companies were created could skip silently on an older Dex folder whose path list did not yet name that report file.
 
 **What this fixes for you:**
 
@@ -18,6 +18,8 @@ Connecting Jira sounded like your morning plan would grow a ticket board it does
 * **French "I'll get back to you" is caught the same way English is.** If the note is in another language, Dex says it cannot scan that phrasing instead of staying silent.
 * **A drafted email keeps one name.** The name Gmail gave the draft is the one used to edit or send. The name of the message itself is not treated as the draft.
 * **Turning a skill off uses Claude's own menu.** Open the skills list, highlight it, press Space until it is off. That is the same place Claude's unused-skill report points you. A made-up off-switch in settings does nothing.
+* **A missing Python install is named, not a crash.** If the checkup cannot load a required package, or an optional room file is missing, it says the vault install is incomplete and points at `/dex-update`. It no longer dies on an internal error.
+* **People from Granola meetings are still checked on older Dex folders.** After a sync, Dex writes the usual one-line people-and-companies check even when the folder's path list was generated before that report existed. The check no longer skips with no explanation.
 
 ## [1.97.24] — Checkup names each step, and a wait is not overdue (2026-09-30)
 

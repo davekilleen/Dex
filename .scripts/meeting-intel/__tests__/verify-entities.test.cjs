@@ -156,6 +156,36 @@ test('dead letters make entity verification observably broken with a fix path', 
   },
 ));
 
+test('stale paths.json missing ENTITY_VERIFICATION_FILE still writes the report', () => withVault(
+  { entity_creation: { mode: 'auto' } },
+  vault => {
+    const coreDir = path.join(vault, 'core');
+    fs.mkdirSync(coreDir, { recursive: true });
+    // A generated paths.json from before ENTITY_VERIFICATION_FILE existed.
+    // Granola sync used to throw "The path argument must be of type string.
+    // Received undefined" and skip verification.
+    fs.writeFileSync(path.join(coreDir, 'paths.json'), JSON.stringify({
+      VAULT_ROOT: vault,
+      MEETINGS_DIR: path.join(vault, '00-Inbox', 'Meetings'),
+      PEOPLE_DIR: path.join(vault, '05-Areas', 'People'),
+      COMPANIES_DIR: path.join(vault, '05-Areas', 'Companies'),
+      USER_PROFILE_FILE: path.join(vault, 'System', 'user-profile.yaml'),
+      CONTACTS_STATE_FILE: path.join(vault, 'System', '.dex', 'contacts.json'),
+      ENTITY_SUGGESTIONS_FILE: path.join(vault, 'System', '.dex', 'entity-suggestions.json'),
+      ENTITY_PENDING_FILE: path.join(vault, 'System', '.dex', 'entity-pending.json'),
+    }));
+
+    writeMeeting(vault, [{ name: 'Stale Path Person', email: 'stale@example.com', location: 'external' }]);
+    const { report } = verifyEntities({ now: new Date('2026-06-10T12:00:00Z') });
+    const written = JSON.parse(fs.readFileSync(
+      path.join(vault, 'System', '.dex', 'entity-verification.json'),
+    ));
+    assert.equal(report.counts.tracking, 1);
+    assert.equal(written.mode, 'auto');
+    assert.ok(written.generated_at);
+  },
+));
+
 test('company verification reports pages, suggestions, tracking, and auto invariant', () => withVault(
   { work_email: 'owner@dex.test', entity_creation: { mode: 'auto' } },
   vault => {

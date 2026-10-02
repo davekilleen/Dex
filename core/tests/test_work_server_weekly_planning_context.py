@@ -237,9 +237,12 @@ def test_creating_a_goal_works_alongside_an_anchorless_one(planning_vault):
     )
 
     assert result.get("success") is not False
-    goal_id = result["goal_id"]
-    assert goal_id != ANCHORED_ID
-    assert re.fullmatch(r"Q[1-4]-\d{4}-goal-\d+", goal_id)
+    new_id = result["goal_id"]
+    assert re.fullmatch(r"Q[1-4]-\d{4}-goal-\d+", new_id)
+    assert new_id != ANCHORED_ID
+    text = planning_vault["goals"].read_text(encoding="utf-8")
+    assert f"^{new_id}" in text
+    assert ANCHORLESS_TITLE in text
 
 
 def test_provisional_goals_are_not_accused_of_zero_activity(planning_vault):

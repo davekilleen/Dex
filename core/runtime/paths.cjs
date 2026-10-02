@@ -130,57 +130,80 @@ function withResolvedDailyPlans(vaultRoot, paths) {
   return { ...paths, DAILY_PLANS_DIR: resolveDailyPlansDir(vaultRoot) };
 }
 
+function defaultPaths(vaultRoot) {
+  // Hardcoded fallback (mirrors core/paths.py). Keep this the merge base
+  // when core/paths.json exists but is stale — a generated file from before
+  // ENTITY_VERIFICATION_FILE was added otherwise leaves that key undefined
+  // and Granola entity verification throws "path argument ... undefined".
+  return {
+    VAULT_ROOT: vaultRoot,
+    INBOX_DIR: path.join(vaultRoot, '00-Inbox'),
+    QUARTER_GOALS_DIR: path.join(vaultRoot, '01-Quarter_Goals'),
+    WEEK_PRIORITIES_DIR: path.join(vaultRoot, '02-Week_Priorities'),
+    TASKS_DIR: path.join(vaultRoot, '03-Tasks'),
+    PROJECTS_DIR: path.join(vaultRoot, '04-Projects'),
+    AREAS_DIR: path.join(vaultRoot, '05-Areas'),
+    RESOURCES_DIR: path.join(vaultRoot, '06-Resources'),
+    ARCHIVES_DIR: path.join(vaultRoot, '07-Archives'),
+    MEETINGS_DIR: path.join(vaultRoot, '00-Inbox', 'Meetings'),
+    IDEAS_DIR: path.join(vaultRoot, '00-Inbox', 'Ideas'),
+    DAILY_PLANS_DIR: path.join(vaultRoot, '00-Inbox', 'Daily_Plans'),
+    TASKS_FILE: path.join(vaultRoot, '03-Tasks', 'Tasks.md'),
+    QUARTER_GOALS_FILE: path.join(vaultRoot, '01-Quarter_Goals', 'Quarter_Goals.md'),
+    WEEK_PRIORITIES_FILE: path.join(vaultRoot, '02-Week_Priorities', 'Week_Priorities.md'),
+    PEOPLE_DIR: path.join(vaultRoot, '05-Areas', 'People'),
+    COMPANIES_DIR: path.join(vaultRoot, '05-Areas', 'Companies'),
+    CAREER_DIR: path.join(vaultRoot, '05-Areas', 'Career'),
+    EVIDENCE_DIR: path.join(vaultRoot, '05-Areas', 'Career', 'Evidence'),
+    INTEL_DIR: path.join(vaultRoot, '06-Resources', 'Intel'),
+    MEETING_INTEL_DIR: path.join(vaultRoot, '06-Resources', 'Intel', 'Meeting_Intel'),
+    SYSTEM_DIR: path.join(vaultRoot, 'System'),
+    PILLARS_FILE: path.join(vaultRoot, 'System', 'pillars.yaml'),
+    USER_PROFILE_FILE: path.join(vaultRoot, 'System', 'user-profile.yaml'),
+    PEOPLE_INDEX_FILE: path.join(vaultRoot, 'System', 'People_Index.json'),
+    COMPANY_INDEX_FILE: path.join(vaultRoot, 'System', 'Company_Index.json'),
+    DEX_RUNTIME_DIR: path.join(vaultRoot, 'System', '.dex'),
+    CONTACTS_STATE_FILE: path.join(vaultRoot, 'System', '.dex', 'contacts.json'),
+    GARDENER_STATE_FILE: path.join(vaultRoot, 'System', '.dex', 'gardener.json'),
+    ENTITY_SUGGESTIONS_FILE: path.join(vaultRoot, 'System', '.dex', 'entity-suggestions.json'),
+    ENTITY_PENDING_FILE: path.join(vaultRoot, 'System', '.dex', 'entity-pending.json'),
+    ENTITY_VERIFICATION_FILE: path.join(vaultRoot, 'System', '.dex', 'entity-verification.json'),
+  };
+}
+
+function mergePathConstants(vaultRoot, fromFile) {
+  const fileRoot = typeof fromFile.VAULT_ROOT === 'string' && fromFile.VAULT_ROOT.trim()
+    ? path.resolve(fromFile.VAULT_ROOT)
+    : vaultRoot;
+  const merged = { ...defaultPaths(fileRoot), ...fromFile };
+  for (const [key, value] of Object.entries(defaultPaths(fileRoot))) {
+    if (typeof merged[key] !== 'string' || !merged[key]) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
 function loadPaths() {
   // Resolve per call: one long-lived harness process may serve more than one
   // vault. Relative VAULT_PATH values (as CI exports) still become absolute.
   const VAULT_ROOT = path.resolve(
     process.env.CLAUDE_PROJECT_DIR || process.env.VAULT_PATH || process.cwd(),
   );
-  // Try generated JSON first
+  // Try generated JSON first, then fill any keys it does not yet know about.
   const jsonPath = path.join(VAULT_ROOT, 'core', 'paths.json');
   if (fs.existsSync(jsonPath)) {
     try {
-      return withResolvedDailyPlans(VAULT_ROOT, JSON.parse(fs.readFileSync(jsonPath, 'utf-8')));
+      const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return withResolvedDailyPlans(VAULT_ROOT, mergePathConstants(VAULT_ROOT, parsed));
+      }
     } catch (e) {
       // Fall through to hardcoded defaults
     }
   }
 
-  // Hardcoded fallback (mirrors core/paths.py)
-  return withResolvedDailyPlans(VAULT_ROOT, {
-    VAULT_ROOT,
-    INBOX_DIR: path.join(VAULT_ROOT, '00-Inbox'),
-    QUARTER_GOALS_DIR: path.join(VAULT_ROOT, '01-Quarter_Goals'),
-    WEEK_PRIORITIES_DIR: path.join(VAULT_ROOT, '02-Week_Priorities'),
-    TASKS_DIR: path.join(VAULT_ROOT, '03-Tasks'),
-    PROJECTS_DIR: path.join(VAULT_ROOT, '04-Projects'),
-    AREAS_DIR: path.join(VAULT_ROOT, '05-Areas'),
-    RESOURCES_DIR: path.join(VAULT_ROOT, '06-Resources'),
-    ARCHIVES_DIR: path.join(VAULT_ROOT, '07-Archives'),
-    MEETINGS_DIR: path.join(VAULT_ROOT, '00-Inbox', 'Meetings'),
-    IDEAS_DIR: path.join(VAULT_ROOT, '00-Inbox', 'Ideas'),
-    DAILY_PLANS_DIR: path.join(VAULT_ROOT, '00-Inbox', 'Daily_Plans'),
-    TASKS_FILE: path.join(VAULT_ROOT, '03-Tasks', 'Tasks.md'),
-    QUARTER_GOALS_FILE: path.join(VAULT_ROOT, '01-Quarter_Goals', 'Quarter_Goals.md'),
-    WEEK_PRIORITIES_FILE: path.join(VAULT_ROOT, '02-Week_Priorities', 'Week_Priorities.md'),
-    PEOPLE_DIR: path.join(VAULT_ROOT, '05-Areas', 'People'),
-    COMPANIES_DIR: path.join(VAULT_ROOT, '05-Areas', 'Companies'),
-    CAREER_DIR: path.join(VAULT_ROOT, '05-Areas', 'Career'),
-    EVIDENCE_DIR: path.join(VAULT_ROOT, '05-Areas', 'Career', 'Evidence'),
-    INTEL_DIR: path.join(VAULT_ROOT, '06-Resources', 'Intel'),
-    MEETING_INTEL_DIR: path.join(VAULT_ROOT, '06-Resources', 'Intel', 'Meeting_Intel'),
-    SYSTEM_DIR: path.join(VAULT_ROOT, 'System'),
-    PILLARS_FILE: path.join(VAULT_ROOT, 'System', 'pillars.yaml'),
-    USER_PROFILE_FILE: path.join(VAULT_ROOT, 'System', 'user-profile.yaml'),
-    PEOPLE_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'People_Index.json'),
-    COMPANY_INDEX_FILE: path.join(VAULT_ROOT, 'System', 'Company_Index.json'),
-    DEX_RUNTIME_DIR: path.join(VAULT_ROOT, 'System', '.dex'),
-    CONTACTS_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'contacts.json'),
-    GARDENER_STATE_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'gardener.json'),
-    ENTITY_SUGGESTIONS_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-suggestions.json'),
-    ENTITY_PENDING_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-pending.json'),
-    ENTITY_VERIFICATION_FILE: path.join(VAULT_ROOT, 'System', '.dex', 'entity-verification.json'),
-  });
+  return withResolvedDailyPlans(VAULT_ROOT, defaultPaths(VAULT_ROOT));
 }
 
-module.exports = { loadPaths, resolveDailyPlansDir };
+module.exports = { loadPaths, resolveDailyPlansDir, defaultPaths };

@@ -87,6 +87,50 @@ def _missing_module_detail(error: ModuleNotFoundError) -> str:
     return MISSING_PACKAGES_DETAIL
 
 
+def _is_capability_error(exc: BaseException) -> bool:
+    """True when *exc* is ``core.capabilities.CapabilityError`` or wraps one.
+
+    Matched by class name so the isolated configs runner does not have to
+    import ``core.capabilities`` (that module pulls optional catalog files
+    the fallback snapshot does not ship).
+    """
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if type(current).__name__ == "CapabilityError":
+            return True
+        current = current.__cause__
+    return False
+
+
+def _capability_error_detail(exc: BaseException) -> str:
+    """Map a capability-registry failure onto the missing-packages path when that is why it failed."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ModuleNotFoundError):
+            return _missing_module_detail(current)
+        current = current.__cause__
+    return _one_line(exc)
+
+
+def _internal_failure_result(exc: BaseException) -> dict[str, str] | None:
+    """Structured verdict for an isolated prepare/journey exception, or None to refuse."""
+    if isinstance(exc, JourneyNotSetUp):
+        return {"verdict": "OFF", "detail": _one_line(exc)}
+    if isinstance(exc, JourneyPreparationError):
+        return {"verdict": "BROKEN", "detail": _one_line(exc)}
+    if isinstance(exc, JourneySafetySkip):
+        return {"verdict": "UNKNOWN", "detail": _one_line(exc)}
+    if isinstance(exc, ModuleNotFoundError):
+        return {"verdict": "UNKNOWN", "detail": _missing_module_detail(exc)}
+    if _is_capability_error(exc):
+        return {"verdict": "UNKNOWN", "detail": _capability_error_detail(exc)}
+    return None
+
+
 SNAPSHOT_CHANGED_DETAIL = "snapshot changed before launch"
 MCP_ONCE_CONSENT_DETAIL = "valid fresh single-use consent token is required"
 MCP_ONCE_TOKEN_PREFIX = "dex-mcp-once-consent-"
@@ -1164,6 +1208,34 @@ def _internal_release_root(marker: Path, supplied: Path | None) -> Path:
     return candidate
 
 
+def _vault_site_package_dirs(source_root: Path | None) -> tuple[Path, ...]:
+    """Site-packages dirs inside the vault ``.venv``, if that tree is present.
+
+    Isolated journeys run ``python -S`` and only see packages listed on
+    PYTHONPATH. ``sysconfig.get_paths()`` is the interpreter that launched
+    smoke, which is not always the vault ``.venv``. When that interpreter's
+    purelib/platlib is missing, configs still has to find PyYAML where
+    ``/dex-update`` actually installed it.
+    """
+    if source_root is None:
+        return ()
+    venv = source_root / ".venv"
+    if venv.is_symlink() or not venv.is_dir():
+        return ()
+    candidates = [venv / "Lib" / "site-packages"]
+    lib = venv / "lib"
+    if not lib.is_symlink() and lib.is_dir():
+        for child in sorted(lib.iterdir()):
+            if child.is_symlink() or not child.is_dir():
+                continue
+            candidates.append(child / "site-packages")
+    return tuple(
+        path
+        for path in candidates
+        if not path.is_symlink() and path.is_dir()
+    )
+
+
 def _clean_environment(
     vault: Path,
     home: Path,
@@ -1179,6 +1251,10 @@ def _clean_environment(
         site_packages = Path(sysconfig.get_paths()[key]).resolve()
         if site_packages.is_dir() and str(site_packages) not in python_paths:
             python_paths.append(str(site_packages))
+    for site_packages in _vault_site_package_dirs(source_root):
+        resolved = str(site_packages.resolve())
+        if resolved not in python_paths:
+            python_paths.append(resolved)
     safe_path, tools = release_channel.sanitized_path_with_tools(
         source_root or vault,
         ("node", "python3"),
@@ -2846,17 +2922,15 @@ def main(
                 release_root if release_root.is_dir() else None,
                 args.release_ref,
             )
-        except JourneyNotSetUp as exc:
-            result = {"verdict": "OFF", "detail": _one_line(exc)}
-        except JourneyPreparationError as exc:
-            result = {"verdict": "BROKEN", "detail": _one_line(exc)}
-        except JourneySafetySkip as exc:
-            result = {"verdict": "UNKNOWN", "detail": _one_line(exc)}
-        except ModuleNotFoundError as error:
-            result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
-        except (OSError, PermissionError) as exc:
-            print(f"smoke preparation refused: {_one_line(exc)}", file=sys.stderr)
-            return 2
+        except Exception as exc:
+            mapped = _internal_failure_result(exc)
+            if mapped is not None:
+                result = mapped
+            elif isinstance(exc, (OSError, PermissionError)):
+                print(f"smoke preparation refused: {_one_line(exc)}", file=sys.stderr)
+                return 2
+            else:
+                raise
         else:
             result = {"verdict": "OK", "detail": "journey vault prepared safely"}
         print(json.dumps(result, separators=(",", ":")))
@@ -2869,11 +2943,15 @@ def main(
             _block_python_network()
             release_root = _internal_release_root(args.run_marker, args.release_root)
             result = INTERNAL_JOURNEYS[args._journey](vault, release_root)
-        except ModuleNotFoundError as error:
-            result = {"verdict": "UNKNOWN", "detail": _missing_module_detail(error)}
-        except (KeyError, OSError, PermissionError) as exc:
-            print(f"internal smoke journey refused: {_one_line(exc)}", file=sys.stderr)
-            return 2
+        except Exception as exc:
+            mapped = _internal_failure_result(exc)
+            if mapped is not None:
+                result = mapped
+            elif isinstance(exc, (KeyError, OSError, PermissionError)):
+                print(f"internal smoke journey refused: {_one_line(exc)}", file=sys.stderr)
+                return 2
+            else:
+                raise
         print(json.dumps(result, separators=(",", ":")))
         return 0
 
