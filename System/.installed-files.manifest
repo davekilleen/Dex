@@ -935,6 +935,7 @@
 .scripts/lib/tests/entity-pages.test.cjs
 .scripts/lib/tests/llm-client.test.cjs
 .scripts/lib/tests/provision.test.cjs
+.scripts/meeting-intel/__tests__/action-items.test.cjs
 .scripts/meeting-intel/__tests__/capture-calendar-identity.test.cjs
 .scripts/meeting-intel/__tests__/company-domains.test.cjs
 .scripts/meeting-intel/__tests__/contacts-state.test.cjs
@@ -954,6 +955,7 @@
 .scripts/meeting-intel/com.dex.meeting-intel.plist.template
 .scripts/meeting-intel/garden-entities.cjs
 .scripts/meeting-intel/install-automation.sh
+.scripts/meeting-intel/lib/action-items.cjs
 .scripts/meeting-intel/lib/attendees.cjs
 .scripts/meeting-intel/lib/company-domains.cjs
 .scripts/meeting-intel/lib/config.cjs
@@ -1085,6 +1087,7 @@ core/entity_engine/write.py
 core/entity_maintenance.py
 core/gates/__init__.py
 core/gates/safety.py
+core/gmail_draft.py
 core/harnesses/__init__.py
 core/harnesses/adapters/agent-plugin.json
 core/harnesses/adapters/bb.json
@@ -1239,6 +1242,8 @@ core/mcp/update_checker.py
 core/mcp/work_server.py
 core/meeting_capture_match.py
 core/meeting_sources/__init__.py
+core/meeting_sources/action_items.py
+core/meeting_sources/attendee_names.py
 core/meeting_sources/attribution.py
 core/meeting_sources/calendar_lookup.py
 core/meeting_sources/granola_adapter.py
@@ -1402,6 +1407,8 @@ core/tests/test_apple_mail_health.py
 core/tests/test_apple_mail_runtime_macos.py
 core/tests/test_apply_update.py
 core/tests/test_architecture_inventory.py
+core/tests/test_atlassian_setup_honesty.py
+core/tests/test_attendee_names.py
 core/tests/test_automation_ownership_contract.py
 core/tests/test_backup_vault.py
 core/tests/test_branch_protection_script.py
@@ -1480,6 +1487,7 @@ core/tests/test_founder_content_gate.py
 core/tests/test_freshness.py
 core/tests/test_fuzz_properties.py
 core/tests/test_fuzzy_person_match_guard.py
+core/tests/test_gmail_draft_ids.py
 core/tests/test_golden_journeys.py
 core/tests/test_google_workspace_setup_instruction_contract.py
 core/tests/test_google_workspace_setup_truth.py
@@ -1621,6 +1629,7 @@ core/tests/test_session_memory_server.py
 core/tests/test_setup_credential_disclosure.py
 core/tests/test_shipped_seed_policy.py
 core/tests/test_skill_delegated_gathering.py
+core/tests/test_skill_disable_guidance.py
 core/tests/test_skill_freshness.py
 core/tests/test_skill_integrity.py
 core/tests/test_smoke.py
@@ -1634,6 +1643,7 @@ core/tests/test_task_id_rollover.py
 core/tests/test_task_source_refs.py
 core/tests/test_task_sync.py
 core/tests/test_temperature.py
+core/tests/test_text_io.py
 core/tests/test_tracked_ignored.py
 core/tests/test_transaction_core.py
 core/tests/test_transaction_engine_planned_content_probe.py
@@ -1658,6 +1668,7 @@ core/tests/test_wispr_auth.py
 core/tests/test_wispr_client.py
 core/tests/test_wispr_pipeline.py
 core/tests/test_wispr_setup.py
+core/tests/test_work_planning_feedback_desk.py
 core/tests/test_work_server_entity_links.py
 core/tests/test_work_server_legacy_task_completion.py
 core/tests/test_work_server_meeting_context.py
@@ -1729,6 +1740,7 @@ core/utils/session_lesson_extract.py
 core/utils/skill_freshness.py
 core/utils/smoke.py
 core/utils/strict_yaml.py
+core/utils/text_io.py
 core/utils/timezone.py
 core/utils/tracked_ignored.py
 core/utils/trust_registry.py

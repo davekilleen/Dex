@@ -9,46 +9,18 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
-Fresh install keeps your notes in history, and checkup stays calm when Dex is ahead.
+## [1.97.25] — Fresh install keeps notes in history, and checkup stays calm when Dex is ahead (2026-10-02)
 
-A brand-new Dex folder from a git clone still used the product ignore list, so your notes folders looked like they were not part of the vault until you ran an update. Checkup could also treat a copy of Dex that was newer than the last published release as if you had edited Dex's own files. This change closes those. The brain/vault split already keeps your notes on disk and refuses to write over them; this one makes the first install and checkup match that promise.
+A brand-new Dex folder from a git clone still used the product ignore list, so your notes folders looked like they were not part of the vault until you ran an update. Checkup could also treat a copy of Dex that was newer than the last published release as if you had edited Dex's own files. Checkup and updates on a Windows PC could still trip over the machine's default text setting, look in the Mac place for Python, or empty a notes file when a save failed. Connecting Jira sounded like your morning plan would grow a ticket board it does not have. A skill you built for yourself was offered as a command Claude cannot run. A French "I'll follow up" was missed. A drafted email could be named two different ways, so a later send missed it. Turning a skill off was described with a switch Claude does not actually have. A nightly health check could also stop with a raw error when an optional room file or a Python package was missing, instead of saying the vault install was incomplete. And after meetings synced from Granola, the check that people and companies were created could skip silently on an older Dex folder whose path list did not yet name that report file. Setup could finish writing your focus areas and then say it failed. A meeting note could turn someone else's promise into your task, name a person page after an email address, or link the wrong contact. This release closes those. The brain/vault split already keeps your notes on disk and refuses to write over them; this one makes the first install and checkup match that promise.
 
 **What this fixes for you:**
 
 * **A new install keeps your notes folders in your vault history from the start.** After Dex separates its own files from yours, it now applies the same ignore rules an update already used. You do not have to run an update first for those folders to stay in history.
 * **Checkup tells you if those folders are still hidden.** If an older install never got those rules, checkup says so and points you at `/dex-update`. It does not rewrite your files itself.
 * **Checkup no longer calls a newer Dex copy "edited".** If this copy of Dex is newer than the last published release, checkup compares Dex's own files to what is in the folder now. Real edits still show. Being ahead is not a problem.
-
-Checkup and updates on a Windows PC could still trip over the machine's
-default text setting, look in the Mac place for Python, or empty a notes
-file when a save failed. Connecting Jira sounded like your morning plan
-would grow a ticket board it does not have. A skill you built for yourself
-was offered as a command Claude cannot run. A French "I'll follow up" was
-missed. A drafted email could be named two different ways, so a later send
-missed it. Turning a skill off was described with a switch Claude does
-not actually have. A nightly health check could also stop with a raw error
-when an optional room file or a Python package was missing, instead of
-saying the vault install was incomplete. And after meetings synced from
-Granola, the check that people and companies were created could skip
-silently on an older Dex folder whose path list did not yet name that
-report file. Setup could finish writing your focus areas and then say it
-failed. A meeting note could turn someone else's promise into your task,
-name a person page after an email address, or link the wrong contact.
-This closes those.
-
-**What this fixes for you:**
-
-* **Checkup can run on a Windows PC.** It now looks in the Windows Python
-  folder, understands Windows-style file paths, and reads its own files the
-  same way on every computer. A checkup no longer calls a healthy install
-  broken just because the PC's default text setting is different.
-* **A failed save no longer empties your notes.** If Dex cannot write a
-  change, the original file stays as it was. Everyday marks — a notes
-  symbol, a tick, a name with an accent — no longer wipe a task or people
-  file when the write does not finish.
-* **The post-update check uses the same Python as the rest of Dex.** After
-  an update on Windows, Dex looks for the Windows Python first instead of
-  a Mac-only command.
+* **Checkup can run on a Windows PC.** It now looks in the Windows Python folder, understands Windows-style file paths, and reads its own files the same way on every computer. A checkup no longer calls a healthy install broken just because the PC's default text setting is different.
+* **A failed save no longer empties your notes.** If Dex cannot write a change, the original file stays as it was. Everyday marks — a notes symbol, a tick, a name with an accent — no longer wipe a task or people file when the write does not finish.
+* **The post-update check uses the same Python as the rest of Dex.** After an update on Windows, Dex looks for the Windows Python first instead of a Mac-only command.
 * **A skill you make for yourself is asked for in plain words.** Claude does not add it to the slash menu. Dex says that now, instead of "type /that-name".
 * **Connecting Jira does not pretend your morning plan grew a sprint section.** Dex can look up tickets when you ask. Keeping Dex tasks in sync with Jira still works if you turn that on. Your daily plan, project health, meeting prep, and week review do not automatically add Jira or Confluence blocks.
 * **French "I'll get back to you" is caught the same way English is.** If the note is in another language, Dex says it cannot scan that phrasing instead of staying silent.
@@ -56,23 +28,12 @@ This closes those.
 * **Turning a skill off uses Claude's own menu.** Open the skills list, highlight it, press Space until it is off. That is the same place Claude's unused-skill report points you. A made-up off-switch in settings does nothing.
 * **A missing Python install is named, not a crash.** If the checkup cannot load a required package, or an optional room file is missing, it says the vault install is incomplete and points at `/dex-update`. It no longer dies on an internal error.
 * **People from Granola meetings are still checked on older Dex folders.** After a sync, Dex writes the usual one-line people-and-companies check even when the folder's path list was generated before that report existed. The check no longer skips with no explanation.
-* **The wrong person is no longer treated as a match.** A name that is only
-  loosely similar is left unmatched instead of being written onto someone
-  else's page. Looking up or creating a person by email no longer attaches
-  them to a page that merely sounds similar.
-* **An email is not used as someone's name.** If a calendar or recorder only
-  sent an address, Dex uses the display name when it has one, or a readable
-  name from the address, instead of creating a page titled like an inbox.
-* **@Name action items stay with that person.** A line that starts with
-  @Sarah is listed under For Others, not turned into a task for you.
-* **A shorter name is not linked inside a longer one.** Mentions like
-  "Sarah Chen Williams" stay plain when your page is for Sarah Chen.
-* **Setup that already succeeded is not reported as a timeout.** If Dex
-  finished writing your profile and then ran out of time waiting for the
-  receipt, it says you are done.
-* **Your real focus areas are used as soon as setup writes them.** Creating a
-  task after setup no longer offers the placeholder names from before you
-  chose your own.
+* **The wrong person is no longer treated as a match.** A name that is only loosely similar is left unmatched instead of being written onto someone else's page. Looking up or creating a person by email no longer attaches them to a page that merely sounds similar.
+* **An email is not used as someone's name.** If a calendar or recorder only sent an address, Dex uses the display name when it has one, or a readable name from the address, instead of creating a page titled like an inbox.
+* **@Name action items stay with that person.** A line that starts with @Sarah is listed under For Others, not turned into a task for you.
+* **A shorter name is not linked inside a longer one.** Mentions like "Sarah Chen Williams" stay plain when your page is for Sarah Chen.
+* **Setup that already succeeded is not reported as a timeout.** If Dex finished writing your profile and then ran out of time waiting for the receipt, it says you are done.
+* **Your real focus areas are used as soon as setup writes them.** Creating a task after setup no longer offers the placeholder names from before you chose your own.
 
 ## [1.97.24] — Checkup names each step, and a wait is not overdue (2026-09-30)
 
