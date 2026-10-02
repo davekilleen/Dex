@@ -43,22 +43,11 @@ preview, or execution refuses, stop; no vault-content change was made.
 
 **Immediately after a successful apply, run the post-update canary** — one
 read-only walk through the same doors every later command will use. From the
-vault root, run the post-update check with the vault Python when it exists
-(`.venv/Scripts/python.exe` on Windows, `.venv/bin/python` on a Mac or Linux
-computer), otherwise `python3 core/health/post_update.py --vault .`. The
+vault root, run `core/health/post_update.py --vault .` with the vault Python
+when it exists. Prefer `.venv/Scripts/python.exe` on Windows, then
+`.venv/bin/python` on a Mac or Linux computer, otherwise `python3`. The
 direct file path matters: it keeps the canary runnable even when the installed
-packages are the thing that broke. Example:
-
-```bash
-if [ -x .venv/Scripts/python.exe ]; then
-  DEX_UPDATE_PYTHON=".venv/Scripts/python.exe"
-elif [ -x .venv/bin/python ]; then
-  DEX_UPDATE_PYTHON=".venv/bin/python"
-else
-  DEX_UPDATE_PYTHON="python3"
-fi
-"$DEX_UPDATE_PYTHON" core/health/post_update.py --vault .
-```
+packages are the thing that broke.
 
 Relay its one-line result verbatim. On
 failure, treat it as part of this update, not a separate errand: tell the user

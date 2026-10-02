@@ -233,6 +233,9 @@ def test_creating_a_goal_works_alongside_an_anchorless_one(planning_vault):
             "title": "A brand new goal",
             "pillar": "pillar_1",
             "success_criteria": "The new goal is reachable.",
+            # Pin the quarter to the fixture IDs. Defaulting to "today" makes
+            # the next-id assertion date-dependent.
+            "quarter": "Q3 2026",
         },
     )
 
