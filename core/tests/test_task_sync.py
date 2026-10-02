@@ -1001,15 +1001,15 @@ def test_inbound_adoption_maps_before_a_racing_sync_can_create(
 
     monkeypatch.setattr(task_sync, "_run_adapter", run_adapter)
 
-    real_write = Path.write_text
+    real_write = work_server.write_vault_text
 
-    def write_and_sync(self, data, *args, **kwargs):
-        result = real_write(self, data, *args, **kwargs)
-        if self.resolve() == sync_vault["tasks"].resolve():
+    def write_and_sync(path, data, *args, **kwargs):
+        result = real_write(path, data, *args, **kwargs)
+        if Path(path).resolve() == sync_vault["tasks"].resolve():
             race_syncs.append(task_sync.sync_external_tasks(services=["todoist"]))
         return result
 
-    monkeypatch.setattr(Path, "write_text", write_and_sync)
+    monkeypatch.setattr(work_server, "write_vault_text", write_and_sync)
 
     created = _decode_tool_result(
         asyncio.run(
@@ -1186,14 +1186,14 @@ def test_create_task_rolls_back_mapping_when_task_write_fails(
     before_inbound = sync_vault["inbound"].read_bytes()
     before_tasks = sync_vault["tasks"].read_bytes()
 
-    real_write = Path.write_text
+    real_write = work_server.write_vault_text
 
-    def fail_write(self, data, *args, **kwargs):
-        if self.resolve() == sync_vault["tasks"].resolve():
+    def fail_write(path, data, *args, **kwargs):
+        if Path(path).resolve() == sync_vault["tasks"].resolve():
             raise OSError("disk full")
-        return real_write(self, data, *args, **kwargs)
+        return real_write(path, data, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", fail_write)
+    monkeypatch.setattr(work_server, "write_vault_text", fail_write)
 
     with pytest.raises(OSError, match="disk full"):
         asyncio.run(

@@ -48,6 +48,7 @@ from core.utils import (
     platform_support,
     preflight,
     release_channel,
+    text_io,
 )
 
 VERDICTS = frozenset({"OK", "OFF", "BROKEN", "UNKNOWN"})
@@ -779,6 +780,27 @@ def _load_yaml(path: Path) -> object:
     return load_yaml_path(path)
 
 
+def _read_text(path: Path) -> str:
+    """Read a vault or install file as UTF-8. Never use the Windows locale codec."""
+    return text_io.read_text(path)
+
+
+def _emit_utf8(text: str, *, stream=None) -> None:
+    """Print JSON even when the Windows console uses a legacy code page."""
+    if stream is None:
+        stream = sys.stdout
+    try:
+        print(text, file=stream)
+        return
+    except UnicodeEncodeError:
+        payload = text if text.endswith("\n") else f"{text}\n"
+        buffer = getattr(stream, "buffer", None)
+        if buffer is None:
+            raise
+        buffer.write(payload.encode("utf-8"))
+        buffer.flush()
+
+
 def _result_json(definition: CheckDefinition, result: ProbeResult) -> dict[str, Any]:
     rendered = {
         "id": definition.id,
@@ -826,6 +848,8 @@ def _repo_shipped_executables(context: DoctorContext) -> list[Path]:
         ["git", "-C", str(context.repo_root), "ls-files", "--stage", "-z"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10,
         check=False,
     )
@@ -861,6 +885,8 @@ def _requeue_entity_dead_letters(context: DoctorContext) -> dict[str, Any]:
         cwd=context.repo_root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
         check=False,
         env={
@@ -947,7 +973,7 @@ def _apply_t1_heals(
         expected_paths = _paths_export_for(context)
         current_paths: object = None
         try:
-            current_paths = json.loads(context.paths_json_path.read_text())
+            current_paths = json.loads(_read_text(context.paths_json_path))
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             pass
         if current_paths != expected_paths:
@@ -1585,7 +1611,7 @@ def _probe_vault_configs(context: DoctorContext) -> ProbeResult:
             if kind == "yaml":
                 parsed = _load_yaml(config_path)
             else:
-                parsed = json.loads(config_path.read_text())
+                parsed = json.loads(_read_text(config_path))
             if parsed is not None and not isinstance(parsed, dict):
                 raise ValueError("top level must be an object")
         except ImportError:
@@ -2575,7 +2601,7 @@ def _mcp_config_path(context: DoctorContext) -> Path:
 
 
 def _load_mcp_config(context: DoctorContext) -> dict[str, Any]:
-    loaded = json.loads(_mcp_config_path(context).read_text())
+    loaded = json.loads(_read_text(_mcp_config_path(context)))
     if (
         not isinstance(loaded, dict)
         or "mcpServers" not in loaded
@@ -2751,6 +2777,8 @@ print(json.dumps(missing))
         [str(python), "-c", code],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=15,
         check=False,
     )
@@ -2847,7 +2875,7 @@ def _missing_hook_executable(command: str, context: DoctorContext) -> str | None
 
 def _probe_hooks_wired(context: DoctorContext) -> ProbeResult:
     settings_path = context.vault_root / ".claude" / "settings.json"
-    settings = json.loads(settings_path.read_text())
+    settings = json.loads(_read_text(settings_path))
     if not isinstance(settings, dict):
         raise ValueError(".claude/settings.json must contain an object")
     hooks = settings.get("hooks", {})
@@ -3006,6 +3034,8 @@ def _plist_interpreter(plist: Path) -> str:
         ["plutil", "-extract", "ProgramArguments.0", "raw", str(plist)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10,
         check=False,
     )
@@ -3025,6 +3055,8 @@ def _launchctl_domain_check() -> None:
         ["launchctl", "list"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10,
         check=False,
     )
@@ -3038,6 +3070,8 @@ def _launchctl_status(label: str) -> dict[str, int | bool | None]:
         ["launchctl", "list", label],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10,
         check=False,
     )
@@ -3055,12 +3089,23 @@ def _launchctl_status(label: str) -> dict[str, int | bool | None]:
     }
 
 
+def _looks_like_filesystem_path(value: str) -> bool:
+    """True for vault-relative or absolute paths, including Windows backslashes."""
+    if not value:
+        return False
+    if os.path.isabs(value) or "/" in value or "\\" in value:
+        return True
+    return len(value) >= 2 and value[1] == ":" and value[0].isalpha()
+
+
 def _resolved_interpreter(raw: str, context: DoctorContext) -> str | None:
     expanded = _expand_path_token(raw, context)
-    if "/" not in expanded:
+    if not _looks_like_filesystem_path(expanded):
         return shutil.which(expanded)
-    candidate = Path(expanded)
-    if not candidate.is_absolute():
+    candidate = Path(expanded.replace("\\", "/"))
+    if not candidate.is_absolute() and not (
+        len(expanded) >= 2 and expanded[1] == ":" and expanded[0].isalpha()
+    ):
         candidate = context.vault_root / candidate
     return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else None
 
@@ -3562,7 +3607,7 @@ def _historical_error_summary(
 
     current_version = None
     try:
-        package = json.loads((context.vault_root / "package.json").read_text())
+        package = json.loads(_read_text(context.vault_root / "package.json"))
         if isinstance(package, dict) and isinstance(package.get("version"), str):
             current_version = package["version"]
     except (OSError, json.JSONDecodeError):
@@ -3968,7 +4013,7 @@ def _probe_customization_mcp(context: DoctorContext) -> ProbeResult:
         )
 
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config = json.loads(_read_text(config_path))
     except (OSError, json.JSONDecodeError) as error:
         return _mcp_customization_failure(
             context,
@@ -4149,6 +4194,8 @@ def _git_result(
             "PATH": safe_path,
         },
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10,
         check=False,
     )
@@ -4158,7 +4205,7 @@ def _regular_json(path: Path) -> dict[str, Any] | None:
     try:
         if path.is_symlink() or not path.is_file():
             return None
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(_read_text(path))
         return value if isinstance(value, dict) else None
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
@@ -4467,7 +4514,7 @@ def _working_file(context: DoctorContext, relative: str) -> str | None:
         if current.is_symlink():
             return None
     try:
-        return path.read_text(encoding="utf-8")
+        return _read_text(path)
     except (OSError, UnicodeError):
         return None
 
@@ -4754,7 +4801,7 @@ def _current_package_json(context: DoctorContext, relative: str) -> dict[str, ob
     if path.is_symlink() or not path.is_file():
         return None
     try:
-        return _package_json_object(path.read_text(encoding="utf-8"))
+        return _package_json_object(_read_text(path))
     except (OSError, UnicodeDecodeError):
         return None
 
@@ -4966,13 +5013,13 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
             context.vault_root / "System" / ".dex" / "entity-dead-letter.jsonl"
         )
 
-        contacts = json.loads(contacts_path.read_text()) if contacts_path.exists() else {}
-        suggestions = json.loads(suggestions_path.read_text()) if suggestions_path.exists() else {}
-        verification = json.loads(verification_path.read_text()) if verification_path.exists() else {}
-        gardener = json.loads(gardener_path.read_text()) if gardener_path.exists() else {}
+        contacts = json.loads(_read_text(contacts_path)) if contacts_path.exists() else {}
+        suggestions = json.loads(_read_text(suggestions_path)) if suggestions_path.exists() else {}
+        verification = json.loads(_read_text(verification_path)) if verification_path.exists() else {}
+        gardener = json.loads(_read_text(gardener_path)) if gardener_path.exists() else {}
         dead_letters = []
         if dead_letter_path.exists():
-            for line in dead_letter_path.read_text().splitlines():
+            for line in _read_text(dead_letter_path).splitlines():
                 if not line.strip():
                     continue
                 try:
@@ -5040,7 +5087,7 @@ def _probe_entity_engine(context: DoctorContext) -> ProbeResult:
         ) if people_dir.exists() else 0.0
         index_freshness = "missing"
         if people_index_path.exists():
-            people_index = json.loads(people_index_path.read_text())
+            people_index = json.loads(_read_text(people_index_path))
             built_at = datetime.fromisoformat(str(people_index.get("built_at", "")).replace("Z", "+00:00"))
             index_freshness = "fresh" if built_at.timestamp() >= newest_people_mtime else "stale"
 
@@ -5557,7 +5604,7 @@ def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:
     if not receipt_path.is_file():
         return ProbeResult("OFF", "No post-update check has run yet (normal before the first update on this version)")
     try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt = json.loads(_read_text(receipt_path))
     except (OSError, json.JSONDecodeError):
         return ProbeResult("UNKNOWN", "The post-update check's receipt could not be read")
     if not isinstance(receipt, dict) or receipt.get("contract") != RECEIPT_CONTRACT:
@@ -5708,7 +5755,7 @@ def _probe_backup_freshness(context: DoctorContext) -> ProbeResult:
         return ProbeResult("OFF", "Vault backups are not configured; /backup-setup turns them on")
     stamp_path = context.core_path("DEX_RUNTIME_DIR") / BACKUP_STAMP_FILENAME
     try:
-        raw = stamp_path.read_text()
+        raw = _read_text(stamp_path)
     except FileNotFoundError:
         return ProbeResult(
             "BROKEN",
@@ -5763,6 +5810,8 @@ def _calendar_permission_status(_context: DoctorContext) -> str:
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=10,
         check=False,
     )
@@ -5833,7 +5882,7 @@ def _google_calendar_token_payload(context: DoctorContext) -> dict[str, Any] | N
     if not path.is_file():
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(_read_text(path))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
@@ -6085,6 +6134,8 @@ def _qmd_status(binary: str) -> tuple[bool, str]:
         [binary, "status"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=QMD_STATUS_TIMEOUT_SECONDS,
         check=False,
     )
@@ -6165,6 +6216,8 @@ def _task_sync_health_check(
         cwd=context.vault_root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
         check=False,
     )
@@ -6205,6 +6258,8 @@ def _engine_integration_health(context: DoctorContext) -> tuple[list[dict[str, A
         cwd=context.vault_root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
         check=False,
         env={
@@ -6314,6 +6369,8 @@ def _mcp_import_check(
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=False,
         )
@@ -6400,7 +6457,7 @@ def _read_smoke_history(context: DoctorContext) -> list[dict[str, Any]]:
     last_run_path = context.vault_root / "System" / ".smoke-last-run.json"
     history_unreadable = False
     if history_path.exists():
-        lines = history_path.read_text(encoding="utf-8").splitlines()
+        lines = _read_text(history_path).splitlines()
         entries = []
         for line in lines:
             try:
@@ -6413,7 +6470,7 @@ def _read_smoke_history(context: DoctorContext) -> list[dict[str, Any]]:
             return sorted(entries, key=lambda entry: _smoke_timestamp(entry) or datetime.min)
         history_unreadable = True
     if last_run_path.exists():
-        entry = _valid_smoke_entry(json.loads(last_run_path.read_text(encoding="utf-8")))
+        entry = _valid_smoke_entry(json.loads(_read_text(last_run_path)))
         if entry is None:
             raise ValueError("smoke last-run file is unreadable")
         return [entry]
@@ -6549,7 +6606,7 @@ def _probe_smoke_history(context: DoctorContext) -> ProbeResult:
 
 def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
     smoke_path = context.repo_root / "core" / "utils" / "smoke.py"
-    vault_python = context.vault_root / ".venv" / "bin" / "python"
+    vault_python = _vault_python_interpreter(context)
     interpreter = (
         str(vault_python)
         if vault_python.is_file() and os.access(vault_python, os.X_OK)
@@ -6574,6 +6631,8 @@ def _probe_smoke_journeys(context: DoctorContext) -> ProbeResult:
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=35,
         check=False,
     )
@@ -6656,7 +6715,7 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
             action, _, journal_id = selected[0]
             root = context.vault_root if context is not None else paths.VAULT_ROOT
             credential_report = run_credential_workflow(root, action, journal_id=journal_id)
-            print(json.dumps(credential_report, indent=2))
+            _emit_utf8(json.dumps(credential_report, indent=2))
             return 2 if credential_report.get("migration_state") == "refused" and action != "status" else 0
         report = collect(
             deep=args.deep,
@@ -6667,7 +6726,7 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
         )
         output = json.dumps(report, indent=2)
     except Exception as error:
-        print(f"dex-doctor could not produce JSON: {_one_line(error)}", file=sys.stderr)
+        _emit_utf8(f"dex-doctor could not produce JSON: {_one_line(error)}", stream=sys.stderr)
         return 1
 
     # A narrowed run answers one question; it must not overwrite the whole-system
@@ -6675,7 +6734,7 @@ def main(argv: list[str] | None = None, *, context: DoctorContext | None = None)
     if args.deep and not args.only:
         _progress(SNAPSHOT_PROGRESS)
         _publish_health_snapshot(report, context)
-    print(output)
+    _emit_utf8(output)
     return 0
 
 

@@ -242,14 +242,14 @@ def test_update_task_status_everywhere_reports_partial_write_failure(tmp_path, m
         ],
     )
 
-    original_write_text = Path.write_text
+    original_write_text = work_server.write_vault_text
 
     def fail_one_write(path, content, *args, **kwargs):
-        if path == failed_file:
+        if Path(path) == failed_file:
             raise OSError("disk full")
         return original_write_text(path, content, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", fail_one_write)
+    monkeypatch.setattr(work_server, "write_vault_text", fail_one_write)
 
     result = work_server.update_task_status_everywhere(task_id, completed=True)
 
@@ -282,14 +282,14 @@ def test_skipped_canonical_write_is_not_reported_as_success(tmp_path, monkeypatc
     monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
     monkeypatch.setattr(work_server, "get_tasks_file", lambda: tasks_file)
 
-    original_write_text = Path.write_text
+    original_write_text = work_server.write_vault_text
 
     def skip_canonical_write(path, content, *args, **kwargs):
         if Path(path) == tasks_file:
             return 0
         return original_write_text(path, content, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", skip_canonical_write)
+    monkeypatch.setattr(work_server, "write_vault_text", skip_canonical_write)
 
     result = work_server.update_task_status_everywhere(task_id, "d")
 

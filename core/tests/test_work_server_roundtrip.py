@@ -279,6 +279,20 @@ def test_create_task_reads_utf8_vault_files_with_windows_default(
     assert "📊" in task_vault["goals"].read_text(encoding="utf-8")
 
 
+def test_write_vault_text_failed_encode_does_not_truncate(task_vault):
+    original = "# Tasks\n\n## 📝 Notes\nKeep this.\n"
+    task_vault["tasks"].write_text(original, encoding="utf-8")
+
+    with pytest.raises(UnicodeEncodeError):
+        work_server.write_vault_text(
+            task_vault["tasks"],
+            "# Tasks\n\n## 📝 Notes\n",
+            encoding="ascii",
+        )
+
+    assert task_vault["tasks"].read_text(encoding="utf-8") == original
+
+
 def test_work_server_vault_text_io_never_uses_locale_codec():
     source = Path(work_server.__file__).read_text(encoding="utf-8")
     leftover = []
