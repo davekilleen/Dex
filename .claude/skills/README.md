@@ -223,7 +223,7 @@ Built specifically for personal knowledge management and productivity workflows 
 - `/google-workspace-setup` - Gmail + Calendar + Docs (email digest, follow-up detection)
 - `/ms-teams-setup` - Microsoft Teams chat digest alongside Slack
 - `/zoom-setup` - Zoom recording access and scheduling
-- `/atlassian-setup` - Jira tickets and Confluence docs in daily plans
+- `/atlassian-setup` - Connect Jira and Confluence so Dex can query them when you ask
 - `/granola-setup` - Connect Granola for automatic meeting capture
 - `/calendar-setup` - Connect your calendar
 - `/apple-mail-setup` - Connect Apple Mail search and build the index it needs (macOS)

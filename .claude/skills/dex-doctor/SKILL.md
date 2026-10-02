@@ -379,9 +379,20 @@ machine-state and investigation ingredients, so the user does nothing but approv
   "this looks like a Dex bug, not your setup; want me to report it to the Dex team?"
   If yes, invoke the `/feedback` skill with the repeat-BROKEN evidence.
 
+## Turning a skill off
+
+Claude Code's `/skill-doctor` reports unused skills and says where to turn them off. Match that path — do not invent another.
+
+- **Project or personal skill Claude Code loaded** (`.claude/skills/`, `~/.claude/skills/`, `.claude/commands/`): open `/skills`, highlight the skill, press Space until it is **off**, then save. That writes `skillOverrides` in `.claude/settings.local.json`. You can write the same map by hand: `{"skillOverrides": {"the-skill": "off"}}`.
+- **Do not write `disabledSkills`.** Claude Code does not honor that key. A silent no-op is not a disable.
+- **`disable-model-invocation: true`** only stops Claude from auto-invoking the skill. It stays in the `/` menu unless `skillOverrides` is `off`.
+- **Plugin skills** (including Dex when installed as a plugin): turn them off from `/plugin`. `skillOverrides` does not apply.
+- **User skills under `.claude/skills-custom/`:** Claude Code does not load that folder, so they do not appear in `/skills` or `/skill-doctor`. Turning one off means stop asking for it, or remove that folder. Do not offer `/{name}` for it.
+
 ## Related Commands
 
 - `/granola-setup`, `/calendar-setup`, `/google-workspace-setup`, `/enable-semantic-search` — Tier-3 fix paths
 - `/dex-update` — often the fix for package/version drift
 - `/feedback` — when a finding is a genuine Dex bug (not the user's setup), report it to the Dex team; the Doctor evidence becomes the report and the user only approves
 - `/xray` — understand what the doctor checked and why
+- `/skills` and `/skill-doctor` — Claude Code's own skill list and unused-skill report; disable guidance above must match them

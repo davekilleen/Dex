@@ -94,3 +94,22 @@ def test_create_skill_v2_collision_check_and_core_hard_gate() -> None:
     ).read_text(encoding="utf-8")
     assert ".claude/skills-custom/{name}/" in standard
     assert "never author a user skill inside `.claude/skills/`" in standard
+
+
+def test_create_skill_does_not_offer_a_slash_path_claude_code_cannot_dispatch() -> None:
+    text = (ROOT / ".claude/skills/create-skill/SKILL.md").read_text(encoding="utf-8")
+    standard = (
+        ROOT / ".claude/skills/create-skill/references/dex-skill-standard.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Try it: /{name}" not in text
+    assert "the command is /{name}-custom" not in text
+    assert "Ask for it with the trigger phrases you gave — not /{name}." in text
+    assert "does not load .claude/skills-custom/" in text
+    assert "not a command it can dispatch" in text
+    assert "Do not say \"try /{name}\"" in text
+    assert "disabledSkills" in text
+    assert "skillOverrides" in text
+    assert "/skill-doctor" in text
+    assert "does not load `.claude/skills-custom/` as a slash-command folder" in standard
+    assert "never a `disabledSkills` field" in standard

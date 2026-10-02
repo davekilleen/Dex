@@ -12,3 +12,5 @@ def test_process_meetings_wires_detector_into_confirmation_flow() -> None:
     assert "detect_soft_commitments" in source
     assert "soft commitment — confirm before creating" in source
     assert "never auto-create" in source
+    assert "english and french" in source
+    assert "unsupported_locale" in source

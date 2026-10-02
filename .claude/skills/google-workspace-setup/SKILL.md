@@ -26,7 +26,7 @@ Once connected, Dex can:
 - Search Google Docs and Sheets
 
 **Write (always with your confirmation):**
-- Send emails (Dex will always show you the draft and ask before sending)
+- Send emails (Dex will always show you the draft and ask before sending). Keep Gmail draft ids consistent — see **Gmail draft identity** below.
 - Create calendar events
 - Create or update Google Docs
 
@@ -217,6 +217,8 @@ Would you prefer:
 
 Save their preference. Map choice 1 to `draft_and_send: true`, choice 2 to `draft_and_send: false`.
 
+When a draft is created, follow **Gmail draft identity** so later get/update/send calls use the same id the create call returned.
+
 ### Step 7: Test the Connection
 
 Run a quick test to confirm everything works. **Email is the connectedness bar.** Calendar is extra.
@@ -303,6 +305,16 @@ You can adjust settings anytime by running `/google-workspace-setup` again.
 ```
 
 ---
+
+## Gmail draft identity
+
+Gmail returns two different ids on a draft. Mixing them is how a later send or edit misses the draft.
+
+- **`draft.id` / `draftId`** — the drafts resource id. This is the only id to pass to get, update, send, or delete draft tools. Keep it exactly as returned. A `drafts/{id}` resource name and the older `r-{digits}` web form still name that same draft — strip the `drafts/` prefix and keep `r-{digits}` as-is.
+- **`message.id` and `threadId`** — mailbox message ids. Never pass these to a draft tool. Never tell the user a message id is the draft id.
+- Prefer an explicit `draft.id` / `draftId` field over a bare top-level `id`. A top-level `id` is the draft id only when the payload is a drafts resource (it has a nested `message`, or `kind` names a draft).
+- If you show the user a Gmail link, use a URL the tool actually returned. Do not invent a `#drafts?compose=` URL from a message id, and do not invent one from a draft id unless the tool gave that URL.
+- The helper is `core.gmail_draft.draft_id_from_payload` / `normalize_gmail_draft_id`. Use it when code — not only this skill — has to pick an id.
 
 ## New Capabilities
 
