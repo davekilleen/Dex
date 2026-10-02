@@ -2,7 +2,7 @@
 
 Calendar and recorder payloads often send the address in ``name`` (or omit
 ``name`` and put a real name in ``display_name`` / ``displayName``). A page
-called ``jane.doe@acme.com`` is worse than a missing name: later matching,
+called ``jane.doe@example.com`` is worse than a missing name: later matching,
 auto-link, and meeting prep treat it as the person.
 """
 
@@ -21,7 +21,7 @@ def looks_like_email(value: str | None) -> bool:
 
 
 def prettify_email_local_part(email: str) -> str:
-    """``jane.doe+tag@acme.com`` → ``Jane Doe``."""
+    """``jane.doe+tag@example.com`` → ``Jane Doe``."""
     local = email.split("@", 1)[0].split("+", 1)[0]
     parts = [part for part in re.split(r"[._-]+", local) if part]
     return " ".join(part[:1].upper() + part[1:].lower() for part in parts)

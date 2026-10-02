@@ -78,11 +78,11 @@ def test_create_person_does_not_treat_a_similar_name_as_an_email_duplicate(tmp_p
     matching, so create_person reported a duplicate of the wrong page.
     """
     _setup(tmp_path, monkeypatch)
-    assert work_server.create_person_data("John Smith", emails=["john.smith@acme.test"])["success"]
+    assert work_server.create_person_data("John Smith", emails=["john.smith@example.com"])["success"]
 
     created = work_server.create_person_data(
         "Jordan Smithson",
-        emails=["jordan@elsewhere.test"],
+        emails=["jordan@example.org"],
     )
 
     assert created["success"] is True
@@ -91,9 +91,9 @@ def test_create_person_does_not_treat_a_similar_name_as_an_email_duplicate(tmp_p
 
 def test_lookup_email_does_not_fall_through_to_a_similar_name(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
-    work_server.create_person_data("John Smith", emails=["john.smith@acme.test"])
+    work_server.create_person_data("John Smith", emails=["john.smith@example.com"])
 
-    result = work_server.lookup_person_data("john.other@elsewhere.test")
+    result = work_server.lookup_person_data("john.other@example.org")
 
     assert result["matches"] == []
     assert result["total_matches"] == 0

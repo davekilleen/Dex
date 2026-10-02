@@ -370,6 +370,9 @@ def test_load_pillars_coerces_non_string_keywords(tmp_path, monkeypatch):
     # guess_pillar iterates `keyword in text` over module-level PILLARS — the
     # int-coerced keyword must not raise a TypeError on `61 in "..."`.
     monkeypatch.setattr(work_server, "PILLARS", pillars)
+    monkeypatch.setattr(
+        work_server, "_PILLARS_SIGNATURE", work_server._pillars_file_signature()
+    )
     assert work_server.guess_pillar("let's sync on the pipeline") == "sales"
 
 
@@ -384,8 +387,8 @@ def test_create_task_reloads_pillars_written_after_startup(tmp_path, monkeypatch
         encoding="utf-8",
     )
     monkeypatch.setattr(work_server, "get_pillars_file", lambda: pillars_file)
-    work_server.PILLARS = work_server.DEFAULT_PILLARS.copy()
-    work_server._PILLARS_SIGNATURE = ("stale", 0, 0)
+    monkeypatch.setattr(work_server, "PILLARS", work_server.DEFAULT_PILLARS.copy())
+    monkeypatch.setattr(work_server, "_PILLARS_SIGNATURE", ("stale", 0, 0))
 
     pillars_file.write_text(
         "pillars:\n"

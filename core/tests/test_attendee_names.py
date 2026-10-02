@@ -13,14 +13,14 @@ from core.meeting_sources.record import Attendee, MeetingRecord
 
 def test_display_name_beats_an_email_used_as_the_name() -> None:
     assert display_name_from_fields(
-        "jane.doe@acme.test",
+        "jane.doe@example.com",
         "Jane Doe",
-        email="jane.doe@acme.test",
+        email="jane.doe@example.com",
     ) == "Jane Doe"
 
 
 def test_email_only_attendee_gets_a_prettified_fallback() -> None:
-    assert display_name_from_fields(email="john.smith+ops@acme.test") == "John Smith"
+    assert display_name_from_fields(email="john.smith+ops@example.com") == "John Smith"
 
 
 def test_granola_adapter_does_not_keep_an_email_as_the_page_name() -> None:
@@ -32,16 +32,16 @@ def test_granola_adapter_does_not_keep_an_email_as_the_page_name() -> None:
             "summary_markdown": "- [ ] Done\n",
             "attendees": [
                 {
-                    "name": "jane.doe@acme.test",
+                    "name": "jane.doe@example.com",
                     "displayName": "Jane Doe",
-                    "email": "jane.doe@acme.test",
+                    "email": "jane.doe@example.com",
                 }
             ],
         }
     )
 
     assert record.attendees[0].name == "Jane Doe"
-    assert record.attendees[0].email == "jane.doe@acme.test"
+    assert record.attendees[0].email == "jane.doe@example.com"
 
 
 def test_landing_zone_routes_at_name_items_to_for_others(tmp_path) -> None:
@@ -51,7 +51,7 @@ def test_landing_zone_routes_at_name_items_to_for_others(tmp_path) -> None:
         start=datetime(2026, 8, 14, 15, 0, tzinfo=timezone.utc),
         title="Pipeline review",
         body="Notes.",
-        attendees=(Attendee(name="Jane Doe", email="jane@acme.test"),),
+        attendees=(Attendee(name="Jane Doe", email="jane@acme.com"),),
         action_items=("Write the recap", "@Sarah: send the deck"),
     )
 
@@ -61,12 +61,12 @@ def test_landing_zone_routes_at_name_items_to_for_others(tmp_path) -> None:
     assert "Write the recap" in for_me
     assert "@Sarah: send the deck" not in for_me
     assert "@Sarah: send the deck" in for_others
-    assert "Jane Doe <jane@acme.test>" in text
+    assert "Jane Doe <jane@acme.com>" in text
 
 
 def test_action_item_bucket_and_note_label() -> None:
     assert action_item_bucket("Write the recap") == "me"
     assert action_item_bucket("@Sarah: send the deck") == "others"
     assert action_item_bucket("@Dana: book the room", {"Dana Wells"}) == "me"
-    assert attendee_note_label("Jane Doe", "jane@acme.test") == "Jane Doe <jane@acme.test>"
-    assert attendee_note_label(None, "jane.doe@acme.test") == "Jane Doe <jane.doe@acme.test>"
+    assert attendee_note_label("Jane Doe", "jane@acme.com") == "Jane Doe <jane@acme.com>"
+    assert attendee_note_label(None, "jane.doe@example.com") == "Jane Doe <jane.doe@example.com>"

@@ -66,5 +66,9 @@ def test_granola_analysis_only_writes_real_commitments_as_action_items() -> None
     assert "Only list an action item that someone actually committed to." in text
     assert 'things to "consider" or "think about"' in text
     assert "belong under Key Discussion Points, not here" in text
-    assert "[Something this person committed to doing] - by [timeframe if mentioned]" in text
+    assert (
+        "[Something THIS PERSON (the Dex user) committed to doing] "
+        "- by [timeframe if mentioned]"
+    ) in text
+    assert "A line that starts with @Name or @[Name] is never a For Me item." in text
     assert "[Specific task]" not in text
