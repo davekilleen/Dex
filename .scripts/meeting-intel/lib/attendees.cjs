@@ -18,9 +18,9 @@ function normalizeName(value) {
 }
 
 function prettifyEmailLocalPart(email) {
-  const localPart = email.split('@', 1)[0];
+  const localPart = email.split('@', 1)[0].split('+', 1)[0];
   return localPart
-    .replace(/[._+-]+/g, ' ')
+    .replace(/[._-]+/g, ' ')
     .trim()
     .split(/\s+/)
     .filter(Boolean)

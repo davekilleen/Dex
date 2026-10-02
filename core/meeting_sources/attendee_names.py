@@ -22,8 +22,8 @@ def looks_like_email(value: str | None) -> bool:
 
 def prettify_email_local_part(email: str) -> str:
     """``jane.doe+tag@acme.com`` → ``Jane Doe``."""
-    local = email.split("@", 1)[0]
-    parts = [part for part in re.split(r"[._+-]+", local) if part]
+    local = email.split("@", 1)[0].split("+", 1)[0]
+    parts = [part for part in re.split(r"[._-]+", local) if part]
     return " ".join(part[:1].upper() + part[1:].lower() for part in parts)
 
 
@@ -47,7 +47,7 @@ def attendee_note_label(name: str | None, email: str | None) -> str:
     """Frontmatter line: prefer ``Name <email>`` so routing keeps the address."""
     display = (name or "").strip()
     address = (email or "").strip()
-    if display and looks_like_email(display) and address:
+    if (not display or looks_like_email(display)) and address and looks_like_email(address):
         display = prettify_email_local_part(address) or display
     if display and address and display.casefold() != address.casefold():
         return f"{display} <{address}>"
