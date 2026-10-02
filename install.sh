@@ -671,6 +671,23 @@ done
 
 if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" ]; then
     echo "✅ Your vault and the Dex brain now have separate Git histories"
+    # ZIP bundles compose vault-mode .gitignore at packaging time. A git clone
+    # still has the product ignore file, which hides notes folders until the
+    # first /dex-update. Compose here so a fresh install tracks user folders
+    # from the start. Doctor reports the same gap if this step is skipped.
+    GITIGNORE_COMPOSER="scripts/compose-vault-gitignore.py"
+    if [ -f "$GITIGNORE_COMPOSER" ] && [ -f ".gitignore" ]; then
+        COMPOSE_PYTHON="$PYTHON_CMD"
+        if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
+            COMPOSE_PYTHON="$VENV_PYTHON"
+        fi
+        if [ -n "$COMPOSE_PYTHON" ] && dex_run_logged "compose-vault-gitignore" "$COMPOSE_PYTHON" "$GITIGNORE_COMPOSER" ".gitignore"; then
+            echo "   Your notes folders stay in your vault history from the start"
+        else
+            echo "⚠️  Dex could not finish making your notes folders trackable."
+            echo "   Your files are still here. Run /dex-update, or run /dex-doctor to see the next step."
+        fi
+    fi
 elif [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
     echo "❌ Dex could not finish the brain/vault split."
     echo "   The notes folder has no working Git history. Your files are still here."

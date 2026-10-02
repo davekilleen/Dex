@@ -7,7 +7,15 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## Unreleased
+## [1.97.25] — Fresh install keeps your notes in history, and checkup stays calm when Dex is ahead (2026-10-02)
+
+A brand-new Dex folder from a git clone still used the product ignore list, so your notes folders looked like they were not part of the vault until you ran an update. Checkup could also treat a copy of Dex that was newer than the last published release as if you had edited Dex's own files. This release closes those. The brain/vault split already keeps your notes on disk and refuses to write over them; this one makes the first install and checkup match that promise.
+
+**What this fixes for you:**
+
+* **A new install keeps your notes folders in your vault history from the start.** After Dex separates its own files from yours, it now applies the same ignore rules an update already used. You do not have to run an update first for those folders to stay in history.
+* **Checkup tells you if those folders are still hidden.** If an older install never got those rules, checkup says so and points you at `/dex-update`. It does not rewrite your files itself.
+* **Checkup no longer calls a newer Dex copy "edited".** If this copy of Dex is newer than the last published release, checkup compares Dex's own files to what is in the folder now. Real edits still show. Being ahead is not a problem.
 
 Checkup and updates on a Windows PC could still trip over the machine's
 default text setting, look in the Mac place for Python, or empty a notes
