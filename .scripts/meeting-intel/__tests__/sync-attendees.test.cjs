@@ -29,6 +29,28 @@ test('extractAttendees prettifies an email-only attendee and keeps the email', (
   );
 });
 
+test('extractAttendees prefers a display name over an email used as the name', () => {
+  assert.deepEqual(
+    extractAttendees({
+      attendees: [{
+        name: 'john.smith@example.com',
+        displayName: 'Jordan Smith',
+        email: 'john.smith@example.com',
+      }],
+    }),
+    [{ name: 'Jordan Smith', email: 'john.smith@example.com' }]
+  );
+});
+
+test('extractAttendees prettifies when the only name is the email address', () => {
+  assert.deepEqual(
+    extractAttendees({
+      attendees: [{ name: 'jane.doe+ops@example.com', email: 'jane.doe+ops@example.com' }],
+    }),
+    [{ name: 'Jane Doe', email: 'jane.doe+ops@example.com' }]
+  );
+});
+
 test('extractAttendees deduplicates name variants by email', () => {
   const attendees = extractAttendees({
     attendees: [

@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.meeting_sources.attendee_names import display_name_from_fields
 from core.meeting_sources.record import Attendee, MeetingRecord, parse_timestamp  # noqa: F401
 
 SOURCE = "wispr"
@@ -42,8 +43,13 @@ def _attendees(raw: Any) -> tuple[Attendee, ...]:
         if isinstance(entry, str) and entry.strip():
             people.append(Attendee(name=entry.strip()))
         elif isinstance(entry, dict):
-            name = (entry.get("name") or entry.get("display_name") or "").strip() or None
             email = (entry.get("email") or "").strip() or None
+            name = display_name_from_fields(
+                entry.get("name"),
+                entry.get("display_name"),
+                entry.get("displayName"),
+                email=email,
+            ) or None
             if name or email:
                 people.append(Attendee(name=name, email=email))
     return tuple(people)

@@ -409,9 +409,39 @@ def load_priority_limits_from_yaml() -> Dict[str, int]:
     
     return DEFAULT_PRIORITY_LIMITS
 
-# Load configuration at startup
+# Load configuration at startup. Long-lived Work MCP keeps this process
+# alive across onboarding, so create_task must notice when pillars.yaml is
+# rewritten after those placeholders were first loaded.
 PILLARS = load_pillars_from_yaml()
 PRIORITY_LIMITS = load_priority_limits_from_yaml()
+_PILLARS_SIGNATURE: tuple[str, int, int] | None = None
+
+
+def _pillars_file_signature() -> tuple[str, int, int] | None:
+    path = get_pillars_file()
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (str(path), int(stat.st_mtime_ns), int(stat.st_size))
+
+
+def ensure_pillars_current() -> Dict[str, Dict]:
+    """Reload pillars when the vault file changes after process start.
+
+    Tests that assign ``PILLARS`` keep that assignment until the file
+    identity (path, mtime, size) changes.
+    """
+    global PILLARS, PRIORITY_LIMITS, _PILLARS_SIGNATURE
+    signature = _pillars_file_signature()
+    if signature != _PILLARS_SIGNATURE:
+        PILLARS = load_pillars_from_yaml()
+        PRIORITY_LIMITS = load_priority_limits_from_yaml()
+        _PILLARS_SIGNATURE = signature
+    return PILLARS
+
+
+_PILLARS_SIGNATURE = _pillars_file_signature()
 
 # Priority configuration
 PRIORITIES = ['P0', 'P1', 'P2', 'P3']
@@ -459,6 +489,7 @@ def calculate_similarity(text1: str, text2: str) -> float:
 
 def guess_pillar(item: str) -> Optional[str]:
     """Guess which pillar a task belongs to based on keywords"""
+    ensure_pillars_current()
     item_lower = item.lower()
     item_keywords = extract_keywords(item)
     
@@ -1143,11 +1174,13 @@ def update_task_status_everywhere(
 
 def get_pillar_ids() -> List[str]:
     """Get list of valid pillar IDs"""
+    ensure_pillars_current()
     return list(PILLARS.keys())
 
 
 def resolve_pillar_id(value: str) -> Optional[str]:
     """Resolve an exact pillar ID or one unique display name to its ID."""
+    ensure_pillars_current()
     if value in PILLARS:
         return value
     value_folded = value.strip().casefold()
@@ -1667,42 +1700,13 @@ def _person_resolution_how(query: str, person: Dict[str, Any]) -> str:
     return 'fuzzy'
 
 
-# A fuzzy person match is the only resolution step with no exact evidence behind
-# it, and it is the one that can write to the wrong person's page. Reported:
-# create_task with people=["Jake Walpole"] resolved to Mark Wallace at 0.67 and
-# wrote a Related Tasks row onto his page. Nothing errored, and person pages
-# feed meeting prep and context injection, so the wrong link spreads.
-#
-# Two conditions, because a bare score threshold is tuned to whichever sample
-# produced it. Measured on a real vault, genuine near-misses (a dictation typo,
-# a dropped trailing letter) score 0.80 to 1.00 and the bad match scored 0.67.
-# What actually separates them is the given name: every genuine match agreed on
-# the first token, and "Jake" against "Mark" agrees on nothing.
-#
-# Refusing is the safe direction. A task that is not created is visible
-# immediately; a task attached to the wrong person is not.
-FUZZY_PERSON_MIN_SCORE = 0.75
-FUZZY_PERSON_MIN_FIRST_TOKEN = 0.6
+FUZZY_PERSON_MIN_SCORE = entity_index.FUZZY_PERSON_MIN_SCORE
+FUZZY_PERSON_MIN_FIRST_TOKEN = entity_index.FUZZY_PERSON_MIN_FIRST_TOKEN
 
 
 def _fuzzy_person_match_is_safe(query: str, person: Dict[str, Any]) -> bool:
     """Whether a fuzzy person resolution is strong enough to write to a page."""
-    try:
-        score = float(person.get('_score') or 0.0)
-    except (TypeError, ValueError):
-        return False
-    if score < FUZZY_PERSON_MIN_SCORE:
-        return False
-
-    query_tokens = query.strip().casefold().split()
-    name_tokens = (person.get('name') or '').casefold().split()
-    if len(query_tokens) < 2 or len(name_tokens) < 2:
-        return True
-
-    first_token_ratio = SequenceMatcher(
-        None, query_tokens[0], name_tokens[0]
-    ).ratio()
-    return first_token_ratio >= FUZZY_PERSON_MIN_FIRST_TOKEN
+    return entity_index.fuzzy_person_match_is_safe(query, person)
 
 
 def resolve_people_links(people: List[str]) -> Dict[str, Any]:

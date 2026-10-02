@@ -456,6 +456,16 @@ function boundaryIsSafe(text, start, length) {
     && (!next || !WORD_CONTINUATION.test(next));
 }
 
+function properNounContinues(text, start, length, knownFullNames) {
+  const tail = text.slice(start + length).match(
+    /^[ \t]+([\p{Lu}][\p{L}\p{M}'’\p{Pd}]*)/u,
+  );
+  if (!tail) return false;
+  const extended = `${text.slice(start, start + length)}${tail[0]}`.replace(/\s+/gu, ' ').trim();
+  if (knownFullNames && knownFullNames.has(extended)) return false;
+  return true;
+}
+
 function containsName(text, name) {
   let fromIndex = 0;
   while (fromIndex < text.length) {
@@ -548,6 +558,7 @@ function autoLinkContent(text, registry = buildRegistry()) {
       const end = start + candidate.text.length;
       if (
         boundaryIsSafe(text, start, candidate.text.length)
+        && !properNounContinues(text, start, candidate.text.length, registry.fullNames)
         && !rangesOverlap(start, end, protectedRanges)
       ) {
         occurrences.push({ ...candidate, start, end });

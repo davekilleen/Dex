@@ -51,6 +51,7 @@ const {
   classifyAttendee,
   filterOwner,
 } = require('./lib/attendees.cjs');
+const { routeAtMentionActionItems } = require('./lib/action-items.cjs');
 const { processEntityCreation } = require('./lib/entity-creation.cjs');
 const {
   retryEntityPhases,
@@ -676,10 +677,12 @@ Generate a structured analysis in this exact markdown format:
 ## Action Items
 
 ### For Me
-- [ ] [Something this person committed to doing] - by [timeframe if mentioned]
+- [ ] [Something THIS PERSON (the Dex user) committed to doing] - by [timeframe if mentioned]
 
 ### For Others
 - [ ] @[Person]: [Something they committed to doing]
+
+A line that starts with @Name or @[Name] is never a For Me item. Put it under For Others, even if you also think the user should track it. Only @-mention the user themselves under For Me.
 
 Only list an action item that someone actually committed to. Ideas, things to "consider" or "think about", and topics that were merely raised belong under Key Discussion Points, not here. Keep the timeframe when one was said.
 
@@ -860,6 +863,7 @@ function createMeetingNote(meeting, analysis, profile, pillars, options = {}) {
   const pillarMatch = analysis.match(/## Pillar Assignment\n\n([^\n]+)/i);
   let pillar = pillarMatch ? pillarMatch[1].trim() : pillars[0];
   pillar = pillar.replace(/[\[\]"']/g, '').trim();
+  analysis = routeAtMentionActionItems(analysis, profile && profile.name);
 
   const filteredAttendees = getOwnerFilteredAttendees(meeting, profile);
   const filteredParticipants = filteredAttendees.map(attendee => attendee.name);
