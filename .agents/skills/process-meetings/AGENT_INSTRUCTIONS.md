@@ -217,8 +217,9 @@ For each unique external company:
 
 Independently of whether QMD is installed, run `detect_soft_commitments` over
 each meeting's discussion notes. These are the things the user said they would
-do without writing them down ("we should revisit pricing", "let me think about
-the migration").
+do without writing them down ("we should revisit pricing", "je reviens vers toi
+sur le prix"). The detector matches English and French only. If it returns
+`unsupported_locale: true`, say that once and do not invent matches.
 
 **Never create a task from a soft commitment.** List every match in your final
 output under "Needs the User", marked

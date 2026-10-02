@@ -384,6 +384,9 @@ availability, run the `detect_soft_commitments` Work-MCP tool over each meeting'
 discussion notes. Add matches to the action-items list marked
 "*(soft commitment — confirm before creating)*" so Step 5 confirms, creates, and
 reads back every task ID. QMD is the semantic complement; NEVER auto-create.
+The detector matches English and French phrasing only. If the tool returns
+`unsupported_locale: true`, say that once — do not invent matches for other
+languages.
 
 **Integration:**
 - Add implicit commitments to the action items list with a note: "*(detected — not explicitly stated)*"

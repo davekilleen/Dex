@@ -1,11 +1,13 @@
 ---
 name: create-skill
-description: "Author a new Dex skill — a reusable `/command` — that actually fires and passes the quality bar. Runs a collision check, classifies the shape, writes a router-grade description, generates the real package (SKILL.md + evals), and grades it with `skill-score` before calling it done. Use when the user says 'make a skill', 'I want a /command for X', 'turn this into a skill'. A skill the user builds for themselves is saved under `.claude/skills-custom/` (protected from updates) and coached, never blocked; a first-party skill is held to the hard gate. Not for connecting an external tool; use `create-mcp`. Not for grading a skill that already exists; use `skill-score`."
+description: "Author a new Dex skill that actually fires and passes the quality bar. Runs a collision check, classifies the shape, writes a router-grade description, generates the real package (SKILL.md + evals), and grades it with `skill-score` before calling it done. Use when the user says 'make a skill', 'I want a /command for X', 'turn this into a skill'. A skill the user builds for themselves is saved under `.claude/skills-custom/` (protected from updates) and coached, never blocked — ask for it by its trigger phrases; do not offer `/{name}` because Claude Code does not dispatch that folder. A first-party skill under `.claude/skills/` can be `/{name}` once the host lists it. Not for connecting an external tool; use `create-mcp`. Not for grading a skill that already exists; use `skill-score`."
 ---
 
 # Create a Skill
 
 Author a skill the way the router and a real user will experience it: it must **fire when it should** (the description is the router) and **do the job safely and well when it fires** (the body is a contract, not a how-to essay). This skill runs a real authoring sequence — collision → classify → contract → generate → validate → score — and does not declare done until `skill-score` has graded the package.
+
+**Slash-path honesty:** Claude Code only dispatches `/name` for skills it loaded from `.claude/skills/`, `~/.claude/skills/`, `.claude/commands/`, or a plugin (`/plugin-name:skill-name`). A user skill under `.claude/skills-custom/` is **not** on that list. Never tell the user to type `/{name}` or `/{name}-custom` for a skills-custom folder. Ask them to use the trigger phrases instead.
 
 Governing principle: **hard on Core, gentle on the user's own creations.** A first-party (Core) skill must pass `skill-score ≥ 85` to ship — a hard gate we hold ourselves to. A skill the user writes for themselves is *coached, never blocked*: show the score, name the one change that would make it fire, offer to make it — but always create/keep their skill if they want it.
 
@@ -89,19 +91,22 @@ Read the files you just wrote back before claiming success — confirm the front
 
 **User skill:**
 ```
-✅ Created /{name}  (score: NN/100 — {verdict})
-Try it: /{name}
+✅ Created {name}  (score: NN/100 — {verdict})
+Ask for it with the trigger phrases you gave — not /{name}.
+Claude Code does not load .claude/skills-custom/ as a slash-command folder, so /{name} is not a command it can dispatch.
 Protected from updates — it lives in .claude/skills-custom/, which Dex updates never overwrite.
 Edit: .claude/skills-custom/{name}/SKILL.md
-{if the bare name collided: the command is /{name}-custom and the file is .claude/skills-custom/{name}-custom/SKILL.md}
+{if the bare name collided: the folder is .claude/skills-custom/{name}-custom/ so it does not overwrite the shipped skill. Still not a slash command.}
 {if <85: the one change that would make it fire more reliably}
 ```
 
 **First-party skill:**
 ```
-✅ Created /{name}  (score: NN/100 — SHIP)
+✅ Created {name}  (score: NN/100 — SHIP)
 Held to the Core hard gate: passed skill-score ≥ 85, no gate failures.
 Carries evals/trigger-cases.yaml.
+It lives in .claude/skills/{name}/, which Claude Code does load. /{name} works only after the host lists it (a new session, or Dex's skill-freshness injection if they already typed the name). Do not say "try /{name}" as if the slash menu already has it in this session.
+To turn it off later: open /skills, highlight it, press Space until it is off, then save. That writes skillOverrides in .claude/settings.local.json. Do not write a disabledSkills field — Claude Code does not honor that key. /skill-doctor names unused skills and points at the same /skills switch. Plugin skills are turned off from /plugin, not skillOverrides.
 ```
 
 ---
@@ -112,6 +117,8 @@ A good run leaves behind a skill that **fires on the user's real phrasing, route
 
 ## Anti-patterns (do not do these)
 
+- **Telling the user to type `/{name}`** for a skill under `.claude/skills-custom/`. Claude Code cannot dispatch that slash path.
+- **Writing `disabledSkills` into settings** to turn a skill off. Claude Code ignores that key. Use `/skills` → off (`skillOverrides`), or `/plugin` for a plugin skill.
 - **Writing a user skill under `.claude/skills/`**, including a `{name}-custom` folder there. User skills go in `.claude/skills-custom/`. Origin decides the directory.
 - **Appending `-custom` to a first-party skill**, or using a `-custom` folder name when the bare name is free.
 - **Skipping the collision check** and shipping a skill the router can't tell from an existing one.

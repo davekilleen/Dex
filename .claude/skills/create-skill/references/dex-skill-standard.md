@@ -56,6 +56,14 @@ already belongs to a shipped skill, so both stay invocable. Never append `-custo
 first-party skill, and never author a user skill inside `.claude/skills/`. If you're
 unsure which it is, ask one line.
 
+Claude Code does not load `.claude/skills-custom/` as a slash-command folder. A user
+skill is asked for by its trigger phrases. Do not tell the user to type `/{name}` or
+`/{name}-custom` for that folder. A first-party skill under `.claude/skills/{name}/`
+can be `/{name}` only after the host lists it. To turn a loaded skill off, use
+Claude Code's `/skills` menu (Space → off → save), which writes `skillOverrides` —
+never a `disabledSkills` field, which Claude Code does not honor. `/skill-doctor`
+points at the same switch. Plugin skills are turned off from `/plugin`.
+
 ## 4. Every skill carries `evals/trigger-cases.yaml`
 
 The canonical fixture (copy the shape from

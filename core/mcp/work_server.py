@@ -223,7 +223,7 @@ from core.paths import (
 from core.paths import (
     VAULT_ROOT as BASE_DIR,
 )
-from core.soft_promise import detect_soft_promises
+from core.soft_promise import detect_soft_promises_report
 from core.utils.company_domains import (
     company_name_from_domain,
     is_freemail,
@@ -5423,7 +5423,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="detect_soft_commitments",
-            description="Detect soft/implicit commitments in a block of text (a chat message or meeting notes) — 'I'll follow up', 'let me get back to you', 'we should revisit' — and return candidates with any stated person and due date. Detection only; never creates tasks. The single shared detector behind the live capture hook and process-meetings.",
+            description="Detect soft/implicit commitments in a block of text (a chat message or meeting notes) — English 'I'll follow up' / 'let me get back to you' / 'we should revisit', or French 'je reviens vers toi' / 'je dois relancer' / 'on devrait revenir sur'. Returns candidates with any stated person and due date. Detection only; never creates tasks. Other languages return no candidates and set unsupported_locale. The single shared detector behind the live capture hook and process-meetings.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -7930,8 +7930,7 @@ async def _handle_call_tool_inner(
 
     elif name == "detect_soft_commitments":
         text = arguments.get("text", "")
-        candidates = detect_soft_promises(text)
-        result = {"candidates": candidates, "count": len(candidates)}
+        result = detect_soft_promises_report(text)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "classify_task_effort":

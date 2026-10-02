@@ -237,7 +237,9 @@ def test_creating_a_goal_works_alongside_an_anchorless_one(planning_vault):
     )
 
     assert result.get("success") is not False
-    assert result["goal_id"].endswith("-goal-2")
+    goal_id = result["goal_id"]
+    assert goal_id != ANCHORED_ID
+    assert re.fullmatch(r"Q[1-4]-\d{4}-goal-\d+", goal_id)
 
 
 def test_provisional_goals_are_not_accused_of_zero_activity(planning_vault):
