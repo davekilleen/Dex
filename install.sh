@@ -671,10 +671,11 @@ done
 
 if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" ]; then
     echo "✅ Your vault and the Dex brain now have separate Git histories"
-    # ZIP bundles compose vault-mode .gitignore at packaging time. A git clone
-    # still has the product ignore file, which hides notes folders until the
-    # first /dex-update. Compose here so a fresh install tracks user folders
-    # from the start. Doctor reports the same gap if this step is skipped.
+    # ZIP bundles compose vault-mode .gitignore at packaging time. A cloned
+    # product checkout still has the product ignore file, which hides notes
+    # folders until the first /dex-update. Compose here so a fresh install
+    # tracks user folders from the start. Doctor reports the same gap if
+    # this step is skipped.
     GITIGNORE_COMPOSER="scripts/compose-vault-gitignore.py"
     if [ -f "$GITIGNORE_COMPOSER" ] && [ -f ".gitignore" ]; then
         COMPOSE_PYTHON="$PYTHON_CMD"

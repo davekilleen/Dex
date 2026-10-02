@@ -7,9 +7,11 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.25] — Fresh install keeps your notes in history, and checkup stays calm when Dex is ahead (2026-10-02)
+## Unreleased
 
-A brand-new Dex folder from a git clone still used the product ignore list, so your notes folders looked like they were not part of the vault until you ran an update. Checkup could also treat a copy of Dex that was newer than the last published release as if you had edited Dex's own files. This release closes those. The brain/vault split already keeps your notes on disk and refuses to write over them; this one makes the first install and checkup match that promise.
+Fresh install keeps your notes in history, and checkup stays calm when Dex is ahead.
+
+A brand-new Dex folder from a git clone still used the product ignore list, so your notes folders looked like they were not part of the vault until you ran an update. Checkup could also treat a copy of Dex that was newer than the last published release as if you had edited Dex's own files. This change closes those. The brain/vault split already keeps your notes on disk and refuses to write over them; this one makes the first install and checkup match that promise.
 
 **What this fixes for you:**
 
