@@ -4530,7 +4530,7 @@ def _vault_gitignore_hides_user_regions(context: DoctorContext) -> str | None:
             "from vault history — run /dex-update"
         )
     try:
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
     except (OSError, UnicodeError) as error:
         return f"Could not read the vault ignore file: {_one_line(str(error))}"
     if GITIGNORE_SECTION_BEGIN not in text or GITIGNORE_SECTION_END not in text:
