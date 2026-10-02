@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -2225,3 +2226,56 @@ class TestTransitionCapsuleOnReset:
 
         assert report_payload["success"] is False
         assert "no transition capsule exists" in report_payload["error"]
+
+
+def test_provision_timeout_is_success_when_the_vault_already_matches(
+    tmp_path, monkeypatch
+):
+    """Finalize already wrote the profile; a late timeout must not say it failed."""
+    system = tmp_path / "System"
+    system.mkdir()
+    monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(onboarding_server, "MARKER_FILE", system / ".onboarding-complete")
+    (system / "user-profile.yaml").write_text(
+        "name: Jane\nemail_domain: acme.com\n",
+        encoding="utf-8",
+    )
+    (system / ".onboarding-complete").write_text(
+        json.dumps({"completed": True, "user_name": "Jane"}),
+        encoding="utf-8",
+    )
+    session = {
+        "data": {
+            "name": "Jane",
+            "email_domain": "acme.com",
+            "pillars": ["Build"],
+        }
+    }
+
+    def _timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0] if args else "node", timeout=180)
+
+    monkeypatch.setattr(onboarding_server.subprocess, "run", _timeout)
+
+    receipt = onboarding_server._run_onboarding_provisioner(session, dry_run=False)
+
+    assert receipt["ok"] is True
+    assert receipt["timed_out_after_success"] is True
+
+
+def test_provision_timeout_without_a_matching_profile_is_not_success(
+    tmp_path, monkeypatch
+):
+    system = tmp_path / "System"
+    system.mkdir()
+    monkeypatch.setattr(onboarding_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(onboarding_server, "MARKER_FILE", system / ".onboarding-complete")
+    session = {"data": {"name": "Jane", "email_domain": "acme.com", "pillars": ["Build"]}}
+
+    def _timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0] if args else "node", timeout=180)
+
+    monkeypatch.setattr(onboarding_server.subprocess, "run", _timeout)
+
+    with pytest.raises(RuntimeError, match="taking longer than expected"):
+        onboarding_server._run_onboarding_provisioner(session, dry_run=False)

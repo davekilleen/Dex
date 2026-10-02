@@ -18,7 +18,7 @@ function normalizeName(value) {
 }
 
 function prettifyEmailLocalPart(email) {
-  const localPart = email.split('@', 1)[0];
+  const localPart = email.split('@', 1)[0].split('+', 1)[0];
   return localPart
     .replace(/[._-]+/g, ' ')
     .trim()
@@ -26,6 +26,23 @@ function prettifyEmailLocalPart(email) {
     .filter(Boolean)
     .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
+}
+
+function looksLikeEmail(value) {
+  return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function resolveAttendeeName(record, email) {
+  const candidates = [
+    record && record.name,
+    record && record.display_name,
+    record && record.displayName,
+  ];
+  for (const candidate of candidates) {
+    const name = normalizeName(candidate);
+    if (name && !looksLikeEmail(name)) return name;
+  }
+  return email ? prettifyEmailLocalPart(email) : '';
 }
 
 function isServiceAccount({ name, email } = {}) {
@@ -50,7 +67,7 @@ function extractAttendees(detailData = {}) {
   for (const record of records) {
     if (!record || typeof record !== 'object') continue;
     const email = normalizeEmail(record.email);
-    const name = normalizeName(record.name) || (email ? prettifyEmailLocalPart(email) : '');
+    const name = resolveAttendeeName(record, email);
     if (!name || isServiceAccount({ name, email })) continue;
 
     const key = email
@@ -122,4 +139,7 @@ module.exports = {
   getInternalDomains,
   classifyAttendee,
   filterOwner,
+  looksLikeEmail,
+  resolveAttendeeName,
+  prettifyEmailLocalPart,
 };

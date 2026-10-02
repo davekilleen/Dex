@@ -338,6 +338,20 @@ test('is idempotent and preserves CRLF bytes outside the inserted link', () => {
   assert.equal(autoLinkContent(once, registry), once);
 });
 
+test('does not rewrite a shorter name inside a longer proper noun', () => {
+  const { autoLinkContent } = loadScript();
+  const registry = makeRegistry({
+    fullNames: ['Sarah Chen'],
+    firstNames: [['Sarah', 'Sarah Chen']],
+    targets: [['Sarah Chen', 'Sarah_Chen']],
+  });
+
+  assert.equal(
+    autoLinkContent('Met Sarah Chen Williams at the review. Sarah Chen replied.', registry),
+    'Met Sarah Chen Williams at the review. [[Sarah_Chen|Sarah Chen]] replied.',
+  );
+});
+
 test('does not match names inside longer words or compound identifiers', () => {
   const { autoLinkContent } = loadScript();
   const registry = makeRegistry({

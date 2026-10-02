@@ -64,6 +64,22 @@ def test_single_token_queries_fall_back_to_the_score() -> None:
     assert not work_server._fuzzy_person_match_is_safe('Deepak', _person('Deepak Gupta', 0.4))
 
 
+def test_lookup_does_not_return_the_reported_wrong_contact(tmp_path, monkeypatch) -> None:
+    people_dir = tmp_path / "People"
+    profile = tmp_path / "System" / "user-profile.yaml"
+    profile.parent.mkdir(parents=True)
+    profile.write_text('email_domain: "dex.test"\n')
+    monkeypatch.setattr(work_server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(work_server, "PEOPLE_INDEX_FILE", tmp_path / "System" / "People_Index.json")
+    monkeypatch.setattr(work_server, "USER_PROFILE_FILE", profile)
+    monkeypatch.setattr(work_server, "get_people_dir", lambda: people_dir)
+    assert work_server.create_person_data("Mark Wallace", emails=["mark@example.org"])["success"]
+
+    result = work_server.lookup_person_data("Jake Walpole")
+
+    assert all(match.get("name") != "Mark Wallace" for match in result["matches"])
+
+
 def test_a_missing_or_unparseable_score_is_refused() -> None:
     assert not work_server._fuzzy_person_match_is_safe('Someone', {'name': 'Some One'})
     assert not work_server._fuzzy_person_match_is_safe(

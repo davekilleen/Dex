@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,12 @@ def planning_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str,
     monkeypatch.setattr(work_server, "get_week_priorities_file", lambda: priorities_file)
     monkeypatch.setattr(work_server, "QUARTER_GOALS_FILE", goals_file)
     monkeypatch.setattr(work_server, "PILLARS", TEST_PILLARS)
+    monkeypatch.setattr(
+        work_server, "_PILLARS_SIGNATURE", work_server._pillars_file_signature()
+    )
+    # The fixture goals use a Q3 2026 anchor. Freeze "today" so
+    # create_quarterly_goal numbers the next ID in that same quarter.
+    monkeypatch.setattr(work_server, "_tz_today", lambda: date(2026, 9, 7))
     monkeypatch.setattr(work_server, "_fire_analytics_event", lambda *a, **k: None)
     monkeypatch.setattr(work_server, "refresh_search_index", lambda: None)
 

@@ -24,6 +24,8 @@ import re
 from pathlib import Path
 
 from core import paths
+from core.meeting_sources.action_items import action_item_bucket
+from core.meeting_sources.attendee_names import attendee_note_label
 from core.meeting_sources.record import MeetingRecord
 
 # Derived from the path contract rather than written out, so a vault that moves
@@ -92,8 +94,7 @@ def render(record: MeetingRecord) -> str:
     if record.attendees:
         lines.append("attendees:")
         for person in record.attendees:
-            label = person.email or person.name
-            lines.append(f"  - {label}")
+            lines.append(f"  - {attendee_note_label(person.name, person.email)}")
     lines.append(f"has_transcript: {str(record.has_transcript).lower()}")
     lines.append(f"attribution_resolved: {str(record.attribution_is_reliable).lower()}")
     if record.extra.get("title_was_derived"):
@@ -122,11 +123,26 @@ def render(record: MeetingRecord) -> str:
     lines.append("")
 
     if record.action_items:
-        lines.append("### For Me")
-        lines.append("")
-        for item in record.action_items:
-            lines.append(f"- [ ] {item}")
-        lines.append("")
+        mine = [
+            item for item in record.action_items
+            if action_item_bucket(item) == "me"
+        ]
+        others = [
+            item for item in record.action_items
+            if action_item_bucket(item) == "others"
+        ]
+        if mine:
+            lines.append("### For Me")
+            lines.append("")
+            for item in mine:
+                lines.append(f"- [ ] {item}")
+            lines.append("")
+        if others:
+            lines.append("### For Others")
+            lines.append("")
+            for item in others:
+                lines.append(f"- [ ] {item}")
+            lines.append("")
     return "\n".join(lines)
 
 

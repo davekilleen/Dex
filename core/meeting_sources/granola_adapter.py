@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.meeting_sources.attendee_names import display_name_from_fields
 from core.meeting_sources.record import Attendee, MeetingRecord, parse_timestamp
 
 SOURCE = "granola"
@@ -32,8 +33,13 @@ def _attendees(raw: Any) -> tuple[Attendee, ...]:
     for entry in raw:
         if not isinstance(entry, dict):
             continue
-        name = (entry.get("name") or "").strip() or None
         email = (entry.get("email") or "").strip() or None
+        name = display_name_from_fields(
+            entry.get("name"),
+            entry.get("display_name"),
+            entry.get("displayName"),
+            email=email,
+        ) or None
         if name or email:
             people.append(Attendee(name=name, email=email))
     return tuple(people)

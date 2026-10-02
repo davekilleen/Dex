@@ -624,6 +624,40 @@ def _provision_python() -> str:
     return sys.executable
 
 
+def _session_matches_provisioned_profile(session: Dict) -> bool:
+    """True when finalize already wrote the session's name and email domain.
+
+    Used when the provisioner finished on disk but the wait for its receipt
+    timed out, so we do not tell the user setup failed after it succeeded.
+    """
+    if not MARKER_FILE.exists():
+        return False
+    try:
+        marker = json.loads(MARKER_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(marker, dict) or marker.get("completed") is not True:
+        return False
+    data = _approved_profile_session_data(session)
+    profile_path = BASE_DIR / "System" / "user-profile.yaml"
+    if not profile_path.exists():
+        return False
+    try:
+        import yaml
+        profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(profile, dict):
+        return False
+    expected_name = str(data.get("name") or "").strip()
+    expected_domain = str(data.get("email_domain") or "").strip()
+    if expected_name and str(profile.get("name") or "").strip() != expected_name:
+        return False
+    if expected_domain and str(profile.get("email_domain") or "").strip() != expected_domain:
+        return False
+    return True
+
+
 def _run_onboarding_provisioner(
     session: Dict,
     *,
@@ -669,21 +703,42 @@ def _run_onboarding_provisioner(
             command.append("--dry-run")
         command.append("--json")
         provision_python = _provision_python()
-        completed = subprocess.run(
-            command,
-            cwd=Path(__file__).parent.parent.parent,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-            env={
-                **os.environ,
-                "DEX_CAPABILITY_PYTHON": provision_python,
-                "DEX_PROVISION_PYTHON": provision_python,
-                "DEX_HARNESS_PYTHON": provision_python,
-                "DEX_LIFECYCLE_PYTHON": provision_python,
-            },
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=Path(__file__).parent.parent.parent,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=False,
+                env={
+                    **os.environ,
+                    "DEX_CAPABILITY_PYTHON": provision_python,
+                    "DEX_PROVISION_PYTHON": provision_python,
+                    "DEX_HARNESS_PYTHON": provision_python,
+                    "DEX_LIFECYCLE_PYTHON": provision_python,
+                },
+            )
+        except subprocess.TimeoutExpired as error:
+            if _session_matches_provisioned_profile(session):
+                logger.warning(
+                    "Onboarding provision timed out after the vault already "
+                    "matched the session"
+                )
+                return {
+                    "ok": True,
+                    "created": [
+                        relative
+                        for relative in _REWRITTEN_CONFIG_PATHS
+                        if (BASE_DIR / relative).exists()
+                    ],
+                    "timed_out_after_success": True,
+                }
+            raise RuntimeError(
+                "Onboarding is taking longer than expected. "
+                "If your profile and focus areas are already in place, "
+                "continue; otherwise call finalize_onboarding again."
+            ) from error
         try:
             receipt = json.loads(completed.stdout)
         except json.JSONDecodeError as error:

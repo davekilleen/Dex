@@ -71,6 +71,34 @@ def test_create_person_strips_non_traversal_path_separators_from_filename(tmp_pa
     assert (people_dir / "External" / "ACDC_Contact.md").exists()
 
 
+def test_create_person_does_not_treat_a_similar_name_as_an_email_duplicate(tmp_path, monkeypatch):
+    """An unused email must create a page even when a similar name already exists.
+
+    lookup_person used to fall through from an email miss to fuzzy name
+    matching, so create_person reported a duplicate of the wrong page.
+    """
+    _setup(tmp_path, monkeypatch)
+    assert work_server.create_person_data("John Smith", emails=["john.smith@example.com"])["success"]
+
+    created = work_server.create_person_data(
+        "Jordan Smithson",
+        emails=["jordan@example.org"],
+    )
+
+    assert created["success"] is True
+    assert created["created"] is True
+
+
+def test_lookup_email_does_not_fall_through_to_a_similar_name(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    work_server.create_person_data("John Smith", emails=["john.smith@example.com"])
+
+    result = work_server.lookup_person_data("john.other@example.org")
+
+    assert result["matches"] == []
+    assert result["total_matches"] == 0
+
+
 def test_create_person_exclusive_open_reports_preexisting_file(tmp_path, monkeypatch):
     people_dir = _setup(tmp_path, monkeypatch)
     target = people_dir / "External" / "Race_Person.md"

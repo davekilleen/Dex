@@ -21,7 +21,10 @@ when an optional room file or a Python package was missing, instead of
 saying the vault install was incomplete. And after meetings synced from
 Granola, the check that people and companies were created could skip
 silently on an older Dex folder whose path list did not yet name that
-report file.
+report file. Setup could finish writing your focus areas and then say it
+failed. A meeting note could turn someone else's promise into your task,
+name a person page after an email address, or link the wrong contact.
+This closes those.
 
 **What this fixes for you:**
 
@@ -43,6 +46,23 @@ report file.
 * **Turning a skill off uses Claude's own menu.** Open the skills list, highlight it, press Space until it is off. That is the same place Claude's unused-skill report points you. A made-up off-switch in settings does nothing.
 * **A missing Python install is named, not a crash.** If the checkup cannot load a required package, or an optional room file is missing, it says the vault install is incomplete and points at `/dex-update`. It no longer dies on an internal error.
 * **People from Granola meetings are still checked on older Dex folders.** After a sync, Dex writes the usual one-line people-and-companies check even when the folder's path list was generated before that report existed. The check no longer skips with no explanation.
+* **The wrong person is no longer treated as a match.** A name that is only
+  loosely similar is left unmatched instead of being written onto someone
+  else's page. Looking up or creating a person by email no longer attaches
+  them to a page that merely sounds similar.
+* **An email is not used as someone's name.** If a calendar or recorder only
+  sent an address, Dex uses the display name when it has one, or a readable
+  name from the address, instead of creating a page titled like an inbox.
+* **@Name action items stay with that person.** A line that starts with
+  @Sarah is listed under For Others, not turned into a task for you.
+* **A shorter name is not linked inside a longer one.** Mentions like
+  "Sarah Chen Williams" stay plain when your page is for Sarah Chen.
+* **Setup that already succeeded is not reported as a timeout.** If Dex
+  finished writing your profile and then ran out of time waiting for the
+  receipt, it says you are done.
+* **Your real focus areas are used as soon as setup writes them.** Creating a
+  task after setup no longer offers the placeholder names from before you
+  chose your own.
 
 ## [1.97.24] — Checkup names each step, and a wait is not overdue (2026-09-30)
 

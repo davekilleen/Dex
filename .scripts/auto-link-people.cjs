@@ -456,6 +456,10 @@ function boundaryIsSafe(text, start, length) {
     && (!next || !WORD_CONTINUATION.test(next));
 }
 
+function properNounContinues(text, start, length) {
+  return /^[ \t]+[\p{Lu}]/u.test(text.slice(start + length));
+}
+
 function containsName(text, name) {
   let fromIndex = 0;
   while (fromIndex < text.length) {
@@ -548,6 +552,7 @@ function autoLinkContent(text, registry = buildRegistry()) {
       const end = start + candidate.text.length;
       if (
         boundaryIsSafe(text, start, candidate.text.length)
+        && !properNounContinues(text, start, candidate.text.length)
         && !rangesOverlap(start, end, protectedRanges)
       ) {
         occurrences.push({ ...candidate, start, end });

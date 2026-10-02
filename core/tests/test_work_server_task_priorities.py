@@ -370,7 +370,38 @@ def test_load_pillars_coerces_non_string_keywords(tmp_path, monkeypatch):
     # guess_pillar iterates `keyword in text` over module-level PILLARS — the
     # int-coerced keyword must not raise a TypeError on `61 in "..."`.
     monkeypatch.setattr(work_server, "PILLARS", pillars)
+    monkeypatch.setattr(
+        work_server, "_PILLARS_SIGNATURE", work_server._pillars_file_signature()
+    )
     assert work_server.guess_pillar("let's sync on the pipeline") == "sales"
+
+
+def test_create_task_reloads_pillars_written_after_startup(tmp_path, monkeypatch):
+    """Onboarding rewrites pillars.yaml while Work MCP is already running."""
+    pillars_file = tmp_path / "pillars.yaml"
+    pillars_file.write_text(
+        "pillars:\n"
+        "  - id: pillar_1\n"
+        "    name: Pillar 1\n"
+        "    keywords: []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "get_pillars_file", lambda: pillars_file)
+    monkeypatch.setattr(work_server, "PILLARS", work_server.DEFAULT_PILLARS.copy())
+    monkeypatch.setattr(work_server, "_PILLARS_SIGNATURE", ("stale", 0, 0))
+
+    pillars_file.write_text(
+        "pillars:\n"
+        "  - id: revenue\n"
+        "    name: Revenue\n"
+        "    keywords:\n"
+        "      - pipeline\n",
+        encoding="utf-8",
+    )
+
+    assert work_server.resolve_pillar_id("Revenue") == "revenue"
+    assert work_server.resolve_pillar_id("revenue") == "revenue"
+    assert "Pillar 1" not in work_server.get_pillar_ids()
 
 
 def test_empty_keywords_does_not_discard_all_pillars(tmp_path, monkeypatch):

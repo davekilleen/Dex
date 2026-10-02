@@ -1023,6 +1023,59 @@ def company_index_data(
             raise error
 
 
+# A fuzzy person match is the only resolution step with no exact evidence
+# behind it, and it is the one that can write to the wrong page. Reported:
+# create_task with people=["Jake Walpole"] resolved to Mark Wallace at 0.67.
+# A bare score threshold is tuned to whichever sample produced it; the given
+# name is what actually separates a dictation typo from a different person.
+FUZZY_PERSON_MIN_SCORE = 0.75
+FUZZY_PERSON_MIN_FIRST_TOKEN = 0.6
+
+
+def fuzzy_person_match_is_safe(query: str, person: dict[str, Any]) -> bool:
+    """Whether a fuzzy person resolution is strong enough to use."""
+    try:
+        score = float(person.get("_score") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if score < FUZZY_PERSON_MIN_SCORE:
+        return False
+
+    query_tokens = query.strip().casefold().split()
+    name_tokens = (person.get("name") or "").casefold().split()
+    if len(query_tokens) < 2 or len(name_tokens) < 2:
+        return True
+
+    first_token_ratio = SequenceMatcher(
+        None, query_tokens[0], name_tokens[0]
+    ).ratio()
+    return first_token_ratio >= FUZZY_PERSON_MIN_FIRST_TOKEN
+
+
+def _fuzzy_person_score(query_lower: str, person_name: str) -> float:
+    """Score a name match without treating a token fragment as a hit.
+
+    ``"rob" in "robert williams"`` used to score 0.8 and look confident.
+    Only a whole-token containment (or a real similarity ratio) counts.
+    """
+    query_tokens = query_lower.split()
+    name_tokens = person_name.split()
+    if (
+        query_lower in name_tokens
+        or person_name in query_tokens
+        or (
+            query_tokens
+            and name_tokens
+            and (
+                all(token in name_tokens for token in query_tokens)
+                or all(token in query_tokens for token in name_tokens)
+            )
+        )
+    ):
+        return 0.8
+    return SequenceMatcher(None, query_lower, person_name).ratio()
+
+
 def lookup_person(
     vault_root: str | Path,
     name: str,
@@ -1047,16 +1100,33 @@ def lookup_person(
     def scored(candidates: list[dict[str, Any]], score: float) -> list[dict[str, Any]]:
         return [{**person, "_score": score} for person in candidates]
 
+    def packed(matches: list[dict[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "query": name,
+            "company_filter": company,
+            "matches": matches[:10],
+            "total_matches": len(matches),
+            "index_age": index["built_at"],
+        }
+        if ambiguous:
+            result["ambiguous"] = True
+        return result
+
     matches: list[dict[str, Any]] = []
     if "@" in query:
-        matches = scored(
-            [
-                person
-                for person in people
-                if query_lower
-                in {fold(email) for email in person.get("emails", [])}
-            ],
-            1.0,
+        # An email query is exact or it is a miss. Falling through to name
+        # matching made create_person report a false duplicate when the local
+        # part resembled someone else's page name.
+        return packed(
+            scored(
+                [
+                    person
+                    for person in people
+                    if query_lower
+                    in {fold(email) for email in person.get("emails", [])}
+                ],
+                1.0,
+            )
         )
     if not matches:
         matches = scored(
@@ -1090,11 +1160,9 @@ def lookup_person(
         fuzzy_matches = []
         for person in people:
             person_name = fold(person.get("name") or "")
-            if query_lower in person_name or person_name in query_lower:
-                score = 0.8
-            else:
-                score = SequenceMatcher(None, query_lower, person_name).ratio()
-            if score >= 0.5:
+            score = _fuzzy_person_score(query_lower, person_name)
+            candidate = {**person, "_score": score}
+            if score >= 0.5 and fuzzy_person_match_is_safe(query, candidate):
                 fuzzy_matches.append((score, person))
         fuzzy_matches.sort(key=lambda item: item[0], reverse=True)
         if (
@@ -1107,16 +1175,7 @@ def lookup_person(
             for score, person in fuzzy_matches
         ]
 
-    result: dict[str, Any] = {
-        "query": name,
-        "company_filter": company,
-        "matches": matches[:10],
-        "total_matches": len(matches),
-        "index_age": index["built_at"],
-    }
-    if ambiguous:
-        result["ambiguous"] = True
-    return result
+    return packed(matches)
 
 
 def find_company_by_domain(
