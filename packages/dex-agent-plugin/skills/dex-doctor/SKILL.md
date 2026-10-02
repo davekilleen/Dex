@@ -100,7 +100,14 @@ recovery bundle.
 ### Step 1: Run the collector (quick mode + safe auto-heals)
 
 ```bash
-cd "$VAULT_PATH" && .venv/bin/python core/utils/doctor.py --heal \
+if [ -x "$VAULT_PATH/.venv/Scripts/python.exe" ]; then
+  DEX_DOCTOR_PYTHON="$VAULT_PATH/.venv/Scripts/python.exe"
+elif [ -x "$VAULT_PATH/.venv/bin/python" ]; then
+  DEX_DOCTOR_PYTHON="$VAULT_PATH/.venv/bin/python"
+else
+  DEX_DOCTOR_PYTHON="python3"
+fi
+cd "$VAULT_PATH" && "$DEX_DOCTOR_PYTHON" core/utils/doctor.py --heal \
   || python3 core/utils/doctor.py --heal
 ```
 

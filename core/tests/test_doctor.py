@@ -1966,10 +1966,24 @@ def test_heal_failure_stays_in_thread_and_later_heals_still_run(monkeypatch, con
     assert actions == {}
 
 
+def test_doctor_reads_never_use_locale_codec():
+    source = Path(doctor.__file__).read_text(encoding="utf-8")
+    leftover = []
+    for lineno, line in enumerate(source.splitlines(), 1):
+        stripped = line.strip()
+        if ".read_text(" not in stripped:
+            continue
+        if "text_io.read_text" in stripped:
+            continue
+        leftover.append(f"{lineno}:{stripped}")
+    assert leftover == []
+
+
 def test_doctor_skill_keeps_collector_stderr_visible():
     skill = (REPO_ROOT / ".claude/skills/dex-doctor/SKILL.md").read_text(encoding="utf-8")
     assert "doctor.py --heal 2>/dev/null" not in skill
     assert "python3 core/utils/doctor.py --heal" in skill
+    assert ".venv/Scripts/python.exe" in skill
     assert "names each check as it starts" in skill
 
 
@@ -2404,6 +2418,18 @@ def test_relative_interpreter_paths_resolve_from_the_vault(context):
     python.chmod(0o755)
 
     assert doctor._resolved_interpreter(".venv/bin/python", context) == str(python)
+
+
+def test_windows_interpreter_paths_resolve_with_backslashes(context, monkeypatch):
+    python = context.vault_root / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_text("rem\n", encoding="utf-8")
+    monkeypatch.setattr(doctor.os, "access", lambda _path, _mode: True)
+
+    raw = str(python).replace("/", "\\")
+    assert doctor._looks_like_filesystem_path(raw) is True
+    assert doctor._resolved_interpreter(raw, context) == str(python)
+    assert doctor._resolved_interpreter(".venv\\Scripts\\python.exe", context) == str(python)
 
 
 def test_hooks_wired_detects_dangling_hook_files(context):
@@ -4293,6 +4319,39 @@ def test_smoke_journeys_roll_up_unknown_and_use_the_same_interpreter(monkeypatch
     ]
     assert observed["kwargs"]["env"]["VAULT_PATH"] == str(context.vault_root)
     assert observed["kwargs"]["cwd"] == context.vault_root
+
+
+def test_smoke_journeys_use_scripts_python_on_windows(monkeypatch, context):
+    python = context.vault_root / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_text("rem\n", encoding="utf-8")
+    monkeypatch.setattr(doctor.os, "name", "nt")
+    monkeypatch.setattr(doctor.os, "access", lambda _path, _mode: True)
+    observed = {}
+
+    def run(command, **kwargs):
+        observed["command"] = command
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "schema_version": 1,
+                    "journeys": [
+                        {"id": "configs", "verdict": "OK", "detail": "ok", "duration_ms": 1}
+                    ],
+                    "summary": {"ok": 1, "broken": 0, "unknown": 0, "off": 0},
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+
+    result = doctor._probe_smoke_journeys(context)
+
+    assert result.verdict == "OK"
+    assert observed["command"][0] == str(python)
 
 
 def test_smoke_journeys_use_vault_venv_where_yaml_is_actually_installed(

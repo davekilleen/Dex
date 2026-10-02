@@ -46,6 +46,7 @@ from core.mcp.analytics_receipts import (
     surface_analytics_attempt,
     unavailable_analytics_delivery,
 )
+from core.utils import text_io
 
 
 def _analytics_helper_unavailable_result() -> dict[str, object]:
@@ -96,17 +97,23 @@ VAULT_TEXT_ENCODING = "utf-8"
 
 def read_vault_text(path: Path) -> str:
     """Read vault text as UTF-8 so Windows never uses the locale decoder."""
-    return path.read_text(encoding=VAULT_TEXT_ENCODING)
+    return text_io.read_text(path)
 
 
 def write_vault_text(path: Path, data: str, **kwargs) -> int:
-    """Write vault text as UTF-8 so Windows never uses the locale encoder."""
+    """Write vault text as UTF-8 without truncating the file on a failed write."""
     kwargs.setdefault("encoding", VAULT_TEXT_ENCODING)
-    return path.write_text(data, **kwargs)
+    return text_io.write_text(path, data, **kwargs)
 
 
 def open_vault_text(path: Path, mode: str = "r", **kwargs):
-    """Open vault text as UTF-8 so Windows never uses the locale codec."""
+    """Open vault text as UTF-8 so Windows never uses the locale codec.
+
+    Write mode is refused here: ``open(..., "w")`` truncates first. Call
+    ``write_vault_text`` so a failed encode cannot empty a user file.
+    """
+    if "w" in mode and "+" not in mode and "a" not in mode:
+        raise ValueError("use write_vault_text so a failed write cannot truncate")
     if "b" not in mode:
         kwargs.setdefault("encoding", VAULT_TEXT_ENCODING)
     return path.open(mode, **kwargs)
@@ -6642,8 +6649,7 @@ async def _handle_call_tool_inner(
                 )
                 
                 lines[line_idx] = new_line
-                with open_vault_text(filepath, 'w', newline='') as file:
-                    file.write('\n'.join(lines))
+                write_vault_text(filepath, '\n'.join(lines), newline='')
                 
                 # Propagate status change to referenced pages
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)

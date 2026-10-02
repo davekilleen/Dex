@@ -9,10 +9,33 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
-Connecting Jira sounded like your morning plan would grow a ticket board it does not have. A skill you built for yourself was offered as a command Claude cannot run. A French "I'll follow up" was missed. A drafted email could be named two different ways, so a later send missed it. Turning a skill off was described with a switch Claude does not actually have. A nightly health check could also stop with a raw error when an optional room file or a Python package was missing, instead of saying the vault install was incomplete. And after meetings synced from Granola, the check that people and companies were created could skip silently on an older Dex folder whose path list did not yet name that report file.
+Checkup and updates on a Windows PC could still trip over the machine's
+default text setting, look in the Mac place for Python, or empty a notes
+file when a save failed. Connecting Jira sounded like your morning plan
+would grow a ticket board it does not have. A skill you built for yourself
+was offered as a command Claude cannot run. A French "I'll follow up" was
+missed. A drafted email could be named two different ways, so a later send
+missed it. Turning a skill off was described with a switch Claude does
+not actually have. A nightly health check could also stop with a raw error
+when an optional room file or a Python package was missing, instead of
+saying the vault install was incomplete. And after meetings synced from
+Granola, the check that people and companies were created could skip
+silently on an older Dex folder whose path list did not yet name that
+report file.
 
 **What this fixes for you:**
 
+* **Checkup can run on a Windows PC.** It now looks in the Windows Python
+  folder, understands Windows-style file paths, and reads its own files the
+  same way on every computer. A checkup no longer calls a healthy install
+  broken just because the PC's default text setting is different.
+* **A failed save no longer empties your notes.** If Dex cannot write a
+  change, the original file stays as it was. Everyday marks — a notes
+  symbol, a tick, a name with an accent — no longer wipe a task or people
+  file when the write does not finish.
+* **The post-update check uses the same Python as the rest of Dex.** After
+  an update on Windows, Dex looks for the Windows Python first instead of
+  a Mac-only command.
 * **A skill you make for yourself is asked for in plain words.** Claude does not add it to the slash menu. Dex says that now, instead of "type /that-name".
 * **Connecting Jira does not pretend your morning plan grew a sprint section.** Dex can look up tickets when you ask. Keeping Dex tasks in sync with Jira still works if you turn that on. Your daily plan, project health, meeting prep, and week review do not automatically add Jira or Confluence blocks.
 * **French "I'll get back to you" is caught the same way English is.** If the note is in another language, Dex says it cannot scan that phrasing instead of staying silent.
