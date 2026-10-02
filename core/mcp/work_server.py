@@ -836,14 +836,68 @@ def stamp_task_source_line(source: str, source_line: str,
         logger.warning("Could not stamp task source line in %s: %s", source_path, error)
         return {**result, 'reason': 'write_failed'}
 
+def _user_content_folder_names() -> List[str]:
+    """PARA folders that can hold real task copies, never docs or examples."""
+    return [
+        INBOX_DIR.name,
+        QUARTER_GOALS_FILE.parent.name,
+        WEEK_PRIORITIES_FILE.parent.name,
+        TASKS_FILE.parent.name,
+        PROJECTS_DIR.name,
+        AREAS_DIR.name,
+        ARCHIVES_DIR.name,
+    ]
+
+
+def _iter_user_markdown_files() -> List[Path]:
+    """Markdown files that can hold real task copies.
+
+    A Dex-repo vault also contains docs, shipped examples, and plugin trees.
+    Scanning those with rglob hangs the harness and invents work from legends.
+    Always include the live Tasks and Week Priorities files even when a test
+    points them outside the numbered folders.
+    """
+    seen: set[Path] = set()
+    files: List[Path] = []
+
+    def add(path: Path) -> None:
+        try:
+            if not path.is_file():
+                return
+            resolved = path.resolve()
+        except OSError:
+            return
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        files.append(path)
+
+    for getter in (get_tasks_file, get_week_priorities_file):
+        try:
+            add(getter())
+        except Exception:
+            continue
+
+    for folder_name in _user_content_folder_names():
+        folder = BASE_DIR / folder_name
+        if not folder.exists():
+            continue
+        try:
+            for md_file in folder.rglob('*.md'):
+                add(md_file)
+        except OSError:
+            continue
+    return files
+
+
 def find_task_by_id(task_id: str) -> List[Dict[str, Any]]:
-    """Find all instances of a task ID across all markdown files"""
+    """Find all instances of a task ID across user-content markdown files"""
     instances = []
     # Anchor on a digit boundary: a plain substring test lets task-...-100
     # match inside task-...-1000 and update the wrong row.
     anchored = re.compile(r'\^' + re.escape(task_id) + r'(?!\d)')
 
-    for md_file in BASE_DIR.rglob('*.md'):
+    for md_file in _iter_user_markdown_files():
         try:
             content = read_vault_text(md_file)
             lines = content.split('\n')
@@ -1038,6 +1092,11 @@ def update_task_status_everywhere(
                 'error': str(e)
             })
             continue
+
+    try:
+        _sync_weekly_priorities_for_task(task_id, completed)
+    except Exception as e:
+        logger.error(f"Error syncing weekly priorities for {task_id}: {e}")
 
     result = {
         'success': len(failed_files) == 0,
@@ -2596,6 +2655,55 @@ def _fiscal_quarter_label(day: date, q1_start_month: int) -> str:
     return f"Q{((day.month - q1_start_month) % 12) // 3 + 1} {day.year}"
 
 
+def _normalize_quarter_label(quarter: str) -> Optional[str]:
+    """Accept 'Q1 2026', 'Q1-2026', or 'q1 2026' and return 'Q1 2026'."""
+    raw = re.sub(r'\s+', ' ', (quarter or '').strip())
+    match = re.fullmatch(r'[Qq]([1-4])[\s-]+(\d{4})', raw)
+    if not match:
+        return None
+    return f"Q{match.group(1)} {match.group(2)}"
+
+
+def _q1_start_month_from_profile() -> int:
+    """Read q1_start_month the same way get_quarter_info does."""
+    q1_start_month = 1
+    if USER_PROFILE_FILE.exists() and yaml:
+        try:
+            data = yaml.safe_load(read_vault_text(USER_PROFILE_FILE))
+            if data and isinstance(data.get('quarterly_planning'), dict):
+                value = data['quarterly_planning'].get('q1_start_month', 1)
+                if isinstance(value, int) and 1 <= value <= 12:
+                    q1_start_month = value
+        except Exception as e:
+            logger.error(f"Error reading q1_start_month: {e}")
+    return q1_start_month
+
+
+def _quarter_info_from_label(quarter: str) -> Optional[Dict[str, Any]]:
+    """Dates and label for an explicit quarter= argument."""
+    label = _normalize_quarter_label(quarter)
+    if not label:
+        return None
+    year = int(label.split()[1])
+    q1 = _q1_start_month_from_profile()
+    for candidate_year in (year, year - 1, year + 1):
+        for month in range(1, 13):
+            day = date(candidate_year, month, 15)
+            if _fiscal_quarter_label(day, q1) == label:
+                return get_quarter_info(day)
+    return None
+
+
+def _quarter_from_goal_id(goal_id: Optional[str]) -> str:
+    """Calendar-form IDs name their quarter; fiscal IDs leave this empty."""
+    if not goal_id:
+        return ''
+    match = re.match(r'Q(\d+)-(\d{4})-goal-', goal_id)
+    if not match:
+        return ''
+    return f"Q{match.group(1)} {match.group(2)}"
+
+
 def _declared_planning_quarter(today: date) -> Optional[str]:
     """The quarter the user says they are planning, when it is safe to use.
 
@@ -2807,7 +2915,10 @@ def parse_quarterly_goals(filepath: Path) -> List[Dict[str, Any]]:
                 'milestones': milestones,
                 'progress': progress,
                 'last_updated': last_updated,
-                'quarter': quarter_info.get('quarter', ''),
+                'quarter': (
+                    _quarter_from_goal_id(goal_id)
+                    or quarter_info.get('quarter', '')
+                ),
                 'line_number': i + 1,
                 'career_goal_id': career_goal_id,
                 'skills_developed': skills_developed,
@@ -3042,11 +3153,19 @@ def create_quarterly_goal_in_file(goal_data: Dict[str, Any]) -> Dict[str, Any]:
             "The Quarter Goals room is off. Turn it on with /manage-capabilities when you want it.",
         )
     goals_file = QUARTER_GOALS_FILE
+    requested_quarter = _normalize_quarter_label(str(goal_data.get('quarter') or ''))
+    if requested_quarter:
+        goal_data = {**goal_data, 'quarter': requested_quarter}
+    quarter_info = (
+        _quarter_info_from_label(goal_data.get('quarter') or '')
+        or get_quarter_info()
+    )
+    if not goal_data.get('quarter'):
+        goal_data = {**goal_data, 'quarter': quarter_info['quarter']}
     
     # Ensure file exists
     if not goals_file.exists():
-        # Create new file with frontmatter
-        quarter_info = get_quarter_info()
+        # Create new file with frontmatter for the requested quarter
         goals_file.parent.mkdir(parents=True, exist_ok=True)
         content = f"""---
 quarter: {quarter_info['quarter']}
@@ -3148,6 +3267,107 @@ def generate_priority_id(week_date: date, existing_priorities: List[Dict]) -> st
     
     return f"{prefix}{max_num + 1}"
 
+_PRIORITY_COMPLETE_MARK_RE = re.compile(r'✅|\bCompleted:', re.IGNORECASE)
+
+
+def _priority_line_is_complete(line: str) -> bool:
+    """True when a weekly-priority heading or metadata line is marked done."""
+    return bool(_PRIORITY_COMPLETE_MARK_RE.search(line))
+
+
+def mark_weekly_priority_complete(priority_id: str) -> bool:
+    """Write a completion mark onto one weekly priority. Idempotent."""
+    priorities_file = get_week_priorities_file()
+    if not priorities_file.exists():
+        return False
+
+    lines = read_vault_text(priorities_file).split('\n')
+    stamp = _tz_today().isoformat()
+    changed = False
+    for index, line in enumerate(lines):
+        if extract_priority_id(line) != priority_id:
+            continue
+        if _priority_line_is_complete(line):
+            return True
+        anchor = f'^{priority_id}'
+        if anchor in line:
+            lines[index] = line.replace(anchor, f'✅ {stamp} {anchor}')
+        else:
+            lines[index] = f'{line.rstrip()} ✅ {stamp}'
+        changed = True
+        break
+
+    if not changed:
+        return False
+    write_vault_text(priorities_file, '\n'.join(lines))
+    return True
+
+
+def complete_weekly_priority_in_file(priority_id: str) -> Dict[str, Any]:
+    """Mark a weekly priority complete on disk and roll progress to its goal."""
+    priorities_file = get_week_priorities_file()
+    if not priorities_file.exists():
+        return {
+            'success': False,
+            'error': 'Week Priorities file not found',
+        }
+
+    priorities = parse_weekly_priorities(priorities_file)
+    priority = next(
+        (item for item in priorities if item.get('priority_id') == priority_id),
+        None,
+    )
+    if not priority:
+        return {
+            'success': False,
+            'error': f'Priority not found: {priority_id}',
+        }
+
+    if not mark_weekly_priority_complete(priority_id):
+        return {
+            'success': False,
+            'error': f'Could not update priority: {priority_id}',
+        }
+
+    goal_progress = None
+    if priority.get('linked_goal_id'):
+        progress_info = calculate_goal_progress(priority['linked_goal_id'])
+        update_goal_in_file(
+            priority['linked_goal_id'], {'progress': progress_info['progress']}
+        )
+        goal_progress = progress_info
+
+    return {
+        'success': True,
+        'priority_id': priority_id,
+        'title': priority['title'],
+        'completed': True,
+        'linked_goal_updated': goal_progress is not None,
+        'goal_progress': goal_progress,
+    }
+
+
+def _sync_weekly_priorities_for_task(task_id: str, completed: bool) -> None:
+    """When every task on a weekly priority is done, mark that priority done."""
+    if not completed:
+        return
+    priorities_file = get_week_priorities_file()
+    if not priorities_file.exists():
+        return
+
+    for priority in parse_weekly_priorities(priorities_file):
+        priority_id = priority.get('priority_id')
+        if not priority_id or priority.get('completed'):
+            continue
+        linked = find_linked_tasks(priority_id)
+        if (
+            linked
+            and any(item.get('task_id') == task_id for item in linked)
+            and all(item.get('completed') for item in linked)
+        ):
+            mark_weekly_priority_complete(priority_id)
+
+
 def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     """Parse weekly priorities from Week Priorities.md"""
     if not filepath.exists():
@@ -3162,9 +3382,18 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
         # 1. Priority Title — **Pillar** ^week-2026-W05-p1
         # Or task-style: - [ ] **Priority Title** ^week-2026-W05-p1
         
-        priority_match = re.match(r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
+        priority_id_tail = (
+            r'(?:\s+✅\s+\d{4}-\d{2}-\d{2})?(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?'
+        )
+        priority_match = re.match(
+            r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*' + priority_id_tail,
+            line,
+        )
         if not priority_match:
-            priority_match = re.match(r'(\d+)\.\s+\*\*(.+?)\*\*,\s+\*\*(.+?)\*\*(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?', line)
+            priority_match = re.match(
+                r'(\d+)\.\s+\*\*(.+?)\*\*,\s+\*\*(.+?)\*\*' + priority_id_tail,
+                line,
+            )
         if priority_match:
             priority_num = int(priority_match.group(1))
             title = priority_match.group(2).strip()
@@ -3183,8 +3412,13 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
                     linked_goal_id = goal_match.group(1)
                 break
             
-            # Check completion (look for checkmark or completion note)
-            completed = False  # For now, will enhance later
+            completed = _priority_line_is_complete(line)
+            for metadata_line in lines[i + 1:]:
+                if not re.match(r'^\s+-\s+', metadata_line):
+                    break
+                if _priority_line_is_complete(metadata_line):
+                    completed = True
+                    break
             
             priorities.append({
                 'priority_id': priority_id,
@@ -3437,12 +3671,28 @@ def parse_tasks_file(filepath: Path) -> List[Dict[str, Any]]:
     current_section = None
     current_section_priority = None
     task_counter = 0
+    in_code_fence = False
+    skip_legend_section = False
+    legend_headings = frozenset({
+        'task format', 'legend', 'examples', 'example', 'task examples',
+    })
     
     for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            continue
+
         # Track section headers
         if line.startswith('# ') or line.startswith('## '):
             current_section = line.lstrip('#').strip()
             current_section_priority = priority_from_section(current_section)
+            skip_legend_section = current_section.casefold() in legend_headings
+            continue
+
+        if skip_legend_section or 'task-YYYYMMDD' in line:
             continue
         
         # Parse task lines
@@ -3811,6 +4061,45 @@ def classify_all_tasks_effort(tasks: List[Dict]) -> List[Dict]:
 # WEEK PROGRESS TRACKING
 # ============================================================================
 
+def _completion_date_from_line(line: str) -> Optional[date]:
+    """Return the calendar date from a ✅ stamp, or None when none was written."""
+    match = re.search(r'✅\s*(\d{4}-\d{2}-\d{2})', line)
+    if not match:
+        return None
+    try:
+        return date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+
+
+def _count_tasks_completed_in_week(week_start: date, week_end: date) -> int:
+    """Count canonical backlog tasks whose written completion date is this week.
+
+    Completed rows without a stamp are not invented as this week's work.
+    Legend examples inside fenced blocks are ignored by the same fence skip
+    used when reading the task list.
+    """
+    path = get_tasks_file()
+    if not path.exists():
+        return 0
+
+    count = 0
+    in_code_fence = False
+    for line in read_vault_text(path).split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            continue
+        if not re.match(r'^-\s*\[[xX]\]', stripped):
+            continue
+        completed_on = _completion_date_from_line(line)
+        if completed_on and week_start <= completed_on <= week_end:
+            count += 1
+    return count
+
+
 def get_week_progress_data() -> Dict[str, Any]:
     """Get comprehensive progress data for the current week"""
     today = _tz_today()
@@ -3848,6 +4137,11 @@ def get_week_progress_data() -> Dict[str, Any]:
                     priority_data['status'] = 'complete'
                 elif priority_data['tasks_done'] > 0:
                     priority_data['status'] = 'in_progress'
+
+        # A written completion mark wins even when no tasks are linked,
+        # so complete_weekly_priority cannot leave the week looking stuck.
+        if priority.get('completed'):
+            priority_data['status'] = 'complete'
         
         # Add warnings for priorities with no activity
         if priority_data['status'] == 'not_started' and days_elapsed >= 2:
@@ -3860,14 +4154,7 @@ def get_week_progress_data() -> Dict[str, Any]:
     in_progress_priorities = sum(1 for p in priorities_detail if p['status'] == 'in_progress')
     not_started_priorities = sum(1 for p in priorities_detail if p['status'] == 'not_started')
     
-    # Get tasks completed this week
-    all_tasks = get_all_tasks()
-    tasks_completed_this_week = 0
-    for task in all_tasks:
-        if task.get('completed'):
-            # Check if completed this week by looking at the task line for timestamp
-            # This is a simplified check - would need completion timestamps
-            tasks_completed_this_week += 1  # Placeholder
+    tasks_completed_this_week = _count_tasks_completed_in_week(week_start, week_end)
     
     return {
         'date': today.isoformat(),
@@ -4214,13 +4501,23 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
 # ============================================================================
 
 COMMITMENT_PATTERNS = [
-    r"i['']ll\s+(?:get back to|send|share|follow up|email|schedule|prepare|review|draft)\s+(.+?)(?:\s+by\s+(\w+))?",
-    r"will\s+(?:send|share|follow up|provide|deliver|complete)\s+(.+?)(?:\s+by\s+(\w+))?",
-    r"owe\s+(?:you|them|him|her)\s+(.+)",
-    r"need to\s+(?:send|share|get back|follow up)\s+(.+?)(?:\s+by\s+(\w+))?",
-    r"action\s*item[s]?:\s*(.+)",
-    r"follow.?up:\s*(.+)",
+    r"i['']ll\s+(?:get back to|send|share|follow up|email|schedule|prepare|review|draft)\s+([^\n.!?]+)",
+    r"will\s+(?:send|share|follow up|provide|deliver|complete)\s+([^\n.!?]+)",
+    r"owe\s+(?:you|them|him|her)\s+([^\n.!?]+)",
+    r"need to\s+(?:send|share|get back|follow up)\s+([^\n.!?]+)",
+    r"action\s*item[s]?:\s*([^\n]+)",
+    r"follow.?up:\s*([^\n]+)",
 ]
+
+
+def _usable_commitment_text(text: str) -> bool:
+    """Reject single-character and punctuation-only commitment captures."""
+    cleaned = re.sub(r'\s+', ' ', (text or '').strip())
+    if len(cleaned) < 3:
+        return False
+    letters = re.sub(r'[^A-Za-z0-9]+', '', cleaned)
+    return len(letters) >= 3
+
 
 def extract_commitments_from_text(text: str, source: str = '', date_context: str = '') -> List[Dict[str, Any]]:
     """Extract commitment patterns from text"""
@@ -4231,7 +4528,13 @@ def extract_commitments_from_text(text: str, source: str = '', date_context: str
         matches = re.finditer(pattern, text_lower)
         for match in matches:
             commitment_text = match.group(1).strip() if match.lastindex >= 1 else match.group(0)
-            due_date = match.group(2) if match.lastindex >= 2 else None
+            due_date = None
+            due_match = re.search(r'\s+by\s+(\w+)\s*$', commitment_text)
+            if due_match:
+                due_date = due_match.group(1)
+                commitment_text = commitment_text[:due_match.start()].strip()
+            if not _usable_commitment_text(commitment_text):
+                continue
             
             commitments.append({
                 'commitment': commitment_text,
@@ -4355,6 +4658,8 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
                     for line in section_content.split('\n'):
                         if '- [ ]' in line:
                             item_text = re.sub(r'-\s*\[\s*\]\s*', '', line).strip()
+                            if not _usable_commitment_text(item_text):
+                                continue
                             result['commitments_no_date'].append({
                                 'commitment': item_text,
                                 'due_date': None,
@@ -6640,8 +6945,20 @@ async def _handle_call_tool_inner(
                 "error": f"Invalid pillar '{pillar}'. Must be one of: {list(PILLARS.keys())}"
             }, indent=2))]
         
-        # Determine quarter if not provided
-        if not quarter:
+        # Determine quarter if not provided. An explicit quarter= must be
+        # honored, including forms like Q1-2027; an unreadable value is an
+        # error rather than a silent current-quarter write.
+        if quarter:
+            normalized = _normalize_quarter_label(quarter)
+            if not normalized:
+                return [types.TextContent(type="text", text=json.dumps({
+                    "success": False,
+                    "error": (
+                        f"Invalid quarter '{quarter}'. Use the form 'Q1 2026'."
+                    )
+                }, indent=2))]
+            quarter = normalized
+        else:
             quarter_info = get_quarter_info()
             quarter = quarter_info['quarter']
         
@@ -7002,48 +7319,7 @@ async def _handle_call_tool_inner(
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "complete_weekly_priority":
-        priority_id = arguments['priority_id']
-        
-        # Find the priority in Week Priorities.md
-        priorities_file = get_week_priorities_file()
-        if not priorities_file.exists():
-            return [types.TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": "Week Priorities file not found"
-            }, indent=2))]
-        
-        priorities = parse_weekly_priorities(priorities_file)
-        priority = None
-        for p in priorities:
-            if p.get('priority_id') == priority_id:
-                priority = p
-                break
-        
-        if not priority:
-            return [types.TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Priority not found: {priority_id}"
-            }, indent=2))]
-        
-        # Mark as completed (for now, just return success)
-        # In full implementation, would update the file
-        
-        # If linked to a goal, recalculate goal progress
-        goal_progress = None
-        if priority.get('linked_goal_id'):
-            progress_info = calculate_goal_progress(priority['linked_goal_id'])
-            # Update goal progress
-            update_goal_in_file(priority['linked_goal_id'], {'progress': progress_info['progress']})
-            goal_progress = progress_info
-        
-        result = {
-            "success": True,
-            "priority_id": priority_id,
-            "title": priority['title'],
-            "completed": True,
-            "linked_goal_updated": goal_progress is not None,
-            "goal_progress": goal_progress
-        }
+        result = complete_weekly_priority_in_file(arguments['priority_id'])
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "get_work_summary":
