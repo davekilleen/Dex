@@ -39,6 +39,12 @@ def _install_fixture(
     (root / "core" / "mcp" / "requirements.txt").write_text("", encoding="utf-8")
     (root / "core" / "mcp" / "requirements.hash.txt").write_text("# fixture\n", encoding="utf-8")
     (root / "package-lock.json").write_text('{ "lockfileVersion": 3 }\n', encoding="utf-8")
+    (root / "scripts").mkdir()
+    (root / "scripts" / "compose-vault-gitignore.py").write_text(
+        "# fixture composer — executed by the venv python shim\n",
+        encoding="utf-8",
+    )
+    (root / ".gitignore").write_text("00-Inbox/\n04-Projects/\n", encoding="utf-8")
 
     if scenario == "post-split":
         (root / ".git").mkdir()
@@ -99,7 +105,13 @@ fi
 if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
   mkdir -p "$3/bin"
   printf '#!/bin/sh\nexit 0\n' > "$3/bin/pip"
-  printf '#!/bin/sh\nexit 0\n' > "$3/bin/python"
+  cat > "$3/bin/python" <<'PY'
+#!/bin/sh
+if [ -n "$1" ] && [ -f "$1" ]; then
+  printf '%s\n' "$*" >> "$DEX_TEST_COMPOSE_LOG"
+fi
+exit 0
+PY
   chmod +x "$3/bin/pip" "$3/bin/python"
 fi
 exit 0
@@ -117,6 +129,7 @@ exit 0
         {
             "PATH": f"{shim_dir}:/usr/bin:/bin",
             "DEX_TEST_NODE_LOG": str(tmp_path / "node.log"),
+            "DEX_TEST_COMPOSE_LOG": str(tmp_path / "compose.log"),
             "DEX_TEST_REAL_NODE": real_node,
             "DEX_TEST_RESUME_SENTINEL": str(tmp_path / "resume.once"),
             "DEX_TEST_SCENARIO": scenario,
@@ -148,11 +161,13 @@ def _run_install(
     )
     log_path = Path(environment["DEX_TEST_NODE_LOG"])
     calls = log_path.read_text(encoding="utf-8").splitlines() if log_path.exists() else []
-    return result, calls
+    compose_log = Path(environment["DEX_TEST_COMPOSE_LOG"])
+    composed = compose_log.exists()
+    return result, calls, composed
 
 
 def test_fresh_git_install_routes_bounded_migration_through_auto_then_resume(tmp_path: Path) -> None:
-    result, calls = _run_install(tmp_path, "resume")
+    result, calls, composed = _run_install(tmp_path, "resume")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--install-config-only --json" in calls[0]
@@ -160,44 +175,50 @@ def test_fresh_git_install_routes_bounded_migration_through_auto_then_resume(tmp
     assert calls[3].endswith("--adopt --lifecycle-only")
     assert "Separating the Dex brain from your vault" in result.stdout
     assert "separate Git histories" in result.stdout
+    assert "Your notes folders stay in your vault history from the start" in result.stdout
+    assert composed is True
     assert "Dex installation complete" in result.stdout
 
 
 def test_synced_folder_install_carries_explicit_override_into_resume(tmp_path: Path) -> None:
-    result, calls = _run_install(tmp_path, "resume", "--allow-synced-folder")
+    result, calls, composed = _run_install(tmp_path, "resume", "--allow-synced-folder")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert calls[1:3] == [
         f"{MIGRATOR} --auto --allow-synced-folder",
         f"{MIGRATOR} --resume --allow-synced-folder",
     ]
+    assert composed is True
 
 
 def test_install_refuses_to_claim_success_when_vault_git_is_missing(
     tmp_path: Path,
 ) -> None:
-    result, calls = _run_install(tmp_path, "split-without-vault-git")
+    result, calls, composed = _run_install(tmp_path, "split-without-vault-git")
 
     assert result.returncode != 0, result.stdout + result.stderr
     assert calls[1] == f"{MIGRATOR} --auto"
     assert "could not finish the brain/vault split" in result.stdout
     assert "v1-to-v2-brain-vault-split.cjs --resume" in result.stdout
     assert "Dex installation complete" not in result.stdout
+    assert composed is False
 
 
 def test_already_split_install_is_safe_and_keeps_normal_setup_working(tmp_path: Path) -> None:
-    result, calls = _run_install(tmp_path, "post-split")
+    result, calls, composed = _run_install(tmp_path, "post-split")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--install-config-only --json" in calls[0]
     assert calls[1] == f"{MIGRATOR} --auto"
     assert calls[2].endswith("--adopt --lifecycle-only")
     assert "separate Git histories" in result.stdout
+    assert "Your notes folders stay in your vault history from the start" in result.stdout
+    assert composed is True
     assert "Dex installation complete" in result.stdout
 
 
 def test_zip_combined_layout_finishes_install_without_claiming_a_split(tmp_path: Path) -> None:
-    result, calls = _run_install(tmp_path, "zip")
+    result, calls, composed = _run_install(tmp_path, "zip")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "--install-config-only --json" in calls[0]
@@ -206,10 +227,11 @@ def test_zip_combined_layout_finishes_install_without_claiming_a_split(tmp_path:
     assert "no Git clone history" in result.stdout
     assert "Your files are unchanged" in result.stdout
     assert "Dex installation complete" in result.stdout
+    assert composed is False
 
 
 def test_migration_failure_stops_install_with_plain_english_recovery(tmp_path: Path) -> None:
-    result, calls = _run_install(tmp_path, "failure")
+    result, calls, composed = _run_install(tmp_path, "failure")
 
     assert result.returncode == 42
     assert "--install-config-only --json" in calls[0]
@@ -217,10 +239,11 @@ def test_migration_failure_stops_install_with_plain_english_recovery(tmp_path: P
     assert "could not finish the brain/vault split" in result.stdout
     assert "migration-report-v2.md" in result.stdout
     assert "Dex installation complete" not in result.stdout
+    assert composed is False
 
 
 def test_install_points_claude_code_users_at_the_install_folder(tmp_path: Path) -> None:
-    result, _ = _run_install(tmp_path, "zip", chat_app="claude")
+    result, _, _ = _run_install(tmp_path, "zip", chat_app="claude")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Dex detected: Claude Code" in result.stdout
@@ -232,7 +255,7 @@ def test_install_points_claude_code_users_at_the_install_folder(tmp_path: Path) 
 
 
 def test_install_points_cursor_users_at_the_install_folder(tmp_path: Path) -> None:
-    result, _ = _run_install(tmp_path, "zip", chat_app="cursor")
+    result, _, _ = _run_install(tmp_path, "zip", chat_app="cursor")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Dex detected: Cursor" in result.stdout
@@ -240,3 +263,16 @@ def test_install_points_cursor_users_at_the_install_folder(tmp_path: Path) -> No
     assert "the folder you just installed into" in result.stdout
     assert "In that app's chat, type: /setup" in result.stdout
     assert "Dex detected: Claude Code" not in result.stdout
+
+
+def test_install_composes_vault_gitignore_only_after_a_finished_split() -> None:
+    installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    success = installer.index("✅ Your vault and the Dex brain now have separate Git histories")
+    missing_git = installer.index("The notes folder has no working Git history")
+    no_clone = installer.index("This folder has no Git clone history")
+    composer = installer.index("scripts/compose-vault-gitignore.py")
+
+    assert success < composer < missing_git < no_clone
+    assert 'dex_run_logged "compose-vault-gitignore"' in installer
+    assert 'COMPOSE_PYTHON="$VENV_PYTHON"' in installer
+    assert "Your notes folders stay in your vault history from the start" in installer

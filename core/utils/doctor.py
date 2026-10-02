@@ -4259,6 +4259,17 @@ def _probe_vault_git(context: DoctorContext) -> ProbeResult:
         if remote_count == 0
         else f"{remote_count} private backup remote(s) configured"
     )
+    hide_reason = _vault_gitignore_hides_user_regions(context)
+    if hide_reason is not None:
+        return ProbeResult(
+            "UNKNOWN",
+            f"{hide_reason}; the local vault history is otherwise healthy; {suffix}",
+            Heal(
+                tier=2,
+                action="Run /dex-update so Dex can make your notes folders trackable in vault history.",
+                applied=False,
+            ),
+        )
     return ProbeResult("OK", f"The local vault history is healthy; {suffix}")
 
 
@@ -4442,15 +4453,103 @@ def _installed_release_treeish(context: DoctorContext) -> str | None:
     tagged, so the matching tag names the exact installed tree — regardless
     of how far ahead the fetched release tip has moved since.
     """
-    package = _regular_json(context.repo_root / "package.json")
-    version = package.get("version") if isinstance(package, dict) else None
-    if not isinstance(version, str) or not version:
+    version = _package_json_version(context)
+    if version is None:
         return None
     for tag in (f"v{version}", version):
         ref = f"refs/tags/{tag}"
         result = _git_result(context, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
         if result.returncode == 0:
             return ref
+    return None
+
+
+def _package_json_version(context: DoctorContext) -> str | None:
+    package = _regular_json(context.repo_root / "package.json")
+    version = package.get("version") if isinstance(package, dict) else None
+    if not isinstance(version, str) or not version.strip():
+        return None
+    return version.strip()
+
+
+def _semver_tuple(version: str) -> tuple[int, int, int] | None:
+    release = version.lstrip("v").split("-", 1)[0].split("+", 1)[0]
+    parts = release.split(".")
+    if len(parts) < 3:
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+
+
+def _published_release_version(
+    context: DoctorContext, release_ref: str
+) -> tuple[int, int, int] | None:
+    text = _git_file(context, release_ref, "package.json")
+    if text is None:
+        return None
+    try:
+        package = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    version = package.get("version") if isinstance(package, dict) else None
+    if not isinstance(version, str) or not version:
+        return None
+    return _semver_tuple(version)
+
+
+def _install_is_ahead_of_published_release(
+    context: DoctorContext, release_ref: str
+) -> bool:
+    """True when this checkout's version is newer than the fetched release.
+
+    An unreleased install has no matching tag. Falling back to merge-base
+    with the latest published tip then flags every newer shipped file as
+    drift. Compare versions first; if this install is ahead, Doctor should
+    judge the working tree against HEAD, not the older published tip.
+    """
+    current = _package_json_version(context)
+    current_tuple = _semver_tuple(current) if current else None
+    published = _published_release_version(context, release_ref)
+    if current_tuple is None or published is None:
+        return False
+    return current_tuple > published
+
+
+def _vault_gitignore_hides_user_regions(context: DoctorContext) -> str | None:
+    """Return why a split vault still hides notes folders, or None if tracked."""
+    from core.update.apply_update import GITIGNORE_SECTION_BEGIN, GITIGNORE_SECTION_END
+
+    path = context.vault_root / ".gitignore"
+    if path.is_symlink():
+        return "The vault ignore file is a shortcut, so Doctor will not follow it"
+    if not path.is_file():
+        return (
+            "The vault ignore file is missing, so notes folders may stay hidden "
+            "from vault history — run /dex-update"
+        )
+    try:
+        text = _read_text(path)
+    except (OSError, UnicodeError) as error:
+        return f"Could not read the vault ignore file: {_one_line(str(error))}"
+    if GITIGNORE_SECTION_BEGIN not in text or GITIGNORE_SECTION_END not in text:
+        return (
+            "The vault ignore file is still the product copy, so notes folders "
+            "stay hidden from vault history — run /dex-update"
+        )
+    missing = [
+        region
+        for region in portable_contract.VAULT_REGIONS
+        if f"!/{region}/" not in text
+    ]
+    if missing:
+        count = len(missing)
+        noun = "notes folder" if count == 1 else "notes folders"
+        return (
+            f"The vault ignore file still hides {count} {noun} from vault "
+            "history — run /dex-update"
+        )
     return None
 
 
@@ -4969,10 +5068,18 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
     # masking a mixed-version vault). package.json records the installed
     # version and releases are tagged, so the matching tag is the installed
     # identity; merge-base stays the fallback for repos without that tag.
+    # Exception: an install whose version is newer than the fetched release
+    # has no tag yet. Merge-base against that older tip would false-flag
+    # every newer shipped file. Compare the working tree to HEAD instead.
+    ahead = False
     baseline = _installed_release_treeish(context)
     if baseline is None:
-        merge_base = _git_result(context, "merge-base", "HEAD", release_ref)
-        baseline = merge_base.stdout.strip() if merge_base.returncode == 0 else release_ref
+        if _install_is_ahead_of_published_release(context, release_ref):
+            baseline = "HEAD"
+            ahead = True
+        else:
+            merge_base = _git_result(context, "merge-base", "HEAD", release_ref)
+            baseline = merge_base.stdout.strip() if merge_base.returncode == 0 else release_ref
     release_entries = _release_tree_entries(context, baseline)
     mismatched = _mismatched_release_blobs(context, release_entries)
     candidates = sorted(
@@ -4988,6 +5095,12 @@ def _probe_core_drift(context: DoctorContext) -> ProbeResult:
         or not _only_sanctioned_file_changes(context, baseline, relative)
     ]
     if not drifted:
+        if ahead:
+            return ProbeResult(
+                "OK",
+                "No tracked shipped files differ from this checkout; "
+                "this install is ahead of the latest published release",
+            )
         return ProbeResult("OK", "No tracked shipped files differ from the installed release")
     return ProbeResult(
         "UNKNOWN",

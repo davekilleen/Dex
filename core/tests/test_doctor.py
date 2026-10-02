@@ -1261,6 +1261,37 @@ def test_pre_split_archive_probe_reports_age_size_and_retention(context):
     assert "one full release cycle after conversion" in result.detail
 
 
+def test_vault_git_reports_product_gitignore_that_still_hides_notes_folders(context):
+    from core.update import apply_update
+
+    _write_split_topology(context)
+    (context.vault_root / ".gitignore").write_text(
+        "00-Inbox/\n04-Projects/\n05-Areas/\n",
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_vault_git(context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "product copy" in result.detail
+    assert "/dex-update" in result.detail
+    assert result.heal == doctor.Heal(
+        tier=2,
+        action="Run /dex-update so Dex can make your notes folders trackable in vault history.",
+        applied=False,
+    )
+
+    composed = apply_update._compose_gitignore(
+        b"00-Inbox/\n04-Projects/\n05-Areas/\n",
+        context.vault_root,
+    )
+    (context.vault_root / ".gitignore").write_bytes(composed)
+    healthy = doctor._probe_vault_git(context)
+    assert healthy.verdict == "OK"
+    assert "healthy" in healthy.detail
+    assert healthy.heal is None
+
+
 def test_migration_recovery_verdicts_name_exact_commands_and_manual_repair_warning(context):
     state = context.vault_root / "System/.dex/migration-v2-state.json"
     state.parent.mkdir(parents=True, exist_ok=True)
@@ -3770,6 +3801,58 @@ def test_core_drift_is_ok_for_a_clean_release_checkout(tmp_path):
     drift_context = _drift_context(tmp_path)
 
     assert doctor._probe_core_drift(drift_context).verdict == "OK"
+
+
+def test_core_drift_treats_an_ahead_of_release_install_as_this_checkout(tmp_path):
+    """An unreleased install must not be scored against the older published tip.
+
+    package.json can name a version that has no tag yet. The merge-base
+    fallback then compares newer shipped files to the latest published
+    release and reports them as drift. Judge the working tree against HEAD.
+    """
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    (vault / "package.json").write_text('{\n  "version": "9.9.9"\n}\n')
+    _git(vault, "add", "package.json")
+    _git(vault, "commit", "-m", "published release")
+    _git(vault, "update-ref", _remote_release_ref("stable"), "HEAD")
+
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 2\n")
+    (vault / "package.json").write_text('{\n  "version": "9.9.10"\n}\n')
+    _git(vault, "add", "package.json", "core/shipped.py")
+    _git(vault, "commit", "-m", "unreleased install")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "OK"
+    assert "ahead of the latest published release" in result.detail
+    assert "core/shipped.py" not in result.detail
+
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 999  # user edit\n")
+    edited = doctor._probe_core_drift(drift_context)
+    assert edited.verdict == "UNKNOWN"
+    assert "core/shipped.py" in edited.detail
+
+
+def test_core_drift_without_a_matching_tag_still_uses_merge_base_when_not_ahead(
+    tmp_path,
+):
+    drift_context = _drift_context(tmp_path)
+    vault = drift_context.vault_root
+    (vault / "package.json").write_text('{\n  "version": "9.9.9"\n}\n')
+    _git(vault, "add", "package.json")
+    _git(vault, "commit", "-m", "published release")
+    published = _git(vault, "rev-parse", "HEAD").stdout.strip()
+    _git(vault, "update-ref", _remote_release_ref("stable"), published)
+
+    (vault / "core" / "shipped.py").write_text("SHIPPED = 2\n")
+    _git(vault, "commit", "-am", "local history moved without a newer version")
+
+    result = doctor._probe_core_drift(drift_context)
+
+    assert result.verdict == "UNKNOWN"
+    assert "core/shipped.py" in result.detail
+    assert "ahead of the latest published release" not in result.detail
 
 
 def test_core_drift_compares_against_the_installed_release_identity(tmp_path):
