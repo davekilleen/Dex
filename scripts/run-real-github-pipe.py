@@ -47,6 +47,75 @@ def _write_claude_shim(bin_dir: Path, log_path: Path) -> None:
     shim.chmod(0o755)
 
 
+def _drain(fd: int, recorded: bytearray) -> None:
+    while True:
+        more, _, _ = select.select([fd], [], [], 0.2)
+        if not more:
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        recorded.extend(chunk)
+
+
+def _finish(
+    recorded: bytearray,
+    out: Path,
+    answer: str,
+    target: Path,
+    shim_log: Path,
+    code: int,
+) -> int:
+    text = recorded.decode("utf-8", errors="replace")
+    extra = [
+        f"\n--- exit {code} ---",
+        f"answer={answer}",
+        f"target={target}",
+        f"exists={target.is_dir()}",
+        f"install_sh={(target / 'install.sh').is_file()}",
+        f"topology={(target / 'System' / '.dex' / 'topology.json').is_file()}",
+        f"brain={(target / '.dex' / 'brain.git').is_dir()}",
+        f"user_log={(target / 'install-log.txt').is_file()}",
+        f"claude_prompt={'Would you like to start Dex in Claude Code now?' in text}",
+        f"started_claude={'Starting Dex in Claude Code' in text}",
+        f"manual_steps={'Copy and paste this line' in text}",
+        f"beta_forbidden={'Dex is in beta' in text}",
+        f"open_folder_prompt={'Open your Dex folder now?' in text}",
+    ]
+    if shim_log.is_file():
+        extra.append("claude_shim=" + shim_log.read_text(encoding="utf-8").strip())
+    else:
+        extra.append("claude_shim=missing")
+    text += "\n".join(extra) + "\n"
+    out.write_text(text, encoding="utf-8")
+    print(text[-4000:])
+    print(f"transcript={out}")
+    ok = (
+        "Dex is installed" in text
+        and "could not prove" not in text
+        and "Dex is in beta" not in text
+        and "Open your Dex folder now?" not in text
+    )
+    if answer == "y":
+        ok = (
+            ok
+            and "Starting Dex in Claude Code" in text
+            and shim_log.is_file()
+            and "/setup" in shim_log.read_text(encoding="utf-8")
+        )
+    else:
+        ok = (
+            ok
+            and "Would you like to start Dex in Claude Code now?" in text
+            and "Copy and paste this line" in text
+            and "Starting Dex in Claude Code" not in text
+        )
+    return 0 if ok else 1
+
+
 def main() -> int:
     args = [item for item in sys.argv[1:] if not item.startswith("--")]
     flags = {item for item in sys.argv[1:] if item.startswith("--")}
@@ -116,74 +185,30 @@ def main() -> int:
             try:
                 waited, status = os.waitpid(pid, os.WNOHANG)
             except ChildProcessError:
-                break
+                _drain(fd, recorded)
+                return _finish(recorded, out, answer, target, shim_log, 0)
             if waited == pid:
                 time.sleep(0.2)
-                while True:
-                    more, _, _ = select.select([fd], [], [], 0.2)
-                    if not more:
-                        break
-                    try:
-                        chunk = os.read(fd, 4096)
-                    except OSError:
-                        break
-                    if not chunk:
-                        break
-                    recorded.extend(chunk)
-                code = os.waitstatus_to_exitcode(status)
-                text = recorded.decode("utf-8", errors="replace")
-                extra = [
-                    f"\n--- exit {code} ---",
-                    f"answer={answer}",
-                    f"target={target}",
-                    f"exists={target.is_dir()}",
-                    f"install_sh={(target / 'install.sh').is_file()}",
-                    f"topology={(target / 'System' / '.dex' / 'topology.json').is_file()}",
-                    f"brain={(target / '.dex' / 'brain.git').is_dir()}",
-                    f"user_log={(target / 'install-log.txt').is_file()}",
-                    f"claude_prompt={'Would you like to start Dex in Claude Code now?' in text}",
-                    f"started_claude={'Starting Dex in Claude Code' in text}",
-                    f"manual_steps={'Copy and paste this line' in text}",
-                    f"beta_forbidden={'Dex is in beta' in text}",
-                    f"open_folder_prompt={'Open your Dex folder now?' in text}",
-                ]
-                if shim_log.is_file():
-                    extra.append("claude_shim=" + shim_log.read_text(encoding="utf-8").strip())
-                else:
-                    extra.append("claude_shim=missing")
-                text += "\n".join(extra) + "\n"
-                out.write_text(text, encoding="utf-8")
-                print(text[-4000:])
-                print(f"transcript={out}")
-                ok = (
-                    "Dex is installed" in text
-                    and "could not prove" not in text
-                    and "Dex is in beta" not in text
-                    and "Open your Dex folder now?" not in text
+                _drain(fd, recorded)
+                return _finish(
+                    recorded,
+                    out,
+                    answer,
+                    target,
+                    shim_log,
+                    os.waitstatus_to_exitcode(status),
                 )
-                if answer == "y":
-                    ok = (
-                        ok
-                        and "Starting Dex in Claude Code" in text
-                        and shim_log.is_file()
-                        and "/setup" in shim_log.read_text(encoding="utf-8")
-                    )
-                else:
-                    ok = (
-                        ok
-                        and "Would you like to start Dex in Claude Code now?" in text
-                        and "Copy and paste this line" in text
-                        and "Starting Dex in Claude Code" not in text
-                    )
-                return 0 if ok else 1
     finally:
         try:
             os.close(fd)
         except OSError:
             pass
-    out.write_text(recorded.decode("utf-8", errors="replace"), encoding="utf-8")
-    print(f"transcript={out}")
-    return 1
+    try:
+        waited, status = os.waitpid(pid, 0)
+        code = os.waitstatus_to_exitcode(status) if waited == pid else 1
+    except ChildProcessError:
+        code = 0
+    return _finish(recorded, out, answer, target, shim_log, code)
 
 
 if __name__ == "__main__":
