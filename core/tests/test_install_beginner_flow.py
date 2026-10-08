@@ -126,7 +126,7 @@ def test_welcome_and_finish_copy() -> None:
     assert "Dave and the Dex team" not in text
     assert "Dex is in beta" not in text
     assert "Would you like to start Dex in Claude Code now?" in text
-    assert 'exec "$bin" "/setup"' in text
+    assert 'exec "$bin" "set up Dex"' in text
     assert "</dev/tty" in text
     assert "Open your Dex folder now?" not in text
     assert 'echo "(That' not in text

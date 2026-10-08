@@ -765,7 +765,7 @@ $display
 
 Copy and paste this line:
 
-cd "$target" && claude "/setup"
+cd "$target" && claude "set up Dex"
 
 If Claude Code is not installed, open that folder in Cursor and type: /setup
 
@@ -1122,7 +1122,7 @@ dex_print_manual_next_steps() {
     echo ""
     echo "Copy and paste this line:"
     echo ""
-    echo "  cd \"$target\" && claude \"/setup\""
+    echo "  cd \"$target\" && claude \"set up Dex\""
     echo ""
     echo "Then press Enter. Setup starts from there."
     if dex_is_windows; then
@@ -1145,11 +1145,15 @@ dex_launch_claude_setup() {
     echo ""
     echo "Starting Dex in Claude Code..."
     cd "$target" || return 1
+    # Official Claude CLI: `claude "query"` starts an interactive session and
+    # sends that first prompt. A leading slash is not a documented launch form
+    # and can sit in the input box instead of running. "set up Dex" is the
+    # setup skill phrase and works even when SessionStart hooks did not.
     # curl|bash leaves stdin as the script pipe. Hand the keyboard to Claude.
     if [ -e /dev/tty ]; then
-        exec "$bin" "/setup" </dev/tty >/dev/tty 2>&1
+        exec "$bin" "set up Dex" </dev/tty >/dev/tty 2>&1
     fi
-    exec "$bin" "/setup"
+    exec "$bin" "set up Dex"
 }
 
 dex_print_interactive_finish() {

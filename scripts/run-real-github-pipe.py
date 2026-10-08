@@ -104,7 +104,7 @@ def _finish(
             ok
             and "Starting Dex in Claude Code" in text
             and shim_log.is_file()
-            and "/setup" in shim_log.read_text(encoding="utf-8")
+                        and "set up Dex" in shim_log.read_text(encoding="utf-8")
         )
     else:
         ok = (
