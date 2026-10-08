@@ -679,3 +679,8 @@ def test_release_history_safety_check_still_in_migrator() -> None:
     installer = INSTALL_SH.read_text(encoding="utf-8")
     assert "dex_ensure_official_release_ref" in installer
     assert "git clone --quiet --branch" in installer
+    assert "config', '--get', `remote.${remote}.url`" in text or (
+        "config', '--get'" in text and "remote.${remote}.url" in text
+    )
+    assert "trap - EXIT" in installer
+    assert installer.count("trap - EXIT") >= 3

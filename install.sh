@@ -1329,6 +1329,9 @@ if git remote -v >/dev/null 2>&1 && git remote -v | grep -q "davekilleen/[Dd]ex"
     git remote rename origin upstream >/dev/null 2>&1 || true
 fi
 if ! dex_ensure_official_release_ref; then
+    if dex_is_interactive; then
+        trap - EXIT
+    fi
     exit 1
 fi
 
@@ -1610,6 +1613,7 @@ while true; do
     fi
     if [ "$MIGRATION_STATUS" -ne 0 ]; then
         if dex_is_interactive; then
+            trap - EXIT
             echo "Setup could not finish preparing this folder."
             echo "Your files are still in $(dex_display_path "$DEX_TARGET")."
             dex_copy_user_log
@@ -1649,6 +1653,7 @@ if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" 
     fi
 elif [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
     if dex_is_interactive; then
+        trap - EXIT
         echo "Setup could not finish preparing this folder."
         echo "Your files are still in $(dex_display_path "$DEX_TARGET")."
         dex_copy_user_log
@@ -1678,6 +1683,9 @@ if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
     DEX_ADOPTION_PYTHON="$VENV_PYTHON"
 fi
 if ! DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" DEX_PROVISION_PYTHON="$DEX_ADOPTION_PYTHON" DEX_CAPABILITY_PYTHON="$DEX_ADOPTION_PYTHON" DEX_HARNESS_PYTHON="$DEX_ADOPTION_PYTHON" dex_run_logged "provision-adopt" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only; then
+    if dex_is_interactive; then
+        trap - EXIT
+    fi
     dex_show_logged_failure "Dex could not finish the last setup step"
     exit 1
 fi
