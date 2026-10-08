@@ -110,20 +110,34 @@ def _git_preserving_configured_url(bin_dir: Path) -> Path:
     _write_executable(
         bin_dir / "git",
         f"""#!/bin/sh
-if [ "$1" = "remote" ] && [ "$2" = "get-url" ]; then
-  name=""
-  for arg in "$@"; do
-    case "$arg" in
-      remote|get-url|--push|--all|--help) ;;
-      *) name="$arg" ;;
-    esac
-  done
-  if [ -n "$name" ]; then
+# Migrator calls: git --git-dir=... --work-tree=... remote get-url origin
+seen_remote=0
+seen_get_url=0
+git_dir=""
+name=""
+for arg in "$@"; do
+  case "$arg" in
+    --git-dir=*) git_dir="${{arg#--git-dir=}}" ;;
+    remote) seen_remote=1 ;;
+    get-url) seen_get_url=1 ;;
+    -c|--work-tree=*|--push|--all|--help) ;;
+    -*) ;;
+    *)
+      if [ "$seen_get_url" = 1 ] && [ -z "$name" ]; then
+        name="$arg"
+      fi
+      ;;
+  esac
+done
+if [ "$seen_remote" = 1 ] && [ "$seen_get_url" = 1 ] && [ -n "$name" ]; then
+  if [ -n "$git_dir" ]; then
+    url=$("{real_git}" --git-dir="$git_dir" config --local --get "remote.${{name}}.url" 2>/dev/null || true)
+  else
     url=$("{real_git}" config --local --get "remote.${{name}}.url" 2>/dev/null || true)
-    if [ -n "$url" ]; then
-      printf '%s\\n' "$url"
-      exit 0
-    fi
+  fi
+  if [ -n "$url" ]; then
+    printf '%s\\n' "$url"
+    exit 0
   fi
 fi
 exec "{real_git}" "$@"
