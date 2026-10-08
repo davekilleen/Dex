@@ -9,6 +9,21 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.26] — A friendlier first install, and Dex is now MIT licensed (2026-10-08)
+
+People new to the terminal ran the install line and then did not know what to do next. The installer printed technical output, did not ask where Dex should live, and ended with commands to retype. On Windows the instructions pointed at PowerShell. This release fixes that. Dex is also now under the MIT licence.
+
+**What this fixes for you:**
+
+* **A proper welcome.** The installer says hello, explains what Dex is, and tells you that desktop and mobile apps are coming, with a link to sign up for the beta at heydex.ai/beta.
+* **You choose the folder.** Press Enter for the suggested `Dex` folder, or type another. Dex warns you if the folder syncs to iCloud or OneDrive.
+* **Missing tools are explained in plain English.** If Git, Node.js or Python is missing, Dex opens the right download page, tells you what to click, and checks again.
+* **Calm progress.** Five numbered steps, a "still working" note so it never looks frozen, and three ✓ final checks.
+* **One question at the end.** "Would you like to start Dex in Claude Code now?" Say yes and Claude Code opens in your Dex folder and setup starts by itself. Say no and you get the exact steps.
+* **If something fails, you know what to send.** The install log is saved in your Dex folder, and the screen says where to send it.
+* **Windows uses Git Bash, not PowerShell.** PowerShell now points you to Git Bash, and the default folder is `C:\Users\<you>\Dex`.
+* **Dex is MIT licensed.** You can use, change and share Dex freely, including at work.
+
 ## [1.97.25] — Fresh install keeps notes in history, and checkup stays calm when Dex is ahead (2026-10-02)
 
 A brand-new Dex folder from a git clone still used the product ignore list, so your notes folders looked like they were not part of the vault until you ran an update. Checkup could also treat a copy of Dex that was newer than the last published release as if you had edited Dex's own files. Checkup and updates on a Windows PC could still trip over the machine's default text setting, look in the Mac place for Python, or empty a notes file when a save failed. Connecting Jira sounded like your morning plan would grow a ticket board it does not have. A skill you built for yourself was offered as a command Claude cannot run. A French "I'll follow up" was missed. A drafted email could be named two different ways, so a later send missed it. Turning a skill off was described with a switch Claude does not actually have. A nightly health check could also stop with a raw error when an optional room file or a Python package was missing, instead of saying the vault install was incomplete. And after meetings synced from Granola, the check that people and companies were created could skip silently on an older Dex folder whose path list did not yet name that report file. Setup could finish writing your focus areas and then say it failed. A meeting note could turn someone else's promise into your task, name a person page after an email address, or link the wrong contact. This release closes those. The brain/vault split already keeps your notes on disk and refuses to write over them; this one makes the first install and checkup match that promise.
