@@ -20,6 +20,12 @@ const VAULT_MARKER = 'dex-vault-v2';
 const BRAIN_MARKER = 'dex-brain-v2';
 const ARCHIVE_MARKER = 'dex-pre-split-v2-archive.json';
 const OFFICIAL_REMOTE = 'https://github.com/davekilleen/Dex.git';
+// Stored remote URLs are preferred. `git remote get-url` applies insteadOf and
+// credential helpers, which can become file:// or https://x-access-token:…@…
+// Optional userinfo is allowed; spoof hosts such as
+// https://evil.example/github.com/davekilleen/Dex.git are not.
+const OFFICIAL_REMOTE_URL =
+  /^(?:(?:https?|ssh|git):\/\/(?:[^/@]+@)?github\.com\/|git@github\.com:)davekilleen\/Dex(?:\.git)?\/?$/i;
 const RESUME_EXIT = 75;
 const P3_BATCH_SIZE = 64;
 const DEFAULT_SPAWN_MAX_BUFFER = 1024 * 1024 * 1024;
@@ -744,11 +750,26 @@ function availableBytes(root) {
   return Number(stats.bavail * stats.bsize);
 }
 
+function configuredRemoteUrl(root, gitDirectory, remote) {
+  const stored = gitDir(root, gitDirectory, ['config', '--get', `remote.${remote}.url`], {
+    allowFailure: true,
+  });
+  if (stored.status === 0 && stored.stdout.trim()) {
+    return stored.stdout.trim();
+  }
+  const rewritten = gitDir(root, gitDirectory, ['remote', 'get-url', remote], {
+    allowFailure: true,
+  });
+  return rewritten.status === 0 ? rewritten.stdout.trim() : '';
+}
+
+function remoteUrlLooksOfficial(url) {
+  return Boolean(url) && OFFICIAL_REMOTE_URL.test(String(url).trim());
+}
+
 function findReleaseRef(root, gitDirectory) {
-  const officialUrl = /^(?:(?:https?|ssh|git):\/\/(?:git@)?github\.com\/|git@github\.com:)davekilleen\/Dex(?:\.git)?\/?$/i;
   for (const remote of safeRemoteNames(root, gitDirectory)) {
-    const url = gitDir(root, gitDirectory, ['remote', 'get-url', remote], { allowFailure: true });
-    if (url.status !== 0 || !officialUrl.test(url.stdout.trim())) continue;
+    if (!remoteUrlLooksOfficial(configuredRemoteUrl(root, gitDirectory, remote))) continue;
     const candidate = `refs/remotes/${remote}/release`;
     const result = gitDir(root, gitDirectory, ['rev-parse', '--verify', `${candidate}^{commit}`], {
       allowFailure: true,

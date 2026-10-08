@@ -19,6 +19,10 @@
 ^docs/.*:.*:(dave|killeen)$
 ^06-Resources/Dex_System/Distribution_Checklist\.md:.*:(dave|killeen)$
 ^scripts/verify-distribution\.sh:.*:dave$
+# Installer welcome sign-off ("Dave and Dex") and the public support address
+# dave@heydex.ai shown when an install fails: approved user-facing copy.
+^install\.sh:.*:dave$
+^scripts/pii-allowlist\.txt:.*:dave$
 
 # --- DexDiff canonical @davekilleen handle used as the worked example (audit 2d) ---
 ^\.claude/skills/diff-.*:.*:(dave|killeen)$

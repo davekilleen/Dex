@@ -1,6 +1,6 @@
-"""Safety contract for the advisory native Windows install journey.
+"""Safety contract for the native Windows install journey.
 
-The job is a signal, not a merge gate. These tests lock the properties that
+The job is a real signal on the PR. These tests lock the properties that
 keep it from starving Dex CI, leaking credentials, or accidentally becoming a
 required check named quality / tests / portable-plugin-platforms.
 """
@@ -95,7 +95,7 @@ def test_branch_protection_floor_does_not_require_windows_install() -> None:
 def test_job_is_advisory_windows_latest_and_bounded() -> None:
     job = _journey_job()
     assert job["runs-on"] == "windows-latest"
-    assert job["continue-on-error"] is True
+    assert job["continue-on-error"] is False
     assert 1 <= job["timeout-minutes"] <= 40
     assert "strategy" not in job
 
@@ -178,6 +178,9 @@ def test_runs_real_install_paths_and_engine_suites() -> None:
     assert ps1["shell"] == "bash"
     assert "install-ps1-negative" in ps1["run"]
     assert ps1["continue-on-error"] is True
+    beginner = steps["beginner helper contract"]
+    assert "beginner-helpers" in beginner["run"]
+    assert beginner["continue-on-error"] is True
 
     for engine in (engine_312, engine_313):
         assert engine["shell"] == "bash"
@@ -197,6 +200,7 @@ def test_journey_script_covers_store_stub_spaced_path_and_both_ostypes() -> None
     assert "run_install_sh msys" in source
     assert "run-windows-lifecycle-journey.py" in source
     assert "install-ps1-negative" in source
+    assert "beginner-helpers" in source
     assert "pwsh -NoProfile -NonInteractive -File ./install.ps1" in source
     assert (
         "Dex could not prove that the local release branch contains only official release history"
@@ -257,7 +261,7 @@ def test_verdict_fails_the_job_when_any_leg_fails() -> None:
 
 def test_header_says_the_job_must_become_required_later() -> None:
     source = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "not a merge gate" in source
-    assert "Follow-up" in source
+    assert "real signal" in source
+    assert "Do NOT add `windows-install-journey` to branch protection" in source
     assert "portable-plugin-platforms" in source
     assert "windows-install-journey" in source

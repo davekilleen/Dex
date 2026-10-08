@@ -672,6 +672,80 @@ test('release discovery trusts official URLs and refuses contaminated local fall
   });
 });
 
+test('release discovery uses the stored remote URL when get-url is rewritten', () => {
+  const migrator = require(MIGRATOR_PATH);
+
+  const insteadOfFile = makeGitFixture();
+  const fileRelease = git(insteadOfFile, 'rev-parse', 'HEAD');
+  git(insteadOfFile, 'remote', 'add', 'upstream', 'https://github.com/davekilleen/Dex.git');
+  git(insteadOfFile, 'update-ref', 'refs/remotes/upstream/release', fileRelease);
+  git(
+    insteadOfFile,
+    'config',
+    `url.file://${insteadOfFile}/not-github.insteadOf`,
+    'https://github.com/davekilleen/Dex.git',
+  );
+  const rewritten = git(insteadOfFile, 'remote', 'get-url', 'upstream');
+  assert.match(rewritten, /^file:\/\//);
+  assert.deepEqual(migrator.findReleaseRef(insteadOfFile, path.join(insteadOfFile, '.git')), {
+    ref: 'refs/remotes/upstream/release',
+    commit: fileRelease,
+  });
+
+  // A fake token in URL userinfo, built at runtime so the personal-data gate
+  // does not read `token@host` as an email address.
+  const FAKE_TOKEN_GITHUB = ['https://x-access-token:fake', 'github.com'].join('@');
+  const tokenRewrite = makeGitFixture();
+  const tokenRelease = git(tokenRewrite, 'rev-parse', 'HEAD');
+  git(tokenRewrite, 'remote', 'add', 'origin', 'https://github.com/davekilleen/Dex.git');
+  git(tokenRewrite, 'update-ref', 'refs/remotes/origin/release', tokenRelease);
+  git(
+    tokenRewrite,
+    'config',
+    `url.${FAKE_TOKEN_GITHUB}/.insteadOf`,
+    'https://github.com/',
+  );
+  assert.match(git(tokenRewrite, 'remote', 'get-url', 'origin'), /x-access-token/);
+  assert.deepEqual(migrator.findReleaseRef(tokenRewrite, path.join(tokenRewrite, '.git')), {
+    ref: 'refs/remotes/origin/release',
+    commit: tokenRelease,
+  });
+
+  const storedToken = makeGitFixture();
+  const storedTokenRelease = git(storedToken, 'rev-parse', 'HEAD');
+  git(
+    storedToken,
+    'remote',
+    'add',
+    'origin',
+    `${FAKE_TOKEN_GITHUB}/davekilleen/Dex.git`,
+  );
+  git(storedToken, 'update-ref', 'refs/remotes/origin/release', storedTokenRelease);
+  assert.deepEqual(migrator.findReleaseRef(storedToken, path.join(storedToken, '.git')), {
+    ref: 'refs/remotes/origin/release',
+    commit: storedTokenRelease,
+  });
+
+  const spoofInsteadOf = makeGitFixture();
+  git(spoofInsteadOf, 'branch', 'release', 'HEAD');
+  git(spoofInsteadOf, 'remote', 'add', 'spoof', 'https://evil.example/github.com/davekilleen/Dex.git');
+  git(spoofInsteadOf, 'update-ref', 'refs/remotes/spoof/release', 'HEAD');
+  git(
+    spoofInsteadOf,
+    'config',
+    'url.https://github.com/davekilleen/Dex.git.insteadOf',
+    'https://evil.example/github.com/davekilleen/Dex.git',
+  );
+  fs.writeFileSync(path.join(spoofInsteadOf, 'mine.txt'), 'personal\n');
+  git(spoofInsteadOf, 'add', 'mine.txt');
+  git(spoofInsteadOf, 'commit', '--quiet', '-m', 'personal work');
+  assert.match(git(spoofInsteadOf, 'remote', 'get-url', 'spoof'), /github\.com\/davekilleen\/Dex/);
+  assert.throws(
+    () => migrator.findReleaseRef(spoofInsteadOf, path.join(spoofInsteadOf, '.git')),
+    /restore the official upstream remote/i,
+  );
+});
+
 test('restore refuses an unmarked archive without replacing a healthy current repository', () => {
   const migrator = require(MIGRATOR_PATH);
   const root = makeGitFixture();

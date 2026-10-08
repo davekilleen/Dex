@@ -1,6 +1,11 @@
 #!/bin/bash
 # Dex PKM - Installation Script
 # This script sets up your development environment
+#
+# Branch-test one-liner: the isolation variables MUST sit on bash, not curl.
+# Prefixing curl (VAR=... curl ... | bash) is ignored by bash and would fall
+# through to ~/Dex. The safe form is:
+# curl -fsSL "https://raw.githubusercontent.com/davekilleen/Dex/<branch>/install.sh" | DEX_INSTALL_DIR="$HOME/Dex-test" DEX_INSTALL_REF="<branch>" DEX_INSTALL_NO_OPEN=1 bash
 
 # Quiet Node's noisy upstream deprecation warnings (e.g. DEP0040 "punycode is
 # deprecated") so first-run install output stays clean. These originate from
@@ -231,9 +236,19 @@ dex_run_logged() {
     return "$status"
 }
 
+dex_user_log_path() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    printf '%s\n' "$target/install-log.txt"
+}
+
 dex_show_logged_failure() {
     echo "❌ $1"
-    echo "   See the install log for the exact error: $INSTALL_LOG"
+    if dex_is_interactive; then
+        echo "   Please send this file to dave@heydex.ai:"
+        echo "   $(dex_display_path "$(dex_user_log_path)")"
+    else
+        echo "   See the install log for the exact error: $INSTALL_LOG"
+    fi
 }
 
 dex_prompt_continue() {
@@ -360,6 +375,879 @@ dex_hashed_requirements() {
     printf '%s\n' "core/mcp/requirements.hash.txt"
 }
 
+# ---------------------------------------------------------------------------
+# Beginner-install helpers (prompts always read /dev/tty under curl | bash)
+# ---------------------------------------------------------------------------
+
+dex_is_interactive() {
+    if [ -n "${DEX_INSTALL_NONINTERACTIVE:-}" ] || [ -n "${CI:-}" ]; then
+        return 1
+    fi
+    # ./install.sh in a real terminal
+    if [ -t 0 ]; then
+        return 0
+    fi
+    # curl | bash: stdin is the script; the keyboard is /dev/tty.
+    # A detached CI job may still have a /dev/tty node — opening it must work.
+    if [ -e /dev/tty ] && { : < /dev/tty; } 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+dex_read_tty() {
+    # Prompt on the keyboard even when stdin is the curl pipe. $1=prompt $2=default
+    local prompt="$1"
+    local default="${2:-}"
+    REPLY=""
+    if ! dex_is_interactive; then
+        REPLY="$default"
+        return 0
+    fi
+    if [ -e /dev/tty ]; then
+        printf '%s' "$prompt" > /dev/tty
+        IFS= read -r REPLY < /dev/tty || REPLY="$default"
+    elif [ -t 0 ]; then
+        printf '%s' "$prompt"
+        IFS= read -r REPLY || REPLY="$default"
+    else
+        REPLY="$default"
+    fi
+    if [ -z "$REPLY" ]; then
+        REPLY="$default"
+    fi
+}
+
+dex_home_dir() {
+    if [ -n "${HOME:-}" ]; then
+        printf '%s\n' "$HOME"
+        return 0
+    fi
+    if [ -n "${USERPROFILE:-}" ]; then
+        dex_to_posix_path "$USERPROFILE"
+        return 0
+    fi
+    printf '%s\n' "$(pwd)"
+}
+
+dex_expand_path() {
+    local raw="$1"
+    case "$raw" in
+        "~") raw="$(dex_home_dir)" ;;
+        "~/"*) raw="$(dex_home_dir)/${raw#"~/"}" ;;
+    esac
+    printf '%s\n' "$raw"
+}
+
+dex_display_path() {
+    local raw="$1"
+    if dex_is_windows && command -v cygpath >/dev/null 2>&1; then
+        cygpath -w "$raw" 2>/dev/null || printf '%s\n' "$raw"
+        return 0
+    fi
+    printf '%s\n' "$raw"
+}
+
+dex_is_checkout() {
+    local root="${1:-$(pwd)}"
+    [ -f "$root/core/provision.cjs" ] && [ -f "$root/install.sh" ]
+}
+
+dex_cloud_provider() {
+    local raw="$1"
+    local resolved="$raw"
+    if command -v realpath >/dev/null 2>&1; then
+        resolved=$(realpath "$raw" 2>/dev/null || printf '%s' "$raw")
+    fi
+    case "$resolved" in
+        *[Mm]obile\ [Dd]ocuments*|*CloudDocs*|*iCloud\ Drive*|*iCloudDrive*|*iCloud*)
+            printf '%s\n' "iCloud Drive"
+            return 0
+            ;;
+        *[Oo]ne[Dd]rive*)
+            printf '%s\n' "OneDrive"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+dex_have_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+dex_have_claude() {
+    dex_have_cmd claude && return 0
+    [ -d "/Applications/Claude.app" ] && return 0
+    [ -d "$(dex_home_dir)/Applications/Claude.app" ] && return 0
+    return 1
+}
+
+dex_have_cursor() {
+    dex_have_cmd cursor && return 0
+    [ -d "/Applications/Cursor.app" ] && return 0
+    [ -d "$(dex_home_dir)/Applications/Cursor.app" ] && return 0
+    return 1
+}
+
+dex_open_url() {
+    local url="$1"
+    if [ -n "${DEX_INSTALL_NO_OPEN:-}" ] || ! dex_is_interactive; then
+        return 0
+    fi
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && dex_have_cmd open; then
+        open "$url" >/dev/null 2>&1 || true
+    elif dex_have_cmd xdg-open; then
+        xdg-open "$url" >/dev/null 2>&1 || true
+    elif dex_is_windows; then
+        cmd.exe /c start "" "$url" >/dev/null 2>&1 || true
+    fi
+}
+
+dex_open_folder() {
+    local raw="$1"
+    if [ -n "${DEX_INSTALL_NO_OPEN:-}" ]; then
+        return 1
+    fi
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ] && dex_have_cmd open; then
+        open "$raw"
+        return 0
+    fi
+    if dex_have_cmd xdg-open; then
+        xdg-open "$raw"
+        return 0
+    fi
+    if dex_is_windows; then
+        explorer.exe "$(dex_display_path "$raw")" >/dev/null 2>&1 || true
+        return 0
+    fi
+    return 1
+}
+
+dex_apps_line() {
+    printf '%s\n' "What you're installing right now runs in the terminal, but a Dex desktop app and mobile app are coming out shortly. Sign up for the beta at heydex.ai/beta."
+}
+
+dex_beta_line() {
+    dex_apps_line
+}
+
+dex_is_branch_test() {
+    if [ -n "${DEX_INSTALL_DIR:-}" ]; then
+        return 0
+    fi
+    case "$(dex_repo_ref)" in
+        release|main)
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+dex_start_spinner() {
+    local msg="${1:-Still working — this can take a minute.}"
+    DEX_SPINNER_PID=""
+    if ! dex_is_interactive; then
+        return 0
+    fi
+    echo "   $msg"
+    if [ ! -e /dev/tty ]; then
+        return 0
+    fi
+    (
+        set +e
+        frames='|/-\'
+        i=0
+        while true; do
+            printf '\r   %s %s' "${frames:i:1}" "$msg" > /dev/tty 2>/dev/null || exit 0
+            i=$(( (i + 1) % 4 ))
+            sleep 0.2
+        done
+    ) &
+    DEX_SPINNER_PID=$!
+}
+
+dex_stop_spinner() {
+    if [ -n "${DEX_SPINNER_PID:-}" ]; then
+        kill "$DEX_SPINNER_PID" >/dev/null 2>&1 || true
+        wait "$DEX_SPINNER_PID" >/dev/null 2>&1 || true
+        DEX_SPINNER_PID=""
+        if [ -e /dev/tty ]; then
+            printf '\r\033[K' > /dev/tty 2>/dev/null || true
+        fi
+    fi
+}
+
+dex_run_with_wait() {
+    local status=0
+    dex_start_spinner "Still working — this can take a minute."
+    dex_run_logged "$@" || status=$?
+    dex_stop_spinner
+    return "$status"
+}
+
+dex_copy_user_log() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    local user_log="$target/install-log.txt"
+    if [ -z "${INSTALL_LOG:-}" ] || [ ! -f "$INSTALL_LOG" ] || [ ! -d "$target" ]; then
+        return 0
+    fi
+    if dex_same_path "$INSTALL_LOG" "$user_log"; then
+        return 0
+    fi
+    cp "$INSTALL_LOG" "$user_log" 2>/dev/null || true
+}
+
+dex_step() {
+    echo ""
+    echo "Step $1 of 5 — $2"
+    echo ""
+}
+
+dex_user_progress() {
+    local user_line="$1"
+    local log_line="${2:-$1}"
+    if dex_is_interactive; then
+        echo "$user_line"
+    else
+        echo "$log_line"
+    fi
+    dex_log "$log_line"
+}
+
+dex_repo_url() {
+    printf '%s\n' "${DEX_INSTALL_REPO:-https://github.com/davekilleen/dex.git}"
+}
+
+dex_repo_ref() {
+    printf '%s\n' "${DEX_INSTALL_REF:-release}"
+}
+
+dex_remote_is_official() {
+    case "$1" in
+        *github.com/davekilleen/[Dd]ex*|*github.com:davekilleen/[Dd]ex*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+# Branch-test clones use --single-branch, so they have no official release
+# history yet. Fetch that remote-tracking ref only — do not check it out.
+# The brain/vault safety check still requires official GitHub history.
+dex_ensure_official_release_ref() {
+    local remote url
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        return 0
+    fi
+    remotes=$(git remote 2>/dev/null || true)
+    if [ -z "$remotes" ]; then
+        return 0
+    fi
+    for remote in $remotes; do
+        # Prefer the stored URL. `git remote get-url` can rewrite via insteadOf.
+        url=$(git config --get "remote.${remote}.url" 2>/dev/null || git remote get-url "$remote" 2>/dev/null || true)
+        if dex_remote_is_official "$url" \
+            && git rev-parse --verify "refs/remotes/${remote}/release^{commit}" >/dev/null 2>&1; then
+            dex_log "official release history already present at refs/remotes/${remote}/release"
+            return 0
+        fi
+    done
+    for remote in $(git remote 2>/dev/null); do
+        url=$(git config --get "remote.${remote}.url" 2>/dev/null || git remote get-url "$remote" 2>/dev/null || true)
+        if ! dex_remote_is_official "$url"; then
+            continue
+        fi
+        dex_log "fetching official release history from $remote"
+        if git fetch --quiet "$remote" "+refs/heads/release:refs/remotes/${remote}/release"; then
+            if git rev-parse --verify "refs/remotes/${remote}/release^{commit}" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+    done
+    if [ "$(dex_repo_ref)" = "release" ]; then
+        return 0
+    fi
+    echo "Could not download the official Dex history needed to finish setup."
+    echo "Check your internet connection, then run the same command again."
+    echo "If it happens again, send this file to dave@heydex.ai:"
+    echo "  $(dex_display_path "$(dex_user_log_path)")"
+    return 1
+}
+
+dex_same_path() {
+    local a="$1" b="$2"
+    if command -v realpath >/dev/null 2>&1; then
+        a=$(realpath -m "$a" 2>/dev/null || printf '%s' "$a")
+        b=$(realpath -m "$b" 2>/dev/null || printf '%s' "$b")
+    fi
+    [ "$a" = "$b" ]
+}
+
+dex_dir_is_empty() {
+    local raw="$1" entries
+    if [ ! -e "$raw" ]; then
+        return 0
+    fi
+    [ -d "$raw" ] || return 1
+    entries=$(ls -A "$raw" 2>/dev/null | grep -v '^install-log.txt$' || true)
+    [ -z "$entries" ]
+}
+
+# Feature-branch / PR tests never default into ~/Dex. Product default stays ~/Dex.
+dex_default_target() {
+    if [ -n "${DEX_INSTALL_DIR:-}" ]; then
+        dex_expand_path "$DEX_INSTALL_DIR"
+        return 0
+    fi
+    case "$(dex_repo_ref)" in
+        release|main)
+            printf '%s\n' "$(dex_home_dir)/Dex"
+            ;;
+        *)
+            printf '%s\n' "$(dex_home_dir)/Dex-test"
+            ;;
+    esac
+}
+
+dex_script_checkout() {
+    local self="${BASH_SOURCE[0]:-}"
+    case "$self" in
+        ""|bash|sh|-bash|-sh)
+            return 1
+            ;;
+    esac
+    local dir
+    dir=$(cd "$(dirname "$self")" 2>/dev/null && pwd) || return 1
+    if dex_is_checkout "$dir"; then
+        printf '%s\n' "$dir"
+        return 0
+    fi
+    return 1
+}
+
+# Clone into DEX_INSTALL_DIR / the chosen folder. Never clone during CI
+# in-place runs (no DEX_INSTALL_DIR). Never treat the current directory as
+# the target when an explicit folder was requested.
+dex_should_bootstrap() {
+    local target="${1:-}"
+    if [ -z "$target" ]; then
+        return 1
+    fi
+    if dex_is_checkout "$target"; then
+        return 1
+    fi
+    if ! dex_is_interactive && [ -z "${DEX_INSTALL_DIR:-}" ]; then
+        return 1
+    fi
+    return 0
+}
+
+dex_pause() {
+    # Empty string is allowed so the caller can print the prompt themselves.
+    dex_read_tty "${1-Press Enter to continue. }"
+}
+
+dex_claude_first_run_note() {
+    printf '%s\n' "Claude Code may first ask you to pick a text style and sign in. That's normal. After that, Dex setup starts on its own. If it doesn't, type: set up Dex"
+}
+
+dex_write_open_me_next() {
+    local target="${1:-${DEX_TARGET:-$(pwd)}}"
+    local display
+    display=$(dex_display_path "$target")
+    cat > "$target/Open me next.md" <<EOF
+# Open me next
+
+Dex is installed in:
+
+$display
+
+## What to do now
+
+Copy and paste this line:
+
+cd "$target" && claude "set up Dex"
+
+$(dex_claude_first_run_note)
+
+If Claude Code is not installed, open that folder in Cursor and type: /setup
+
+$(dex_apps_line)
+
+Welcome aboard. Dave & Dex
+EOF
+}
+
+dex_print_welcome() {
+    echo "👋 Welcome to Dex, your AI chief of staff."
+    echo ""
+    echo "Thanks for being here. An AI chief of staff keeps your meetings, people,"
+    echo "and priorities in one place so you can spend time on the work that matters."
+    echo ""
+    echo "Dave and Dex are genuinely delighted you're on this journey."
+    echo ""
+    echo "Setup happens from this text window (the 'terminal') and usually takes 5–10 minutes."
+    echo ""
+    dex_apps_line
+    echo ""
+    echo "Nothing has been downloaded yet. Press Enter to begin."
+    dex_pause ""
+}
+
+dex_warn_cloud_folder() {
+    local target="$1"
+    local provider
+    if provider=$(dex_cloud_provider "$target"); then
+        echo ""
+        echo "⚠️  That folder looks like it is inside $provider."
+        echo "   Dex works best in a regular folder on this computer — not a synced"
+        echo "   cloud folder. Files can go missing or lock Dex out of later setup steps."
+        echo ""
+        dex_read_tty "Press Enter to choose a different folder, or type yes to use it anyway: "
+        case "$REPLY" in
+            yes|YES|Yes)
+                return 0
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    fi
+    return 0
+}
+
+dex_choose_target() {
+    local suggested display reply existing
+    suggested=$(dex_default_target)
+    while true; do
+        display=$(dex_display_path "$suggested")
+        dex_step 1 "Where should Dex live?"
+        echo "Suggested folder: $display"
+        if dex_is_branch_test; then
+            echo ""
+            echo "This is a separate test folder. Your existing Dex install will not be changed."
+        fi
+        echo ""
+        dex_read_tty "Press Enter to use this folder, or type another path: " "$suggested"
+        reply=$(dex_expand_path "$REPLY")
+        if [ -z "$reply" ]; then
+            reply="$suggested"
+        fi
+        # Isolated / branch-test installs must not retarget the live ~/Dex folder.
+        if [ -n "${DEX_INSTALL_DIR:-}" ] && dex_same_path "$reply" "$(dex_home_dir)/Dex" && ! dex_same_path "$reply" "$(dex_expand_path "$DEX_INSTALL_DIR")"; then
+            echo ""
+            echo "That is your existing Dex folder. This test install will not change it."
+            echo "Using $(dex_display_path "$suggested") instead."
+            echo ""
+            reply="$suggested"
+        fi
+        if ! dex_warn_cloud_folder "$reply"; then
+            suggested=$(dex_default_target)
+            echo ""
+            continue
+        fi
+        if dex_is_checkout "$reply"; then
+            echo ""
+            echo "Dex is already in that folder."
+            dex_read_tty "Update this folder [U] or Choose another folder [C]: " "C"
+            case "$REPLY" in
+                U|u|update|Update)
+                    DEX_TARGET="$reply"
+                    return 0
+                    ;;
+                *)
+                    echo ""
+                    dex_read_tty "Type a different folder path: " "$(dex_home_dir)/Dex-test"
+                    suggested=$(dex_expand_path "$REPLY")
+                    echo ""
+                    continue
+                    ;;
+            esac
+        fi
+        if [ -e "$reply" ] && [ ! -d "$reply" ]; then
+            echo "That path exists and is not a folder. Please choose another."
+            echo ""
+            continue
+        fi
+        if [ -d "$reply" ] && ! dex_dir_is_empty "$reply" && ! dex_is_checkout "$reply"; then
+            echo "That folder already has files, and they are not a Dex install."
+            echo "Please choose an empty folder so nothing else is touched."
+            echo ""
+            continue
+        fi
+        DEX_TARGET="$reply"
+        return 0
+    done
+}
+
+dex_resolve_install_target() {
+    local script_root
+    if [ -n "${DEX_INSTALL_DIR:-}" ]; then
+        if dex_is_interactive; then
+            dex_choose_target
+        else
+            DEX_TARGET=$(dex_expand_path "$DEX_INSTALL_DIR")
+        fi
+        return 0
+    fi
+    if script_root=$(dex_script_checkout); then
+        DEX_TARGET="$script_root"
+        return 0
+    fi
+    if ! dex_is_interactive; then
+        DEX_TARGET=$(pwd)
+        return 0
+    fi
+    dex_choose_target
+}
+
+dex_print_check() {
+    local ok="$1"
+    local label="$2"
+    if [ "$ok" = "1" ]; then
+        echo "  ✓ $label"
+    else
+        echo "  ✗ $label"
+    fi
+}
+
+dex_ensure_macos_clt() {
+    case "${OSTYPE:-}" in
+        darwin*) ;;
+        *) return 0 ;;
+    esac
+    if xcode-select -p >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "macOS needs a small Apple tool set (Command Line Tools) before Git will work."
+    echo "A window may appear. Click Install. If you click Cancel, come back here and retry."
+    echo ""
+    dex_pause "Press Enter to open that window. "
+    xcode-select --install >/dev/null 2>&1 || true
+    local waited=0
+    while ! xcode-select -p >/dev/null 2>&1; do
+        sleep 5
+        waited=$((waited + 5))
+        if [ "$waited" -ge 180 ]; then
+            echo ""
+            echo "That install window was closed, or it is taking longer than expected."
+            dex_read_tty "Press Enter to try again, or type skip to continue without it: "
+            case "$REPLY" in
+                skip|SKIP|Skip)
+                    return 1
+                    ;;
+            esac
+            xcode-select --install >/dev/null 2>&1 || true
+            waited=0
+        fi
+    done
+    echo "✓ Command Line Tools are installed."
+    echo ""
+    return 0
+}
+
+dex_guide_missing_git() {
+    echo ""
+    echo "Git is the tool Dex uses to download and update itself. It is not installed yet."
+    echo ""
+    if dex_is_windows; then
+        echo "1. Open https://git-scm.com/download/win"
+        echo "2. Install Git for Windows (this also adds Git Bash)"
+        echo "3. Close this window, open Git Bash, and run the same command again"
+        dex_open_url "https://git-scm.com/download/win"
+    else
+        echo "1. Open https://git-scm.com"
+        echo "2. Install Git, then come back here"
+        dex_open_url "https://git-scm.com"
+    fi
+    echo ""
+    dex_pause "Press Enter when that is done and I will check again. "
+}
+
+dex_guide_missing_node() {
+    echo ""
+    echo "Node.js is the engine Dex uses in the background. It is not installed yet."
+    echo ""
+    echo "1. Open https://nodejs.org"
+    echo "2. Download the LTS version (the one marked LTS)"
+    echo "3. Install it, then come back here"
+    echo ""
+    dex_open_url "https://nodejs.org"
+    dex_pause "Press Enter when that is done and I will check again. "
+}
+
+dex_guide_missing_python() {
+    echo ""
+    echo "Python 3.11 or newer is required. The copy that came with this computer"
+    echo "is often too old — on a Mac that is commonly Python 3.9, which is not enough."
+    echo ""
+    echo "1. Open https://www.python.org/downloads/"
+    echo "2. Download Python 3.11 or newer"
+    echo "3. Install it, then come back here"
+    if dex_is_windows; then
+        echo "4. On Windows, use the installer from python.org — not the Microsoft Store"
+        echo "5. Tick 'Add Python to PATH' during the install"
+    fi
+    echo ""
+    echo "Opening claude.ai or a website is not the same as installing Python."
+    echo ""
+    dex_open_url "https://www.python.org/downloads/"
+    dex_pause "Press Enter when that is done and I will check again. "
+}
+
+dex_guide_missing_claude() {
+    echo ""
+    echo "Claude Code is the app most people use with Dex. It needs a paid Claude plan."
+    echo "Opening claude.ai in a browser is not the same thing."
+    echo ""
+    echo "If you use Cursor instead, you can continue without Claude Code."
+    echo ""
+    dex_open_url "https://claude.ai/download"
+    dex_pause "Press Enter to continue. "
+}
+
+dex_node_major() {
+    local raw
+    raw=$(node -v 2>/dev/null | cut -d'v' -f2 | cut -d'.' -f1)
+    printf '%s\n' "$raw"
+}
+
+dex_guided_preflight() {
+    local git_ok=0 node_ok=0 python_ok=0 claude_ok=0 node_major
+    dex_ensure_macos_clt || true
+    while true; do
+        git_ok=0
+        node_ok=0
+        python_ok=0
+        claude_ok=0
+        dex_have_cmd git && git_ok=1
+        if dex_have_cmd node; then
+            node_major=$(dex_node_major)
+            if [ -n "$node_major" ] && [ "$node_major" -ge 18 ]; then
+                node_ok=1
+            fi
+        fi
+        if dex_resolve_python; then
+            python_ok=1
+        fi
+        dex_have_claude && claude_ok=1
+        echo "Here is what this computer has:"
+        echo ""
+        if [ "$claude_ok" = "1" ]; then
+            dex_print_check 1 "Claude Code"
+        else
+            dex_print_check 0 "Claude Code (optional if you use Cursor)"
+        fi
+        if [ "$git_ok" = "1" ]; then
+            dex_print_check 1 "Git $(git --version 2>/dev/null | cut -d' ' -f3)"
+        else
+            dex_print_check 0 "Git"
+        fi
+        if [ "$node_ok" = "1" ]; then
+            dex_print_check 1 "Node.js $(node -v 2>/dev/null)"
+        else
+            dex_print_check 0 "Node.js 18+"
+        fi
+        if [ "$python_ok" = "1" ]; then
+            dex_print_check 1 "Python $PYTHON_VERSION"
+        else
+            dex_print_check 0 "Python 3.11+"
+        fi
+        echo ""
+        if [ "$git_ok" != "1" ]; then
+            dex_guide_missing_git
+            continue
+        fi
+        if [ "$node_ok" != "1" ]; then
+            dex_guide_missing_node
+            continue
+        fi
+        if [ "$python_ok" != "1" ]; then
+            dex_guide_missing_python
+            continue
+        fi
+        if [ "$claude_ok" != "1" ] && ! dex_have_cursor; then
+            dex_guide_missing_claude
+        fi
+        if [ "$python_ok" = "1" ] && ! dex_support_python_probe; then
+            exit 1
+        fi
+        break
+    done
+}
+
+dex_bootstrap_clone() {
+    local target="$1"
+    local repo ref
+    repo=$(dex_repo_url)
+    ref=$(dex_repo_ref)
+    mkdir -p "$(dirname "$target")"
+    if dex_is_checkout "$target"; then
+        return 0
+    fi
+    if [ -e "$target" ] && ! dex_dir_is_empty "$target"; then
+        echo "That folder already has files, and they are not a Dex install."
+        echo "Nothing was changed there."
+        return 1
+    fi
+    if ! dex_have_cmd git; then
+        echo "Git is required to download Dex."
+        return 1
+    fi
+    if dex_is_interactive; then
+        echo "Downloading Dex. This usually takes a minute."
+    else
+        echo "Downloading Dex ($ref) into $(dex_display_path "$target")..."
+    fi
+    if [ -d "$target" ]; then
+        if ! git clone --quiet --branch "$ref" --single-branch "$repo" "$target" >>"${INSTALL_LOG:-/dev/null}" 2>&1; then
+            echo "Could not download Dex. The folder was left as it was."
+            return 1
+        fi
+    else
+        if ! git clone --quiet --branch "$ref" --single-branch "$repo" "$target" >>"${INSTALL_LOG:-/dev/null}" 2>&1; then
+            echo "Could not download Dex. Nothing was left behind outside that folder."
+            return 1
+        fi
+    fi
+    if ! dex_is_checkout "$target"; then
+        echo "The download finished, but this is not a complete Dex folder."
+        return 1
+    fi
+    if ! (cd "$target" && dex_ensure_official_release_ref); then
+        return 1
+    fi
+    return 0
+}
+
+dex_print_manual_next_steps() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    echo ""
+    echo "Copy and paste this line:"
+    echo ""
+    echo "  cd \"$target\" && claude \"set up Dex\""
+    echo ""
+    echo "Then press Enter. Setup starts from there."
+    if dex_is_windows; then
+        echo ""
+        echo "You can also open that folder in File Explorer any time."
+    fi
+    echo ""
+    echo "If Claude Code is not installed, open the folder in Cursor and type: /setup"
+}
+
+dex_launch_claude_setup() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    local bin
+    if ! dex_have_cmd claude; then
+        return 1
+    fi
+    bin=$(command -v claude)
+    trap - EXIT
+    dex_stop_spinner
+    echo ""
+    dex_claude_first_run_note
+    echo "Starting Dex in Claude Code..."
+    cd "$target" || return 1
+    # Official Claude CLI: `claude "query"` starts an interactive session and
+    # sends that first prompt. A leading slash is not a documented launch form
+    # and can sit in the input box instead of running. "set up Dex" is the
+    # setup skill phrase and works even when SessionStart hooks did not.
+    # curl|bash leaves stdin as the script pipe. Hand the keyboard to Claude.
+    if [ -e /dev/tty ]; then
+        exec "$bin" "set up Dex" </dev/tty >/dev/tty 2>&1
+    fi
+    exec "$bin" "set up Dex"
+}
+
+dex_print_interactive_finish() {
+    local display
+    display=$(dex_display_path "${DEX_TARGET:-$(pwd)}")
+    echo ""
+    echo "🎉 Dex is installed!"
+    echo ""
+    echo "Your Dex folder is:"
+    echo "  $display"
+    echo ""
+    dex_apps_line
+    echo ""
+    dex_write_open_me_next "$DEX_TARGET"
+    echo "A short reminder is saved in that folder as 'Open me next'."
+    echo ""
+    if dex_have_cmd claude; then
+        dex_read_tty "Would you like to start Dex in Claude Code now? [Y/n] " "Y"
+        case "$REPLY" in
+            Y|y|yes|Yes|"")
+                if dex_launch_claude_setup; then
+                    return 0
+                fi
+                echo "Claude Code did not start from here."
+                dex_print_manual_next_steps
+                ;;
+            *)
+                dex_print_manual_next_steps
+                ;;
+        esac
+    else
+        dex_print_manual_next_steps
+    fi
+    echo ""
+    echo "Welcome aboard. Dave & Dex"
+}
+
+dex_print_legacy_finish() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "✅ Dex installation complete!"
+    echo ""
+    echo "Status:"
+    echo "  • Node.js: ✅ Working"
+    echo "  • Work MCP: $WORK_MCP_STATUS"
+    if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
+        echo ""
+        echo "⚠️  IMPORTANT: Work MCP enables task sync across all files."
+        echo "   Without it, Dex works but tasks won't sync automatically."
+        echo "   See troubleshooting above to fix."
+        echo "   Install log: $INSTALL_LOG"
+    fi
+    echo ""
+    echo "Dex detected: $DEX_CHAT_APPS"
+    echo "Setup will let you confirm one or several harnesses and show exactly what each supports."
+    echo ""
+    echo "Next steps:"
+    echo "  1. Open one of these apps in this folder: $DEX_CHAT_APPS"
+    echo "     (the folder you just installed into — not somewhere else)"
+    echo "  2. In that app's chat, type: /setup"
+    echo "  3. Answer the setup questions (~5 minutes)"
+    echo "  4. Start using Dex!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+dex_install_on_error() {
+    local status=$?
+    trap - EXIT
+    dex_stop_spinner
+    if [ "$status" -eq 0 ]; then
+        return 0
+    fi
+    echo ""
+    echo "Setup did not finish."
+    dex_copy_user_log
+    if [ -n "${DEX_TARGET:-}" ] && [ -f "$DEX_TARGET/install-log.txt" ]; then
+        echo "Please send this file to dave@heydex.ai:"
+        echo "  $(dex_display_path "$DEX_TARGET/install-log.txt")"
+    elif [ -n "${INSTALL_LOG:-}" ] && [ -f "$INSTALL_LOG" ]; then
+        echo "Please send this file to dave@heydex.ai:"
+        echo "  $(dex_display_path "$INSTALL_LOG")"
+    else
+        echo "Please write to dave@heydex.ai and mention what you saw on screen."
+    fi
+    exit "$status"
+}
+
 if [ "${DEX_INSTALL_LIB_ONLY:-}" = "1" ] || [ "${DEX_SUPPORT_LIB_ONLY:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -376,51 +1264,172 @@ set -e
 # Main install
 # ---------------------------------------------------------------------------
 
-dex_init_install_log
-dex_log "starting install"
+DEX_TARGET=""
+DEX_PREFLIGHT_DONE=""
+
+if dex_is_interactive; then
+    trap dex_install_on_error EXIT
+    dex_print_welcome
+fi
+
+dex_resolve_install_target
+
+if dex_is_branch_test; then
+    echo "Isolated install folder: $(dex_display_path "$DEX_TARGET")"
+    echo "Your existing Dex folder and global app settings are not changed."
+    echo ""
+fi
+
+if dex_is_interactive && [ -z "${DEX_INSTALL_LOG:-}" ]; then
+    export DEX_INSTALL_LOG="${TMPDIR:-/tmp}/dex-install-$$.log"
+    DEX_INSTALL_LOG_IS_TEMP=1
+    dex_init_install_log
+fi
+
+if dex_is_interactive; then
+    dex_step 2 "Checking your computer"
+    dex_guided_preflight
+    DEX_PREFLIGHT_DONE=1
+fi
+
+# Never download into a new folder when Git / Node / Python are missing.
+if [ "${DEX_PREFLIGHT_DONE:-}" != "1" ] && dex_should_bootstrap "$DEX_TARGET"; then
+    if ! command -v git >/dev/null 2>&1; then
+        echo "❌ Git is not installed"
+        echo "Git is required to clone the repository and manage updates."
+        exit 1
+    fi
+    if ! command -v node >/dev/null 2>&1; then
+        echo "❌ Node.js is not installed"
+        echo "   Please install Node.js 18+ from https://nodejs.org/"
+        exit 1
+    fi
+    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 18 ]; then
+        echo "❌ Node.js version must be 18 or higher (found v$NODE_VERSION)"
+        echo "   Please upgrade from https://nodejs.org/"
+        exit 1
+    fi
+    if ! dex_resolve_python; then
+        echo "❌ Python 3.11+ not found"
+        exit 1
+    fi
+fi
+
+if dex_should_bootstrap "$DEX_TARGET"; then
+    if dex_is_interactive; then
+        dex_step 3 "Downloading Dex"
+    fi
+    if ! dex_bootstrap_clone "$DEX_TARGET"; then
+        exit 1
+    fi
+elif dex_is_interactive; then
+    dex_step 3 "Downloading Dex"
+    echo "This folder already has Dex. Using the files that are here."
+    echo ""
+fi
+
+cd "$DEX_TARGET"
+
+if [ "${DEX_INSTALL_LOG_IS_TEMP:-}" = "1" ]; then
+    dest="$(dex_user_log_path)"
+    if [ -f "${DEX_INSTALL_LOG:-}" ]; then
+        mv "$DEX_INSTALL_LOG" "$dest"
+    fi
+    export DEX_INSTALL_LOG="$dest"
+    INSTALL_LOG="$dest"
+    DEX_INSTALL_LOG_IS_TEMP=""
+else
+    dex_init_install_log
+fi
+dex_log "starting install target=$DEX_TARGET ref=$(dex_repo_ref)"
 if ! dex_support_shell_precheck; then
     exit 1
 fi
 
-echo "🚀 Setting up Dex..."
-echo ""
+if ! dex_is_interactive; then
+    echo "🚀 Setting up Dex..."
+    echo ""
+fi
+
+if dex_is_interactive; then
+    dex_step 4 "Setting up your workspace"
+    echo "This part is quiet on purpose. Details go in the log if anything goes wrong."
+    echo ""
+fi
 
 # Check for Command Line Tools on macOS (required for git)
-if [[ "$OSTYPE" == "darwin"* ]]; then
+if [[ "$OSTYPE" == "darwin"* ]] && [ "${DEX_PREFLIGHT_DONE:-}" != "1" ]; then
     if ! xcode-select -p >/dev/null 2>&1; then
         echo "⚠️  Command Line Developer Tools not found"
         echo ""
         echo "macOS will now prompt you to install them - this is required for git."
         echo "Click 'Install' when the dialog appears (takes 2-3 minutes)."
         echo ""
-        echo "Press Enter to continue..."
-        read -r
-        
+        if dex_is_interactive; then
+            dex_pause "Press Enter to continue..."
+        elif [ -z "${DEX_INSTALL_NONINTERACTIVE:-}" ]; then
+            read -r
+        fi
+
         # Trigger the install prompt
         xcode-select --install >/dev/null 2>&1 || true
-        
+
         echo ""
         echo "⏳ Waiting for Command Line Tools installation..."
         echo "   (This window will continue once installation completes)"
         echo ""
-        
-        # Wait for installation to complete
-        until xcode-select -p >/dev/null 2>&1; do
+
+        # Bounded wait — never hang if the user cancels the Apple dialog
+        waited=0
+        while ! xcode-select -p >/dev/null 2>&1; do
             sleep 5
+            waited=$((waited + 5))
+            if [ "$waited" -ge 180 ]; then
+                echo "That install window was closed, or it is taking longer than expected."
+                if dex_is_interactive; then
+                    dex_read_tty "Press Enter to try again, or type skip: "
+                    case "$REPLY" in
+                        skip|SKIP|Skip)
+                            break
+                            ;;
+                    esac
+                    xcode-select --install >/dev/null 2>&1 || true
+                    waited=0
+                    continue
+                fi
+                echo "Run this installer again after Command Line Tools are installed."
+                exit 1
+            fi
         done
-        
-        echo "✅ Command Line Tools installed!"
-        echo ""
+
+        if xcode-select -p >/dev/null 2>&1; then
+            echo "✅ Command Line Tools installed!"
+            echo ""
+        fi
     fi
 fi
 
-# Silently fix git remote to avoid Claude Desktop confusion
+# Only rename remotes inside the chosen Dex folder — never the caller's cwd
+# when this script was piped from curl.
 if git remote -v >/dev/null 2>&1 && git remote -v | grep -q "davekilleen/[Dd]ex"; then
     git remote rename origin upstream >/dev/null 2>&1 || true
 fi
+if ! dex_ensure_official_release_ref; then
+    if dex_is_interactive; then
+        trap - EXIT
+    fi
+    exit 1
+fi
 
 # Check Git first (required for repo operations)
-if ! command -v git >/dev/null 2>&1; then
+if [ "${DEX_PREFLIGHT_DONE:-}" = "1" ]; then
+    if ! dex_resolve_python; then
+        echo "❌ Python 3.11+ not found"
+        exit 1
+    fi
+    dex_resolve_venv_paths
+elif ! command -v git >/dev/null 2>&1; then
     echo "❌ Git is not installed"
     echo ""
     echo "Git is required to clone the repository and manage updates."
@@ -494,16 +1503,26 @@ fi
 
 # Install Node dependencies from the committed lockfile only.
 echo ""
-echo "📦 Installing dependencies..."
+dex_user_progress "Installing the pieces Dex needs..." "📦 Installing dependencies..."
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
     dex_log "----- pnpm install --frozen-lockfile -----"
-    if ! pnpm install --frozen-lockfile > >(tee -a "$INSTALL_LOG") 2>&1; then
+    if dex_is_interactive; then
+        if ! dex_run_with_wait "pnpm install --frozen-lockfile" pnpm install --frozen-lockfile; then
+            dex_show_logged_failure "Could not install Node dependencies"
+            exit 1
+        fi
+    elif ! pnpm install --frozen-lockfile > >(tee -a "$INSTALL_LOG") 2>&1; then
         dex_show_logged_failure "Could not install Node dependencies"
         exit 1
     fi
 elif [ -f package-lock.json ] && command -v npm >/dev/null 2>&1; then
     dex_log "----- npm ci -----"
-    if ! npm ci > >(tee -a "$INSTALL_LOG") 2>&1; then
+    if dex_is_interactive; then
+        if ! dex_run_with_wait "npm ci" npm ci; then
+            dex_show_logged_failure "Could not install Node dependencies"
+            exit 1
+        fi
+    elif ! npm ci > >(tee -a "$INSTALL_LOG") 2>&1; then
         dex_show_logged_failure "Could not install Node dependencies"
         exit 1
     fi
@@ -520,7 +1539,7 @@ fi
 # not yet have an activated lifecycle engine. Post-install adoption below uses
 # the frozen lifecycle service.
 echo ""
-echo "📝 Converging bootstrap configuration through the provision contract..."
+dex_user_progress "Preparing your notes folder..." "📝 Converging bootstrap configuration through the provision contract..."
 PROVISION_ARGS=(--path "$(pwd)" --install-config-only --json)
 if command -v qmd >/dev/null 2>&1; then
     PROVISION_ARGS+=(--enable-qmd)
@@ -529,12 +1548,15 @@ if ! DEX_CAPABILITY_PYTHON="$PYTHON_CMD" DEX_PROVISION_PYTHON="$PYTHON_CMD" DEX_
     dex_show_logged_failure "Dex could not finish the first-run setup"
     exit 1
 fi
-if command -v qmd >/dev/null 2>&1; then
-    echo "   qmd MCP server added when configuration was absent"
-else
-    echo "   semantic search not installed — run /enable-semantic-search to add it later"
+if ! dex_is_interactive; then
+    if command -v qmd >/dev/null 2>&1; then
+        echo "   qmd MCP server added when configuration was absent"
+    else
+        echo "   semantic search not installed — run /enable-semantic-search to add it later"
+    fi
+    echo "   MCP servers configured for: $(pwd)"
 fi
-echo "   MCP servers configured for: $(pwd)"
+dex_log "MCP servers configured for: $(pwd)"
 
 # Check for the optional Granola app. API access is connected separately.
 # Path resolution lives in core.integrations.granola_paths (Windows-sync PR).
@@ -542,26 +1564,27 @@ echo "   MCP servers configured for: $(pwd)"
 echo ""
 GRANOLA_PATH=""
 if ! dex_granola_locator_present; then
-    echo "ℹ️  Granola app check skipped — shared locator not in this checkout yet"
-    echo "   Run /granola-setup later to connect it (needs a Granola Business API key)"
+    dex_user_progress "Granola (optional): you can connect it later for meeting notes." "ℹ️  Granola app check skipped — shared locator not in this checkout yet"
     dex_log "granola locator missing; skipped detection"
 elif GRANOLA_PATH=$(dex_granola_via_shared_module); then
-    echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
+    dex_user_progress "Granola (optional): found. You can connect it later for meeting notes." "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
     dex_log "granola detected at $GRANOLA_PATH"
 else
-    echo "ℹ️  Granola app not detected"
-    echo "   Install Granola from https://granola.ai for meeting transcription"
-    echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
+    dex_user_progress "Granola (optional): not found. You can add it later for meeting notes." "ℹ️  Granola app not detected"
+    if ! dex_is_interactive; then
+        echo "   Install Granola from https://granola.ai for meeting transcription"
+        echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
+    fi
 fi
 
 # Install Python dependencies for Work MCP in a virtual environment
 echo ""
-echo "📦 Setting up Python environment for Work MCP..."
+dex_user_progress "Setting up the part that keeps your tasks in sync..." "📦 Setting up Python environment for Work MCP..."
 
 if [ -n "$PYTHON_CMD" ]; then
     # Create venv if it doesn't exist
     if [ ! -d ".venv" ]; then
-        echo "   Creating virtual environment..."
+        dex_user_progress "   Creating a private workspace..." "   Creating virtual environment..."
         if ! dex_run_logged "python -m venv" "$PYTHON_CMD" -m venv .venv; then
             dex_show_logged_failure "Could not create virtual environment"
             echo ""
@@ -586,7 +1609,7 @@ if [ -n "$PYTHON_CMD" ]; then
 
     # Install dependencies into venv from the hashed pin file only.
     if [ -f "$VENV_PIP" ] && dex_run_logged "pip install" "$VENV_PIP" install --require-hashes -r "$HASHED_REQUIREMENTS" --quiet; then
-        echo "✅ Work MCP dependencies installed"
+        dex_user_progress "✅ Task sync is ready." "✅ Work MCP dependencies installed"
     else
         if [ ! -f "$VENV_PIP" ]; then
             dex_log "venv pip missing at $VENV_PIP"
@@ -606,14 +1629,17 @@ fi
 
 # Verify Work MCP setup
 echo ""
-echo "🔍 Verifying Work MCP setup..."
+dex_user_progress "Making sure your tasks will stay in sync..." "🔍 Verifying Work MCP setup..."
 if [ -n "$PYTHON_CMD" ] && [ -f "$VENV_PYTHON" ]; then
     if dex_run_logged "import mcp, yaml" "$VENV_PYTHON" -c "import mcp, yaml"; then
-        echo "✅ Work MCP verified - task sync will work"
+        dex_user_progress "✅ Task sync will work." "✅ Work MCP verified - task sync will work"
         WORK_MCP_STATUS="✅ Working"
 
         # Path constants were generated by the sanctioned provision contract.
-        echo "Path constants generated"
+        if ! dex_is_interactive; then
+            echo "Path constants generated"
+        fi
+        dex_log "Path constants generated"
     else
         dex_show_logged_failure "Work MCP not working - task sync won't function"
         WORK_MCP_STATUS="⚠️  Needs attention"
@@ -627,7 +1653,7 @@ fi
 # engine that also handles existing installs. A bounded migration may ask to
 # resume, so keep routing back to that engine until it reaches a terminal state.
 echo ""
-echo "🔀 Separating the Dex brain from your vault..."
+dex_user_progress "Finishing your folder..." "🔀 Separating the Dex brain from your vault..."
 MIGRATOR="core/migrations/v1-to-v2-brain-vault-split.cjs"
 if [ ! -f "$MIGRATOR" ]; then
     echo "❌ Dex cannot finish the brain/vault setup because the migrator is missing."
@@ -644,7 +1670,19 @@ done
 
 MIGRATION_MODE="--auto"
 while true; do
-    if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
+    if dex_is_interactive; then
+        if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
+            if dex_run_with_wait "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
+                MIGRATION_STATUS=0
+            else
+                MIGRATION_STATUS=$?
+            fi
+        elif dex_run_with_wait "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE"; then
+            MIGRATION_STATUS=0
+        else
+            MIGRATION_STATUS=$?
+        fi
+    elif [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
         if node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
             MIGRATION_STATUS=0
         else
@@ -661,16 +1699,25 @@ while true; do
         continue
     fi
     if [ "$MIGRATION_STATUS" -ne 0 ]; then
-        echo "❌ Dex could not finish the brain/vault split."
-        echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
-        echo "   Install log: $INSTALL_LOG"
+        if dex_is_interactive; then
+            trap - EXIT
+            echo "Setup could not finish preparing this folder."
+            echo "Your files are still in $(dex_display_path "$DEX_TARGET")."
+            dex_copy_user_log
+            echo "Please send this file to dave@heydex.ai:"
+            echo "  $(dex_display_path "$(dex_user_log_path)")"
+        else
+            echo "❌ Dex could not finish the brain/vault split."
+            echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
+            echo "   Install log: $INSTALL_LOG"
+        fi
         exit "$MIGRATION_STATUS"
     fi
     break
 done
 
 if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" ]; then
-    echo "✅ Your vault and the Dex brain now have separate Git histories"
+    dex_user_progress "✅ Your notes folder is ready." "✅ Your vault and the Dex brain now have separate Git histories"
     # ZIP bundles compose vault-mode .gitignore at packaging time. A cloned
     # product checkout still has the product ignore file, which hides notes
     # folders until the first /dex-update. Compose here so a fresh install
@@ -683,22 +1730,37 @@ if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" 
             COMPOSE_PYTHON="$VENV_PYTHON"
         fi
         if [ -n "$COMPOSE_PYTHON" ] && dex_run_logged "compose-vault-gitignore" "$COMPOSE_PYTHON" "$GITIGNORE_COMPOSER" ".gitignore"; then
-            echo "   Your notes folders stay in your vault history from the start"
+            if ! dex_is_interactive; then
+                echo "   Your notes folders stay in your vault history from the start"
+            fi
         else
             echo "⚠️  Dex could not finish making your notes folders trackable."
             echo "   Your files are still here. Run /dex-update, or run /dex-doctor to see the next step."
         fi
     fi
 elif [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
-    echo "❌ Dex could not finish the brain/vault split."
-    echo "   The notes folder has no working Git history. Your files are still here."
-    echo "   Run: node core/migrations/v1-to-v2-brain-vault-split.cjs --resume"
-    echo "   Then run ./install.sh again."
+    if dex_is_interactive; then
+        trap - EXIT
+        echo "Setup could not finish preparing this folder."
+        echo "Your files are still in $(dex_display_path "$DEX_TARGET")."
+        dex_copy_user_log
+        echo "Please send this file to dave@heydex.ai:"
+        echo "  $(dex_display_path "$(dex_user_log_path)")"
+    else
+        echo "❌ Dex could not finish the brain/vault split."
+        echo "   The notes folder has no working Git history. Your files are still here."
+        echo "   Run: node core/migrations/v1-to-v2-brain-vault-split.cjs --resume"
+        echo "   Then run ./install.sh again."
+    fi
     exit 1
 else
-    echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
-    echo "   Your files are unchanged, and Dex will keep using the combined layout."
-    echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+    if dex_is_interactive; then
+        echo "Your folder is ready to use. A later update will finish a behind-the-scenes cleanup."
+    else
+        echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
+        echo "   Your files are unchanged, and Dex will keep using the combined layout."
+        echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+    fi
 fi
 
 # Any catalog adoption after bootstrap crosses the frozen lifecycle service;
@@ -708,6 +1770,9 @@ if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
     DEX_ADOPTION_PYTHON="$VENV_PYTHON"
 fi
 if ! DEX_LIFECYCLE_PYTHON="$DEX_ADOPTION_PYTHON" DEX_PROVISION_PYTHON="$DEX_ADOPTION_PYTHON" DEX_CAPABILITY_PYTHON="$DEX_ADOPTION_PYTHON" DEX_HARNESS_PYTHON="$DEX_ADOPTION_PYTHON" dex_run_logged "provision-adopt" node core/provision.cjs --path "$(pwd)" --adopt --lifecycle-only; then
+    if dex_is_interactive; then
+        trap - EXIT
+    fi
     dex_show_logged_failure "Dex could not finish the last setup step"
     exit 1
 fi
@@ -735,28 +1800,14 @@ if [ -z "$DEX_CHAT_APPS" ]; then
 fi
 
 # Success
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ Dex installation complete!"
-echo ""
-echo "Status:"
-echo "  • Node.js: ✅ Working"
-echo "  • Work MCP: $WORK_MCP_STATUS"
-if [[ "$WORK_MCP_STATUS" == *"Needs"* ]]; then
+if dex_is_interactive; then
+    dex_step 5 "Final checks"
+    echo "✓ Your Dex folder is ready"
+    echo "✓ The tools Dex needs are installed"
+    echo "✓ Your notes folder is set up"
     echo ""
-    echo "⚠️  IMPORTANT: Work MCP enables task sync across all files."
-    echo "   Without it, Dex works but tasks won't sync automatically."
-    echo "   See troubleshooting above to fix."
-    echo "   Install log: $INSTALL_LOG"
+    trap - EXIT
+    dex_print_interactive_finish
+else
+    dex_print_legacy_finish
 fi
-echo ""
-echo "Dex detected: $DEX_CHAT_APPS"
-echo "Setup will let you confirm one or several harnesses and show exactly what each supports."
-echo ""
-echo "Next steps:"
-echo "  1. Open one of these apps in this folder: $DEX_CHAT_APPS"
-echo "     (the folder you just installed into — not somewhere else)"
-echo "  2. In that app's chat, type: /setup"
-echo "  3. Answer the setup questions (~5 minutes)"
-echo "  4. Start using Dex!"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
