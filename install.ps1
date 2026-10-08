@@ -291,6 +291,20 @@ if ($env:CI -and -not $env:DEX_INSTALL_NONINTERACTIVE) {
     $env:DEX_INSTALL_NONINTERACTIVE = "1"
 }
 
+# Interactive PowerShell is not the install path. Point people at Git Bash
+# before this script clones or rewrites anything.
+if (-not $env:CI -and -not $env:DEX_INSTALL_NONINTERACTIVE) {
+    Write-Host "Dex on Windows installs from Git Bash, not from PowerShell."
+    Write-Host ""
+    Write-Host "1. Open Git Bash (it comes with Git for Windows)."
+    Write-Host "2. Copy and paste the install command there."
+    Write-Host "   For the official release:"
+    Write-Host '   curl -fsSL "https://raw.githubusercontent.com/davekilleen/Dex/release/install.sh" | bash'
+    Write-Host ""
+    Write-Host "Download Git for Windows from: https://git-scm.com/download/win"
+    exit 1
+}
+
 $script:DexInstallArgs = @($args)
 
 $Root = Get-DexInstallRoot

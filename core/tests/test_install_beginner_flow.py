@@ -114,8 +114,43 @@ def test_should_not_bootstrap_existing_checkout(tmp_path: Path) -> None:
 def test_repo_ref_and_beta_line() -> None:
     ref = _source_helpers("dex_repo_ref", env={"DEX_INSTALL_REF": "cursor/beginner-install-b596"})
     assert ref.stdout.strip() == "cursor/beginner-install-b596"
-    beta = _source_helpers("dex_beta_line")
+    beta = _source_helpers("dex_apps_line")
     assert "heydex.ai/beta" in beta.stdout
+    assert "Dex is in beta" not in beta.stdout
+    assert "desktop app and mobile app" in beta.stdout
+
+
+def test_welcome_and_finish_copy() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Dave and Dex are genuinely delighted" in text
+    assert "Dave and the Dex team" not in text
+    assert "Dex is in beta" not in text
+    assert "Would you like to start Dex in Claude Code now?" in text
+    assert 'exec "$bin" "/setup"' in text
+    assert "</dev/tty" in text
+    assert "Open your Dex folder now?" not in text
+    assert 'echo "(That' not in text
+    assert "Still working — this can take a minute." in text
+    assert "✓ Your Dex folder is ready" in text
+    assert "Copy and paste this line" in text
+
+
+def test_branch_test_mode_only_when_isolated() -> None:
+    release = _source_helpers(
+        'if dex_is_branch_test; then echo yes; else echo no; fi',
+        env={"DEX_INSTALL_REF": "release"},
+    )
+    assert release.stdout.strip() == "no"
+    isolated = _source_helpers(
+        'if dex_is_branch_test; then echo yes; else echo no; fi',
+        env={"DEX_INSTALL_DIR": "/tmp/Dex-test", "DEX_INSTALL_REF": "release"},
+    )
+    assert isolated.stdout.strip() == "yes"
+    feature = _source_helpers(
+        'if dex_is_branch_test; then echo yes; else echo no; fi',
+        env={"DEX_INSTALL_REF": "cursor/beginner-install-b596"},
+    )
+    assert feature.stdout.strip() == "yes"
 
 
 def test_noninteractive_read_tty_uses_default() -> None:

@@ -6,7 +6,7 @@ set -euo pipefail
 PROVENANCE_REFUSAL='Dex could not prove that the local release branch contains only official release history'
 
 usage() {
-  echo "usage: $0 {install-cygwin-stub|install-msys-journey|install-ps1-negative}" >&2
+  echo "usage: $0 {install-cygwin-stub|install-msys-journey|install-ps1-negative|beginner-helpers}" >&2
   exit 2
 }
 
@@ -201,6 +201,50 @@ print("vault_unsplit_and_preexisting_bytes_unchanged=yes")
 PY
 }
 
+run_beginner_helpers() {
+  # Non-install check of the beginner Windows copy and isolation rails.
+  cd "${GITHUB_WORKSPACE:-$(cd "$(dirname "$0")/.." && pwd)}"
+  DEX_INSTALL_LIB_ONLY=1 HOME="/c/Users/joe" DEX_INSTALL_REF=release \
+    bash -c '
+      set -e
+      . ./install.sh
+      target=$(dex_default_target)
+      case "$target" in
+        */Dex) ;;
+        *) echo "release default must end in /Dex: $target" >&2; exit 1 ;;
+      esac
+      if dex_is_branch_test; then
+        echo "release install must not be branch-test mode" >&2
+        exit 1
+      fi
+      line=$(dex_apps_line)
+      case "$line" in
+        *"Dex is in beta"*) echo "must not say Dex is in beta" >&2; exit 1 ;;
+        *heydex.ai/beta*) ;;
+        *) echo "apps line missing beta signup: $line" >&2; exit 1 ;;
+      esac
+      provider=$(dex_cloud_provider "/c/Users/joe/OneDrive/Documents/Dex" || true)
+      [ "$provider" = "OneDrive" ]
+      echo "beginner_helpers_ok=yes"
+    '
+  DEX_INSTALL_LIB_ONLY=1 HOME="/c/Users/joe" DEX_INSTALL_DIR="/c/Users/joe/Dex-test" \
+    DEX_INSTALL_REF="cursor/beginner-install-b596" \
+    bash -c '
+      set -e
+      . ./install.sh
+      if ! dex_is_branch_test; then
+        echo "DEX_INSTALL_DIR must be branch-test mode" >&2
+        exit 1
+      fi
+      target=$(dex_default_target)
+      case "$target" in
+        */Dex-test) ;;
+        *) echo "branch-test default must be Dex-test: $target" >&2; exit 1 ;;
+      esac
+      echo "beginner_helpers_branch_ok=yes"
+    '
+}
+
 run_install_ps1_negative() {
   local dest_win dest_unix before_file output status
   dest_win="$(windows_vault_path install-ps1)"
@@ -275,6 +319,9 @@ case "$cmd" in
     ;;
   install-ps1-negative)
     run_install_ps1_negative
+    ;;
+  beginner-helpers)
+    run_beginner_helpers
     ;;
   *)
     usage

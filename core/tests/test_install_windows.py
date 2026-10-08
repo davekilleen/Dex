@@ -647,6 +647,33 @@ def test_hashed_requirements_workflow_is_separate_from_required_gates() -> None:
     assert "hashed-python-requirements" not in ci
 
 
+def test_windows_default_folder_and_onedrive_warning() -> None:
+    result = _source_helpers(
+        "dex_default_target",
+        env={
+            "HOME": "/c/Users/joe",
+            "USERPROFILE": "C:\\Users\\joe",
+            "DEX_INSTALL_REF": "release",
+            "OSTYPE": "msys",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith("/Dex")
+    cloud = _source_helpers(
+        'dex_cloud_provider "/c/Users/joe/OneDrive/Documents/Dex"',
+        env={"OSTYPE": "msys"},
+    )
+    assert cloud.returncode == 0, cloud.stderr
+    assert cloud.stdout.strip() == "OneDrive"
+
+
+def test_install_ps1_interactive_refuses_with_git_bash_message() -> None:
+    text = INSTALL_PS1.read_text(encoding="utf-8")
+    assert "Dex on Windows installs from Git Bash, not from PowerShell." in text
+    assert "Open Git Bash" in text
+    assert "git-scm.com/download/win" in text
+
+
 def test_install_ps1_prefers_git_bash_over_wsl() -> None:
     text = INSTALL_PS1.read_text(encoding="utf-8")
     assert "function Get-DexGitBash" in text
@@ -686,6 +713,7 @@ def test_install_ps1_covers_the_same_windows_install_contract() -> None:
     assert "winget" not in text.lower()
     assert "Get-DexGitBash" in text
     assert "Python 3.11+" in text
+    assert "Dex on Windows installs from Git Bash, not from PowerShell." in text
 
 
 def test_install_ps1_is_classified_as_brain() -> None:

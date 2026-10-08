@@ -1,15 +1,9 @@
 # Native Windows install journey + engine CI.
 #
-# This is a SIGNAL job, not a merge gate. Joe's 2026-09-26 Windows 11 report
-# (Git Bash OSTYPE=cygwin, python.org Python 3.12, Dex 1.97.15) showed that
-# the real install path and the transaction/lifecycle engines are untested on
-# Windows. Parallel swarm PRs are fixing those bugs; this workflow will likely
-# fail until those land. That is expected.
-#
-# Do NOT add these jobs to branch protection, merge-queue required checks, or
-# build-release `needs` until those Windows fixes have merged and this workflow
-# is green on main. Follow-up: flip `continue-on-error` to false and add
-# `windows-install-journey` to the required set.
+# This job is a real signal on the PR (it is allowed to go red). It is still
+# a separate workflow, so a red run cannot cancel Dex CI or block a main
+# release build. Do NOT add `windows-install-journey` to branch protection,
+# merge-queue required checks, or build-release `needs`.
 #
 # Why a separate workflow, not a job in ci.yml:
 # - Required Dex CI names stay untouched: quality, tests, portable-plugin-platforms.
@@ -42,10 +36,9 @@ permissions:
 
 jobs:
   windows-install-journey:
-    # Advisory until the Windows install swarm is green on main.
-    # Separate workflow + continue-on-error means a red run cannot block merge
-    # even if someone later lists this check by mistake.
-    continue-on-error: true
+    # Real signal: a red job means a Windows install leg failed.
+    # Still a separate workflow, so this cannot cancel Dex CI.
+    continue-on-error: false
     runs-on: windows-latest
     timeout-minutes: 35
     env:
@@ -165,6 +158,16 @@ jobs:
           GH_TOKEN: ""
         run: bash scripts/run-windows-install-journey.sh install-ps1-negative
 
+      - name: beginner helper contract
+        id: beginner-helpers
+        continue-on-error: true
+        shell: bash
+        timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: bash scripts/run-windows-install-journey.sh beginner-helpers
+
       - name: Windows install verdict
         if: always()
         shell: bash
@@ -174,12 +177,13 @@ jobs:
           INSTALL_CYGWIN: ${{ steps.install-cygwin.outcome }}
           INSTALL_MSYS: ${{ steps.install-msys.outcome }}
           INSTALL_PS1: ${{ steps.install-ps1.outcome }}
+          BEGINNER_HELPERS: ${{ steps.beginner-helpers.outcome }}
         run: |
           set -euo pipefail
           {
-            echo "## Windows install journey (advisory)"
+            echo "## Windows install journey"
             echo
-            echo "This job is **not required**. Do not add \`windows-install-journey\` to branch protection until it is green on main."
+            echo "This job is a real signal. It is still **not** a required merge-gate name (quality / tests / portable-plugin-platforms)."
             echo
             echo "| Leg | Outcome |"
             echo "| --- | --- |"
@@ -188,11 +192,12 @@ jobs:
             echo "| install.sh OSTYPE=cygwin + Store stub | ${INSTALL_CYGWIN} |"
             echo "| install.sh OSTYPE=msys + activate/adopt/rewind/CRLF | ${INSTALL_MSYS} |"
             echo "| install.ps1 (PowerShell, provenance refusal) | ${INSTALL_PS1} |"
+            echo "| beginner helper contract | ${BEGINNER_HELPERS} |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "engine312=${ENGINE312} engine313=${ENGINE313} cygwin=${INSTALL_CYGWIN} msys=${INSTALL_MSYS} ps1=${INSTALL_PS1}"
+          echo "engine312=${ENGINE312} engine313=${ENGINE313} cygwin=${INSTALL_CYGWIN} msys=${INSTALL_MSYS} ps1=${INSTALL_PS1} beginner=${BEGINNER_HELPERS}"
           if [ "$ENGINE312" != "success" ] || [ "$ENGINE313" != "success" ] \
             || [ "$INSTALL_CYGWIN" != "success" ] || [ "$INSTALL_MSYS" != "success" ] \
-            || [ "$INSTALL_PS1" != "success" ]; then
-            echo "One or more Windows legs failed. Expected until the Windows install swarm lands." >&2
+            || [ "$INSTALL_PS1" != "success" ] || [ "$BEGINNER_HELPERS" != "success" ]; then
+            echo "One or more Windows legs failed." >&2
             exit 1
           fi

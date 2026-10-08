@@ -18,22 +18,47 @@ COMMAND = (
 )
 
 
+def _write_claude_shim(bin_dir: Path, log_path: Path) -> None:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    shim = bin_dir / "claude"
+    shim.write_text(
+        "#!/bin/sh\n"
+        f'printf \'%s\\n\' "$*" > "{log_path}"\n'
+        'printf \'%s\\n\' "claude-shim argv: $*"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+
+
 def main() -> int:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/real-github-pipe.txt")
+    args = [item for item in sys.argv[1:] if not item.startswith("--")]
+    flags = {item for item in sys.argv[1:] if item.startswith("--")}
+    out = Path(args[0]) if args else Path("/tmp/real-github-pipe.txt")
+    answer = "y" if "--yes" in flags else "n"
     out.parent.mkdir(parents=True, exist_ok=True)
     home = Path.home()
     target = home / "Dex-test"
     if target.exists():
         subprocess.run(["rm", "-rf", str(target)], check=False)
 
+    env = os.environ.copy()
+    shim_log = Path("/tmp/dex-claude-shim.log")
+    shim_log.unlink(missing_ok=True)
+    if answer == "y":
+        shim_dir = Path("/tmp/dex-claude-shim")
+        _write_claude_shim(shim_dir, shim_log)
+        env["PATH"] = f"{shim_dir}:{env.get('PATH', '/usr/bin:/bin')}"
+
     recorded = bytearray()
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(str(home))
-        os.execvpe("/bin/bash", ["/bin/bash", "-lc", COMMAND], os.environ.copy())
+        os.execvpe("/bin/bash", ["/bin/bash", "-lc", COMMAND], env)
 
     deadline = time.time() + 900
     last_send = 0.0
+    answered_claude = False
     try:
         while True:
             remaining = deadline - time.time()
@@ -51,23 +76,28 @@ def main() -> int:
                     break
                 recorded.extend(chunk)
             text_so_far = recorded.decode("utf-8", errors="replace")
-            if time.time() - last_send > 0.8 and (
-                "Press Enter" in text_so_far[-800:]
-                or "[Y/n]" in text_so_far[-400:]
-                or "type another path" in text_so_far[-400:]
+            tail = text_so_far[-800:]
+            claude_prompt = "Would you like to start Dex in Claude Code now?" in tail
+            if claude_prompt and not answered_claude and time.time() - last_send > 0.4:
+                try:
+                    os.write(fd, b"y\n" if answer == "y" else b"n\n")
+                    last_send = time.time()
+                    answered_claude = True
+                except OSError:
+                    break
+            elif (
+                not answered_claude
+                and time.time() - last_send > 0.8
+                and (
+                    "Press Enter" in tail
+                    or "type another path" in tail
+                )
             ):
                 try:
                     os.write(fd, b"\n")
                     last_send = time.time()
                 except OSError:
                     break
-            # After the finish prompt, prefer n so we do not launch Claude.
-            if "Open your Dex folder now?" in text_so_far[-400:] or "Start Claude Code" in text_so_far[-400:]:
-                try:
-                    os.write(fd, b"n\n")
-                    last_send = time.time()
-                except OSError:
-                    pass
             try:
                 waited, status = os.waitpid(pid, os.WNOHANG)
             except ChildProcessError:
@@ -89,37 +119,40 @@ def main() -> int:
                 text = recorded.decode("utf-8", errors="replace")
                 extra = [
                     f"\n--- exit {code} ---",
+                    f"answer={answer}",
                     f"target={target}",
                     f"exists={target.is_dir()}",
                     f"install_sh={(target / 'install.sh').is_file()}",
                     f"topology={(target / 'System' / '.dex' / 'topology.json').is_file()}",
                     f"brain={(target / '.dex' / 'brain.git').is_dir()}",
                     f"user_log={(target / 'install-log.txt').is_file()}",
+                    f"claude_prompt={'Would you like to start Dex in Claude Code now?' in text}",
+                    f"started_claude={'Starting Dex in Claude Code' in text}",
+                    f"manual_steps={'Copy and paste this line' in text}",
+                    f"beta_forbidden={'Dex is in beta' in text}",
+                    f"open_folder_prompt={'Open your Dex folder now?' in text}",
                 ]
-                remotes = subprocess.run(
-                    ["git", "-C", str(target), "remote", "-v"],
-                    capture_output=True,
-                    text=True,
-                )
-                extra.append("remotes:\n" + remotes.stdout + remotes.stderr)
-                release = subprocess.run(
-                    ["git", "-C", str(target), "rev-parse", "--verify", "refs/remotes/upstream/release^{commit}"],
-                    capture_output=True,
-                    text=True,
-                )
-                extra.append(f"upstream/release={release.returncode} {release.stdout.strip()}")
-                if release.returncode != 0:
-                    origin = subprocess.run(
-                        ["git", "-C", str(target), "rev-parse", "--verify", "refs/remotes/origin/release^{commit}"],
-                        capture_output=True,
-                        text=True,
-                    )
-                    extra.append(f"origin/release={origin.returncode} {origin.stdout.strip()}")
+                if shim_log.is_file():
+                    extra.append("claude_shim=" + shim_log.read_text(encoding="utf-8").strip())
+                else:
+                    extra.append("claude_shim=missing")
                 text += "\n".join(extra) + "\n"
                 out.write_text(text, encoding="utf-8")
                 print(text[-4000:])
                 print(f"transcript={out}")
-                return 0 if code == 0 and "Dex is installed" in text and "could not prove" not in text else 1
+                ok = (
+                    "Dex is installed" in text
+                    and "could not prove" not in text
+                    and "Dex is in beta" not in text
+                    and "Open your Dex folder now?" not in text
+                )
+                if answer == "y":
+                    ok = ok and "Starting Dex in Claude Code" in text and shim_log.is_file()
+                    if shim_log.is_file():
+                        ok = ok and "/setup" in shim_log.read_text(encoding="utf-8")
+                else:
+                    ok = ok and "Copy and paste this line" in text
+                return 0 if ok else 1
     finally:
         try:
             os.close(fd)

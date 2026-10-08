@@ -524,8 +524,68 @@ dex_open_folder() {
     return 1
 }
 
+dex_apps_line() {
+    printf '%s\n' "What you're installing right now runs in the terminal, but a Dex desktop app and mobile app are coming out shortly. Sign up for the beta at heydex.ai/beta."
+}
+
 dex_beta_line() {
-    printf '%s\n' "Dex is in beta right now, and the desktop and mobile apps are coming shortly. Sign up at heydex.ai/beta to get them first."
+    dex_apps_line
+}
+
+dex_is_branch_test() {
+    if [ -n "${DEX_INSTALL_DIR:-}" ]; then
+        return 0
+    fi
+    case "$(dex_repo_ref)" in
+        release|main)
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+dex_start_spinner() {
+    local msg="${1:-Still working — this can take a minute.}"
+    DEX_SPINNER_PID=""
+    if ! dex_is_interactive; then
+        return 0
+    fi
+    echo "   $msg"
+    if [ ! -e /dev/tty ]; then
+        return 0
+    fi
+    (
+        set +e
+        frames='|/-\'
+        i=0
+        while true; do
+            printf '\r   %s %s' "${frames:i:1}" "$msg" > /dev/tty 2>/dev/null || exit 0
+            i=$(( (i + 1) % 4 ))
+            sleep 0.2
+        done
+    ) &
+    DEX_SPINNER_PID=$!
+}
+
+dex_stop_spinner() {
+    if [ -n "${DEX_SPINNER_PID:-}" ]; then
+        kill "$DEX_SPINNER_PID" >/dev/null 2>&1 || true
+        wait "$DEX_SPINNER_PID" >/dev/null 2>&1 || true
+        DEX_SPINNER_PID=""
+        if [ -e /dev/tty ]; then
+            printf '\r\033[K' > /dev/tty 2>/dev/null || true
+        fi
+    fi
+}
+
+dex_run_with_wait() {
+    local status=0
+    dex_start_spinner "Still working — this can take a minute."
+    dex_run_logged "$@" || status=$?
+    dex_stop_spinner
+    return "$status"
 }
 
 dex_copy_user_log() {
@@ -692,13 +752,8 @@ dex_pause() {
 
 dex_write_open_me_next() {
     local target="${1:-${DEX_TARGET:-$(pwd)}}"
-    local display claude_line
+    local display
     display=$(dex_display_path "$target")
-    if dex_have_cmd claude; then
-        claude_line="In Terminal, run:  cd \"$target\" && claude"
-    else
-        claude_line="Open this folder in Claude Code or Cursor."
-    fi
     cat > "$target/Open me next.md" <<EOF
 # Open me next
 
@@ -708,13 +763,13 @@ $display
 
 ## What to do now
 
-1. $claude_line
-2. Type: hi
-3. If nothing happens, type: /setup
+Copy and paste this line:
 
-Claude Code in this folder treats even "hi" as setup. Cursor does not run those automatic hooks — use /setup there.
+cd "$target" && claude "/setup"
 
-$(dex_beta_line)
+If Claude Code is not installed, open that folder in Cursor and type: /setup
+
+$(dex_apps_line)
 
 Welcome aboard. Dave & Dex
 EOF
@@ -726,11 +781,11 @@ dex_print_welcome() {
     echo "Thanks for being here. An AI chief of staff keeps your meetings, people,"
     echo "and priorities in one place so you can spend time on the work that matters."
     echo ""
-    echo "Dave and the Dex team are genuinely delighted you're on this journey."
+    echo "Dave and Dex are genuinely delighted you're on this journey."
     echo ""
     echo "Setup happens from this text window (the 'terminal') and usually takes 5–10 minutes."
     echo ""
-    dex_beta_line
+    dex_apps_line
     echo ""
     echo "Nothing has been downloaded yet. Press Enter to begin."
     dex_pause ""
@@ -765,8 +820,7 @@ dex_choose_target() {
         display=$(dex_display_path "$suggested")
         dex_step 1 "Where should Dex live?"
         echo "Suggested folder: $display"
-        echo "(That's ${suggested/#$(dex_home_dir)/~})"
-        if [ -n "${DEX_INSTALL_DIR:-}" ] || { [ "$(dex_repo_ref)" != "release" ] && [ "$(dex_repo_ref)" != "main" ]; }; then
+        if dex_is_branch_test; then
             echo ""
             echo "This is a separate test folder. Your existing Dex install will not be changed."
         fi
@@ -928,7 +982,8 @@ dex_guide_missing_python() {
     echo "2. Download Python 3.11 or newer"
     echo "3. Install it, then come back here"
     if dex_is_windows; then
-        echo "4. On Windows, tick 'Add Python to PATH' during the install"
+        echo "4. On Windows, use the installer from python.org — not the Microsoft Store"
+        echo "5. Tick 'Add Python to PATH' during the install"
     fi
     echo ""
     echo "Opening claude.ai or a website is not the same as installing Python."
@@ -1062,8 +1117,49 @@ dex_bootstrap_clone() {
     return 0
 }
 
+dex_print_manual_next_steps() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    local display posix
+    display=$(dex_display_path "$target")
+    posix="$target"
+    echo ""
+    echo "Your Dex folder is:"
+    echo "  $display"
+    echo ""
+    echo "Copy and paste this line:"
+    echo ""
+    echo "  cd \"$posix\" && claude \"/setup\""
+    echo ""
+    echo "Then press Enter. Setup starts from there."
+    if dex_is_windows; then
+        echo ""
+        echo "You can also open that folder in File Explorer any time."
+    fi
+    echo ""
+    echo "If Claude Code is not installed, open the folder in Cursor and type: /setup"
+}
+
+dex_launch_claude_setup() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    local bin
+    if ! dex_have_cmd claude; then
+        return 1
+    fi
+    bin=$(command -v claude)
+    trap - EXIT
+    dex_stop_spinner
+    echo ""
+    echo "Starting Dex in Claude Code..."
+    cd "$target" || return 1
+    # curl|bash leaves stdin as the script pipe. Hand the keyboard to Claude.
+    if [ -e /dev/tty ]; then
+        exec "$bin" "/setup" </dev/tty >/dev/tty 2>&1
+    fi
+    exec "$bin" "/setup"
+}
+
 dex_print_interactive_finish() {
-    local display next
+    local display
     display=$(dex_display_path "${DEX_TARGET:-$(pwd)}")
     echo ""
     echo "🎉 Dex is installed!"
@@ -1071,42 +1167,27 @@ dex_print_interactive_finish() {
     echo "Your Dex folder is:"
     echo "  $display"
     echo ""
-    echo "What to do next:"
-    if dex_have_cmd claude; then
-        echo "  1. In this window, run:  cd \"$DEX_TARGET\" && claude"
-        echo "  2. Type: hi"
-        echo "  3. If nothing happens, type: /setup"
-        echo ""
-        dex_read_tty "Start Claude Code in that folder now? [Y/n] " "Y"
-        case "$REPLY" in
-            Y|y|yes|Yes|"")
-                (cd "$DEX_TARGET" && claude) || true
-                ;;
-        esac
-    elif dex_have_claude || dex_have_cursor; then
-        echo "  1. Open that folder in Claude or Cursor"
-        echo "  2. Type: hi"
-        echo "  3. If nothing happens, type: /setup"
-        echo ""
-        echo "Cursor does not run Claude Code's automatic setup hooks — /setup is the reliable next step there."
-    else
-        echo "  1. Open that folder in Claude Code or Cursor"
-        echo "  2. Type: hi"
-        echo "  3. If nothing happens, type: /setup"
-    fi
-    echo ""
-    dex_beta_line
+    dex_apps_line
     echo ""
     dex_write_open_me_next "$DEX_TARGET"
     echo "A short reminder is saved in that folder as 'Open me next'."
     echo ""
-    if dex_is_interactive; then
-        dex_read_tty "Open your Dex folder now? [Y/n] " "Y"
+    if dex_have_cmd claude; then
+        dex_read_tty "Would you like to start Dex in Claude Code now? [Y/n] " "Y"
         case "$REPLY" in
             Y|y|yes|Yes|"")
-                dex_open_folder "$DEX_TARGET" || echo "Open this folder yourself: $display"
+                if dex_launch_claude_setup; then
+                    return 0
+                fi
+                echo "Claude Code did not start from here."
+                dex_print_manual_next_steps
+                ;;
+            *)
+                dex_print_manual_next_steps
                 ;;
         esac
+    else
+        dex_print_manual_next_steps
     fi
     echo ""
     echo "Welcome aboard. Dave & Dex"
@@ -1143,6 +1224,7 @@ dex_print_legacy_finish() {
 dex_install_on_error() {
     local status=$?
     trap - EXIT
+    dex_stop_spinner
     if [ "$status" -eq 0 ]; then
         return 0
     fi
@@ -1187,7 +1269,7 @@ fi
 
 dex_resolve_install_target
 
-if [ -n "${DEX_INSTALL_DIR:-}" ]; then
+if dex_is_branch_test; then
     echo "Isolated install folder: $(dex_display_path "$DEX_TARGET")"
     echo "Your existing Dex folder and global app settings are not changed."
     echo ""
@@ -1420,7 +1502,7 @@ dex_user_progress "Installing the pieces Dex needs..." "📦 Installing dependen
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
     dex_log "----- pnpm install --frozen-lockfile -----"
     if dex_is_interactive; then
-        if ! dex_run_logged "pnpm install --frozen-lockfile" pnpm install --frozen-lockfile; then
+        if ! dex_run_with_wait "pnpm install --frozen-lockfile" pnpm install --frozen-lockfile; then
             dex_show_logged_failure "Could not install Node dependencies"
             exit 1
         fi
@@ -1431,7 +1513,7 @@ if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
 elif [ -f package-lock.json ] && command -v npm >/dev/null 2>&1; then
     dex_log "----- npm ci -----"
     if dex_is_interactive; then
-        if ! dex_run_logged "npm ci" npm ci; then
+        if ! dex_run_with_wait "npm ci" npm ci; then
             dex_show_logged_failure "Could not install Node dependencies"
             exit 1
         fi
@@ -1585,12 +1667,12 @@ MIGRATION_MODE="--auto"
 while true; do
     if dex_is_interactive; then
         if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
-            if dex_run_logged "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
+            if dex_run_with_wait "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
                 MIGRATION_STATUS=0
             else
                 MIGRATION_STATUS=$?
             fi
-        elif dex_run_logged "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE"; then
+        elif dex_run_with_wait "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE"; then
             MIGRATION_STATUS=0
         else
             MIGRATION_STATUS=$?
@@ -1715,6 +1797,10 @@ fi
 # Success
 if dex_is_interactive; then
     dex_step 5 "Final checks"
+    echo "✓ Your Dex folder is ready"
+    echo "✓ The tools Dex needs are installed"
+    echo "✓ Your notes folder is set up"
+    echo ""
     trap - EXIT
     dex_print_interactive_finish
 else
