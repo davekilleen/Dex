@@ -10,3 +10,5 @@ placeholder@invalid.test
 ada@engines.test
 jane@acme.com
 john@acme.com
+# Public Dex support address the installer tells people to send logs to.
+dave@heydex.ai

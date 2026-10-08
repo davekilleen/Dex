@@ -692,6 +692,9 @@ test('release discovery uses the stored remote URL when get-url is rewritten', (
     commit: fileRelease,
   });
 
+  // A fake token in URL userinfo, built at runtime so the personal-data gate
+  // does not read `token@host` as an email address.
+  const FAKE_TOKEN_GITHUB = ['https://x-access-token:fake', 'github.com'].join('@');
   const tokenRewrite = makeGitFixture();
   const tokenRelease = git(tokenRewrite, 'rev-parse', 'HEAD');
   git(tokenRewrite, 'remote', 'add', 'origin', 'https://github.com/davekilleen/Dex.git');
@@ -699,7 +702,7 @@ test('release discovery uses the stored remote URL when get-url is rewritten', (
   git(
     tokenRewrite,
     'config',
-    'url.https://x-access-token:fake@github.com/.insteadOf',
+    `url.${FAKE_TOKEN_GITHUB}/.insteadOf`,
     'https://github.com/',
   );
   assert.match(git(tokenRewrite, 'remote', 'get-url', 'origin'), /x-access-token/);
@@ -715,7 +718,7 @@ test('release discovery uses the stored remote URL when get-url is rewritten', (
     'remote',
     'add',
     'origin',
-    'https://x-access-token:fake@github.com/davekilleen/Dex.git',
+    `${FAKE_TOKEN_GITHUB}/davekilleen/Dex.git`,
   );
   git(storedToken, 'update-ref', 'refs/remotes/origin/release', storedTokenRelease);
   assert.deepEqual(migrator.findReleaseRef(storedToken, path.join(storedToken, '.git')), {

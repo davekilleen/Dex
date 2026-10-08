@@ -23,6 +23,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO_ROOT / "install.sh"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from core.paths import INBOX_DIR  # noqa: E402
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -56,7 +60,7 @@ process.exit(0);
     (root / "install.sh").write_text(INSTALL_SH.read_text(encoding="utf-8"), encoding="utf-8")
     (root / "scripts").mkdir(exist_ok=True)
     (root / "scripts" / "compose-vault-gitignore.py").write_text("# fixture\n", encoding="utf-8")
-    (root / ".gitignore").write_text("00-Inbox/\n", encoding="utf-8")
+    (root / ".gitignore").write_text(f"{INBOX_DIR.name}/\n", encoding="utf-8")
     (root / "System").mkdir(exist_ok=True)
 
 
@@ -178,7 +182,7 @@ def _official_bare(root: Path, feature_ref: str) -> Path:
 
 def _base_env(root: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
     extra = dict(extra or {})
-    feature = extra.get("DEX_INSTALL_REF", "cursor/beginner-install-b596")
+    feature = extra.get("DEX_INSTALL_REF", "feature/beginner-install-test")
     bare = _official_bare(root, feature)
     official = "https://github.com/davekilleen/dex.git"
     shim = _shim_bin(root, node_ok=extra.pop("DEX_TEST_NODE_OK", "1") != "0")
@@ -297,7 +301,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
 
-    isolation_ref = "cursor/beginner-install-b596"
+    isolation_ref = "feature/beginner-install-test"
     official_repo = "https://github.com/davekilleen/dex.git"
 
     def isolation(target: Path, **more: str) -> dict[str, str]:

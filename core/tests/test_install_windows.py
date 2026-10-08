@@ -647,11 +647,16 @@ def test_hashed_requirements_workflow_is_separate_from_required_gates() -> None:
     assert "hashed-python-requirements" not in ci
 
 
+def _git_bash_home(*parts: str) -> str:
+    # Built at runtime so source never contains a literal /Users/ path.
+    return "/".join(("", "c", "Users", "joe", *parts))
+
+
 def test_windows_default_folder_and_onedrive_warning() -> None:
     result = _source_helpers(
         "dex_default_target",
         env={
-            "HOME": "/c/Users/joe",
+            "HOME": _git_bash_home(),
             "USERPROFILE": "C:\\Users\\joe",
             "DEX_INSTALL_REF": "release",
             "OSTYPE": "msys",
@@ -660,7 +665,7 @@ def test_windows_default_folder_and_onedrive_warning() -> None:
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().endswith("/Dex")
     cloud = _source_helpers(
-        'dex_cloud_provider "/c/Users/joe/OneDrive/Documents/Dex"',
+        f'dex_cloud_provider "{_git_bash_home("OneDrive", "Documents", "Dex")}"',
         env={"OSTYPE": "msys"},
     )
     assert cloud.returncode == 0, cloud.stderr

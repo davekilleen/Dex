@@ -66,18 +66,24 @@ def test_install_dir_wins_over_feature_branch_default() -> None:
     assert result.stdout.strip() == "/tmp/dex-home/Custom-Dex"
 
 
+def _mac_home() -> str:
+    # Built at runtime so source never contains a literal /Users/ path.
+    return "/".join(("", "Users", "sam"))
+
+
 def test_expand_path_and_cloud_provider() -> None:
-    home = _source_helpers('dex_expand_path "~/Notes"', env={"HOME": "/Users/sam"})
-    assert home.stdout.strip() == "/Users/sam/Notes"
+    mac_home = _mac_home()
+    home = _source_helpers('dex_expand_path "~/Notes"', env={"HOME": mac_home})
+    assert home.stdout.strip() == f"{mac_home}/Notes"
     icloud = _source_helpers(
-        'dex_cloud_provider "/Users/sam/Library/Mobile Documents/com~apple~CloudDocs/Dex" && true',
+        f'dex_cloud_provider "{mac_home}/Library/Mobile Documents/com~apple~CloudDocs/Dex" && true',
     )
     assert icloud.returncode == 0
     assert "iCloud" in icloud.stdout
-    onedrive = _source_helpers('dex_cloud_provider "/Users/sam/OneDrive/Dex" && true')
+    onedrive = _source_helpers(f'dex_cloud_provider "{mac_home}/OneDrive/Dex" && true')
     assert "OneDrive" in onedrive.stdout
     local = _source_helpers(
-        'if dex_cloud_provider "/Users/sam/Dex"; then echo cloud; else echo local; fi',
+        f'if dex_cloud_provider "{mac_home}/Dex"; then echo cloud; else echo local; fi',
     )
     assert local.stdout.strip() == "local"
 

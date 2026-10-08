@@ -27,9 +27,11 @@ def _waiting_for_enter(tail: str) -> bool:
         or stripped.endswith("Press Enter to continue.")
     )
 
+# Branch to test; set DEX_PIPE_REF to try an unmerged branch.
+PIPE_REF = os.environ.get("DEX_PIPE_REF", "main")
 COMMAND = (
-    'curl -fsSL "https://raw.githubusercontent.com/davekilleen/Dex/cursor/beginner-install-b596/install.sh" '
-    '| DEX_INSTALL_DIR="$HOME/Dex-test" DEX_INSTALL_REF="cursor/beginner-install-b596" '
+    f'curl -fsSL "https://raw.githubusercontent.com/davekilleen/Dex/{PIPE_REF}/install.sh" '
+    f'| DEX_INSTALL_DIR="$HOME/Dex-test" DEX_INSTALL_REF="{PIPE_REF}" '
     "DEX_INSTALL_NO_OPEN=1 bash"
 )
 

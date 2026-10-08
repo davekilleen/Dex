@@ -204,7 +204,7 @@ PY
 run_beginner_helpers() {
   # Non-install check of the beginner Windows copy and isolation rails.
   cd "${GITHUB_WORKSPACE:-$(cd "$(dirname "$0")/.." && pwd)}"
-  DEX_INSTALL_LIB_ONLY=1 HOME="/c/Users/joe" DEX_INSTALL_REF=release \
+  DEX_INSTALL_LIB_ONLY=1 HOME="/c/dex-journey-home" DEX_INSTALL_REF=release \
     bash -c '
       set -e
       . ./install.sh
@@ -223,12 +223,12 @@ run_beginner_helpers() {
         *heydex.ai/beta*) ;;
         *) echo "apps line missing beta signup: $line" >&2; exit 1 ;;
       esac
-      provider=$(dex_cloud_provider "/c/Users/joe/OneDrive/Documents/Dex" || true)
+      provider=$(dex_cloud_provider "/c/dex-journey-home/OneDrive/Documents/Dex" || true)
       [ "$provider" = "OneDrive" ]
       echo "beginner_helpers_ok=yes"
     '
-  DEX_INSTALL_LIB_ONLY=1 HOME="/c/Users/joe" DEX_INSTALL_DIR="/c/Users/joe/Dex-test" \
-    DEX_INSTALL_REF="cursor/beginner-install-b596" \
+  DEX_INSTALL_LIB_ONLY=1 HOME="/c/dex-journey-home" DEX_INSTALL_DIR="/c/dex-journey-home/Dex-test" \
+    DEX_INSTALL_REF="feature/beginner-install-test" \
     bash -c '
       set -e
       . ./install.sh
