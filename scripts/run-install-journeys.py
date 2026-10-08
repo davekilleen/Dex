@@ -98,7 +98,38 @@ exit 0
 """,
     )
     _write_executable(shim / "xcode-select", "#!/bin/sh\nexit 0\n")
+    _git_preserving_configured_url(shim)
     return shim
+
+
+def _git_preserving_configured_url(bin_dir: Path) -> Path:
+    """Real git, except `remote get-url` returns the stored URL (no insteadOf)."""
+    real_git = shutil.which("git") or "/usr/bin/git"
+    if Path(real_git).resolve() == (bin_dir / "git").resolve():
+        real_git = "/usr/bin/git"
+    _write_executable(
+        bin_dir / "git",
+        f"""#!/bin/sh
+if [ "$1" = "remote" ] && [ "$2" = "get-url" ]; then
+  name=""
+  for arg in "$@"; do
+    case "$arg" in
+      remote|get-url|--push|--all|--help) ;;
+      *) name="$arg" ;;
+    esac
+  done
+  if [ -n "$name" ]; then
+    url=$("{real_git}" config --local --get "remote.${{name}}.url" 2>/dev/null || true)
+    if [ -n "$url" ]; then
+      printf '%s\\n' "$url"
+      exit 0
+    fi
+  fi
+fi
+exec "{real_git}" "$@"
+""",
+    )
+    return bin_dir / "git"
 
 
 def _git(cwd: Path, *args: str) -> None:

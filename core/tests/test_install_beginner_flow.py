@@ -477,23 +477,58 @@ def _official_source(tmp_path: Path, feature_ref: str) -> Path:
     return bare
 
 
-def _instead_of_env(bare: Path) -> dict[str, str]:
+def _git_preserving_configured_url(bin_dir: Path) -> Path:
+    """Real git, except `remote get-url` returns the stored URL (no insteadOf)."""
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    real_git = shutil.which("git") or "/usr/bin/git"
+    if Path(real_git).resolve() == (bin_dir / "git").resolve():
+        real_git = "/usr/bin/git"
+    _write_executable(
+        bin_dir / "git",
+        f"""#!/bin/sh
+if [ "$1" = "remote" ] && [ "$2" = "get-url" ]; then
+  name=""
+  for arg in "$@"; do
+    case "$arg" in
+      remote|get-url|--push|--all|--help) ;;
+      *) name="$arg" ;;
+    esac
+  done
+  if [ -n "$name" ]; then
+    url=$("{real_git}" config --local --get "remote.${{name}}.url" 2>/dev/null || true)
+    if [ -n "$url" ]; then
+      printf '%s\\n' "$url"
+      exit 0
+    fi
+  fi
+fi
+exec "{real_git}" "$@"
+""",
+    )
+    return bin_dir / "git"
+
+
+def _instead_of_env(bare: Path, git_bin: Path | None = None) -> dict[str, str]:
     official = "https://github.com/davekilleen/dex.git"
     rewrite = f"file://{bare}"
-    return {
+    env = {
         "GIT_CONFIG_COUNT": "1",
         "GIT_CONFIG_KEY_0": f"url.{rewrite}.insteadof",
         "GIT_CONFIG_VALUE_0": official,
         "DEX_INSTALL_REPO": official,
         "DEX_TEST_REAL_MIGRATOR": str(REPO_ROOT / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs"),
     }
+    if git_bin is not None:
+        _git_preserving_configured_url(git_bin)
+        env["PATH"] = f"{git_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"
+    return env
 
 
 def test_ensure_official_release_ref_fetches_for_feature_branch(tmp_path: Path) -> None:
     feature = "cursor/beginner-install-b596"
     bare = _official_source(tmp_path, feature)
     work = tmp_path / "work"
-    extra = _instead_of_env(bare)
+    extra = _instead_of_env(bare, tmp_path / "git-bin")
     clone = subprocess.run(
         [
             "git",
@@ -546,6 +581,7 @@ def test_ensure_official_release_ref_fetches_for_feature_branch(tmp_path: Path) 
             extra["DEX_TEST_REAL_MIGRATOR"],
         ],
         cwd=work,
+        env={**os.environ, **extra},
         capture_output=True,
         text=True,
         timeout=20,
@@ -560,7 +596,7 @@ def test_piped_feature_branch_fetches_release_and_finishes(tmp_path: Path) -> No
     bare = _official_source(tmp_path, feature)
     extra = _instead_of_env(bare)
     shim = _shim_bin(tmp_path)
-    (shim / "git").unlink()
+    _git_preserving_configured_url(shim)
     target = tmp_path / "home" / "Dex-test"
     live = tmp_path / "home" / "Dex"
     parent = _parent_env_without_isolation(
@@ -613,6 +649,7 @@ def test_piped_feature_branch_fetches_release_and_finishes(tmp_path: Path) -> No
             extra["DEX_TEST_REAL_MIGRATOR"],
         ],
         cwd=target,
+        env=parent,
         capture_output=True,
         text=True,
         timeout=20,
