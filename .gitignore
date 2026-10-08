@@ -259,6 +259,9 @@ scripts/private/
 !CHANGELOG.md
 .ant-colony/
 
+# Local installer journey work trees (absolute paths, never commit)
+core/tests/artifacts/
+
 # Agent/codex runtime task artifacts — contain local absolute paths, never commit
 .codex-analytics-task.md
 .codex-*-task.md

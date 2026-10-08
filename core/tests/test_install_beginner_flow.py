@@ -1,0 +1,317 @@
+"""Beginner-install helpers: isolated test folders, prompts, no-tty fallback."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import stat
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+INSTALL_SH = REPO_ROOT / "install.sh"
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+
+def _source_helpers(script: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged = os.environ.copy()
+    merged["DEX_INSTALL_LIB_ONLY"] = "1"
+    merged.pop("DEX_INSTALL_PYTHON", None)
+    if env:
+        merged.update(env)
+    return subprocess.run(
+        ["/bin/bash", "-c", f'set -e\n. "{INSTALL_SH}"\n{script}'],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=merged,
+    )
+
+
+def test_default_target_is_home_dex_on_release() -> None:
+    result = _source_helpers(
+        'dex_default_target',
+        env={"HOME": "/tmp/dex-home", "DEX_INSTALL_REF": "release"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "/tmp/dex-home/Dex"
+
+
+def test_feature_branch_defaults_to_isolated_dex_test() -> None:
+    result = _source_helpers(
+        'dex_default_target',
+        env={
+            "HOME": "/tmp/dex-home",
+            "DEX_INSTALL_REF": "cursor/beginner-install-b596",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "/tmp/dex-home/Dex-test"
+
+
+def test_install_dir_wins_over_feature_branch_default() -> None:
+    result = _source_helpers(
+        'dex_default_target',
+        env={
+            "HOME": "/tmp/dex-home",
+            "DEX_INSTALL_DIR": "~/Custom-Dex",
+            "DEX_INSTALL_REF": "cursor/beginner-install-b596",
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "/tmp/dex-home/Custom-Dex"
+
+
+def test_expand_path_and_cloud_provider() -> None:
+    home = _source_helpers('dex_expand_path "~/Notes"', env={"HOME": "/Users/sam"})
+    assert home.stdout.strip() == "/Users/sam/Notes"
+    icloud = _source_helpers(
+        'dex_cloud_provider "/Users/sam/Library/Mobile Documents/com~apple~CloudDocs/Dex" && true',
+    )
+    assert icloud.returncode == 0
+    assert "iCloud" in icloud.stdout
+    onedrive = _source_helpers('dex_cloud_provider "/Users/sam/OneDrive/Dex" && true')
+    assert "OneDrive" in onedrive.stdout
+    local = _source_helpers(
+        'if dex_cloud_provider "/Users/sam/Dex"; then echo cloud; else echo local; fi',
+    )
+    assert local.stdout.strip() == "local"
+
+
+def test_should_bootstrap_skips_ci_in_place(tmp_path: Path) -> None:
+    result = _source_helpers(
+        f'if dex_should_bootstrap "{tmp_path}"; then echo clone; else echo inplace; fi',
+        env={"DEX_INSTALL_NONINTERACTIVE": "1", "CI": "true"},
+    )
+    assert result.stdout.strip() == "inplace"
+
+
+def test_should_bootstrap_when_install_dir_is_empty(tmp_path: Path) -> None:
+    target = tmp_path / "Dex-test"
+    result = _source_helpers(
+        f'if dex_should_bootstrap "{target}"; then echo clone; else echo inplace; fi',
+        env={"DEX_INSTALL_DIR": str(target), "DEX_INSTALL_NONINTERACTIVE": "1"},
+    )
+    assert result.stdout.strip() == "clone"
+
+
+def test_should_not_bootstrap_existing_checkout(tmp_path: Path) -> None:
+    root = tmp_path / "Dex-test"
+    (root / "core").mkdir(parents=True)
+    (root / "core" / "provision.cjs").write_text("// fixture\n", encoding="utf-8")
+    (root / "install.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+    result = _source_helpers(
+        f'if dex_should_bootstrap "{root}"; then echo clone; else echo inplace; fi',
+        env={"DEX_INSTALL_DIR": str(root)},
+    )
+    assert result.stdout.strip() == "inplace"
+
+
+def test_repo_ref_and_beta_line() -> None:
+    ref = _source_helpers("dex_repo_ref", env={"DEX_INSTALL_REF": "cursor/beginner-install-b596"})
+    assert ref.stdout.strip() == "cursor/beginner-install-b596"
+    beta = _source_helpers("dex_beta_line")
+    assert "heydex.ai/beta" in beta.stdout
+
+
+def test_noninteractive_read_tty_uses_default() -> None:
+    result = _source_helpers(
+        'dex_read_tty "Name: " "Sam"; printf "%s\\n" "$REPLY"',
+        env={"DEX_INSTALL_NONINTERACTIVE": "1"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "Sam"
+
+
+def test_installer_source_keeps_ci_finish_and_forbids_claude_command_v() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "Open one of these apps" in text
+    assert "type: /setup" in text
+    assert "Dex installation complete" in text
+    assert "if command -v claude" not in text
+    assert "dave@heydex.ai" in text
+    assert "Open me next.md" in text
+    assert "DEX_INSTALL_DIR" in text
+    assert "DEX_INSTALL_REF" in text
+    assert "Dex-test" in text
+
+
+def _mini_checkout(root: Path) -> None:
+    (root / "core" / "migrations").mkdir(parents=True)
+    (root / "core" / "mcp").mkdir(parents=True)
+    (root / "core" / "provision.cjs").write_text("console.log('provision')\n", encoding="utf-8")
+    (root / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs").write_text(
+        "process.exit(0)\n", encoding="utf-8"
+    )
+    (root / "core" / "mcp" / "requirements.hash.txt").write_text("# fixture\n", encoding="utf-8")
+    (root / "package-lock.json").write_text('{ "lockfileVersion": 3 }\n', encoding="utf-8")
+    (root / "install.sh").write_text(INSTALL_SH.read_text(encoding="utf-8"), encoding="utf-8")
+    (root / "scripts").mkdir(exist_ok=True)
+    (root / "scripts" / "compose-vault-gitignore.py").write_text("# fixture\n", encoding="utf-8")
+    (root / ".gitignore").write_text("00-Inbox/\n", encoding="utf-8")
+    (root / "System").mkdir(exist_ok=True)
+
+
+def _shim_bin(tmp_path: Path, *, node_ok: bool = True) -> Path:
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    real_node = shutil.which("node") or "/usr/bin/node"
+    _write_executable(
+        shim / "git",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "git version 2.50.0"; exit 0; fi
+if [ "$1" = "clone" ]; then
+  target=""
+  for arg in "$@"; do target="$arg"; done
+  mkdir -p "$target"
+  if [ -n "$DEX_TEST_CLONE_SRC" ] && [ -d "$DEX_TEST_CLONE_SRC" ]; then
+    # Use cp, not python3: the python3 shim intercepts -c for installer probes.
+    cp -a "$DEX_TEST_CLONE_SRC/." "$target/"
+  fi
+  exit 0
+fi
+if [ "$1" = "remote" ]; then exit 0; fi
+exit 0
+""",
+    )
+    if node_ok:
+        _write_executable(
+            shim / "node",
+            f"""#!/bin/sh
+if [ "$1" = "-v" ]; then echo "v22.0.0"; exit 0; fi
+if [ "$1" = "-e" ]; then exec "{real_node}" "$@"; fi
+exit 0
+""",
+        )
+        _write_executable(shim / "npm", "#!/bin/sh\nexit 0\n")
+        _write_executable(shim / "npx", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        shim / "python3",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
+  mkdir -p "$3/bin"
+  printf '#!/bin/sh\\nexit 0\\n' > "$3/bin/pip"
+  printf '#!/bin/sh\\nexit 0\\n' > "$3/bin/python"
+  chmod +x "$3/bin/pip" "$3/bin/python"
+  exit 0
+fi
+if [ "$1" = "-m" ] && [ "$2" = "core.harnesses.registry" ]; then
+  echo '[]'
+  exit 0
+fi
+exit 0
+""",
+    )
+    _write_executable(shim / "xcode-select", "#!/bin/sh\nexit 0\n")
+    return shim
+
+
+def _run_install(tmp_path: Path, env: dict[str, str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    clone_src = tmp_path / "clone-src"
+    _mini_checkout(clone_src)
+    shim = _shim_bin(tmp_path)
+    merged = os.environ.copy()
+    merged.pop("DEX_INSTALL_PYTHON", None)
+    merged.update(
+        {
+            "PATH": f"{shim}:/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "DEX_INSTALL_LOG": str(tmp_path / "install.log"),
+            "DEX_INSTALL_NO_OPEN": "1",
+            "DEX_TEST_CLONE_SRC": str(tmp_path / "clone-src"),
+        }
+    )
+    merged.update(env)
+    (tmp_path / "home").mkdir(exist_ok=True)
+    return subprocess.run(
+        ["/bin/bash", str(clone_src / "install.sh")],
+        cwd=tmp_path,
+        env=merged,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def test_no_tty_isolated_dir_clones_into_test_folder_not_cwd(tmp_path: Path) -> None:
+    target = tmp_path / "home" / "Dex-test"
+    result = _run_install(
+        tmp_path,
+        {
+            "DEX_INSTALL_DIR": str(target),
+            "DEX_INSTALL_REF": "cursor/beginner-install-b596",
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+        },
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (target / "core" / "provision.cjs").is_file()
+    assert (target / "install.sh").is_file()
+    assert not (tmp_path / "core").exists()
+    assert "Dex installation complete" in result.stdout
+    assert "Open one of these apps" in result.stdout
+
+
+def test_no_tty_without_install_dir_stays_in_place_and_does_not_clone(tmp_path: Path) -> None:
+    # Simulate CI: run the copied installer from a fixture folder that is not a
+    # full checkout and do not set DEX_INSTALL_DIR.
+    root = tmp_path / "fixture"
+    _mini_checkout(root)
+    (root / "core" / "provision.cjs").unlink()
+    shim = _shim_bin(tmp_path)
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{shim}:/usr/bin:/bin",
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+            "DEX_INSTALL_LOG": str(tmp_path / "install.log"),
+        }
+    )
+    result = subprocess.run(
+        ["/bin/bash", "install.sh"],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Dex installation complete" in result.stdout
+    assert not (tmp_path / "home" / "Dex-test").exists()
+
+
+def test_missing_node_stops_with_plain_english(tmp_path: Path) -> None:
+    target = tmp_path / "home" / "Dex-test"
+    clone_src = tmp_path / "clone-src"
+    _mini_checkout(clone_src)
+    shim = _shim_bin(tmp_path, node_ok=False)
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{shim}:/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "DEX_INSTALL_DIR": str(target),
+            "DEX_INSTALL_REF": "cursor/beginner-install-b596",
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+            "DEX_INSTALL_LOG": str(tmp_path / "install.log"),
+            "DEX_INSTALL_NO_OPEN": "1",
+            "DEX_TEST_CLONE_SRC": str(clone_src),
+        }
+    )
+    (tmp_path / "home").mkdir(exist_ok=True)
+    result = subprocess.run(
+        ["/bin/bash", str(clone_src / "install.sh")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode != 0
+    assert "Node.js is not installed" in result.stdout or "nodejs.org" in result.stdout
+    assert not target.exists() or not (target / "core" / "provision.cjs").exists()
