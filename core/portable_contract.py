@@ -204,7 +204,15 @@ RULES: tuple[Rule, ...] = (
     _r("brain-changelog", "CHANGELOG.md", "file", "brain"),
     _r("brain-contributing", "CONTRIBUTING.md", "file", "brain"),
     _r("brain-license", "LICENSE", "file", "brain"),
-    _r("brain-commercial-license", "COMMERCIAL_LICENSE.md", "file", "brain"),
+    _r(
+        "brain-commercial-license",
+        "COMMERCIAL_LICENSE.md",
+        "file",
+        "brain",
+        "retired: historic releases shipped this PolyForm commercial-licence file; "
+        "current MIT tree no longer includes it, but updates must still classify "
+        "and prune the path",
+    ),
     _r("brain-distribution-ready", "DISTRIBUTION_READY.md", "file", "brain"),
     _r("brain-install", "install.sh", "file", "brain"),
     _r("brain-install-ps1", "install.ps1", "file", "brain",

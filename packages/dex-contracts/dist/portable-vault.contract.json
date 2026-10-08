@@ -482,7 +482,8 @@
       "id": "brain-commercial-license",
       "path": "COMMERCIAL_LICENSE.md",
       "kind": "file",
-      "ownership": "brain"
+      "ownership": "brain",
+      "note": "retired: historic releases shipped this PolyForm commercial-licence file; current MIT tree no longer includes it, but updates must still classify and prune the path"
     },
     {
       "id": "brain-contributing",

@@ -1,6 +1,6 @@
 # Dex by Dave — Your AI Chief of Staff
 
-[![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/davekilleen/dex?label=release&color=2ea44f)](https://github.com/davekilleen/dex/releases) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 **One personal Dex, built around your work.** Keep your priorities, people, meeting notes and tasks in a folder you own. Work with Dex through your AI app to plan the day, prepare for a meeting or follow through on a promise. Your saved work stays with your vault when you change apps.
 
@@ -449,4 +449,4 @@ Created by [Dave Killeen](https://www.linkedin.com/in/davekilleen/). Built with 
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Commercial use requires a separate written license; see [commercial licensing](COMMERCIAL_LICENSE.md).
+[MIT](LICENSE).
