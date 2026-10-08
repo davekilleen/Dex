@@ -138,6 +138,17 @@ def test_installer_source_keeps_ci_finish_and_forbids_claude_command_v() -> None
     assert "DEX_INSTALL_DIR" in text
     assert "DEX_INSTALL_REF" in text
     assert "Dex-test" in text
+    # Isolation vars must prefix bash after the pipe, never curl.
+    documented = [
+        line for line in text.splitlines()
+        if "curl -fsSL" in line and "raw.githubusercontent.com" in line
+    ]
+    assert documented, "install.sh must document the branch-test curl | bash command"
+    for line in documented:
+        assert line.lstrip("# ").startswith("curl ")
+        assert '| DEX_INSTALL_DIR="$HOME/Dex-test"' in line
+        assert "DEX_INSTALL_REF=" in line.split("|", 1)[1]
+        assert "DEX_INSTALL_DIR=" not in line.split("curl", 1)[0]
 
 
 def _mini_checkout(root: Path) -> None:
@@ -283,6 +294,101 @@ def test_no_tty_without_install_dir_stays_in_place_and_does_not_clone(tmp_path: 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Dex installation complete" in result.stdout
     assert not (tmp_path / "home" / "Dex-test").exists()
+
+
+def _parent_env_without_isolation(tmp_path: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
+    """Env a producer process (curl/cat) may have — isolation vars must not live here."""
+    env = os.environ.copy()
+    for key in (
+        "DEX_INSTALL_DIR",
+        "DEX_INSTALL_REF",
+        "DEX_INSTALL_NONINTERACTIVE",
+        "DEX_INSTALL_PYTHON",
+        "CI",
+    ):
+        env.pop(key, None)
+    env.update(
+        {
+            "PATH": extra.pop("PATH") if extra and "PATH" in extra else env.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(tmp_path / "home"),
+            "DEX_INSTALL_LOG": str(tmp_path / "install.log"),
+            "DEX_INSTALL_NO_OPEN": "1",
+            "DEX_TEST_CLONE_SRC": str(tmp_path / "clone-src"),
+        }
+    )
+    if extra:
+        env.update(extra)
+    (tmp_path / "home").mkdir(exist_ok=True)
+    return env
+
+
+def test_piped_install_reads_isolation_vars_from_bash_not_the_producer(tmp_path: Path) -> None:
+    """Real user shape: cat install.sh | VAR=... bash. Vars on bash, not on cat."""
+    clone_src = tmp_path / "clone-src"
+    _mini_checkout(clone_src)
+    shim = _shim_bin(tmp_path)
+    target = tmp_path / "home" / "Dex-test"
+    live = tmp_path / "home" / "Dex"
+    parent = _parent_env_without_isolation(
+        tmp_path,
+        {"PATH": f"{shim}:/usr/bin:/bin"},
+    )
+    result = subprocess.run(
+        f'cat "{clone_src / "install.sh"}" | '
+        f'DEX_INSTALL_DIR="{target}" '
+        f'DEX_INSTALL_REF="cursor/beginner-install-b596" '
+        f"DEX_INSTALL_NONINTERACTIVE=1 DEX_INSTALL_NO_OPEN=1 bash",
+        shell=True,
+        cwd=tmp_path,
+        env=parent,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        executable="/bin/bash",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (target / "core" / "provision.cjs").is_file()
+    assert (target / "install.sh").is_file()
+    assert not live.exists()
+    assert not (tmp_path / "core").exists()
+    assert "Isolated install folder" in result.stdout
+    assert "Dex installation complete" in result.stdout
+
+
+def test_piped_install_ignores_isolation_vars_prefixed_on_cat(tmp_path: Path) -> None:
+    """Broken shape: VAR=... cat install.sh | bash. bash must not see the vars."""
+    clone_src = tmp_path / "clone-src"
+    _mini_checkout(clone_src)
+    shim = _shim_bin(tmp_path)
+    target = tmp_path / "home" / "Dex-test"
+    live = tmp_path / "home" / "Dex"
+    # Noninteractive belongs on the inherited env so the in-place path is
+    # stable. Isolation folder/ref must stay on cat only — bash ignores those.
+    parent = _parent_env_without_isolation(
+        tmp_path,
+        {
+            "PATH": f"{shim}:/usr/bin:/bin",
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+        },
+    )
+    result = subprocess.run(
+        f'DEX_INSTALL_DIR="{target}" '
+        f'DEX_INSTALL_REF="cursor/beginner-install-b596" '
+        f'cat "{clone_src / "install.sh"}" | bash',
+        shell=True,
+        cwd=clone_src,
+        env=parent,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        executable="/bin/bash",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (target / "core" / "provision.cjs").exists()
+    assert not live.exists()
+    assert (clone_src / "core" / "provision.cjs").is_file()
+    assert "Isolated install folder" not in result.stdout
+    assert "Dex installation complete" in result.stdout
 
 
 def test_missing_node_stops_with_plain_english(tmp_path: Path) -> None:

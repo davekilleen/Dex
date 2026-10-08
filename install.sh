@@ -1,6 +1,11 @@
 #!/bin/bash
 # Dex PKM - Installation Script
 # This script sets up your development environment
+#
+# Branch-test one-liner: the isolation variables MUST sit on bash, not curl.
+# Prefixing curl (VAR=... curl ... | bash) is ignored by bash and would fall
+# through to ~/Dex. The safe form is:
+# curl -fsSL "https://raw.githubusercontent.com/davekilleen/Dex/cursor/beginner-install-b596/install.sh" | DEX_INSTALL_DIR="$HOME/Dex-test" DEX_INSTALL_REF="cursor/beginner-install-b596" DEX_INSTALL_NO_OPEN=1 bash
 
 # Quiet Node's noisy upstream deprecation warnings (e.g. DEP0040 "punycode is
 # deprecated") so first-run install output stays clean. These originate from

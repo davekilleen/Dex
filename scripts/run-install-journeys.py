@@ -101,16 +101,20 @@ exit 0
     return shim
 
 
-def _base_env(root: Path, extra: dict[str, str]) -> dict[str, str]:
+def _base_env(root: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
     clone_src = root / "clone-src"
     _mini_checkout(clone_src)
-    shim = _shim_bin(root, node_ok=extra.pop("node_ok", True) if False else True)
-    if extra.get("DEX_TEST_NODE_OK") == "0":
-        shim = _shim_bin(root, node_ok=False)
+    extra = dict(extra or {})
+    shim = _shim_bin(root, node_ok=extra.pop("DEX_TEST_NODE_OK", "1") != "0")
     env = os.environ.copy()
-    env.pop("DEX_INSTALL_PYTHON", None)
-    env.pop("CI", None)
-    env.pop("DEX_INSTALL_NONINTERACTIVE", None)
+    for key in (
+        "DEX_INSTALL_PYTHON",
+        "CI",
+        "DEX_INSTALL_NONINTERACTIVE",
+        "DEX_INSTALL_DIR",
+        "DEX_INSTALL_REF",
+    ):
+        env.pop(key, None)
     env.update(
         {
             "PATH": f"{shim}:/usr/bin:/bin",
@@ -118,13 +122,18 @@ def _base_env(root: Path, extra: dict[str, str]) -> dict[str, str]:
             "DEX_INSTALL_LOG": str(root / "install.log"),
             "DEX_INSTALL_NO_OPEN": "1",
             "DEX_TEST_CLONE_SRC": str(clone_src),
-            "DEX_INSTALL_REF": "cursor/beginner-install-b596",
             "TERM": "xterm",
         }
     )
     (root / "home").mkdir(exist_ok=True)
     env.update(extra)
     return env
+
+
+def _pipe_to_bash(script: Path, isolation: dict[str, str]) -> str:
+    """Same shape as curl | VAR=... bash — vars sit on bash, not on cat."""
+    assignments = " ".join(f"{key}={value!r}" for key, value in isolation.items())
+    return f"cat {str(script)!r} | {assignments} bash"
 
 
 def _run_pty(command: list[str], cwd: Path, env: dict[str, str], sends: list[bytes], timeout: float = 25) -> tuple[int, str]:
@@ -207,17 +216,23 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
 
-    # 1. fresh defaults via isolated dir + pty
+    isolation_ref = "cursor/beginner-install-b596"
+
+    # 1. fresh defaults via isolated dir + real pipe + pty
     work = out_dir / "work-fresh"
     if work.exists():
         shutil.rmtree(work)
     work.mkdir()
     target = work / "home" / "Dex-test"
-    env = _base_env(work, {"DEX_INSTALL_DIR": str(target)})
+    env = _base_env(work)
     script = work / "clone-src" / "install.sh"
     try:
         code, text = _run_pty(
-            ["/bin/bash", str(script)],
+            ["/bin/bash", "-lc", _pipe_to_bash(script, {
+                "DEX_INSTALL_DIR": str(target),
+                "DEX_INSTALL_REF": isolation_ref,
+                "DEX_INSTALL_NO_OPEN": "1",
+            })],
             work,
             env,
             [b"\n", b"\n", b"n\n", b"n\n"],
@@ -233,10 +248,14 @@ def main() -> int:
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir()
     custom = work / "home" / "MyDex"
-    env = _base_env(work, {"DEX_INSTALL_DIR": str(work / "home" / "Dex-test")})
+    env = _base_env(work)
     try:
         code, text = _run_pty(
-            ["/bin/bash", str(work / "clone-src" / "install.sh")],
+            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", {
+                "DEX_INSTALL_DIR": str(work / "home" / "Dex-test"),
+                "DEX_INSTALL_REF": isolation_ref,
+                "DEX_INSTALL_NO_OPEN": "1",
+            })],
             work,
             env,
             [b"\n", str(custom).encode() + b"\n", b"n\n", b"n\n"],
@@ -253,10 +272,14 @@ def main() -> int:
     work.mkdir()
     existing = work / "home" / "Dex-test"
     _mini_checkout(existing)
-    env = _base_env(work, {"DEX_INSTALL_DIR": str(existing)})
+    env = _base_env(work)
     try:
         code, text = _run_pty(
-            ["/bin/bash", str(work / "clone-src" / "install.sh")],
+            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", {
+                "DEX_INSTALL_DIR": str(existing),
+                "DEX_INSTALL_REF": isolation_ref,
+                "DEX_INSTALL_NO_OPEN": "1",
+            })],
             work,
             env,
             [b"\n", b"\n", b"U\n", b"n\n", b"n\n"],
@@ -272,7 +295,7 @@ def main() -> int:
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir()
     target = work / "home" / "Dex-test"
-    env = _base_env(work, {"DEX_INSTALL_DIR": str(target)})
+    env = _base_env(work)
     env["PATH"] = f"{work / 'bin-empty'}:/usr/bin:/bin"
     (work / "bin-empty").mkdir()
     _write_executable(work / "bin-empty" / "git", "#!/bin/sh\necho 'git version 2.50.0'\nexit 0\n")
@@ -282,7 +305,11 @@ def main() -> int:
     )
     try:
         code, text = _run_pty(
-            ["/bin/bash", str(work / "clone-src" / "install.sh")],
+            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", {
+                "DEX_INSTALL_DIR": str(target),
+                "DEX_INSTALL_REF": isolation_ref,
+                "DEX_INSTALL_NO_OPEN": "1",
+            })],
             work,
             env,
             [b"\n", b"\n", b"\n", b"\n"],
@@ -295,20 +322,26 @@ def main() -> int:
     _write_transcript(out_dir, "missing-tool", text)
     results.append(("missing-tool", (not cloned) and ("Node.js" in text or "nodejs.org" in text)))
 
-    # 5. no-tty
+    # 5. no-tty — same pipe shape, vars on bash only
     work = out_dir / "work-notty"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir()
     target = work / "home" / "Dex-test"
-    env = _base_env(work, {"DEX_INSTALL_DIR": str(target), "DEX_INSTALL_NONINTERACTIVE": "1"})
+    env = _base_env(work)
     completed = subprocess.run(
-        ["/bin/bash", str(work / "clone-src" / "install.sh")],
+        _pipe_to_bash(work / "clone-src" / "install.sh", {
+            "DEX_INSTALL_DIR": str(target),
+            "DEX_INSTALL_REF": isolation_ref,
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+            "DEX_INSTALL_NO_OPEN": "1",
+        }),
         cwd=work,
         env=env,
-        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         timeout=30,
+        shell=True,
+        executable="/bin/bash",
     )
     text = completed.stdout + completed.stderr
     text += f"\n--- exit {completed.returncode} ---\nprovision={(target / 'core' / 'provision.cjs').is_file()}\n"
