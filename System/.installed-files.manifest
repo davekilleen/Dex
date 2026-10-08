@@ -1012,7 +1012,6 @@
 AGENTS.md
 CHANGELOG.md
 CLAUDE.md
-COMMERCIAL_LICENSE.md
 CONTRIBUTING.md
 DISTRIBUTION_READY.md
 LICENSE
@@ -1517,6 +1516,7 @@ core/tests/test_history_hygiene.py
 core/tests/test_hooks_gitignore.py
 core/tests/test_initiative_kickoff_skill.py
 core/tests/test_install_adoption_python.py
+core/tests/test_install_beginner_flow.py
 core/tests/test_install_convergence.py
 core/tests/test_install_harness_detection.py
 core/tests/test_install_windows.py
@@ -2243,6 +2243,8 @@ scripts/release_publish.py
 scripts/render-health-page.py
 scripts/resolve-distignore-files.sh
 scripts/run-historic-fleet-darwin.sh
+scripts/run-install-journeys.py
+scripts/run-real-github-pipe.py
 scripts/run-windows-install-journey.sh
 scripts/run-windows-lifecycle-journey.py
 scripts/security-allowlist.txt
