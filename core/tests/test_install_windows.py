@@ -549,7 +549,7 @@ def test_install_sh_does_not_swallow_venv_or_pip_stderr() -> None:
     assert "dex_support_python_probe" in text
     assert "DEX_SUPPORT_LIB_ONLY" in text
     assert "dex_bootstrap_clone" in text
-    assert "git clone --branch" in text
+    assert "git clone --quiet --branch" in text
     assert "dex_should_bootstrap" in text
 
 

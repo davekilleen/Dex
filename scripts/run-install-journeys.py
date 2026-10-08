@@ -35,8 +35,22 @@ def _mini_checkout(root: Path) -> None:
     (root / "core" / "mcp").mkdir(parents=True)
     (root / "core" / "provision.cjs").write_text("console.log('provision')\n", encoding="utf-8")
     (root / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs").write_text(
-        "process.exit(0)\n", encoding="utf-8"
+        """const fs = require('fs');
+const path = require('path');
+const real = process.env.DEX_TEST_REAL_MIGRATOR;
+if (real) {
+  const migrator = require(real);
+  migrator.findReleaseRef(process.cwd(), path.join(process.cwd(), '.git'));
+}
+fs.mkdirSync(path.join('.dex', 'brain.git'), { recursive: true });
+fs.mkdirSync(path.join('System', '.dex'), { recursive: true });
+if (!fs.existsSync('.git')) fs.mkdirSync('.git');
+fs.writeFileSync(path.join('System', '.dex', 'topology.json'), '{}\\n');
+process.exit(0);
+""",
+        encoding="utf-8",
     )
+    (root / "CLAUDE.md").write_text("# Dex\n", encoding="utf-8")
     (root / "core" / "mcp" / "requirements.hash.txt").write_text("# fixture\n", encoding="utf-8")
     (root / "package-lock.json").write_text('{ "lockfileVersion": 3 }\n', encoding="utf-8")
     (root / "install.sh").write_text(INSTALL_SH.read_text(encoding="utf-8"), encoding="utf-8")
@@ -50,29 +64,15 @@ def _shim_bin(root: Path, *, node_ok: bool = True) -> Path:
     shim = root / "bin"
     shim.mkdir()
     real_node = shutil.which("node") or "/usr/bin/node"
-    _write_executable(
-        shim / "git",
-        """#!/bin/sh
-if [ "$1" = "--version" ]; then echo "git version 2.50.0"; exit 0; fi
-if [ "$1" = "clone" ]; then
-  target=""
-  for arg in "$@"; do target="$arg"; done
-  mkdir -p "$target"
-  if [ -n "$DEX_TEST_CLONE_SRC" ] && [ -d "$DEX_TEST_CLONE_SRC" ]; then
-    # Use cp, not python3: the python3 shim intercepts -c for installer probes.
-    cp -a "$DEX_TEST_CLONE_SRC/." "$target/"
-  fi
-  exit 0
-fi
-exit 0
-""",
-    )
     if node_ok:
         _write_executable(
             shim / "node",
             f"""#!/bin/sh
 if [ "$1" = "-v" ]; then echo "v22.0.0"; exit 0; fi
 if [ "$1" = "-e" ]; then exec "{real_node}" "$@"; fi
+case " $* " in
+  *v1-to-v2-brain-vault-split.cjs*) exec "{real_node}" "$@" ;;
+esac
 exit 0
 """,
         )
@@ -101,10 +101,41 @@ exit 0
     return shim
 
 
+def _git(cwd: Path, *args: str) -> None:
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Dex Test",
+            "GIT_AUTHOR_EMAIL": "dex-test@example.com",
+            "GIT_COMMITTER_NAME": "Dex Test",
+            "GIT_COMMITTER_EMAIL": "dex-test@example.com",
+        }
+    )
+    result = subprocess.run(["git", *args], cwd=cwd, env=env, capture_output=True, text=True, timeout=20)
+    if result.returncode != 0:
+        raise RuntimeError(result.stdout + result.stderr)
+
+
+def _official_bare(root: Path, feature_ref: str) -> Path:
+    src = root / "clone-src"
+    _mini_checkout(src)
+    _git(src, "init", "-b", "release")
+    _git(src, "add", "-A")
+    _git(src, "commit", "-m", "official release")
+    _git(src, "branch", feature_ref)
+    # `git remote get-url` applies insteadOf. Keep the rewritten file:// path
+    # matching dex_remote_is_official (*github.com/davekilleen/[Dd]ex*).
+    bare = root / "github.com" / "davekilleen" / "dex.git"
+    bare.parent.mkdir(parents=True, exist_ok=True)
+    _git(root, "clone", "--bare", "--quiet", str(src), str(bare))
+    return bare
+
+
 def _base_env(root: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
-    clone_src = root / "clone-src"
-    _mini_checkout(clone_src)
     extra = dict(extra or {})
+    feature = extra.get("DEX_INSTALL_REF", "cursor/beginner-install-b596")
+    bare = _official_bare(root, feature)
+    official = "https://github.com/davekilleen/dex.git"
     shim = _shim_bin(root, node_ok=extra.pop("DEX_TEST_NODE_OK", "1") != "0")
     env = os.environ.copy()
     for key in (
@@ -121,8 +152,13 @@ def _base_env(root: Path, extra: dict[str, str] | None = None) -> dict[str, str]
             "HOME": str(root / "home"),
             "DEX_INSTALL_LOG": str(root / "install.log"),
             "DEX_INSTALL_NO_OPEN": "1",
-            "DEX_TEST_CLONE_SRC": str(clone_src),
             "TERM": "xterm",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": f"url.file://{bare}.insteadof",
+            "GIT_CONFIG_VALUE_0": official,
+            "DEX_TEST_REAL_MIGRATOR": str(
+                REPO_ROOT / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs"
+            ),
         }
     )
     (root / "home").mkdir(exist_ok=True)
@@ -217,6 +253,17 @@ def main() -> int:
     results = []
 
     isolation_ref = "cursor/beginner-install-b596"
+    official_repo = "https://github.com/davekilleen/dex.git"
+
+    def isolation(target: Path, **more: str) -> dict[str, str]:
+        payload = {
+            "DEX_INSTALL_DIR": str(target),
+            "DEX_INSTALL_REF": isolation_ref,
+            "DEX_INSTALL_REPO": official_repo,
+            "DEX_INSTALL_NO_OPEN": "1",
+        }
+        payload.update(more)
+        return payload
 
     # 1. fresh defaults via isolated dir + real pipe + pty
     work = out_dir / "work-fresh"
@@ -228,20 +275,17 @@ def main() -> int:
     script = work / "clone-src" / "install.sh"
     try:
         code, text = _run_pty(
-            ["/bin/bash", "-lc", _pipe_to_bash(script, {
-                "DEX_INSTALL_DIR": str(target),
-                "DEX_INSTALL_REF": isolation_ref,
-                "DEX_INSTALL_NO_OPEN": "1",
-            })],
+            ["/bin/bash", "-lc", _pipe_to_bash(script, isolation(target))],
             work,
             env,
             [b"\n", b"\n", b"n\n", b"n\n"],
+            timeout=45,
         )
     except TimeoutError as exc:
         code, text = 124, str(exc)
-    text += f"\n--- exit {code} ---\ntarget_exists={target.is_dir()} provision={ (target / 'core' / 'provision.cjs').is_file() }\n"
+    text += f"\n--- exit {code} ---\ntarget_exists={target.is_dir()} provision={(target / 'core' / 'provision.cjs').is_file()}\n"
     _write_transcript(out_dir, "fresh-defaults", text)
-    results.append(("fresh-defaults", code == 0 and (target / "core" / "provision.cjs").is_file() and "Welcome to Dex" in text))
+    results.append(("fresh-defaults", code == 0 and (target / "core" / "provision.cjs").is_file() and "Welcome to Dex" in text and "could not prove" not in text and "installed" in text.lower()))
 
     # 2. custom folder
     work = out_dir / "work-custom"
@@ -251,11 +295,7 @@ def main() -> int:
     env = _base_env(work)
     try:
         code, text = _run_pty(
-            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", {
-                "DEX_INSTALL_DIR": str(work / "home" / "Dex-test"),
-                "DEX_INSTALL_REF": isolation_ref,
-                "DEX_INSTALL_NO_OPEN": "1",
-            })],
+            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", isolation(work / "home" / "Dex-test"))],
             work,
             env,
             [b"\n", str(custom).encode() + b"\n", b"n\n", b"n\n"],
@@ -271,15 +311,18 @@ def main() -> int:
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir()
     existing = work / "home" / "Dex-test"
-    _mini_checkout(existing)
     env = _base_env(work)
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "clone", "--quiet", "--branch", isolation_ref, "--single-branch", official_repo, str(existing)],
+        cwd=work,
+        env=env,
+        check=True,
+        timeout=20,
+    )
     try:
         code, text = _run_pty(
-            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", {
-                "DEX_INSTALL_DIR": str(existing),
-                "DEX_INSTALL_REF": isolation_ref,
-                "DEX_INSTALL_NO_OPEN": "1",
-            })],
+            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", isolation(existing))],
             work,
             env,
             [b"\n", b"\n", b"U\n", b"n\n", b"n\n"],
@@ -305,11 +348,7 @@ def main() -> int:
     )
     try:
         code, text = _run_pty(
-            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", {
-                "DEX_INSTALL_DIR": str(target),
-                "DEX_INSTALL_REF": isolation_ref,
-                "DEX_INSTALL_NO_OPEN": "1",
-            })],
+            ["/bin/bash", "-lc", _pipe_to_bash(work / "clone-src" / "install.sh", isolation(target))],
             work,
             env,
             [b"\n", b"\n", b"\n", b"\n"],
@@ -329,12 +368,7 @@ def main() -> int:
     target = work / "home" / "Dex-test"
     env = _base_env(work)
     completed = subprocess.run(
-        _pipe_to_bash(work / "clone-src" / "install.sh", {
-            "DEX_INSTALL_DIR": str(target),
-            "DEX_INSTALL_REF": isolation_ref,
-            "DEX_INSTALL_NONINTERACTIVE": "1",
-            "DEX_INSTALL_NO_OPEN": "1",
-        }),
+        _pipe_to_bash(work / "clone-src" / "install.sh", isolation(target, DEX_INSTALL_NONINTERACTIVE="1")),
         cwd=work,
         env=env,
         capture_output=True,
@@ -346,7 +380,7 @@ def main() -> int:
     text = completed.stdout + completed.stderr
     text += f"\n--- exit {completed.returncode} ---\nprovision={(target / 'core' / 'provision.cjs').is_file()}\n"
     _write_transcript(out_dir, "no-tty", text)
-    results.append(("no-tty", completed.returncode == 0 and (target / "core" / "provision.cjs").is_file() and "Dex installation complete" in completed.stdout))
+    results.append(("no-tty", completed.returncode == 0 and (target / "core" / "provision.cjs").is_file() and "Dex installation complete" in completed.stdout and "could not prove" not in completed.stdout))
 
     summary = ["Install journey results", ""]
     failed = 0

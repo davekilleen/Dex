@@ -156,7 +156,20 @@ def _mini_checkout(root: Path) -> None:
     (root / "core" / "mcp").mkdir(parents=True)
     (root / "core" / "provision.cjs").write_text("console.log('provision')\n", encoding="utf-8")
     (root / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs").write_text(
-        "process.exit(0)\n", encoding="utf-8"
+        """const fs = require('fs');
+const path = require('path');
+const real = process.env.DEX_TEST_REAL_MIGRATOR;
+if (real) {
+  const migrator = require(real);
+  migrator.findReleaseRef(process.cwd(), path.join(process.cwd(), '.git'));
+}
+fs.mkdirSync(path.join('.dex', 'brain.git'), { recursive: true });
+fs.mkdirSync(path.join('System', '.dex'), { recursive: true });
+if (!fs.existsSync('.git')) fs.mkdirSync('.git');
+fs.writeFileSync(path.join('System', '.dex', 'topology.json'), '{}\\n');
+process.exit(0);
+""",
+        encoding="utf-8",
     )
     (root / "core" / "mcp" / "requirements.hash.txt").write_text("# fixture\n", encoding="utf-8")
     (root / "package-lock.json").write_text('{ "lockfileVersion": 3 }\n', encoding="utf-8")
@@ -195,6 +208,9 @@ exit 0
             f"""#!/bin/sh
 if [ "$1" = "-v" ]; then echo "v22.0.0"; exit 0; fi
 if [ "$1" = "-e" ]; then exec "{real_node}" "$@"; fi
+case " $* " in
+  *v1-to-v2-brain-vault-split.cjs*) exec "{real_node}" "$@" ;;
+esac
 exit 0
 """,
         )
@@ -421,3 +437,194 @@ def test_missing_node_stops_with_plain_english(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "Node.js is not installed" in result.stdout or "nodejs.org" in result.stdout
     assert not target.exists() or not (target / "core" / "provision.cjs").exists()
+
+
+def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Dex Test",
+            "GIT_AUTHOR_EMAIL": "dex-test@example.com",
+            "GIT_COMMITTER_NAME": "Dex Test",
+            "GIT_COMMITTER_EMAIL": "dex-test@example.com",
+        }
+    )
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result
+
+
+def _official_source(tmp_path: Path, feature_ref: str) -> Path:
+    src = tmp_path / "official-src"
+    _mini_checkout(src)
+    (src / "CLAUDE.md").write_text("# Dex\n", encoding="utf-8")
+    _git(src, "init", "-b", "release")
+    _git(src, "add", "-A")
+    _git(src, "commit", "-m", "official release")
+    _git(src, "branch", feature_ref)
+    # `git remote get-url` applies insteadOf. Keep the rewritten file:// path
+    # matching dex_remote_is_official (*github.com/davekilleen/[Dd]ex*).
+    bare = tmp_path / "github.com" / "davekilleen" / "dex.git"
+    bare.parent.mkdir(parents=True, exist_ok=True)
+    _git(tmp_path, "clone", "--bare", "--quiet", str(src), str(bare))
+    return bare
+
+
+def _instead_of_env(bare: Path) -> dict[str, str]:
+    official = "https://github.com/davekilleen/dex.git"
+    rewrite = f"file://{bare}"
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": f"url.{rewrite}.insteadof",
+        "GIT_CONFIG_VALUE_0": official,
+        "DEX_INSTALL_REPO": official,
+        "DEX_TEST_REAL_MIGRATOR": str(REPO_ROOT / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs"),
+    }
+
+
+def test_ensure_official_release_ref_fetches_for_feature_branch(tmp_path: Path) -> None:
+    feature = "cursor/beginner-install-b596"
+    bare = _official_source(tmp_path, feature)
+    work = tmp_path / "work"
+    extra = _instead_of_env(bare)
+    clone = subprocess.run(
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--branch",
+            feature,
+            "--single-branch",
+            extra["DEX_INSTALL_REPO"],
+            str(work),
+        ],
+        env={**os.environ, **extra},
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert clone.returncode == 0, clone.stdout + clone.stderr
+    missing = subprocess.run(
+        ["git", "rev-parse", "--verify", "refs/remotes/origin/release^{commit}"],
+        cwd=work,
+        capture_output=True,
+        text=True,
+    )
+    assert missing.returncode != 0
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e; . "{INSTALL_SH}"; dex_ensure_official_release_ref; git rev-parse --verify refs/remotes/origin/release^{{commit}}',
+        ],
+        cwd=work,
+        env={
+            **os.environ,
+            **extra,
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "DEX_INSTALL_REF": feature,
+            "DEX_INSTALL_NONINTERACTIVE": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip()
+    prove = subprocess.run(
+        [
+            "node",
+            "-e",
+            "const m=require(process.argv[1]); console.log(m.findReleaseRef(process.cwd(), require('path').join(process.cwd(),'.git')).ref)",
+            extra["DEX_TEST_REAL_MIGRATOR"],
+        ],
+        cwd=work,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert prove.returncode == 0, prove.stdout + prove.stderr
+    assert "refs/remotes/origin/release" in prove.stdout
+
+
+def test_piped_feature_branch_fetches_release_and_finishes(tmp_path: Path) -> None:
+    """Real | bash pipe + real git: feature-only clone must still get official release history."""
+    feature = "cursor/beginner-install-b596"
+    bare = _official_source(tmp_path, feature)
+    extra = _instead_of_env(bare)
+    shim = _shim_bin(tmp_path)
+    (shim / "git").unlink()
+    target = tmp_path / "home" / "Dex-test"
+    live = tmp_path / "home" / "Dex"
+    parent = _parent_env_without_isolation(
+        tmp_path,
+        {
+            "PATH": f"{shim}:/usr/bin:/bin",
+            **extra,
+        },
+    )
+    script = tmp_path / "official-src" / "install.sh"
+    result = subprocess.run(
+        f'cat "{script}" | '
+        f'DEX_INSTALL_DIR="{target}" '
+        f'DEX_INSTALL_REF="{feature}" '
+        f"DEX_INSTALL_REPO='{extra['DEX_INSTALL_REPO']}' "
+        f"DEX_INSTALL_NONINTERACTIVE=1 DEX_INSTALL_NO_OPEN=1 bash",
+        shell=True,
+        cwd=tmp_path,
+        env=parent,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        executable="/bin/bash",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "official release history" not in result.stdout.lower() or "could not prove" not in result.stdout
+    assert "could not prove that the local release branch" not in result.stdout
+    assert (target / "core" / "provision.cjs").is_file()
+    assert not live.exists()
+    assert "Dex installation complete" in result.stdout
+    prove = subprocess.run(
+        ["git", "rev-parse", "--verify", "refs/remotes/upstream/release^{commit}"],
+        cwd=target,
+        capture_output=True,
+        text=True,
+    )
+    if prove.returncode != 0:
+        prove = subprocess.run(
+            ["git", "rev-parse", "--verify", "refs/remotes/origin/release^{commit}"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+        )
+    assert prove.returncode == 0, "branch-test install must fetch official release history"
+    found = subprocess.run(
+        [
+            "node",
+            "-e",
+            "const m=require(process.argv[1]); console.log(m.findReleaseRef(process.cwd(), require('path').join(process.cwd(),'.git')).ref)",
+            extra["DEX_TEST_REAL_MIGRATOR"],
+        ],
+        cwd=target,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert found.returncode == 0, found.stdout + found.stderr
+
+
+def test_release_history_safety_check_still_in_migrator() -> None:
+    text = (REPO_ROOT / "core" / "migrations" / "v1-to-v2-brain-vault-split.cjs").read_text(
+        encoding="utf-8"
+    )
+    assert "could not prove that the local release branch contains only official release history" in text
+    installer = INSTALL_SH.read_text(encoding="utf-8")
+    assert "dex_ensure_official_release_ref" in installer
+    assert "git clone --quiet --branch" in installer
