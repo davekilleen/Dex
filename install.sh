@@ -1119,16 +1119,10 @@ dex_bootstrap_clone() {
 
 dex_print_manual_next_steps() {
     local target="${DEX_TARGET:-$(pwd)}"
-    local display posix
-    display=$(dex_display_path "$target")
-    posix="$target"
-    echo ""
-    echo "Your Dex folder is:"
-    echo "  $display"
     echo ""
     echo "Copy and paste this line:"
     echo ""
-    echo "  cd \"$posix\" && claude \"/setup\""
+    echo "  cd \"$target\" && claude \"/setup\""
     echo ""
     echo "Then press Enter. Setup starts from there."
     if dex_is_windows; then

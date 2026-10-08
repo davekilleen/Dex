@@ -45,10 +45,9 @@ def main() -> int:
     env = os.environ.copy()
     shim_log = Path("/tmp/dex-claude-shim.log")
     shim_log.unlink(missing_ok=True)
-    if answer == "y":
-        shim_dir = Path("/tmp/dex-claude-shim")
-        _write_claude_shim(shim_dir, shim_log)
-        env["PATH"] = f"{shim_dir}:{env.get('PATH', '/usr/bin:/bin')}"
+    shim_dir = Path("/tmp/dex-claude-shim")
+    _write_claude_shim(shim_dir, shim_log)
+    env["PATH"] = f"{shim_dir}:{env.get('PATH', '/usr/bin:/bin')}"
 
     recorded = bytearray()
     pid, fd = pty.fork()
@@ -147,11 +146,19 @@ def main() -> int:
                     and "Open your Dex folder now?" not in text
                 )
                 if answer == "y":
-                    ok = ok and "Starting Dex in Claude Code" in text and shim_log.is_file()
-                    if shim_log.is_file():
-                        ok = ok and "/setup" in shim_log.read_text(encoding="utf-8")
+                    ok = (
+                        ok
+                        and "Starting Dex in Claude Code" in text
+                        and shim_log.is_file()
+                        and "/setup" in shim_log.read_text(encoding="utf-8")
+                    )
                 else:
-                    ok = ok and "Copy and paste this line" in text
+                    ok = (
+                        ok
+                        and "Would you like to start Dex in Claude Code now?" in text
+                        and "Copy and paste this line" in text
+                        and "Starting Dex in Claude Code" not in text
+                    )
                 return 0 if ok else 1
     finally:
         try:
