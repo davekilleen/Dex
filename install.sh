@@ -750,6 +750,10 @@ dex_pause() {
     dex_read_tty "${1-Press Enter to continue. }"
 }
 
+dex_claude_first_run_note() {
+    printf '%s\n' "Claude Code may first ask you to pick a text style and sign in. That's normal. After that, Dex setup starts on its own. If it doesn't, type: set up Dex"
+}
+
 dex_write_open_me_next() {
     local target="${1:-${DEX_TARGET:-$(pwd)}}"
     local display
@@ -766,6 +770,8 @@ $display
 Copy and paste this line:
 
 cd "$target" && claude "set up Dex"
+
+$(dex_claude_first_run_note)
 
 If Claude Code is not installed, open that folder in Cursor and type: /setup
 
@@ -1143,6 +1149,7 @@ dex_launch_claude_setup() {
     trap - EXIT
     dex_stop_spinner
     echo ""
+    dex_claude_first_run_note
     echo "Starting Dex in Claude Code..."
     cd "$target" || return 1
     # Official Claude CLI: `claude "query"` starts an interactive session and

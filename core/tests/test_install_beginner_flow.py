@@ -127,6 +127,11 @@ def test_welcome_and_finish_copy() -> None:
     assert "Dex is in beta" not in text
     assert "Would you like to start Dex in Claude Code now?" in text
     assert 'exec "$bin" "set up Dex"' in text
+    assert "Claude Code may first ask you to pick a text style and sign in." in text
+    note = _source_helpers("dex_claude_first_run_note")
+    assert note.returncode == 0, note.stderr
+    assert "That's normal." in note.stdout
+    assert "type: set up Dex" in note.stdout
     assert "</dev/tty" in text
     assert "Open your Dex folder now?" not in text
     assert 'echo "(That' not in text
