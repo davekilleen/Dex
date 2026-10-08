@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 07c51058c0e101406ea7fc44d0369641f1af75485cf5a231ec76c4b25aeb59d5 -->
+<!-- Content SHA-256: ac6ec97ce5bdc96e27a7563ebb60c76b44fdece8d5b16efc2c255c1ccc74d8c1 -->
 
 # Architecture Inventory
 
@@ -153,13 +153,13 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 | Class | Rule count | Update action |
 | --- | ---: | --- |
-| `brain` | 47 | `replace` |
+| `brain` | 46 | `replace` |
 | `seed` | 40 | `write-if-absent` |
 | `generated` | 9 | `regenerate` |
 | `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
 
-<details><summary><code>brain</code> declared paths (47)</summary>
+<details><summary><code>brain</code> declared paths (46)</summary>
 
 - `.agents` (dir; `brain-agents`)
 - `.ci` (dir; `brain-ci`)
@@ -186,7 +186,6 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `06-Resources/Dex_System/Updating_Dex.md` (file; `brain-doc-updating-dex`)
 - `AGENTS.md` (file; `brain-agents-md`)
 - `CHANGELOG.md` (file; `brain-changelog`)
-- `COMMERCIAL_LICENSE.md` (file; `brain-commercial-license`)
 - `CONTRIBUTING.md` (file; `brain-contributing`)
 - `DISTRIBUTION_READY.md` (file; `brain-distribution-ready`)
 - `LICENSE` (file; `brain-license`)

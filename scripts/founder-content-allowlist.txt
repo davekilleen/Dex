@@ -14,7 +14,6 @@
 # --- Project branding, license, attribution, contributor/meta docs (dave/killeen) ---
 ^README\.md:.*:(dave|killeen)$
 ^LICENSE:.*:(dave|killeen)$
-^COMMERCIAL_LICENSE\.md:.*:(dave|killeen)$
 ^CONTRIBUTING\.md:.*:dave$
 ^CHANGELOG\.md:.*:dave$
 ^docs/.*:.*:(dave|killeen)$

@@ -479,12 +479,6 @@
       "note": "composed from the shipped template plus vault-owned CLAUDE-custom.md and System/user-profile.yaml"
     },
     {
-      "id": "brain-commercial-license",
-      "path": "COMMERCIAL_LICENSE.md",
-      "kind": "file",
-      "ownership": "brain"
-    },
-    {
       "id": "brain-contributing",
       "path": "CONTRIBUTING.md",
       "kind": "file",

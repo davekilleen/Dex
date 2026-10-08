@@ -63,7 +63,7 @@ degrade gracefully; see `docs/support/upgrade-platform-matrix.md`.
 
 ## Licensing
 
-See `LICENSE` and `COMMERCIAL_LICENSE.md`. Note: the connection manager consumes
+See `LICENSE`. Note: the connection manager consumes
 Nango's provider catalog (Elastic License 2.0) as a pinned npm dependency — never
 re-expose it as a managed service.
 
