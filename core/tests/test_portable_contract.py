@@ -156,6 +156,9 @@ def _tracked_paths() -> list[str]:
         ("some/dir/private.pem", "vault", True),
         ("integrations/service-token.json", "vault", True),
         # generated / runtime
+        # Retired from the current tree (MIT has no separate commercial file)
+        # but historic releases shipped it; updates must still classify it.
+        ("COMMERCIAL_LICENSE.md", "brain", False),
         ("System/.installed-files.manifest", "generated", False),
         ("packages/dex-contracts/dist/paths.contract.json", "generated", False),
         ("System/.dex/gardener.json", "runtime", False),
@@ -220,6 +223,7 @@ def test_mutation_policy_travels_in_the_document() -> None:
     ("path", "exists", "allowed", "action"),
     [
         ("core/utils/doctor.py", True, True, "replace"),
+        ("COMMERCIAL_LICENSE.md", True, True, "replace"),
         ("03-Tasks/Tasks.md", False, True, "write-if-absent"),
         ("03-Tasks/Tasks.md", True, False, "write-if-absent"),  # user file wins
         ("System/.installed-files.manifest", True, True, "regenerate"),
