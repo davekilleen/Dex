@@ -236,9 +236,19 @@ dex_run_logged() {
     return "$status"
 }
 
+dex_user_log_path() {
+    local target="${DEX_TARGET:-$(pwd)}"
+    printf '%s\n' "$target/install-log.txt"
+}
+
 dex_show_logged_failure() {
     echo "❌ $1"
-    echo "   See the install log for the exact error: $INSTALL_LOG"
+    if dex_is_interactive; then
+        echo "   Please send this file to dave@heydex.ai:"
+        echo "   $(dex_display_path "$(dex_user_log_path)")"
+    else
+        echo "   See the install log for the exact error: $INSTALL_LOG"
+    fi
 }
 
 dex_prompt_continue() {
@@ -520,9 +530,31 @@ dex_beta_line() {
 
 dex_copy_user_log() {
     local target="${DEX_TARGET:-$(pwd)}"
-    if [ -n "${INSTALL_LOG:-}" ] && [ -f "$INSTALL_LOG" ] && [ -d "$target" ]; then
-        cp "$INSTALL_LOG" "$target/install-log.txt" 2>/dev/null || true
+    local user_log="$target/install-log.txt"
+    if [ -z "${INSTALL_LOG:-}" ] || [ ! -f "$INSTALL_LOG" ] || [ ! -d "$target" ]; then
+        return 0
     fi
+    if dex_same_path "$INSTALL_LOG" "$user_log"; then
+        return 0
+    fi
+    cp "$INSTALL_LOG" "$user_log" 2>/dev/null || true
+}
+
+dex_step() {
+    echo ""
+    echo "Step $1 of 5 — $2"
+    echo ""
+}
+
+dex_user_progress() {
+    local user_line="$1"
+    local log_line="${2:-$1}"
+    if dex_is_interactive; then
+        echo "$user_line"
+    else
+        echo "$log_line"
+    fi
+    dex_log "$log_line"
 }
 
 dex_repo_url() {
@@ -531,6 +563,58 @@ dex_repo_url() {
 
 dex_repo_ref() {
     printf '%s\n' "${DEX_INSTALL_REF:-release}"
+}
+
+dex_remote_is_official() {
+    case "$1" in
+        *github.com/davekilleen/[Dd]ex*|*github.com:davekilleen/[Dd]ex*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+# Branch-test clones use --single-branch, so they have no official release
+# history yet. Fetch that remote-tracking ref only — do not check it out.
+# The brain/vault safety check still requires official GitHub history.
+dex_ensure_official_release_ref() {
+    local remote url
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        return 0
+    fi
+    remotes=$(git remote 2>/dev/null || true)
+    if [ -z "$remotes" ]; then
+        return 0
+    fi
+    for remote in $remotes; do
+        # Prefer the stored URL. `git remote get-url` can rewrite via insteadOf.
+        url=$(git config --get "remote.${remote}.url" 2>/dev/null || git remote get-url "$remote" 2>/dev/null || true)
+        if dex_remote_is_official "$url" \
+            && git rev-parse --verify "refs/remotes/${remote}/release^{commit}" >/dev/null 2>&1; then
+            dex_log "official release history already present at refs/remotes/${remote}/release"
+            return 0
+        fi
+    done
+    for remote in $(git remote 2>/dev/null); do
+        url=$(git config --get "remote.${remote}.url" 2>/dev/null || git remote get-url "$remote" 2>/dev/null || true)
+        if ! dex_remote_is_official "$url"; then
+            continue
+        fi
+        dex_log "fetching official release history from $remote"
+        if git fetch --quiet "$remote" "+refs/heads/release:refs/remotes/${remote}/release"; then
+            if git rev-parse --verify "refs/remotes/${remote}/release^{commit}" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+    done
+    if [ "$(dex_repo_ref)" = "release" ]; then
+        return 0
+    fi
+    echo "Could not download the official Dex history needed to finish setup."
+    echo "Check your internet connection, then run the same command again."
+    echo "If it happens again, send this file to dave@heydex.ai:"
+    echo "  $(dex_display_path "$(dex_user_log_path)")"
+    return 1
 }
 
 dex_same_path() {
@@ -543,12 +627,13 @@ dex_same_path() {
 }
 
 dex_dir_is_empty() {
-    local raw="$1"
+    local raw="$1" entries
     if [ ! -e "$raw" ]; then
         return 0
     fi
     [ -d "$raw" ] || return 1
-    [ -z "$(ls -A "$raw" 2>/dev/null)" ]
+    entries=$(ls -A "$raw" 2>/dev/null | grep -v '^install-log.txt$' || true)
+    [ -z "$entries" ]
 }
 
 # Feature-branch / PR tests never default into ~/Dex. Product default stays ~/Dex.
@@ -678,8 +763,7 @@ dex_choose_target() {
     suggested=$(dex_default_target)
     while true; do
         display=$(dex_display_path "$suggested")
-        echo "Step 1 of 5 — Where should Dex live?"
-        echo ""
+        dex_step 1 "Where should Dex live?"
         echo "Suggested folder: $display"
         echo "(That's ${suggested/#$(dex_home_dir)/~})"
         if [ -n "${DEX_INSTALL_DIR:-}" ] || { [ "$(dex_repo_ref)" != "release" ] && [ "$(dex_repo_ref)" != "main" ]; }; then
@@ -952,20 +1036,27 @@ dex_bootstrap_clone() {
         echo "Git is required to download Dex."
         return 1
     fi
-    echo "Downloading Dex ($ref) into $(dex_display_path "$target")..."
+    if dex_is_interactive; then
+        echo "Downloading Dex. This usually takes a minute."
+    else
+        echo "Downloading Dex ($ref) into $(dex_display_path "$target")..."
+    fi
     if [ -d "$target" ]; then
-        if ! git clone --branch "$ref" --single-branch "$repo" "$target"; then
+        if ! git clone --quiet --branch "$ref" --single-branch "$repo" "$target" >>"${INSTALL_LOG:-/dev/null}" 2>&1; then
             echo "Could not download Dex. The folder was left as it was."
             return 1
         fi
     else
-        if ! git clone --branch "$ref" --single-branch "$repo" "$target"; then
+        if ! git clone --quiet --branch "$ref" --single-branch "$repo" "$target" >>"${INSTALL_LOG:-/dev/null}" 2>&1; then
             echo "Could not download Dex. Nothing was left behind outside that folder."
             return 1
         fi
     fi
     if ! dex_is_checkout "$target"; then
         echo "The download finished, but this is not a complete Dex folder."
+        return 1
+    fi
+    if ! (cd "$target" && dex_ensure_official_release_ref); then
         return 1
     fi
     return 0
@@ -1102,10 +1193,14 @@ if [ -n "${DEX_INSTALL_DIR:-}" ]; then
     echo ""
 fi
 
+if dex_is_interactive && [ -z "${DEX_INSTALL_LOG:-}" ]; then
+    export DEX_INSTALL_LOG="${TMPDIR:-/tmp}/dex-install-$$.log"
+    DEX_INSTALL_LOG_IS_TEMP=1
+    dex_init_install_log
+fi
+
 if dex_is_interactive; then
-    echo ""
-    echo "Step 2 of 5 — Checking your computer"
-    echo ""
+    dex_step 2 "Checking your computer"
     dex_guided_preflight
     DEX_PREFLIGHT_DONE=1
 fi
@@ -1136,23 +1231,30 @@ fi
 
 if dex_should_bootstrap "$DEX_TARGET"; then
     if dex_is_interactive; then
-        echo ""
-        echo "Step 3 of 5 — Downloading Dex"
-        echo ""
+        dex_step 3 "Downloading Dex"
     fi
     if ! dex_bootstrap_clone "$DEX_TARGET"; then
         exit 1
     fi
 elif dex_is_interactive; then
-    echo ""
-    echo "Step 3 of 5 — Downloading Dex"
+    dex_step 3 "Downloading Dex"
     echo "This folder already has Dex. Using the files that are here."
     echo ""
 fi
 
 cd "$DEX_TARGET"
 
-dex_init_install_log
+if [ "${DEX_INSTALL_LOG_IS_TEMP:-}" = "1" ]; then
+    dest="$(dex_user_log_path)"
+    if [ -f "${DEX_INSTALL_LOG:-}" ]; then
+        mv "$DEX_INSTALL_LOG" "$dest"
+    fi
+    export DEX_INSTALL_LOG="$dest"
+    INSTALL_LOG="$dest"
+    DEX_INSTALL_LOG_IS_TEMP=""
+else
+    dex_init_install_log
+fi
 dex_log "starting install target=$DEX_TARGET ref=$(dex_repo_ref)"
 if ! dex_support_shell_precheck; then
     exit 1
@@ -1164,8 +1266,8 @@ if ! dex_is_interactive; then
 fi
 
 if dex_is_interactive; then
-    echo "Step 4 of 5 — Setting up your workspace"
-    echo "This part is quiet on purpose. A full log is saved if anything goes wrong."
+    dex_step 4 "Setting up your workspace"
+    echo "This part is quiet on purpose. Details go in the log if anything goes wrong."
     echo ""
 fi
 
@@ -1225,6 +1327,9 @@ fi
 # when this script was piped from curl.
 if git remote -v >/dev/null 2>&1 && git remote -v | grep -q "davekilleen/[Dd]ex"; then
     git remote rename origin upstream >/dev/null 2>&1 || true
+fi
+if ! dex_ensure_official_release_ref; then
+    exit 1
 fi
 
 # Check Git first (required for repo operations)
@@ -1308,7 +1413,7 @@ fi
 
 # Install Node dependencies from the committed lockfile only.
 echo ""
-echo "📦 Installing dependencies..."
+dex_user_progress "Installing the pieces Dex needs..." "📦 Installing dependencies..."
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
     dex_log "----- pnpm install --frozen-lockfile -----"
     if dex_is_interactive; then
@@ -1344,7 +1449,7 @@ fi
 # not yet have an activated lifecycle engine. Post-install adoption below uses
 # the frozen lifecycle service.
 echo ""
-echo "📝 Converging bootstrap configuration through the provision contract..."
+dex_user_progress "Preparing your notes folder..." "📝 Converging bootstrap configuration through the provision contract..."
 PROVISION_ARGS=(--path "$(pwd)" --install-config-only --json)
 if command -v qmd >/dev/null 2>&1; then
     PROVISION_ARGS+=(--enable-qmd)
@@ -1353,12 +1458,15 @@ if ! DEX_CAPABILITY_PYTHON="$PYTHON_CMD" DEX_PROVISION_PYTHON="$PYTHON_CMD" DEX_
     dex_show_logged_failure "Dex could not finish the first-run setup"
     exit 1
 fi
-if command -v qmd >/dev/null 2>&1; then
-    echo "   qmd MCP server added when configuration was absent"
-else
-    echo "   semantic search not installed — run /enable-semantic-search to add it later"
+if ! dex_is_interactive; then
+    if command -v qmd >/dev/null 2>&1; then
+        echo "   qmd MCP server added when configuration was absent"
+    else
+        echo "   semantic search not installed — run /enable-semantic-search to add it later"
+    fi
+    echo "   MCP servers configured for: $(pwd)"
 fi
-echo "   MCP servers configured for: $(pwd)"
+dex_log "MCP servers configured for: $(pwd)"
 
 # Check for the optional Granola app. API access is connected separately.
 # Path resolution lives in core.integrations.granola_paths (Windows-sync PR).
@@ -1366,26 +1474,27 @@ echo "   MCP servers configured for: $(pwd)"
 echo ""
 GRANOLA_PATH=""
 if ! dex_granola_locator_present; then
-    echo "ℹ️  Granola app check skipped — shared locator not in this checkout yet"
-    echo "   Run /granola-setup later to connect it (needs a Granola Business API key)"
+    dex_user_progress "Granola (optional): you can connect it later for meeting notes." "ℹ️  Granola app check skipped — shared locator not in this checkout yet"
     dex_log "granola locator missing; skipped detection"
 elif GRANOLA_PATH=$(dex_granola_via_shared_module); then
-    echo "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
+    dex_user_progress "Granola (optional): found. You can connect it later for meeting notes." "✅ Granola app detected — run /granola-setup to connect it (needs a Granola Business API key)"
     dex_log "granola detected at $GRANOLA_PATH"
 else
-    echo "ℹ️  Granola app not detected"
-    echo "   Install Granola from https://granola.ai for meeting transcription"
-    echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
+    dex_user_progress "Granola (optional): not found. You can add it later for meeting notes." "ℹ️  Granola app not detected"
+    if ! dex_is_interactive; then
+        echo "   Install Granola from https://granola.ai for meeting transcription"
+        echo "   Then run /granola-setup to connect it (needs a Granola Business API key)"
+    fi
 fi
 
 # Install Python dependencies for Work MCP in a virtual environment
 echo ""
-echo "📦 Setting up Python environment for Work MCP..."
+dex_user_progress "Setting up the part that keeps your tasks in sync..." "📦 Setting up Python environment for Work MCP..."
 
 if [ -n "$PYTHON_CMD" ]; then
     # Create venv if it doesn't exist
     if [ ! -d ".venv" ]; then
-        echo "   Creating virtual environment..."
+        dex_user_progress "   Creating a private workspace..." "   Creating virtual environment..."
         if ! dex_run_logged "python -m venv" "$PYTHON_CMD" -m venv .venv; then
             dex_show_logged_failure "Could not create virtual environment"
             echo ""
@@ -1410,7 +1519,7 @@ if [ -n "$PYTHON_CMD" ]; then
 
     # Install dependencies into venv from the hashed pin file only.
     if [ -f "$VENV_PIP" ] && dex_run_logged "pip install" "$VENV_PIP" install --require-hashes -r "$HASHED_REQUIREMENTS" --quiet; then
-        echo "✅ Work MCP dependencies installed"
+        dex_user_progress "✅ Task sync is ready." "✅ Work MCP dependencies installed"
     else
         if [ ! -f "$VENV_PIP" ]; then
             dex_log "venv pip missing at $VENV_PIP"
@@ -1430,14 +1539,17 @@ fi
 
 # Verify Work MCP setup
 echo ""
-echo "🔍 Verifying Work MCP setup..."
+dex_user_progress "Making sure your tasks will stay in sync..." "🔍 Verifying Work MCP setup..."
 if [ -n "$PYTHON_CMD" ] && [ -f "$VENV_PYTHON" ]; then
     if dex_run_logged "import mcp, yaml" "$VENV_PYTHON" -c "import mcp, yaml"; then
-        echo "✅ Work MCP verified - task sync will work"
+        dex_user_progress "✅ Task sync will work." "✅ Work MCP verified - task sync will work"
         WORK_MCP_STATUS="✅ Working"
 
         # Path constants were generated by the sanctioned provision contract.
-        echo "Path constants generated"
+        if ! dex_is_interactive; then
+            echo "Path constants generated"
+        fi
+        dex_log "Path constants generated"
     else
         dex_show_logged_failure "Work MCP not working - task sync won't function"
         WORK_MCP_STATUS="⚠️  Needs attention"
@@ -1451,7 +1563,7 @@ fi
 # engine that also handles existing installs. A bounded migration may ask to
 # resume, so keep routing back to that engine until it reaches a terminal state.
 echo ""
-echo "🔀 Separating the Dex brain from your vault..."
+dex_user_progress "Finishing your folder..." "🔀 Separating the Dex brain from your vault..."
 MIGRATOR="core/migrations/v1-to-v2-brain-vault-split.cjs"
 if [ ! -f "$MIGRATOR" ]; then
     echo "❌ Dex cannot finish the brain/vault setup because the migrator is missing."
@@ -1468,7 +1580,19 @@ done
 
 MIGRATION_MODE="--auto"
 while true; do
-    if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
+    if dex_is_interactive; then
+        if [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
+            if dex_run_logged "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
+                MIGRATION_STATUS=0
+            else
+                MIGRATION_STATUS=$?
+            fi
+        elif dex_run_logged "brain-vault $MIGRATION_MODE" node "$MIGRATOR" "$MIGRATION_MODE"; then
+            MIGRATION_STATUS=0
+        else
+            MIGRATION_STATUS=$?
+        fi
+    elif [ -n "$MIGRATION_SYNC_FOLDER_ARGUMENT" ]; then
         if node "$MIGRATOR" "$MIGRATION_MODE" "$MIGRATION_SYNC_FOLDER_ARGUMENT"; then
             MIGRATION_STATUS=0
         else
@@ -1485,16 +1609,24 @@ while true; do
         continue
     fi
     if [ "$MIGRATION_STATUS" -ne 0 ]; then
-        echo "❌ Dex could not finish the brain/vault split."
-        echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
-        echo "   Install log: $INSTALL_LOG"
+        if dex_is_interactive; then
+            echo "Setup could not finish preparing this folder."
+            echo "Your files are still in $(dex_display_path "$DEX_TARGET")."
+            dex_copy_user_log
+            echo "Please send this file to dave@heydex.ai:"
+            echo "  $(dex_display_path "$(dex_user_log_path)")"
+        else
+            echo "❌ Dex could not finish the brain/vault split."
+            echo "   Read System/migration-report-v2.md, fix the reported issue, then run ./install.sh again."
+            echo "   Install log: $INSTALL_LOG"
+        fi
         exit "$MIGRATION_STATUS"
     fi
     break
 done
 
 if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" ]; then
-    echo "✅ Your vault and the Dex brain now have separate Git histories"
+    dex_user_progress "✅ Your notes folder is ready." "✅ Your vault and the Dex brain now have separate Git histories"
     # ZIP bundles compose vault-mode .gitignore at packaging time. A cloned
     # product checkout still has the product ignore file, which hides notes
     # folders until the first /dex-update. Compose here so a fresh install
@@ -1507,22 +1639,36 @@ if [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ] && [ -d ".git" 
             COMPOSE_PYTHON="$VENV_PYTHON"
         fi
         if [ -n "$COMPOSE_PYTHON" ] && dex_run_logged "compose-vault-gitignore" "$COMPOSE_PYTHON" "$GITIGNORE_COMPOSER" ".gitignore"; then
-            echo "   Your notes folders stay in your vault history from the start"
+            if ! dex_is_interactive; then
+                echo "   Your notes folders stay in your vault history from the start"
+            fi
         else
             echo "⚠️  Dex could not finish making your notes folders trackable."
             echo "   Your files are still here. Run /dex-update, or run /dex-doctor to see the next step."
         fi
     fi
 elif [ -f "System/.dex/topology.json" ] && [ -d ".dex/brain.git" ]; then
-    echo "❌ Dex could not finish the brain/vault split."
-    echo "   The notes folder has no working Git history. Your files are still here."
-    echo "   Run: node core/migrations/v1-to-v2-brain-vault-split.cjs --resume"
-    echo "   Then run ./install.sh again."
+    if dex_is_interactive; then
+        echo "Setup could not finish preparing this folder."
+        echo "Your files are still in $(dex_display_path "$DEX_TARGET")."
+        dex_copy_user_log
+        echo "Please send this file to dave@heydex.ai:"
+        echo "  $(dex_display_path "$(dex_user_log_path)")"
+    else
+        echo "❌ Dex could not finish the brain/vault split."
+        echo "   The notes folder has no working Git history. Your files are still here."
+        echo "   Run: node core/migrations/v1-to-v2-brain-vault-split.cjs --resume"
+        echo "   Then run ./install.sh again."
+    fi
     exit 1
 else
-    echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
-    echo "   Your files are unchanged, and Dex will keep using the combined layout."
-    echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+    if dex_is_interactive; then
+        echo "Your folder is ready to use. A later update will finish a behind-the-scenes cleanup."
+    else
+        echo "⚠️  This folder has no Git clone history, so the brain/vault split was not started."
+        echo "   Your files are unchanged, and Dex will keep using the combined layout."
+        echo "   Read System/migration-report-v2.md for the safe manual-update choices."
+    fi
 fi
 
 # Any catalog adoption after bootstrap crosses the frozen lifecycle service;
@@ -1560,9 +1706,7 @@ fi
 
 # Success
 if dex_is_interactive; then
-    echo ""
-    echo "Step 5 of 5 — Final checks"
-    echo ""
+    dex_step 5 "Final checks"
     trap - EXIT
     dex_print_interactive_finish
 else
