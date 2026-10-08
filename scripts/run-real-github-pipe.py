@@ -5,11 +5,27 @@ from __future__ import annotations
 
 import os
 import pty
+import re
 import select
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _visible_tail(text: str, size: int = 400) -> str:
+    return _ANSI_RE.sub("", text).replace("\r", "")[-size:]
+
+
+def _waiting_for_enter(tail: str) -> bool:
+    stripped = tail.rstrip()
+    return (
+        stripped.endswith("Press Enter to begin.")
+        or stripped.endswith("type another path:")
+        or stripped.endswith("Press Enter to continue.")
+    )
 
 COMMAND = (
     'curl -fsSL "https://raw.githubusercontent.com/davekilleen/Dex/cursor/beginner-install-b596/install.sh" '
@@ -58,6 +74,7 @@ def main() -> int:
     deadline = time.time() + 900
     last_send = 0.0
     answered_claude = False
+    enter_sends = 0
     try:
         while True:
             remaining = deadline - time.time()
@@ -75,7 +92,7 @@ def main() -> int:
                     break
                 recorded.extend(chunk)
             text_so_far = recorded.decode("utf-8", errors="replace")
-            tail = text_so_far[-800:]
+            tail = _visible_tail(text_so_far)
             claude_prompt = "Would you like to start Dex in Claude Code now?" in tail
             if claude_prompt and not answered_claude and time.time() - last_send > 0.4:
                 try:
@@ -86,15 +103,14 @@ def main() -> int:
                     break
             elif (
                 not answered_claude
+                and enter_sends < 4
                 and time.time() - last_send > 0.8
-                and (
-                    "Press Enter" in tail
-                    or "type another path" in tail
-                )
+                and _waiting_for_enter(tail)
             ):
                 try:
                     os.write(fd, b"\n")
                     last_send = time.time()
+                    enter_sends += 1
                 except OSError:
                     break
             try:
