@@ -23,6 +23,14 @@ Claude's own notes about how you like to work silently stopped saving inside a D
 * **Everyday words are not treated as corrections.** Saying "no", "stop", or "actually," in ordinary conversation is no longer written down as a lesson. A real correction such as "no, that's not what I asked" is still saved.
 * **Closing several chats at once no longer garbles the day's lesson file.** If two sessions finish together, each lesson is written once and stays readable. Nothing already in the file is removed.
 
+Planning next week used to add this week's focus onto last week's list, then warn that you had too many. A goal tag at the end of a priority line was ignored, so a review could say nothing was aligned. A new quarter goal could show an internal label instead of the focus-area name, and start at goal 2 because of the example on a fresh page.
+
+**What this fixes for you:**
+
+* **A new week starts its own list.** Last week's priorities stay as history. The "too many" warning only counts this week.
+* **A goal tag at the end of a line counts.** A priority that ends with `[Q4-2026-goal-2]` is treated as linked to that goal, the same as the usual "Quarterly goal" line.
+* **Your first quarter goal is goal 1, with the real focus-area name.** The example on a new goals page is replaced, not counted, and the heading shows the name you chose — not an internal label.
+
 ## [1.97.26] — A friendlier first install, and Dex is now MIT licensed (2026-10-08)
 
 People new to the terminal ran the install line and then did not know what to do next. The installer printed technical output, did not ask where Dex should live, and ended with commands to retype. On Windows the instructions pointed at PowerShell. This release fixes that. Dex is also now under the MIT licence.
