@@ -286,6 +286,30 @@ def test_gated_operations_recover_after_a_delivered_release(tmp_path: Path) -> N
     assert "plan" in plan
 
 
+def test_build_inventory_and_plan_accepts_windows_crlf_activation(
+    tmp_path: Path,
+) -> None:
+    """DEX-182: a consistent Windows checkout must still be able to check for updates.
+
+    Native Windows used to write the activation record with trailing CRLF.
+    Every later ``build_inventory_and_plan`` then refused with "this Dex
+    copy's update engine doesn't match its release information" even when
+    the install was internally consistent. The 1.97.22 bookkeeping repair
+    that ``_prepare`` runs first is the fix; this test locks the gate.
+    """
+    from core.tests.byte_mode_helpers import crlf_variant
+
+    vault = _activation_fixture(tmp_path)
+    activate_vault(vault)
+    path = vault / ACTIVATION_RELATIVE
+    path.write_bytes(crlf_variant(path.read_bytes()))
+
+    plan = service.build_inventory_and_plan(vault)
+
+    assert "plan" in plan
+    assert path.read_bytes() == path.read_bytes().replace(b"\r\n", b"\n")
+
+
 def test_lifecycle_service_translates_bridge_activation_failure_to_plain_refusal(
     tmp_path: Path,
 ) -> None:

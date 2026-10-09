@@ -15,6 +15,7 @@ from core.lifecycle.catalog import (
     parse_release_hash_table,
     release_bytes_match,
 )
+from core import portable_contract
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
 from core.lifecycle.model import ReleaseCatalog
 from core.lifecycle.release_anchor import consume_release_anchor
@@ -60,9 +61,23 @@ class ReleaseBaseline:
     # never trusted on presence and never consulted unless the catalog
     # baseline itself already verified.
     anchor_state: str = "absent"
+    # Extra Dex-owned hashes that still count as stock for a path. Used for
+    # room-delivered skill copies whose current pin is in expected_hashes and
+    # whose previous published payloads remain Dex's own bytes, not a user edit.
+    alternate_hashes: Mapping[str, frozenset[str]] = MappingProxyType({})
 
     def expected_sha256(self, canonical_path: str) -> str | None:
         return self.expected_hashes.get(canonical_path)
+
+    def acceptable_sha256s(self, canonical_path: str) -> frozenset[str]:
+        primary = self.expected_hashes.get(canonical_path)
+        extras = self.alternate_hashes.get(canonical_path, frozenset())
+        if primary is None and not extras:
+            return frozenset()
+        accepted = set(extras)
+        if primary is not None:
+            accepted.add(primary)
+        return frozenset(accepted)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -171,6 +186,7 @@ def load_release_baseline(
                 errors.append(str(error))
 
     expected_hashes: Mapping[str, str] = MappingProxyType({})
+    alternate_hashes: Mapping[str, frozenset[str]] = MappingProxyType({})
     release_version: str | None = None
     identity_state = "UNKNOWN"
     hash_table_state = "absent"
@@ -277,7 +293,17 @@ def load_release_baseline(
                 errors.extend(anchor_errors)
                 for anchor_path, anchor_sha256 in anchor_rows.items():
                     merged_hashes.setdefault(anchor_path, anchor_sha256)
+                room_current, room_previous = room_delivered_target_pins()
+                for target, sha256 in room_current.items():
+                    merged_hashes.setdefault(target, sha256)
                 expected_hashes = MappingProxyType(dict(sorted(merged_hashes.items())))
+                alternate_hashes = MappingProxyType(
+                    {
+                        path: hashes
+                        for path, hashes in sorted(room_previous.items())
+                        if path in merged_hashes
+                    }
+                )
                 release_version = selected_catalog.release.version
                 identity_state = "VERIFIED"
     elif manifest_bytes is not None:
@@ -291,7 +317,56 @@ def load_release_baseline(
         tuple(sorted(set(errors))),
         hash_table_state,
         anchor_state,
+        alternate_hashes,
     )
+
+
+def room_delivered_target_pins() -> tuple[dict[str, str], dict[str, frozenset[str]]]:
+    """Current and previous pin hashes for capability-room skill copies.
+
+    Default-enabled rooms copy SKILL.md into ``.claude/skills/<name>/`` at
+    provision time. Those copies are Dex-owned but absent from the installed
+    manifest (the release ships the dormant ``_available`` source). After a
+    verified re-anchor they must classify as stock, not leftover-unproved;
+    a user edit that matches no pin must still show as stock-modified.
+    """
+    current: dict[str, str] = {}
+    previous: dict[str, set[str]] = {}
+    for room in portable_contract.CAPABILITIES.values():
+        for source in room.get("skill_sources", ()):
+            if not isinstance(source, Mapping):
+                continue
+            target = source.get("target_path")
+            sha256 = source.get("sha256")
+            if not isinstance(target, str) or not isinstance(sha256, str) or not sha256:
+                continue
+            current.setdefault(target, sha256)
+            extras = previous.setdefault(target, set())
+            for prior in source.get("previous_payloads", ()):
+                if not isinstance(prior, Mapping):
+                    continue
+                prior_sha256 = prior.get("sha256")
+                if isinstance(prior_sha256, str) and prior_sha256:
+                    extras.add(prior_sha256)
+            extras.discard(current[target])
+    return current, {path: frozenset(hashes) for path, hashes in previous.items() if hashes}
+
+
+def stock_sha256s(baseline: object, canonical_path: str) -> frozenset[str]:
+    """Hashes that count as stock for ``canonical_path`` on this baseline."""
+    getter = getattr(baseline, "acceptable_sha256s", None)
+    if callable(getter):
+        accepted = getter(canonical_path)
+        if isinstance(accepted, frozenset):
+            return accepted
+        if accepted:
+            return frozenset(accepted)
+    expected = getattr(baseline, "expected_sha256", None)
+    if callable(expected):
+        digest = expected(canonical_path)
+        if isinstance(digest, str) and digest:
+            return frozenset({digest})
+    return frozenset()
 
 
 def is_machine_projection(path: str) -> bool:
@@ -334,12 +409,12 @@ def classify_release_state(
         return "stock-missing"
     if ownership_class is None:
         return "unknown"
-    expected = baseline.expected_sha256(canonical_path)
-    if expected is not None and kind == "file":
+    acceptable = stock_sha256s(baseline, canonical_path)
+    if acceptable and kind == "file":
         if actual_sha256 is None:
             return "unknown"
-        if actual_sha256 == expected or (
-            crlf_normalized_sha256 is not None and crlf_normalized_sha256 == expected
+        if actual_sha256 in acceptable or (
+            crlf_normalized_sha256 is not None and crlf_normalized_sha256 in acceptable
         ):
             return "stock-unmodified"
         return "stock-modified"
@@ -390,4 +465,6 @@ __all__ = [
     "is_cache",
     "is_machine_projection",
     "load_release_baseline",
+    "room_delivered_target_pins",
+    "stock_sha256s",
 ]

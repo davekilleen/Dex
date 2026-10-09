@@ -17,6 +17,7 @@ from core.lifecycle.customizations import (
     classify_release_state,
     detect_customizations,
     load_release_baseline,
+    stock_sha256s,
 )
 from core.lifecycle.filesystem import (
     DEFAULT_MAX_ENTRIES,
@@ -300,7 +301,7 @@ def build_inventory(
         if (
             observed.kind == "file"
             and not denied
-            and baseline.expected_sha256(canonical) is not None
+            and stock_sha256s(baseline, canonical)
         ):
             try:
                 raw = bounded_read(root, observed.path, max_bytes=max_hash_bytes)

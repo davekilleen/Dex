@@ -1045,6 +1045,13 @@ def test_sync_folder_marker_data_is_explicitly_release_owned() -> None:
     assert resolution.ownership == "brain"
 
 
+def test_generated_core_paths_wins_over_the_brain_core_directory() -> None:
+    resolution = portable_contract.resolve("core/paths.json")
+
+    assert resolution.rule_id == "generated-core-paths"
+    assert resolution.ownership == "generated"
+
+
 # ---------------------------------------------------------------------------
 # The gate script: red-when-removed proofs in an isolated fixture repo
 # ---------------------------------------------------------------------------
