@@ -253,3 +253,81 @@ def test_create_weekly_priority_numbers_a_fourth_item_and_warns(
         "## 📊 Review\n\n"
         "Tail sentinel.\n"
     )
+
+
+def test_create_weekly_priority_starts_a_new_week_and_archives_the_old_file(
+    priority_file: Path,
+):
+    last_week = (
+        "# Week Priorities\n\n"
+        "**Week of:** 2026-07-06\n\n"
+        "---\n\n"
+        f"{TOP_3}\n\n"
+        "1. First leftover — **Customer Growth** ^week-2026-W28-p1\n"
+        "2. Second leftover — **Customer Growth** ^week-2026-W28-p2\n"
+        "3. Third leftover — **Customer Growth** ^week-2026-W28-p3\n\n"
+        "## 📊 Review\n\n"
+        "Last week's review notes.\n"
+    )
+    priority_file.write_text(last_week, encoding="utf-8")
+
+    result = _call_create_priority()
+
+    assert result["success"] is True
+    assert result["priority_id"] == "week-2026-W29-p1"
+    assert "note" not in result
+    assert result["archived_previous_week"] == "07-Archives/Plans/2026-W28.md"
+    assert priority_file.read_text(encoding="utf-8") == (
+        "# Week Priorities\n\n"
+        "**Week of:** 2026-07-13\n\n"
+        "---\n\n"
+        f"{TOP_3}\n\n"
+        "1. Publish customer renewal playbook — **Customer Growth** "
+        "^week-2026-W29-p1\n\n"
+    )
+    archived = priority_file.parents[1] / "07-Archives" / "Plans" / "2026-W28.md"
+    assert archived.read_text(encoding="utf-8") == last_week
+
+
+def test_new_week_limit_counts_only_the_requested_week(priority_file: Path):
+    priority_file.write_text(
+        "# Week Priorities\n\n"
+        "**Week of:** 2026-07-06\n\n"
+        f"{TOP_3}\n\n"
+        "1. Leftover one — **Customer Growth** ^week-2026-W28-p1\n"
+        "2. Leftover two — **Customer Growth** ^week-2026-W28-p2\n"
+        "3. Leftover three — **Customer Growth** ^week-2026-W28-p3\n",
+        encoding="utf-8",
+    )
+
+    first = _call_create_priority(title="This week one")
+    second = _call_create_priority(title="This week two")
+    third = _call_create_priority(title="This week three")
+
+    assert "note" not in first
+    assert "note" not in second
+    assert "note" not in third
+    listed = _call_get_priorities()
+    assert [item["priority_id"] for item in listed["priorities"]] == [
+        "week-2026-W29-p1",
+        "week-2026-W29-p2",
+        "week-2026-W29-p3",
+    ]
+
+
+def test_trailing_goal_tag_on_priority_line_is_a_goal_link(priority_file: Path):
+    goal_id = "Q4-2026-goal-2"
+    priority_file.write_text(
+        "# Week Priorities\n\n"
+        f"{TOP_3}\n\n"
+        "1. Close the renewal — **Customer Growth** "
+        f"^week-2026-W29-p1 [{goal_id}]\n\n"
+        "## 📊 Review\n",
+        encoding="utf-8",
+    )
+
+    listed = _call_get_priorities()
+
+    assert listed["priorities"][0]["linked_goal_id"] == goal_id
+    assert listed["alignment_summary"]["priorities_linked_to_goals"] == 1
+    assert listed["alignment_summary"]["priorities_unlinked"] == 0

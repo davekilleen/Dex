@@ -2649,6 +2649,49 @@ def extract_goal_id(text: str) -> Optional[str]:
     match = re.search(r'\^(' + GOAL_ID_PATTERN + r')', text)
     return match.group(1) if match else None
 
+
+def extract_goal_id_tag(text: str) -> Optional[str]:
+    """Extract a bracketed goal tag like [Q4-2026-goal-2] from a priority line."""
+    match = _GOAL_TAG_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _pillar_display_name(pillar: str) -> str:
+    """Heading label: the pillar's display name, falling back to the id."""
+    ensure_pillars_current()
+    info = PILLARS.get(pillar)
+    if not info:
+        return pillar
+    name = str(info.get('name') or '').strip()
+    return name or pillar
+
+
+def _is_template_example_goal(goal: Dict[str, Any]) -> bool:
+    """True for the seeded 'replace this' example, not a user goal."""
+    return (goal.get('title') or '').strip() == TEMPLATE_EXAMPLE_GOAL_TITLE
+
+
+def _strip_template_example_goals(content: str) -> str:
+    """Remove seeded example goal blocks so they do not occupy a number."""
+    lines = content.split('\n')
+    kept: List[str] = []
+    i = 0
+    while i < len(lines):
+        goal_match = re.match(
+            r'###\s+(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*',
+            lines[i],
+        )
+        if goal_match and goal_match.group(2).strip() == TEMPLATE_EXAMPLE_GOAL_TITLE:
+            i += 1
+            while i < len(lines) and not _line_ends_goal_body(lines[i]):
+                i += 1
+            while i < len(lines) and lines[i].strip() == '':
+                i += 1
+            continue
+        kept.append(lines[i])
+        i += 1
+    return '\n'.join(kept)
+
 def _fiscal_quarter_window(day: date, q1_start_month: int) -> tuple:
     """First and last day of the fiscal quarter containing `day`.
 
@@ -2835,6 +2878,10 @@ _GOAL_HEADING_RE = re.compile(r'^#{1,6}(?:[ \t]+\S|[ \t]*$)')
 # A thematic break is three or more of the same marker, spaces allowed between.
 # Exactly "---" is the common case; "----", "***", "___", and "- - -" are too.
 _THEMATIC_BREAK_RE = re.compile(r'^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$')
+_GOAL_TAG_RE = re.compile(r'\[(' + GOAL_ID_PATTERN + r')\]')
+# Seeded into a new Quarter_Goals.md so the page is not blank. Creating a real
+# goal must replace it, not number around it (DEX-239).
+TEMPLATE_EXAMPLE_GOAL_TITLE = "Replace this with your first goal"
 
 
 def _line_ends_goal_body(line: str) -> bool:
@@ -3241,16 +3288,26 @@ created: {_tz_now().strftime('%Y-%m-%d')}
 """
         write_vault_text(goals_file, content)
     
+    # Drop the seeded example so the first real goal is goal 1, not goal 2.
+    content = read_vault_text(goals_file)
+    stripped = _strip_template_example_goals(content)
+    if stripped != content:
+        write_vault_text(goals_file, stripped)
+
     # Read existing goals to generate ID
-    existing_goals = parse_quarterly_goals(goals_file)
+    existing_goals = [
+        goal for goal in parse_quarterly_goals(goals_file)
+        if not _is_template_example_goal(goal)
+    ]
     goal_id = generate_goal_id(goal_data['quarter'], existing_goals)
     
     # Build goal section
     goal_num = len(existing_goals) + 1
     milestones_md = '\n'.join([f"- [ ] {m['title']}" for m in goal_data.get('milestones', [])])
+    pillar_label = _pillar_display_name(goal_data['pillar'])
     
     goal_section = f"""
-### {goal_num}. {goal_data['title']} — **{goal_data['pillar']}** ^{goal_id}
+### {goal_num}. {goal_data['title']} — **{pillar_label}** ^{goal_id}
 
 **What success looks like:**
 {goal_data.get('success_criteria', '[Define success criteria]')}
@@ -3322,6 +3379,126 @@ def generate_priority_id(week_date: date, existing_priorities: List[Dict]) -> st
                 continue
     
     return f"{prefix}{max_num + 1}"
+
+
+def _parse_week_of_header(content: str) -> Optional[date]:
+    """Read **Week of:** YYYY-MM-DD from a weekly priorities file."""
+    week_match = re.search(r'\*\*Week of:\*\*\s+(\d{4}-\d{2}-\d{2})', content)
+    if not week_match:
+        return None
+    try:
+        return datetime.strptime(week_match.group(1), '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _iso_week_key(day: date) -> tuple[int, int]:
+    year, week, _ = day.isocalendar()
+    return year, week
+
+
+def _priority_id_week_key(priority_id: Optional[str]) -> Optional[tuple[int, int]]:
+    if not priority_id:
+        return None
+    match = re.match(r'week-(\d{4})-W(\d{2})-p', priority_id)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _priorities_for_week(
+    priorities: List[Dict[str, Any]], week_date: date
+) -> List[Dict[str, Any]]:
+    wanted = _iso_week_key(week_date)
+    matched = []
+    for priority in priorities:
+        key = _priority_id_week_key(priority.get('priority_id'))
+        if key == wanted:
+            matched.append(priority)
+    return matched
+
+
+def _fresh_week_priorities_body(week_date: date) -> str:
+    return (
+        f"# Week Priorities\n\n"
+        f"**Week of:** {week_date.isoformat()}\n\n"
+        f"---\n\n"
+        f"## 🎯 Top 3 This Week\n\n"
+    )
+
+
+def _week_priorities_archive_path(week_date: date) -> Path:
+    """Weekly plan archive under Archives/Plans, with a numeric suffix if taken."""
+    year, week = _iso_week_key(week_date)
+    plans = Path(BASE_DIR) / ARCHIVES_DIR.name / "Plans"
+    candidate = plans / f"{year}-W{week:02d}.md"
+    if not candidate.exists():
+        return candidate
+    suffix = 2
+    while True:
+        alt = plans / f"{year}-W{week:02d}-{suffix}.md"
+        if not alt.exists():
+            return alt
+        suffix += 1
+
+
+def _infer_week_date_from_priorities(
+    priorities: List[Dict[str, Any]],
+) -> Optional[date]:
+    for priority in priorities:
+        key = _priority_id_week_key(priority.get('priority_id'))
+        if key:
+            return date.fromisocalendar(key[0], key[1], 1)
+    return None
+
+
+def prepare_week_priorities_file_for_week(
+    week_date: date,
+) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """Make the live file this week's list. Archive last week when the header differs.
+
+    Returns (priorities already on this week, vault-relative archive path or None).
+    """
+    priorities_file = get_week_priorities_file()
+    if not priorities_file.exists():
+        priorities_file.parent.mkdir(parents=True, exist_ok=True)
+        write_vault_text(priorities_file, _fresh_week_priorities_body(week_date))
+        return [], None
+
+    content = read_vault_text(priorities_file)
+    existing = parse_weekly_priorities(priorities_file)
+    file_week = _parse_week_of_header(content)
+    this_week = _priorities_for_week(existing, week_date)
+    wanted = _iso_week_key(week_date)
+
+    if file_week is not None:
+        stale = _iso_week_key(file_week) != wanted
+        archive_week = file_week
+    else:
+        other_weeks = [
+            priority
+            for priority in existing
+            if (key := _priority_id_week_key(priority.get('priority_id')))
+            and key != wanted
+        ]
+        stale = bool(other_weeks) and not this_week
+        archive_week = _infer_week_date_from_priorities(other_weeks) or week_date
+
+    if not stale:
+        return this_week if any(
+            _priority_id_week_key(p.get('priority_id')) for p in existing
+        ) else existing, None
+
+    dest = _week_priorities_archive_path(archive_week)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    write_vault_text(dest, content)
+    write_vault_text(priorities_file, _fresh_week_priorities_body(week_date))
+    try:
+        archived_to = str(dest.relative_to(Path(BASE_DIR)))
+    except ValueError:
+        archived_to = str(dest)
+    return [], archived_to
+
 
 _PRIORITY_COMPLETE_MARK_RE = re.compile(r'✅|\bCompleted:', re.IGNORECASE)
 
@@ -3456,17 +3633,16 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
             pillar = priority_match.group(3).strip()
             priority_id = priority_match.group(4) if priority_match.group(4) else None
             
-            # Look for a linked goal in this priority's metadata bullets.
-            linked_goal_id = None
-            for metadata_line in lines[i + 1:]:
-                if not re.match(r'^\s+-\s+', metadata_line):
-                    break
-                if 'Quarterly goal:' not in metadata_line:
-                    continue
-                goal_match = re.search(r'\[(' + GOAL_ID_PATTERN + r')\]', metadata_line)
-                if goal_match:
-                    linked_goal_id = goal_match.group(1)
-                break
+            # Heading tag (... [Q4-2026-goal-2]) or a Quarterly goal: sub-bullet.
+            linked_goal_id = extract_goal_id_tag(line)
+            if not linked_goal_id:
+                for metadata_line in lines[i + 1:]:
+                    if not re.match(r'^\s+-\s+', metadata_line):
+                        break
+                    tagged = extract_goal_id_tag(metadata_line)
+                    if tagged:
+                        linked_goal_id = tagged
+                        break
             
             completed = _priority_line_is_complete(line)
             for metadata_line in lines[i + 1:]:
@@ -7299,9 +7475,12 @@ async def _handle_call_tool_inner(
                         'message': f"No quarterly goal match found for \"{title}\". Tagged as operational. If this advances a goal, specify quarterly_goal_id explicitly."
                     }
         
-        # Parse existing priorities to generate ID
+        # Same ISO week as the file keeps last week's list; a new week
+        # archives that file and starts this week's Top 3 from 1.
         priorities_file = get_week_priorities_file()
-        existing_priorities = parse_weekly_priorities(priorities_file) if priorities_file.exists() else []
+        existing_priorities, archived_to = prepare_week_priorities_file_for_week(
+            week_date
+        )
         priority_id = generate_priority_id(week_date, existing_priorities)
         
         # Build priority entry
@@ -7319,13 +7498,7 @@ async def _handle_call_tool_inner(
         if quarterly_goal_id and quarterly_goal_id != 'operational':
             priority_entry += f"\n   - Quarterly goal: [{quarterly_goal_id}]"
         
-        # Add to Week Priorities.md
-        if priorities_file.exists():
-            content = read_vault_text(priorities_file)
-        else:
-            # Create new file
-            priorities_file.parent.mkdir(parents=True, exist_ok=True)
-            content = f"# Week Priorities\n\n**Week of:** {week_date}\n\n---\n\n## 🎯 Top 3 This Week\n\n"
+        content = read_vault_text(priorities_file)
         
         # Insert after "## 🎯 Top 3 This Week" section
         top3_marker = "## 🎯 Top 3 This Week"
@@ -7357,6 +7530,8 @@ async def _handle_call_tool_inner(
             "goal_inference": goal_inference,
             "message": f"Created weekly priority: {title}"
         }
+        if archived_to:
+            result["archived_previous_week"] = archived_to
         if len(existing_priorities) + 1 > 3:
             result["note"] = (
                 f"You now have {len(existing_priorities) + 1} priorities this week — "

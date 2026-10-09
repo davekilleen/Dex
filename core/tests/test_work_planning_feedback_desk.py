@@ -7,6 +7,8 @@ DEX-195 update_task_status must not hang the harness
 DEX-214 update_task_status must sync the weekly priorities file
 DEX-216 create_quarterly_goal must honor quarter=
 DEX-219 get_commitments_due must not extract single-character garbage
+DEX-239 create_quarterly_goal heading uses the pillar display name
+DEX-239 the seeded example goal does not become goal 2
 """
 
 from __future__ import annotations
@@ -298,6 +300,59 @@ def test_create_quarterly_goal_keeps_requested_quarter_on_existing_file(
         "Q4-2026-goal-1": "Q4 2026",
         "Q1-2027-goal-1": "Q1 2027",
     }
+
+
+def test_create_quarterly_goal_heading_uses_pillar_display_name(planning_vault):
+    result = _call(
+        "create_quarterly_goal",
+        {
+            "title": "Ship the customer launch",
+            "pillar": "pillar_1",
+            "success_criteria": "Launch is live",
+            "quarter": "Q4 2026",
+        },
+    )
+
+    assert result["success"] is True
+    written = planning_vault["goals"].read_text(encoding="utf-8")
+    assert "### 1. Ship the customer launch — **Test Pillar** ^Q4-2026-goal-1" in written
+    assert "**pillar_1**" not in written
+
+
+def test_create_quarterly_goal_replaces_template_example_as_goal_one(
+    planning_vault,
+):
+    planning_vault["goals"].write_text(
+        "# Quarter Goals\n\n"
+        "Your 2–4 most important outcomes for this quarter.\n\n"
+        "### 1. Replace this with your first goal — **Your Pillar** "
+        "^Q1-2026-goal-1\n\n"
+        "**What success looks like:**\n"
+        "One sentence describing the finish line.\n\n"
+        "**Key milestones:**\n"
+        "- [ ] First milestone on the way there\n\n"
+        "**Progress:** 0% 🔴\n",
+        encoding="utf-8",
+    )
+
+    result = _call(
+        "create_quarterly_goal",
+        {
+            "title": "Make planning trustworthy",
+            "pillar": "pillar_1",
+            "success_criteria": "Reviews show every priority linked",
+            "quarter": "Q4 2026",
+        },
+    )
+
+    assert result["success"] is True
+    assert result["goal_id"] == "Q4-2026-goal-1"
+    assert result["goal_num"] == 1
+    written = planning_vault["goals"].read_text(encoding="utf-8")
+    assert "Replace this with your first goal" not in written
+    assert "^Q1-2026-goal-1" not in written
+    assert "### 1. Make planning trustworthy — **Test Pillar** ^Q4-2026-goal-1" in written
+    assert "### 2." not in written
 
 
 def test_get_commitments_due_drops_single_character_garbage(planning_vault):
