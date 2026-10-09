@@ -219,7 +219,16 @@ test('complete closes an opaque task ID instead of deleting it', async (t) => {
 });
 
 test('getChanges filters by since, skips Dex markers, and returns completed events', async (t) => {
-  const since = '2026-07-12T09:00:00.000Z';
+  // Keep the lookback inside one completion window. A fixed mid-2026
+  // timestamp crossed the 89-day split on 2026-10-09 and the stub then
+  // returned the same completed task twice.
+  const sinceMs = Date.now() - 60 * 60 * 1000;
+  const since = new Date(sinceMs).toISOString();
+  const olderCreated = new Date(sinceMs - 1000).toISOString();
+  const dexCreated = new Date(sinceMs + 60 * 1000).toISOString();
+  const externalCreated = new Date(sinceMs + 2 * 60 * 1000).toISOString();
+  const completedAt = new Date(sinceMs + 3 * 60 * 1000).toISOString();
+  const due = new Date(sinceMs + 8 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   let completedQuery = null;
   const apiBase = await startStub(t, (request, response) => {
     const requestUrl = new URL(request.url, 'http://stub.test');
@@ -236,22 +245,22 @@ test('getChanges filters by since, skips Dex markers, and returns completed even
           {
             id: 'older_A',
             content: 'Older task',
-            created_at: '2026-07-12T08:59:59.000Z',
+            created_at: olderCreated,
             description: '',
           },
           {
             id: 'dex_A',
             content: 'Dex task',
-            created_at: '2026-07-12T09:01:00.000Z',
+            created_at: dexCreated,
             description: '[dex:task-20260712-003]',
           },
           {
             id: 'external_A',
             content: 'External task',
-            created_at: '2026-07-12T09:02:00.000Z',
+            created_at: externalCreated,
             description: 'Created on mobile',
             project_id: 'project_A',
-            due: { date: '2026-07-20' },
+            due: { date: due },
           },
         ],
         next_cursor: null,
@@ -265,7 +274,7 @@ test('getChanges filters by since, skips Dex markers, and returns completed even
           {
             id: 'completed_A',
             content: 'Finished externally',
-            completed_at: '2026-07-12T09:03:00.000Z',
+            completed_at: completedAt,
             project_id: 'project_A',
           },
         ],
@@ -294,11 +303,11 @@ test('getChanges filters by since, skips Dex markers, and returns completed even
     external_id: 'external_A',
     project: 'External Inbox',
     list: null,
-    due: '2026-07-20',
+    due,
     completed_at: null,
   });
   assert.equal(changes[1].task.external_id, 'completed_A');
-  assert.equal(changes[1].task.completed_at, '2026-07-12T09:03:00.000Z');
+  assert.equal(changes[1].task.completed_at, completedAt);
   assert.equal(completedQuery.get('since'), since);
   assert.ok(Date.parse(completedQuery.get('until')) >= Date.parse(since));
 });
