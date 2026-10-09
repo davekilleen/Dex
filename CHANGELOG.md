@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [1.97.27] — Checkup can finish after the proof repair (2026-10-09)
+## Unreleased
 
 After the guided repair that proves Dex's own files against the official record, checkup could still refuse to give a definite answer. Seven leftover Dex-made files — the career and quarterly-planning skills Dex copies into place, the generated path list, and the architecture inventory — kept counting as "unproved" even when they were exactly Dex's own bytes. Files you had actually edited were fine; the healthy copies Dex itself produced were not.
 

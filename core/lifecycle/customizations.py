@@ -7,6 +7,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
+from core import portable_contract
 from core.lifecycle.catalog import (
     MAX_HASH_TABLE_BYTES,
     CatalogError,
@@ -15,7 +16,6 @@ from core.lifecycle.catalog import (
     parse_release_hash_table,
     release_bytes_match,
 )
-from core import portable_contract
 from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read, normalize_relative_path
 from core.lifecycle.model import ReleaseCatalog
 from core.lifecycle.release_anchor import consume_release_anchor
@@ -293,15 +293,16 @@ def load_release_baseline(
                 errors.extend(anchor_errors)
                 for anchor_path, anchor_sha256 in anchor_rows.items():
                     merged_hashes.setdefault(anchor_path, anchor_sha256)
-                room_current, room_previous = room_delivered_target_pins()
-                for target, sha256 in room_current.items():
-                    merged_hashes.setdefault(target, sha256)
                 expected_hashes = MappingProxyType(dict(sorted(merged_hashes.items())))
+                # Room copies are Dex-owned when present, but absence is a
+                # valid vault (the room was never surfaced). Their pins must
+                # not join expected_hashes, or a missing copy becomes
+                # stock-missing and blocks a healthy assessment.
+                room_current, room_previous = room_delivered_target_pins()
                 alternate_hashes = MappingProxyType(
                     {
-                        path: hashes
-                        for path, hashes in sorted(room_previous.items())
-                        if path in merged_hashes
+                        path: frozenset({sha256}) | room_previous.get(path, frozenset())
+                        for path, sha256 in sorted(room_current.items())
                     }
                 )
                 release_version = selected_catalog.release.version

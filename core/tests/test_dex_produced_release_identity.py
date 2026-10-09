@@ -23,8 +23,8 @@ from core.lifecycle.customizations import (
     room_delivered_target_pins,
 )
 from core.lifecycle.inventory import build_inventory
-from core.tests.test_customization_assessment import _install_verified_catalog
 from core.tests.lifecycle_test_helpers import write_file
+from core.tests.test_customization_assessment import _install_verified_catalog
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 UNPROVED = "release-identity-unproved"
@@ -87,7 +87,7 @@ def test_verified_baseline_accepts_current_and_previous_room_pins(
     assert baseline.identity_state == "VERIFIED"
     assert current
     for target, sha256 in current.items():
-        assert baseline.expected_sha256(target) == sha256
+        assert baseline.expected_sha256(target) is None
         assert sha256 in baseline.acceptable_sha256s(target)
         extras = previous.get(target, frozenset())
         assert extras <= baseline.acceptable_sha256s(target)
