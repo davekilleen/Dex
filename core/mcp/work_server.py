@@ -1661,7 +1661,11 @@ def _relative_entity_page_path(page_path: Path) -> str:
 
 
 def _close_entity_page_matches(value: str, entity_dir: Path) -> List[str]:
-    """Return deterministic filename matches for a missing entity page."""
+    """Return deterministic filename matches for a missing entity page.
+
+    Same bar as lookup_person: a shared first name or a ~0.5 similarity hit
+    is not a match. No match is better than the wrong person.
+    """
     if not entity_dir.exists():
         return []
 
@@ -1672,11 +1676,15 @@ def _close_entity_page_matches(value: str, entity_dir: Path) -> List[str]:
         if _existing_entity_page_path(relative_path, entity_dir) is None:
             continue
         candidate_name = candidate.stem.replace('_', ' ').casefold()
+        if requested == candidate_name:
+            matches.append(relative_path)
+            continue
         similarity = SequenceMatcher(None, requested, candidate_name).ratio()
-        if (
-            requested in candidate_name
-            or candidate_name in requested
-            or similarity >= 0.5
+        if similarity >= entity_index.FUZZY_PERSON_MIN_SCORE and (
+            entity_index.fuzzy_person_match_is_safe(
+                requested,
+                {'name': candidate_name, '_score': similarity},
+            )
         ):
             matches.append(relative_path)
     return sorted(set(matches))
@@ -4554,6 +4562,36 @@ def find_company_for_attendees(attendees: List[str], domains: List[str] = None) 
 
     return name_match
 
+
+_ATTENDEE_EMAIL_RE = re.compile(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}')
+
+
+def _normalized_person_label(value: str) -> str:
+    without_angle_email = re.sub(r'<[^>]+>', ' ', value or '')
+    return re.sub(r'[\s_]+', ' ', without_angle_email).strip().casefold()
+
+
+def _attendee_identity_keys(value: str) -> set[str]:
+    keys: set[str] = set()
+    label = _normalized_person_label(value)
+    if label:
+        keys.add(label)
+    for email in _ATTENDEE_EMAIL_RE.findall(value or ''):
+        keys.add(email.casefold())
+    return keys
+
+
+def attendees_refer_to_same_person(left: str, right: str) -> bool:
+    """Exact identity only: same normalized name or same email.
+
+    A two-way substring used to treat Chris as Chris Kimball. No match is
+    better than the wrong person.
+    """
+    left_keys = _attendee_identity_keys(left)
+    right_keys = _attendee_identity_keys(right)
+    return bool(left_keys and right_keys and left_keys & right_keys)
+
+
 def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = None) -> Dict[str, Any]:
     """Get comprehensive context for a meeting based on attendees and title"""
     result = {
@@ -4574,10 +4612,12 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
     cache = load_meeting_cache()
     if cache:
         for attendee in attendees:
-            attendee_lower = attendee.lower()
             for m in cache.get('meetings', []):
-                cached_attendees = [a.lower() for a in (m.get('attendees') or [])]
-                if any(attendee_lower in a or a in attendee_lower for a in cached_attendees):
+                cached_attendees = m.get('attendees') or []
+                if any(
+                    attendees_refer_to_same_person(attendee, cached)
+                    for cached in cached_attendees
+                ):
                     result['recent_meetings'].append({
                         'date': m.get('date'),
                         'title': m.get('title'),
@@ -4607,8 +4647,8 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
     # Get attendee details from People directory
     attendee_pages: Dict[str, List[Path]] = {}
     for attendee in attendees:
-        attendee_normalized = re.sub(r'[\s_]+', ' ', attendee).strip().casefold()
-        
+        attendee_keys = _attendee_identity_keys(attendee)
+
         # Check both Internal and External directories
         for subdir in ['External', 'Internal']:
             people_subdir = get_people_dir() / subdir
@@ -4616,10 +4656,7 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
                 continue
 
             for person_file in people_subdir.glob('*.md'):
-                person_normalized = re.sub(
-                    r'[\s_]+', ' ', person_file.stem
-                ).strip().casefold()
-                if attendee_normalized == person_normalized:
+                if attendee_keys & _attendee_identity_keys(person_file.stem):
                     person_data = parse_person_page(person_file)
                     result['attendee_details'].append(person_data)
                     attendee_pages.setdefault(attendee, []).append(person_file)

@@ -35,26 +35,38 @@ class _Calendar:
 
 
 class _Attendee:
-    def __init__(self, *, current_user: bool = False):
+    def __init__(
+        self,
+        *,
+        current_user: bool = False,
+        organizer: bool = False,
+        status: int = 2,
+        name: str = "Pat Customer",
+        email: str = "pat@example.com",
+    ):
         self._current_user = current_user
+        self._organizer = organizer
+        self._status = status
+        self._name = name
+        self._email = email
 
     def isCurrentUser(self):
         return self._current_user
 
     def isOrganizer(self):
-        return False
+        return self._organizer
 
     def participantStatus(self):
-        return 2
+        return self._status
 
     def participantType(self):
         return 1
 
     def name(self):
-        return "Pat Customer"
+        return self._name
 
     def emailAddress(self):
-        return "pat@example.com"
+        return self._email
 
 
 class _Event:
@@ -115,6 +127,33 @@ def test_helper_functions_and_formatters_cover_event_shape():
     with_attendees = calendar_eventkit.format_event_with_attendees(event)
     assert with_attendees["attendees"][0]["email"] == "pat@example.com"
     assert with_attendees["attendees"][0]["is_current_user"] is True
+    assert with_attendees["attendees"][0]["is_non_responder"] is False
+
+
+def test_pending_organizer_is_not_reported_as_a_non_responder():
+    organizer = _Attendee(
+        current_user=True,
+        organizer=True,
+        status=1,
+        name="Morgan Host",
+        email="host@example.com",
+    )
+    guest = _Attendee(status=1, name="Pat Customer", email="pat@example.com")
+
+    class _OrganisedEvent(_Event):
+        def attendees(self):
+            return [organizer, guest]
+
+        def organizer(self):
+            return organizer
+
+    formatted = calendar_eventkit.format_event_with_attendees(_OrganisedEvent())
+    host, invitee = formatted["attendees"]
+    assert host["is_organizer"] is True
+    assert host["status"] == "Pending"
+    assert host["is_non_responder"] is False
+    assert invitee["is_non_responder"] is True
+    assert formatted["organizer"]["email"] == "host@example.com"
 
 
 class _ModernStore:

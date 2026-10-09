@@ -242,7 +242,13 @@ async function getCompletedTasks(sinceIso, untilIso, adapterConfig) {
     windowStart = windowEnd;
     windowSince = windowUntil;
   }
-  return completed;
+  const seen = new Set();
+  return completed.filter((task) => {
+    const id = String(task.id ?? '');
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 function toExternal(dexTask, adapterConfig = {}) {

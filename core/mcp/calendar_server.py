@@ -44,7 +44,11 @@ from mcp.server.models import InitializationOptions
 _repo_root = str(Path(__file__).parent.parent.parent)
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
+from difflib import SequenceMatcher
+
+from core.entity_engine import index as entity_index
 from core.entity_engine.contract import parse_entity_page
+from core.mcp.calendar_attendees import attendee_is_non_responder, attendee_is_organizer
 from core.paths import PEOPLE_DIR
 from core.paths import VAULT_ROOT as VAULT_PATH
 from core.utils.feature_status import feature_status
@@ -297,47 +301,73 @@ def normalize_name_for_filename(name: str) -> str:
     return safe_name
 
 
+def _normalized_person_label(value: str) -> str:
+    return re.sub(r"[\s_-]+", " ", value).strip().casefold()
+
+
+def _usable_attendee_name(name: str, email: str) -> str:
+    """Return a display name that is safe to match against a person page.
+
+    An address, or a name that is just the address, is not a name. Deriving
+    one from the mailbox (john.smith@…) used to fuzzy-match John Smithson.
+    """
+    usable = (name or "").strip()
+    normalized_email = (email or "").strip().casefold()
+    if not usable or "@" in usable or usable.casefold() == normalized_email:
+        return ""
+    return _normalized_person_label(usable)
+
+
 def find_person_page(name: str, email: str) -> Optional[Path]:
-    """Find an existing person page by name or email."""
-    normalized_email = email.strip().casefold()
-    # Try multiple name variations
-    name_variations = [
-        normalize_name_for_filename(name),
-        # Also try extracting name from email (firstname.lastname@domain)
-        normalize_name_for_filename(email.split('@')[0].replace('.', ' ').replace('_', ' ').title()) if '@' in email else None
-    ]
-    name_variations = [n for n in name_variations if n]
-    
-    # Check Internal and External folders
-    for folder in ['Internal', 'External']:
+    """Find an existing person page by email or a confident name match.
+
+    No match is better than the wrong person. A shared first name or a loose
+    filename similarity is not enough — same bar as lookup_person (#778).
+    """
+    normalized_email = (email or "").strip().casefold()
+    requested_name = _usable_attendee_name(name, email)
+    email_hit = None
+    exact_name_hit = None
+    fuzzy_hits: list[Path] = []
+
+    for folder in ["Internal", "External"]:
         folder_path = PEOPLE_DIR / folder
-        if folder_path.exists():
-            for file in folder_path.glob('*.md'):
-                file_stem_lower = file.stem.lower().replace('_', ' ').replace('-', ' ')
-                
-                # Check by filename variations
-                for name_var in name_variations:
-                    name_var_lower = name_var.lower().replace('_', ' ')
-                    # Check if names match (allowing for partial matches)
-                    if name_var_lower in file_stem_lower or file_stem_lower in name_var_lower:
-                        return file
-                    # Check individual name parts
-                    name_parts = name_var_lower.split()
-                    if len(name_parts) >= 2:
-                        # Check if first and last name are in filename
-                        if name_parts[0] in file_stem_lower and name_parts[-1] in file_stem_lower:
-                            return file
-                
-                # Check only structured person fields, not incidental prose mentions.
-                try:
-                    person_emails = parse_entity_page(file).get("emails", [])
-                    if normalized_email and normalized_email in {
-                        str(person_email).strip().casefold()
-                        for person_email in person_emails
-                    }:
-                        return file
-                except (OSError, UnicodeError):
-                    pass
+        if not folder_path.exists():
+            continue
+        for file in folder_path.glob("*.md"):
+            try:
+                person_emails = parse_entity_page(file).get("emails", [])
+                if normalized_email and normalized_email in {
+                    str(person_email).strip().casefold()
+                    for person_email in person_emails
+                }:
+                    email_hit = file
+                    break
+            except (OSError, UnicodeError):
+                pass
+
+            file_stem = _normalized_person_label(file.stem)
+            if requested_name and requested_name == file_stem:
+                exact_name_hit = exact_name_hit or file
+                continue
+            if requested_name:
+                similarity = SequenceMatcher(None, requested_name, file_stem).ratio()
+                if similarity >= entity_index.FUZZY_PERSON_MIN_SCORE and (
+                    entity_index.fuzzy_person_match_is_safe(
+                        requested_name,
+                        {"name": file_stem, "_score": similarity},
+                    )
+                ):
+                    fuzzy_hits.append(file)
+        if email_hit is not None:
+            break
+
+    if email_hit is not None:
+        return email_hit
+    if exact_name_hit is not None:
+        return exact_name_hit
+    if len(fuzzy_hits) == 1:
+        return fuzzy_hits[0]
     return None
 
 
@@ -921,11 +951,16 @@ async def _handle_call_tool_inner(
             try:
                 events = json.loads(output)
                 
-                # Enhance attendees with person page links
+                # Enhance attendees with person page links and RSVP flags
                 for event in events:
+                    organizer = event.get("organizer")
                     if "attendees" in event:
                         for att in event["attendees"]:
-                            # Check if person page exists
+                            if attendee_is_organizer(att, organizer):
+                                att["is_organizer"] = True
+                            att["is_non_responder"] = attendee_is_non_responder(
+                                att, organizer
+                            )
                             person_page = find_person_page(att.get('name', ''), att.get('email', ''))
                             att['has_person_page'] = person_page is not None
                             if person_page:
