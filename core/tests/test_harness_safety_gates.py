@@ -211,7 +211,7 @@ def test_claude_memory_allowance_stays_this_vault_memory_folder(
 ) -> None:
     vault = _vault(tmp_path)
     home = _memory_home(tmp_path, monkeypatch)
-    slug = _vault_memory_file(home, vault).parent.name
+    slug = _vault_memory_file(home, vault).parent.parent.name
     blocked = [
         home / ".claude" / "projects" / slug / "session.jsonl",
         home / ".claude" / "projects" / "-other-project" / "memory" / "MEMORY.md",
