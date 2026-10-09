@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "8cd21a4b9f80cc5542db1fedcfffc62a81f88cd58e3d96ebcfe8f73a4c90d44c",
-        "byte_size": 35513
+        "sha256": "b3e747c2f40b72d75b74023e4208563cd1906dfa695069e02f6c69d9cb96f954",
+        "byte_size": 36315
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -644,8 +644,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/meeting-prep/SKILL.md",
-        "sha256": "2a275c17a07a932a6d97c6967bd801cc00557f49f34841a2b10811627f478b2d",
-        "byte_size": 19285
+        "sha256": "43494881f19ab7a4f7027a871c173669a351c131a31cd5fb7f1db0d208f005a7",
+        "byte_size": 19620
       },
       "value": "Walks into the meeting already holding the attendees, the history and the open threads, instead of spending the last five minutes searching for them.",
       "jobs_served": [
