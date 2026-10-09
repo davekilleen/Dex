@@ -7,6 +7,8 @@ uses, and refusing to hang, leak secrets, or duplicate a live capture.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -39,6 +41,10 @@ def test_classifies_corrections_and_preferences_and_ignores_ordinary_work() -> N
     assert extract.classify("/daily-review") is None
     assert extract.classify("I have no preference, pick one") is None
     assert extract.classify("I have no meetings today") is None
+    assert extract.classify("no") is None
+    assert extract.classify("stop") is None
+    assert extract.classify("STOP") is None
+    assert extract.classify("actually, let's use bullet points") is None
 
 
 def test_skips_secret_looking_messages_entirely() -> None:
@@ -198,6 +204,74 @@ def test_real_correction_sent_with_harness_text_keeps_only_the_user_words(tmp_pa
     assert [c.kind for c in candidates] == ["Correction", "Correction"]
     assert candidates[0].text == "no, not that file"
     assert "pasted_content" in candidates[1].text
+
+
+def test_record_session_end_keeps_existing_entries(tmp_path: Path) -> None:
+    learning = tmp_path / "2026-09-27.md"
+    learning.write_text(
+        "# Session Learnings - 2026-09-27\n\n"
+        "## 09:00 - Correction\n\n**What was said:**\n\n> keep this old one\n\n"
+        "**Status:** pending\n\n---\n\n",
+        encoding="utf-8",
+    )
+    transcript = _transcript(tmp_path / "session.jsonl", [_user_line("I prefer shorter answers")])
+
+    extract.record_session_end(learning, transcript=transcript, when=WHEN)
+
+    text = learning.read_text(encoding="utf-8")
+    assert "keep this old one" in text
+    assert "I prefer shorter answers" in text
+    assert text.count("# Session Learnings") == 1
+
+
+def test_same_session_is_not_recorded_twice(tmp_path: Path) -> None:
+    learning = tmp_path / "2026-09-27.md"
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [_user_line("no, that's not what I asked")],
+    )
+
+    first = extract.record_session_end(
+        learning, transcript=transcript, session_id="sess-1", when=WHEN
+    )
+    second = extract.record_session_end(
+        learning, transcript=transcript, session_id="sess-1", when=WHEN
+    )
+
+    text = learning.read_text(encoding="utf-8")
+    assert first > 0
+    assert second == 0
+    assert text.count("Session completed") == 1
+    assert text.count("that's not what I asked") == 1
+
+
+def test_parallel_session_end_does_not_duplicate_or_interleave(tmp_path: Path) -> None:
+    learning = tmp_path / "2026-09-27.md"
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [_user_line("no, that's not what I asked")],
+    )
+    extractor = Path(extract.__file__)
+    cmd = [
+        sys.executable,
+        str(extractor),
+        "--record-session",
+        "--transcript",
+        str(transcript),
+        "--learning-file",
+        str(learning),
+        "--session-id",
+        "sess-parallel",
+    ]
+    procs = [subprocess.Popen(cmd) for _ in range(2)]
+    codes = [proc.wait(timeout=15) for proc in procs]
+    assert codes == [0, 0]
+
+    text = learning.read_text(encoding="utf-8")
+    assert text.count("# Session Learnings") == 1
+    assert text.count("Session completed") == 1
+    assert text.count("that's not what I asked") == 1
+    assert "**Status:** pending" in text
 
 
 def test_compaction_summary_is_not_reread_as_new_lessons(tmp_path: Path) -> None:

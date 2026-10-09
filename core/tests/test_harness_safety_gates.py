@@ -33,7 +33,14 @@ def _vault(root: Path) -> Path:
     return path
 
 
-def _hook(vault: Path, *, tool_name: str = "Bash", command: str | None = None, path: str | None = None):
+def _hook(
+    vault: Path,
+    *,
+    tool_name: str = "Bash",
+    command: str | None = None,
+    path: str | None = None,
+    extra_env: dict[str, str] | None = None,
+):
     tool_input: dict[str, str] = {}
     if command is not None:
         tool_input["command"] = command
@@ -45,7 +52,12 @@ def _hook(vault: Path, *, tool_name: str = "Bash", command: str | None = None, p
         capture_output=True,
         text=True,
         cwd=vault,
-        env={**os.environ, "CLAUDE_PROJECT_DIR": str(vault), "VAULT_PATH": str(vault)},
+        env={
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(vault),
+            "VAULT_PATH": str(vault),
+            **(extra_env or {}),
+        },
         timeout=20,
         check=False,
     )
@@ -153,3 +165,60 @@ def test_scraper_preference_remains_claude_only(tmp_path: Path, monkeypatch) -> 
     assert hook.returncode == 2
     assert "WRONG SCRAPER" in hook.stdout
     assert mcp["refused"] is False
+
+
+def _memory_home(tmp_path: Path, monkeypatch) -> Path:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    return home
+
+
+def _vault_memory_file(home: Path, vault: Path, name: str = "MEMORY.md") -> Path:
+    import re
+
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(vault.resolve()))
+    folder = home / ".claude" / "projects" / slug / "memory"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / name
+
+
+def test_this_vault_claude_memory_folder_is_allowed(tmp_path: Path, monkeypatch) -> None:
+    vault = _vault(tmp_path)
+    home = _memory_home(tmp_path, monkeypatch)
+    memory = _vault_memory_file(home, vault)
+    tilde = f"~/.claude/projects/{memory.parent.name}/memory/{memory.name}"
+    home_var = f"$HOME/.claude/projects/{memory.parent.name}/memory/{memory.name}"
+
+    for candidate in (str(memory), tilde, home_var):
+        shared = evaluate_safety_gate(path=candidate, vault=vault)
+        assert shared.refused is False, candidate
+        assert shared.code == "allow"
+
+    hook = _hook(
+        vault,
+        tool_name="Write",
+        path=str(memory),
+        extra_env={"HOME": str(home)},
+    )
+    assert hook.returncode == 0, hook.stdout + hook.stderr
+
+
+def test_claude_memory_allowance_stays_this_vault_memory_folder(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    home = _memory_home(tmp_path, monkeypatch)
+    slug = _vault_memory_file(home, vault).parent.name
+    blocked = [
+        home / ".claude" / "projects" / slug / "session.jsonl",
+        home / ".claude" / "projects" / "-other-project" / "memory" / "MEMORY.md",
+        home / ".claude" / "settings.json",
+        home / "secret.md",
+        home / ".claude" / "projects" / slug / "memory" / ".." / "session.jsonl",
+    ]
+    for path in blocked:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shared = evaluate_safety_gate(path=str(path), vault=vault)
+        assert shared.refused and shared.code == "unsafe_path", path

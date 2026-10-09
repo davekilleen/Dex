@@ -16,9 +16,11 @@ import os
 import re
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Iterator, TextIO
 
 MAX_CHARS = 600
 MAX_BYTES_DEFAULT = 2_000_000
@@ -26,13 +28,17 @@ MAX_CANDIDATES_DEFAULT = 8
 DEADLINE_SECONDS_DEFAULT = 2.0
 MAX_USER_MESSAGES = 400
 
-# Inclusive on purpose, matching .claude/hooks/correction-capture.sh: a miss
-# loses the signal, a false positive costs one pending line.
+# Matching .claude/hooks/correction-capture.sh and correction-capture.py.
+# Bare conversational words ("no", "stop", "actually,") are not a lesson.
+# "no" only counts with a comma, an ellipsis, or a repeat; "stop" only
+# with a following verb. "actually," is a discourse marker and is not matched.
 _CORRECTION = re.compile(
-    r"(?i)(?:^|[^A-Za-z0-9])(?:no|nope|stop|wrong|incorrect)(?:[^A-Za-z0-9]|$)"
+    r"(?i)(?:^|[^A-Za-z0-9])(?:nope|wrong|incorrect)(?:[^A-Za-z0-9]|$)"
+    r"|(?:^|[^A-Za-z0-9])no(?:\s*,|\s*\.\.\.|\s+no\b)"
+    r"|(?:^|[^A-Za-z0-9])stop\s+(?:doing|making|writing|over|inferr|that|this)\b"
     r"|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what"
     r"|why (?:did|are|didn'?t) you|i (?:told|said) you"
-    r"|keep (?:doing|writing|failing)|come on|actually,"
+    r"|keep (?:doing|writing|failing)|come on"
 )
 _PREFERENCE = re.compile(
     r"(?i)\bi prefer\b|\bi['’]d rather\b|\bi would rather\b"
@@ -296,33 +302,153 @@ def already_recorded(existing: str, candidate: Candidate) -> bool:
     return needle in haystack
 
 
+_HEADER = (
+    "# Session Learnings - {date}\n\n"
+    "Automatically captured from Claude Code sessions.\n\n---\n\n"
+)
+
+
+@contextmanager
+def _locked_learning_file(path: Path) -> Iterator[TextIO]:
+    """Open today's file for append and hold an exclusive lock while writing.
+
+    Parallel session-end hooks used to interleave and duplicate. The lock
+    serializes writers. A missing lock API (native Windows without fcntl)
+    still writes; the hook stays fail-open.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+", encoding="utf-8")
+    try:
+        try:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
+        yield handle
+    finally:
+        handle.close()
+
+
+def _read_locked(handle: TextIO) -> str:
+    handle.seek(0)
+    return handle.read()
+
+
+def _write_locked(handle: TextIO, text: str) -> None:
+    handle.seek(0, os.SEEK_END)
+    handle.write(text)
+    handle.flush()
+
+
+def session_already_recorded(existing: str, *, transcript: Path | None, session_id: str) -> bool:
+    """True when this same session already left a marker in today's file."""
+    if session_id and f"**Session:** `{session_id}`" in existing:
+        return True
+    if transcript is not None:
+        marker = f"**Transcript:** `{transcript}`"
+        if marker in existing or f"**Transcript:** recorded as `{transcript}`" in existing:
+            return True
+    return False
+
+
+def render_session_marker(
+    *,
+    when: datetime,
+    transcript: Path | None = None,
+    session_id: str = "",
+) -> str:
+    lines = [f"## {when:%H:%M} - Session completed", "", "**Session ended**"]
+    if session_id:
+        lines.append(f"**Session:** `{session_id}`")
+    if transcript is not None and transcript.is_file():
+        lines.append(f"**Transcript:** `{transcript}`")
+        lines.append("")
+        lines.append(
+            "_Note: Obvious corrections and preferences from this session are captured "
+            "automatically when they can be spotted, marked pending. Run /daily-review "
+            "to confirm them and catch anything the automatic pass missed._"
+        )
+    elif transcript is not None:
+        lines.append(f"**Transcript:** recorded as `{transcript}`, but no file exists there.")
+        lines.append("")
+        lines.append("_Learnings cannot be extracted automatically. If this session mattered,")
+        lines.append("capture them by hand before the detail is gone._")
+    else:
+        lines.append("**Transcript:** not supplied to this hook.")
+        lines.append("")
+        lines.append("_Learnings cannot be extracted automatically. If this session mattered,")
+        lines.append("capture them by hand before the detail is gone._")
+    lines.extend(["", "---", ""])
+    return "\n".join(lines) + "\n"
+
+
 def append_candidates(learning_file: Path, candidates: list[Candidate], *, when: datetime | None = None) -> int:
     """Append unseen candidates. Returns how many were written. Never raises."""
     if not candidates:
         return 0
     stamp = when or datetime.now()
     try:
-        existing = learning_file.read_text(encoding="utf-8") if learning_file.is_file() else ""
+        with _locked_learning_file(learning_file) as handle:
+            existing = _read_locked(handle)
+            written = 0
+            chunks: list[str] = []
+            for candidate in candidates:
+                if already_recorded(existing, candidate):
+                    continue
+                if any(already_recorded(chunk, candidate) for chunk in chunks):
+                    continue
+                chunks.append(render_entry(candidate, stamp))
+                written += 1
+            if chunks:
+                _write_locked(handle, "".join(chunks))
+            return written
     except OSError:
         return 0
-    written = 0
-    chunks: list[str] = []
-    for candidate in candidates:
-        if already_recorded(existing, candidate):
-            continue
-        if any(already_recorded(chunk, candidate) for chunk in chunks):
-            continue
-        chunks.append(render_entry(candidate, stamp))
-        written += 1
-    if not chunks:
-        return 0
+
+
+def record_session_end(
+    learning_file: Path,
+    *,
+    transcript: Path | None = None,
+    session_id: str = "",
+    when: datetime | None = None,
+) -> int:
+    """Write the session marker and any new candidates under one lock.
+
+    Returns how many chunks were written. Never raises. Existing file
+    contents are never deleted or rewritten.
+    """
+    stamp = when or datetime.now()
+    candidates = (
+        extract_candidates(transcript)
+        if transcript is not None and transcript.is_file()
+        else []
+    )
     try:
-        learning_file.parent.mkdir(parents=True, exist_ok=True)
-        with learning_file.open("a", encoding="utf-8") as handle:
-            handle.write("".join(chunks))
+        with _locked_learning_file(learning_file) as handle:
+            existing = _read_locked(handle)
+            chunks: list[str] = []
+            if not existing.strip():
+                chunks.append(_HEADER.format(date=f"{stamp:%Y-%m-%d}"))
+            seen = existing + "".join(chunks)
+            if not session_already_recorded(seen, transcript=transcript, session_id=session_id):
+                marker = render_session_marker(when=stamp, transcript=transcript, session_id=session_id)
+                chunks.append(marker)
+                seen += marker
+            for candidate in candidates:
+                if already_recorded(seen, candidate):
+                    continue
+                if any(already_recorded(chunk, candidate) for chunk in chunks):
+                    continue
+                entry = render_entry(candidate, stamp)
+                chunks.append(entry)
+                seen += entry
+            if chunks:
+                _write_locked(handle, "".join(chunks))
+            return len(chunks)
     except OSError:
         return 0
-    return written
 
 
 def extract_and_append(transcript: Path, learning_file: Path, *, when: datetime | None = None) -> int:
@@ -334,14 +460,25 @@ def main(argv: list[str] | None = None) -> int:
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--transcript", default="")
         parser.add_argument("--learning-file", default="")
+        parser.add_argument("--session-id", default="")
+        parser.add_argument("--record-session", action="store_true")
         args, _unknown = parser.parse_known_args(argv)
         transcript = Path(args.transcript) if args.transcript else None
         learning_file = Path(args.learning_file) if args.learning_file else None
-        if transcript is None or learning_file is None:
+        if learning_file is None:
+            return 0
+        if args.record_session:
+            record_session_end(
+                learning_file,
+                transcript=transcript,
+                session_id=args.session_id,
+            )
+            return 0
+        if transcript is None:
             return 0
         extract_and_append(transcript, learning_file)
     except Exception:
-        return 0
+        return 1 if argv and "--record-session" in argv else 0
     return 0
 
 
