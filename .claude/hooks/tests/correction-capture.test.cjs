@@ -37,7 +37,7 @@ const CORRECTIONS = [
   'no... i want to honour the architectural patterns of dex upstream',
   'come on - thats a time code, its stupid inference',
   'no no no - stop over inferring from timesheet entries',
-  'STOP',
+  'STOP doing that',
   'its not an invitation - your index is stale and youre not checking properly',
   'so why didnt you pick this up in todays plan or yesterdays review?',
   'do nothing then and stop making recommendations you havent thought through',
@@ -52,6 +52,10 @@ const ORDINARY = [
   'close DEX-105',
   'write both issues up separately then start the PR work',
   'does this run into conflict management with upstream?',
+  'no',
+  'stop',
+  'actually, I think we should wait',
+  'I have no idea',
 ];
 
 for (const prompt of CORRECTIONS) {
@@ -73,9 +77,10 @@ for (const prompt of ORDINARY) {
 test('the boundary is not whitespace, because JSON puts a quote before the word', (t) => {
   const vault = sandbox(t);
 
-  // {"prompt":"STOP"} has no space before STOP. A whitespace-anchored pattern
-  // silently never fires on real input while passing a test built from bare text.
-  submit(vault, 'STOP');
+  // {"prompt":"wrong"} has no space before the word. A whitespace-anchored
+  // pattern silently never fires on real input while passing a test built
+  // from bare text.
+  submit(vault, 'wrong');
 
   assert.match(captured(vault), /- Correction/u);
 });
@@ -92,7 +97,7 @@ test('stores the user words verbatim rather than a summary', (t) => {
 test('writes the pending status the routing step already expects', (t) => {
   const vault = sandbox(t);
 
-  submit(vault, 'STOP');
+  submit(vault, 'STOP doing that');
   const text = captured(vault);
 
   assert.match(text, /\*\*Status:\*\* pending/u);
@@ -112,7 +117,7 @@ test('truncates a correction buried in a wall of pasted context', (t) => {
 test('appends, so several corrections in one day all survive', (t) => {
   const vault = sandbox(t);
 
-  submit(vault, 'STOP');
+  submit(vault, 'STOP doing that');
   submit(vault, 'no, thats wrong');
 
   assert.equal((captured(vault).match(/- Correction/gu) || []).length, 2);

@@ -72,12 +72,20 @@ def _strip_machine_blocks(text: str) -> str:
 # The gate reads the raw payload, so a notification that happens to say "wrong"
 # or "don't" gets a prompt this far; re-testing here is what stops the user's
 # unrelated words ("run the daily plan") being recorded as a correction.
-# Keep in step with the grep pattern in correction-capture.sh.
+# Keep in step with the grep pattern in correction-capture.sh and
+# core/utils/session_lesson_extract.py.
+#
+# Bare conversational words ("no", "stop", "actually,") are not a correction
+# on their own. "no" only counts with a comma, an ellipsis, or a repeat
+# ("no, that's not", "no... I meant", "no no no"). "stop" only counts with
+# a following verb. "actually," is a discourse marker and is not matched.
 CORRECTION = re.compile(
-    r"(^|[^0-9A-Za-z])(no|nope|stop|wrong|incorrect)([^0-9A-Za-z]|$)"
+    r"(^|[^0-9A-Za-z])(nope|wrong|incorrect)([^0-9A-Za-z]|$)"
+    r"|(^|[^0-9A-Za-z])no(\s*,|\s*\.\.\.|\s+no\b)"
+    r"|(^|[^0-9A-Za-z])stop\s+(doing|making|writing|over|inferr|that|this)\b"
     r"|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what"
     r"|why (did|are|didn'?t) you|again[,.]|i (told|said) you"
-    r"|keep (doing|writing|failing)|stupid|come on|actually,",
+    r"|keep (doing|writing|failing)|stupid|come on",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -143,7 +151,13 @@ def main() -> int:
         "**Status:** pending\n\n---\n\n"
     )
     try:
-        with path.open("a", encoding="utf-8") as handle:
+        with path.open("a+", encoding="utf-8") as handle:
+            try:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                pass
             handle.write(entry)
     except OSError:
         return 0

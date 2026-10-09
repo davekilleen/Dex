@@ -20,6 +20,14 @@ The daily plan could say your inbox was empty when it was not, warn that you had
 * **You are not told you have not accepted your own meeting.** The person who organised a meeting — including you, when you set it up — is never listed as someone who has not replied. Other invitees who have not replied still show.
 * **A similar first name is not treated as the same person.** If there is no page for the person in the meeting, Dex leaves them unmatched instead of linking Chris to Chris Kimball, or anyone else who only sounds close.
 
+Claude's own notes about how you like to work silently stopped saving inside a Dex folder, and after an update the day's lesson file filled up with ordinary words treated as corrections. This release lets Claude keep those notes again, and stops a conversation's everyday "no" or "actually" from being filed as something you said was wrong. Thanks to Olivier and Jim for the reports.
+
+**What this fixes for you:**
+
+* **Claude can remember how you like to work again.** Its own notes for this Dex folder can be saved. Dex still blocks writes to the rest of your home folder and to other projects.
+* **Everyday words are not treated as corrections.** Saying "no", "stop", or "actually," in ordinary conversation is no longer written down as a lesson. A real correction such as "no, that's not what I asked" is still saved.
+* **Closing several chats at once no longer garbles the day's lesson file.** If two sessions finish together, each lesson is written once and stays readable. Nothing already in the file is removed.
+
 ## [1.97.26] — A friendlier first install, and Dex is now MIT licensed (2026-10-08)
 
 People new to the terminal ran the install line and then did not know what to do next. The installer printed technical output, did not ask where Dex should live, and ended with commands to retype. On Windows the instructions pointed at PowerShell. This release fixes that. Dex is also now under the MIT licence.

@@ -150,6 +150,39 @@ test('does not treat ordinary work as a lesson', (t) => {
   assert.doesNotMatch(text, /\*\*Status:\*\* pending/u);
 });
 
+test('does not treat bare conversational words as corrections', (t) => {
+  const vault = sandbox(t);
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(
+    transcript,
+    userLine('no') + userLine('stop') + userLine('actually, I think we should wait'),
+  );
+
+  run(vault, { stdin: JSON.stringify({ transcript_path: transcript }) });
+
+  const text = learningFile(vault);
+  assert.match(text, /Session completed/u);
+  assert.doesNotMatch(text, /\*\*Status:\*\* pending/u);
+});
+
+test('parallel session-end hooks for the same session write one marker', (t) => {
+  const vault = sandbox(t);
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(transcript, userLine('no, that is not what I asked'));
+  const stdin = JSON.stringify({ transcript_path: transcript, session_id: 'sess-parallel' });
+
+  const first = run(vault, { stdin });
+  const second = run(vault, { stdin });
+  // Sequential is the lock's observable contract; the Python helper also
+  // covers two overlapping processes in test_session_lesson_extract.py.
+  assert.equal(first.status, 0);
+  assert.equal(second.status, 0);
+
+  const text = learningFile(vault);
+  assert.equal((text.match(/Session completed/gu) || []).length, 1);
+  assert.equal((text.match(/that is not what I asked/gu) || []).length, 1);
+});
+
 test('does not write a second copy of a correction already captured live', (t) => {
   const vault = sandbox(t);
   const words = 'no, stop over inferring from timesheet entries';

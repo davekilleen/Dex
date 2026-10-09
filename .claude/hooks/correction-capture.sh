@@ -19,12 +19,9 @@
 #   - Python starts only when the prompt looks like a correction, which is rare
 #     even on a bad day.
 #
-# Accuracy, measured against nine real corrections and eight ordinary prompts
-# from a single session: eight of nine corrections caught, one false positive
-# ("I have no preference, pick one"). The miss is "what day do you think it
-# is?" -- Socratic corrections do not look like corrections. Good on blunt,
-# blind on oblique. A false positive costs one line in a file and a real miss
-# costs the signal, so the patterns lean inclusive on purpose.
+# Accuracy: blunt corrections ("no, that's not", "stop doing that") are
+# caught. Ordinary conversational words ("no", "stop", "actually,") are not.
+# Socratic corrections ("what day do you think it is?") still miss.
 #
 # Any failure is silent. exit 0 always: a vault that cannot record a correction
 # is no worse off than before this existed, and a prompt must never be blocked
@@ -48,10 +45,10 @@
     # Cheap gate. Matched against the RAW JSON payload, not a parsed prompt:
     # this only decides whether starting Python is worth it. Note the word
     # boundaries are [^[:alnum:]] rather than whitespace, because in JSON a
-    # leading word is preceded by a quote -- {"prompt":"STOP"} has no space
-    # before STOP, and a whitespace-anchored pattern silently never fires.
+    # leading word is preceded by a quote -- {"prompt":"wrong"} has no space
+    # before the word, and a whitespace-anchored pattern silently never fires.
     printf '%s' "$PAYLOAD" | grep -qiE \
-        "(^|[^[:alnum:]])(no|nope|stop|wrong|incorrect)([^[:alnum:]]|\$)|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what|why (did|are|didn'?t) you|again[,.]|i (told|said) you|keep (doing|writing|failing)|stupid|come on|actually," \
+        "(^|[^[:alnum:]])(nope|wrong|incorrect)([^[:alnum:]]|$)|(^|[^[:alnum:]])no([[:space:]]*,|[[:space:]]*\\.\\.\\.|[[:space:]]+no[^[:alnum:]])|(^|[^[:alnum:]])stop[[:space:]]+(doing|making|writing|over|inferr|that|this)[^[:alnum:]]|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what|why (did|are|didn'?t) you|again[,.]|i (told|said) you|keep (doing|writing|failing)|stupid|come on" \
         || exit 0
 
     PY="$CLAUDE_DIR/.claude/hooks/correction-capture.py"
