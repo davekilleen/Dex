@@ -188,8 +188,9 @@ def test_this_vault_claude_memory_folder_is_allowed(tmp_path: Path, monkeypatch)
     vault = _vault(tmp_path)
     home = _memory_home(tmp_path, monkeypatch)
     memory = _vault_memory_file(home, vault)
-    tilde = f"~/.claude/projects/{memory.parent.name}/memory/{memory.name}"
-    home_var = f"$HOME/.claude/projects/{memory.parent.name}/memory/{memory.name}"
+    slug = memory.parent.parent.name
+    tilde = f"~/.claude/projects/{slug}/memory/{memory.name}"
+    home_var = f"$HOME/.claude/projects/{slug}/memory/{memory.name}"
 
     for candidate in (str(memory), tilde, home_var):
         shared = evaluate_safety_gate(path=candidate, vault=vault)
