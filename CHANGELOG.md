@@ -15,6 +15,14 @@ After the guided repair that proves Dex's own files against the official record,
 
 * **Checkup can reach a yes-or-no after the proof repair.** Those Dex-made files are now classified as Dex's own, so a healthy install gets a definite result. A skill or file you really changed still shows.
 
+Claude's own notes about how you like to work silently stopped saving inside a Dex folder, and after an update the day's lesson file filled up with ordinary words treated as corrections. This release lets Claude keep those notes again, and stops a conversation's everyday "no" or "actually" from being filed as something you said was wrong. Thanks to Olivier and Jim for the reports.
+
+**What this fixes for you:**
+
+* **Claude can remember how you like to work again.** Its own notes for this Dex folder can be saved. Dex still blocks writes to the rest of your home folder and to other projects.
+* **Everyday words are not treated as corrections.** Saying "no", "stop", or "actually," in ordinary conversation is no longer written down as a lesson. A real correction such as "no, that's not what I asked" is still saved.
+* **Closing several chats at once no longer garbles the day's lesson file.** If two sessions finish together, each lesson is written once and stays readable. Nothing already in the file is removed.
+
 ## [1.97.26] — A friendlier first install, and Dex is now MIT licensed (2026-10-08)
 
 People new to the terminal ran the install line and then did not know what to do next. The installer printed technical output, did not ask where Dex should live, and ended with commands to retype. On Windows the instructions pointed at PowerShell. This release fixes that. Dex is also now under the MIT licence.

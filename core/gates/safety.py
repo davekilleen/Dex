@@ -184,11 +184,84 @@ def _is_catastrophic_path(candidate: str) -> bool:
     return collapsed in CATASTROPHIC_BARE_PATHS or candidate.startswith(("~/", "$HOME/"))
 
 
+def _claude_project_slugs(vault: Path) -> frozenset[str]:
+    """Claude Code's project folder name: every non-alphanumeric character becomes '-'."""
+    slugs = {re.sub(r"[^A-Za-z0-9]", "-", raw) for raw in {str(vault), str(vault.resolve())}}
+    named = os.environ.get("CLAUDE_CODE_PROJECT_DIR_NAME", "").strip()
+    if named and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}", named):
+        slugs.add(named)
+    return frozenset(slugs)
+
+
+def _claude_config_bases() -> list[Path]:
+    bases = [Path.home() / ".claude"]
+    configured = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    if configured:
+        try:
+            bases.append(Path(configured).expanduser())
+        except (OSError, TypeError, ValueError):
+            pass
+    return bases
+
+
+def _absolute_home_or_literal(candidate: str) -> Path | None:
+    """Expand only the home prefixes this gate already recognizes as shorthand."""
+    if candidate.startswith("~/"):
+        return Path.home() / candidate[2:]
+    if candidate.startswith("$HOME/"):
+        return Path.home() / candidate[6:]
+    try:
+        path = Path(candidate)
+    except (OSError, TypeError, ValueError):
+        return None
+    return path if path.is_absolute() else None
+
+
+def _is_this_vault_claude_memory_path(candidate: str, vault: Path) -> bool:
+    """True only for Claude Code's auto-memory folder for this vault.
+
+    That folder lives outside the vault (``~/.claude/projects/<vault>/memory``),
+    so the usual outside-vault rule would block Claude's own notes. The
+    allowance is this one folder, not ``~/.claude`` and not another project.
+    """
+    target = _absolute_home_or_literal(candidate)
+    if target is None:
+        return False
+    try:
+        resolved = target.resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    slugs = _claude_project_slugs(vault)
+    home = Path.home().resolve()
+    for base in _claude_config_bases():
+        try:
+            base_resolved = base.expanduser().resolve()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            continue
+        if base_resolved in {Path("/"), home} or str(base_resolved) in {"/Users", "/home"}:
+            continue
+        configured = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+        if not configured and base_resolved.name != ".claude":
+            continue
+        for slug in slugs:
+            # Build the expected folder from parts so a planted symlink at
+            # memory/ cannot retarget the allowance at /etc or $HOME.
+            expected = base_resolved / "projects" / slug / "memory"
+            try:
+                resolved.relative_to(expected)
+            except ValueError:
+                continue
+            return True
+    return False
+
+
 def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     # File tools use literal names. Trimming whitespace or expanding shell
     # variables can judge a different inode and hide an escaping symlink.
     candidate = _safe_string(path)
     if not candidate:
+        return None
+    if vault is not None and _is_this_vault_claude_memory_path(candidate, vault):
         return None
     if _is_catastrophic_path(candidate):
         return REASON_UNSAFE_PATH

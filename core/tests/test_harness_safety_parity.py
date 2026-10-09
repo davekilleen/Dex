@@ -318,6 +318,25 @@ def test_nested_cwd_preserves_root_and_home_shorthand_refusals(vaults, native, t
     assert result.returncode == 2, result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("native", [False, True])
+def test_this_vault_claude_memory_write_is_allowed_and_other_home_writes_are_not(vaults, tmp_path, native, monkeypatch):
+    one = vaults[0]
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(one.resolve()))
+    memory = home / ".claude" / "projects" / slug / "memory" / "MEMORY.md"
+    other = home / ".claude" / "projects" / "-someone-else" / "memory" / "MEMORY.md"
+    sibling = home / ".claude" / "projects" / slug / "session.jsonl"
+    env = {"DEX_VAULT_PATH": str(one), "HOME": str(home)}
+    assert hook(one, proposal(one, file_path=str(memory)), native=native, env=env).returncode == 0
+    assert hook(one, proposal(one, file_path=f"~/.claude/projects/{slug}/memory/MEMORY.md"), native=native, env=env).returncode == 0
+    assert hook(one, proposal(one, file_path=str(other)), native=native, env=env).returncode == 2
+    assert hook(one, proposal(one, file_path=str(sibling)), native=native, env=env).returncode == 2
+    assert hook(one, proposal(one, file_path=str(home / "secret.md")), native=native, env=env).returncode == 2
+
+
 @pytest.mark.parametrize("target,expected", [("safe.md", 0), ("../escaped.md", 2)])
 def test_native_safety_decides_without_optional_context_dependencies(vaults, target, expected):
     root = vaults[0]
