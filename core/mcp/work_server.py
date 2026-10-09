@@ -3420,9 +3420,9 @@ def _fresh_week_priorities_body(week_date: date) -> str:
 
 
 def _week_priorities_archive_path(week_date: date) -> Path:
-    """`07-Archives/Plans/YYYY-Wxx.md`, with a numeric suffix if that name exists."""
+    """Weekly plan archive under Archives/Plans, with a numeric suffix if taken."""
     year, week = _iso_week_key(week_date)
-    plans = Path(BASE_DIR) / "07-Archives" / "Plans"
+    plans = Path(BASE_DIR) / ARCHIVES_DIR.name / "Plans"
     candidate = plans / f"{year}-W{week:02d}.md"
     if not candidate.exists():
         return candidate
