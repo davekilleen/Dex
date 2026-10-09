@@ -11,9 +11,14 @@ All notable changes to Dex will be documented in this file.
 
 After the guided repair that proves Dex's own files against the official record, checkup could still refuse to give a definite answer. Seven leftover Dex-made files — the career and quarterly-planning skills Dex copies into place, the generated path list, and the architecture inventory — kept counting as "unproved" even when they were exactly Dex's own bytes. Files you had actually edited were fine; the healthy copies Dex itself produced were not.
 
+The daily plan could say your inbox was empty when it was not, warn that you had not accepted a meeting you organised, and attach a stranger who only shared a first name. This closes those. Thanks to Justin Hayes for the mail report, and to Michelle Wright for the meeting and people reports.
+
 **What this fixes for you:**
 
 * **Checkup can reach a yes-or-no after the proof repair.** Those Dex-made files are now classified as Dex's own, so a healthy install gets a definite result. A skill or file you really changed still shows.
+* **Unread mail is counted even when Gmail tabs are off.** If your inbox is one list rather than Primary / Social / Promotions, the plan no longer says there is nothing unread. It still counts only the inbox that needs attention, not every unread message in the account.
+* **You are not told you have not accepted your own meeting.** The person who organised a meeting — including you, when you set it up — is never listed as someone who has not replied. Other invitees who have not replied still show.
+* **A similar first name is not treated as the same person.** If there is no page for the person in the meeting, Dex leaves them unmatched instead of linking Chris to Chris Kimball, or anyone else who only sounds close.
 
 ## [1.97.26] — A friendlier first install, and Dex is now MIT licensed (2026-10-08)
 

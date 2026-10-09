@@ -161,8 +161,13 @@ status.
 If the source is connected and healthy:
 
 - Use an attention-inbox count for the headline, never a provider-wide unread total.
-  For Google Workspace, count `is:unread category:primary`; use monitored labels
-  separately to find priority messages. For Apple Mail, count unread messages in Inbox
+  For Google Workspace, count unread in the attention inbox. Start with
+  `is:unread category:primary`. If that returns 0, confirm with `is:unread in:inbox`
+  and whether any mail has the Primary label (`category:primary`, not only unread).
+  When inbox tabs are off, `category:primary` is empty even though the inbox has
+  unread mail — use the inbox count. When Primary exists but has no unread, report 0.
+  Never use a provider-wide `is:unread` total. Use monitored labels separately to
+  find priority messages. For Apple Mail, count unread messages in Inbox
   mailboxes. If the source cannot scope this reliably, omit the headline unread count.
 - Flag emails needing reply (received more than 48 hours ago, from key contacts
   in `05-Areas/People/`)
@@ -263,13 +268,18 @@ get neither a checkbox, nor an ID, nor the marker.
 ### Meeting Prep
 
 For each meeting: attendees with person-page context, related project status,
-outstanding tasks, prep suggestions.
+outstanding tasks, prep suggestions. Never report the organiser — or the user
+when they organised the meeting — as someone who has not accepted. Calendar
+status for the organiser is often Pending, Unknown, or needsAction; treat
+`is_organizer: true`, Google `organizer: true` / matching `organizer.email`,
+and `is_current_user` / `self` plus organiser as accepted.
 
 ### Heads Up
 
 Flag: lagging weekly priorities, commitments due today, back-to-back meetings,
 P0 items with no time blocked, deep work tasks with no suitable slot, plus any
-cooling entities or relationship suggestions from the feeds in 1.4.
+cooling entities or relationship suggestions from the feeds in 1.4. Invitees
+who have not accepted may be flagged; the organiser never is.
 
 ---
 

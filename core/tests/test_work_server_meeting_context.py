@@ -134,6 +134,76 @@ def test_meeting_context_does_not_match_a_longer_underscored_person_name(
     assert result["outstanding_tasks"] == []
 
 
+def test_meeting_context_cache_does_not_attach_a_longer_attendee_name(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    """Chris must not inherit Chris Kimball's cached meetings."""
+    cache_file = (
+        meeting_context_vault["people"].parent.parent
+        / "System"
+        / "Memory"
+        / "meeting-cache.json"
+    )
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(
+            {
+                "meetings": [
+                    {
+                        "date": "2026-10-08",
+                        "title": "Kimball 1:1",
+                        "source_file": "00-Inbox/Meetings/2026-10-08 - Kimball.md",
+                        "attendees": ["Chris Kimball"],
+                        "decisions": ["Keep the rollout"],
+                        "action_items": [],
+                        "key_points": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _call_meeting_context("Chris")
+
+    assert result["recent_meetings"] == []
+    assert result["attendee_details"] == []
+
+
+def test_meeting_context_cache_matches_the_same_person_with_underscores(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    cache_file = (
+        meeting_context_vault["people"].parent.parent
+        / "System"
+        / "Memory"
+        / "meeting-cache.json"
+    )
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(
+            {
+                "meetings": [
+                    {
+                        "date": "2026-10-08",
+                        "title": "Ada 1:1",
+                        "source_file": "00-Inbox/Meetings/2026-10-08 - Ada.md",
+                        "attendees": ["Ada_Lovelace"],
+                        "decisions": [],
+                        "action_items": [],
+                        "key_points": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _call_meeting_context("Ada Lovelace")
+
+    assert [meeting["title"] for meeting in result["recent_meetings"]] == ["Ada 1:1"]
+
+
 def test_meeting_context_does_not_resolve_a_longer_person_page_name(
     meeting_context_vault: dict[str, Path],
 ) -> None:
@@ -326,6 +396,43 @@ def test_find_company_for_attendees_skips_consumer_mail_domains(
     monkeypatch.setattr(work_server, "is_freemail", lambda _domain: True)
 
     assert work_server.find_company_for_attendees(["jane@acme.com"]) is None
+
+
+def test_attendees_refer_to_the_same_person_only_on_exact_identity() -> None:
+    assert work_server.attendees_refer_to_same_person("Ada Lovelace", "Ada_Lovelace")
+    assert work_server.attendees_refer_to_same_person(
+        "Jane Doe <jane@acme.com>",
+        "jane@acme.com",
+    )
+    assert not work_server.attendees_refer_to_same_person("Chris", "Chris Kimball")
+    assert not work_server.attendees_refer_to_same_person("Chris Kim", "Chris Kimball")
+    assert not work_server.attendees_refer_to_same_person("Rob", "Robert Williams")
+
+
+def test_close_entity_page_matches_refuse_a_shared_first_name(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    person = meeting_context_vault["people"] / "External" / "Chris_Kimball.md"
+    person.parent.mkdir(parents=True)
+    person.write_text("# Chris Kimball\n", encoding="utf-8")
+
+    assert work_server._close_entity_page_matches(
+        "Chris.md",
+        meeting_context_vault["people"],
+    ) == []
+
+
+def test_close_entity_page_matches_still_suggest_a_near_typo(
+    meeting_context_vault: dict[str, Path],
+) -> None:
+    person = meeting_context_vault["people"] / "External" / "Alice_Smith.md"
+    person.parent.mkdir(parents=True)
+    person.write_text("# Alice Smith\n", encoding="utf-8")
+
+    assert work_server._close_entity_page_matches(
+        "Alice_Smit.md",
+        meeting_context_vault["people"],
+    ) == ["05-Areas/People/External/Alice_Smith.md"]
 
 
 def test_find_company_for_attendees_prefers_a_domain_hit_over_an_earlier_name(

@@ -18,6 +18,8 @@ def test_daily_plan_headline_unread_count_uses_the_attention_inbox() -> None:
         contract = " ".join(text.split())
         assert "never a provider-wide unread total" in contract, path
         assert "`is:unread category:primary`" in contract, path
+        assert "`is:unread in:inbox`" in contract, path
+        assert "inbox tabs are off" in contract, path
         assert "unread messages in Inbox mailboxes" in contract, path
         assert "omit the headline unread count" in contract, path
 

@@ -459,3 +459,64 @@ def test_attendee_resolution_matches_legacy_email_field_not_a_longer_address(
     assert attendee["person_page"] == (
         "05-Areas/People/External/Legacy_Record.md"
     )
+
+
+def test_attendee_resolution_does_not_link_a_shared_first_name(
+    monkeypatch,
+    tmp_path,
+):
+    """Chris on the invite is not Chris Kimball's page."""
+    vault = tmp_path / "vault"
+    people = vault / "05-Areas" / "People"
+    other = people / "External" / "Chris_Kimball.md"
+    other.parent.mkdir(parents=True)
+    other.write_text("---\nname: Chris Kimball\nemails: [chris.k@example.com]\n---\n")
+
+    payload = _attendee_resolution_payload(
+        monkeypatch,
+        vault,
+        people,
+        [_calendar_attendee("chris@example.org", name="Chris")],
+    )
+
+    attendee = payload["events"][0]["attendees"][0]
+    assert attendee["has_person_page"] is False
+    assert "person_page" not in attendee
+
+
+def test_pending_organizer_is_not_flagged_as_a_non_responder(
+    monkeypatch,
+    tmp_path,
+):
+    vault = tmp_path / "vault"
+    people = vault / "05-Areas" / "People"
+    people.mkdir(parents=True)
+    payload = _attendee_resolution_payload(
+        monkeypatch,
+        vault,
+        people,
+        [
+            {
+                "title": "Team standup",
+                "organizer": {"email": "host@example.com"},
+                "attendees": [
+                    {
+                        "name": "Morgan Host",
+                        "email": "host@example.com",
+                        "status": "Pending",
+                        "is_current_user": True,
+                    },
+                    {
+                        "name": "Pat Customer",
+                        "email": "pat@example.com",
+                        "status": "Pending",
+                    },
+                ],
+            }
+        ],
+    )
+
+    host, invitee = payload["events"][0]["attendees"]
+    assert host["is_organizer"] is True
+    assert host["is_non_responder"] is False
+    assert invitee["is_non_responder"] is True

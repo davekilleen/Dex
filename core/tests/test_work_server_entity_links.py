@@ -169,7 +169,10 @@ def test_stamped_meeting_task_completion_updates_backlog_and_source(entity_vault
     )
 
 
-def test_create_task_rejects_dead_person_path_with_close_matches(entity_vault):
+def test_create_task_rejects_dead_person_path_without_a_loose_first_name_match(
+    entity_vault,
+):
+    """A shared first name is not a close match. Alice.md is not Alice Smith."""
     existing = _write_person(
         entity_vault,
         "External",
@@ -190,10 +193,35 @@ def test_create_task_rejects_dead_person_path_with_close_matches(entity_vault):
     )
 
     assert result["success"] is False
+    assert _vault_relative(existing, entity_vault["root"]) not in result.get(
+        "close_matches", []
+    )
+    assert entity_vault["tasks"].read_text(encoding="utf-8") == before
+
+
+def test_create_task_suggests_a_near_filename_typo(entity_vault):
+    existing = _write_person(
+        entity_vault,
+        "External",
+        "Alice_Smith.md",
+        "Alice Smith",
+    )
+    missing = existing.with_name("Alice_Smit.md")
+    given = _vault_relative(missing, entity_vault["root"])
+
+    result = _call_tool(
+        "create_task",
+        {
+            "title": "Prepare the customer briefing for Alice",
+            "pillar": "pillar_1",
+            "people": [given],
+        },
+    )
+
+    assert result["success"] is False
     assert result["close_matches"] == [
         _vault_relative(existing, entity_vault["root"])
     ]
-    assert entity_vault["tasks"].read_text(encoding="utf-8") == before
 
 
 def test_create_task_stamps_the_only_exact_source_line(entity_vault):

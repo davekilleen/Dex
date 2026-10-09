@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import EventKit
 
+from core.mcp.calendar_attendees import attendee_is_non_responder, attendee_is_organizer
 from core.paths import RESOURCES_DIR, VAULT_ROOT
 
 CALENDAR_SETUP_DOC = RESOURCES_DIR / "Dex_System" / "Calendar_Setup.md"
@@ -181,8 +182,16 @@ def format_event(event) -> dict:
 def format_event_with_attendees(event) -> dict:
     """Format an EKEvent with full attendee details."""
     event_data = format_event(event)
-    
-    # Add attendees
+
+    organizer = _safe_call(event, "organizer")
+    organizer_info = None
+    if organizer is not None:
+        organizer_info = {
+            "name": _safe_call(organizer, "name") or "",
+            "email": _safe_call(organizer, "emailAddress") or "",
+        }
+        event_data["organizer"] = organizer_info
+
     attendees = []
     if event.attendees():
         for attendee in event.attendees():
@@ -209,8 +218,13 @@ def format_event_with_attendees(event) -> dict:
                 "is_organizer": bool(_safe_call(attendee, "isOrganizer")),
                 "is_current_user": bool(attendee.isCurrentUser()),
             }
+            if attendee_is_organizer(att_data, organizer_info):
+                att_data["is_organizer"] = True
+            att_data["is_non_responder"] = attendee_is_non_responder(
+                att_data, organizer_info
+            )
             attendees.append(att_data)
-    
+
     event_data["attendees"] = attendees
     return event_data
 

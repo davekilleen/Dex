@@ -67,6 +67,9 @@ def _assert_calendar_first_instruction_contract(skill: str, agent: str) -> None:
         "Delegated",
     ):
         assert excluded in calendar_step
+    assert "is_organizer" in calendar_step
+    assert "has not accepted" in calendar_step
+    assert "organiser" in calendar_step
 
     # The cross-context seam is structured records, not a comma-separated
     # display-name placeholder.  Resolved pages win; email/name lookup is only

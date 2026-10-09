@@ -178,8 +178,13 @@ event. Preserve `name`, `person_page` (or `null`), `email`, `status`, `type`, an
 
 Keep `Person` attendees who are `Accepted` or `Tentative`. A `Pending` or
 `Unknown` person may still attend: keep them, but do not describe their
-attendance as confirmed. If an attendee has an unknown type, keep them only
-when they have a usable name or email and flag that uncertainty in the brief.
+attendance as confirmed. Never describe the organiser as someone who has not accepted.
+Calendar APIs often leave the organiser as Pending, Unknown, or
+needsAction; treat `is_organizer: true`, Google `organizer: true` / matching
+`organizer.email`, and the user themselves when they organised the meeting
+(`is_current_user` / `self` plus organiser) as accepted. If an attendee has
+an unknown type, keep them only when they have a usable name or email and
+flag that uncertainty in the brief.
 
 **Ask when the calendar cannot answer.** The calendar is the preferred source,
 not a required one, and this skill must still work without it. Inspect the

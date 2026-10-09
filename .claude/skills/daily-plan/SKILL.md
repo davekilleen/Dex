@@ -378,8 +378,13 @@ Google Workspace needs no local probe: its own tool response carries the health 
 
 If connected and healthy:
 1. Use an attention-inbox count for the headline, never a provider-wide unread total.
-   For Google Workspace, count `is:unread category:primary`; use monitored labels
-   separately to find priority messages. For Apple Mail, count unread messages in Inbox
+   For Google Workspace, count unread in the attention inbox. Start with
+   `is:unread category:primary`. If that returns 0, confirm with `is:unread in:inbox`
+   and whether any mail has the Primary label (`category:primary`, not only unread).
+   When inbox tabs are off, `category:primary` is empty even though the inbox has
+   unread mail — use the inbox count. When Primary exists but has no unread, report 0.
+   Never use a provider-wide `is:unread` total. Use monitored labels separately to
+   find priority messages. For Apple Mail, count unread messages in Inbox
    mailboxes. If the source cannot scope this reliably, omit the headline unread count.
 2. Flag emails needing reply (> 48h since received, from key contacts in `05-Areas/People/`)
 3. Surface email threads with today's meeting attendees
@@ -602,6 +607,11 @@ Flag potential issues:
 - Back-to-back meetings
 - P0 items with no time blocked
 - Deep work tasks with no suitable slot this week
+- Invitees who have not accepted — never the organiser. Calendar APIs often leave
+  the organiser as Pending, Unknown, or needsAction. Treat `is_organizer: true`,
+  Google `organizer: true` / `organizer.email` matching that person, and the user
+  themselves when they organised the meeting (`is_current_user` / `self` plus
+  organiser) as having accepted. Do not write "has not accepted" for them.
 
 ---
 
