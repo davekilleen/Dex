@@ -296,6 +296,9 @@ RULES: tuple[Rule, ...] = (
     _r("seed-archives-reviews-readme", "07-Archives/Reviews/README.md", "file", "seed"),
 
     # --- generated: machine-derived, regenerated ---------------------------
+    _r("generated-core-paths", "core/paths.json", "file", "generated",
+       "per-vault path constants rewritten from core/paths.py; gitignored "
+       "and never shipped in the release tree"),
     _r("generated-claude-md", "CLAUDE.md", "file", "generated",
        "composed from the shipped template plus vault-owned CLAUDE-custom.md "
        "and System/user-profile.yaml"),

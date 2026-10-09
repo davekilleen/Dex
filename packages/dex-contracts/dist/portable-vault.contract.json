@@ -799,6 +799,13 @@
       "ownership": "vault"
     },
     {
+      "id": "generated-core-paths",
+      "path": "core/paths.json",
+      "kind": "file",
+      "ownership": "generated",
+      "note": "per-vault path constants rewritten from core/paths.py; gitignored and never shipped in the release tree"
+    },
+    {
       "id": "brain-docs",
       "path": "docs",
       "kind": "dir",

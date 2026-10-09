@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 07c51058c0e101406ea7fc44d0369641f1af75485cf5a231ec76c4b25aeb59d5 -->
+<!-- Content SHA-256: 84ec1a7fc08955bb05fb24a8a1d0cbb98e20688723425e97cc058fc2f3fa876c -->
 
 # Architecture Inventory
 
@@ -155,7 +155,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | --- | ---: | --- |
 | `brain` | 47 | `replace` |
 | `seed` | 40 | `write-if-absent` |
-| `generated` | 9 | `regenerate` |
+| `generated` | 10 | `regenerate` |
 | `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
 
@@ -256,7 +256,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>generated</code> declared paths (9)</summary>
+<details><summary><code>generated</code> declared paths (10)</summary>
 
 - `CLAUDE.md` (file; `generated-claude-md`)
 - `System/.dex/health` (dir; `generated-health-state`)
@@ -265,6 +265,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `System/.local-only-preservation-transition.json` (file; `generated-local-only-transition`)
 - `System/.release-catalog.json` (file; `generated-release-catalog`)
 - `System/.release-evidence-profile.json` (file; `generated-evidence-profile`)
+- `core/paths.json` (file; `generated-core-paths`)
 - `docs/architecture/INVENTORY.md` (file; `generated-architecture-inventory`)
 - `packages/dex-contracts/dist` (dir; `generated-contracts-dist`)
 

@@ -9,6 +9,12 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+After the guided repair that proves Dex's own files against the official record, checkup could still refuse to give a definite answer. Seven leftover Dex-made files — the career and quarterly-planning skills Dex copies into place, the generated path list, and the architecture inventory — kept counting as "unproved" even when they were exactly Dex's own bytes. Files you had actually edited were fine; the healthy copies Dex itself produced were not.
+
+**What this fixes for you:**
+
+* **Checkup can reach a yes-or-no after the proof repair.** Those Dex-made files are now classified as Dex's own, so a healthy install gets a definite result. A skill or file you really changed still shows.
+
 ## [1.97.26] — A friendlier first install, and Dex is now MIT licensed (2026-10-08)
 
 People new to the terminal ran the install line and then did not know what to do next. The installer printed technical output, did not ask where Dex should live, and ended with commands to retype. On Windows the instructions pointed at PowerShell. This release fixes that. Dex is also now under the MIT licence.
