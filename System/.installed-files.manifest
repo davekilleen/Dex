@@ -292,6 +292,7 @@
 .claude/hooks/correction-capture.sh
 .claude/hooks/daily-plan-quick-ref.cjs
 .claude/hooks/dex-core-orientation.sh
+.claude/hooks/dex-python.sh
 .claude/hooks/dex-safety-guard.sh
 .claude/hooks/ensure-mcp-user-scope.cjs
 .claude/hooks/health-pulse.sh
@@ -1576,6 +1577,7 @@ core/tests/test_obsidian_wikilink_migration.py
 core/tests/test_onboarding_calendar.py
 core/tests/test_onboarding_context_lifecycle.py
 core/tests/test_onboarding_flow_portability.py
+core/tests/test_onboarding_marker_age.py
 core/tests/test_os_flags.py
 core/tests/test_path_contract.py
 core/tests/test_paths.py

@@ -9,6 +9,14 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Three things could quietly stop working depending on what else was on your computer. Dex's background helpers used whichever Python came first on your computer instead of the one Dex installs for itself, so a system Python upgrade could switch off the check for new releases. Asking Dex whether setup was finished could fail for vaults set up by the newer installer. And after a Granola sync, the check that every person in your meetings has a page could stop before looking at anyone. Thanks to Olivier and Gijs for the reports.
+
+**What this fixes for you:**
+
+* **Update notices survive a Python upgrade.** Dex's helpers now use Dex's own Python first, and fall back to the system one only when that is missing. A Homebrew upgrade no longer silently turns off "a new release is ready", and `/dex-update` uses the same Python.
+* **"Is setup finished?" answers instead of erroring.** Dex now reads the setup-finished date the newer installer writes, as well as the older format.
+* **The after-sync people check runs again.** If your vault still has an older list of Dex's folders, the check now finds its files anyway, instead of logging "Entity verification skipped after error" after every sync.
+
 ## [1.97.27] — Checkup finishes after the proof repair, a calmer daily plan, Claude's memory works again, and weeks roll over cleanly (2026-10-11)
 
 After the guided repair that proves Dex's own files against the official record, checkup could still refuse to give a definite answer. Seven leftover Dex-made files — the career and quarterly-planning skills Dex copies into place, the generated path list, and the architecture inventory — kept counting as "unproved" even when they were exactly Dex's own bytes. Files you had actually edited were fine; the healthy copies Dex itself produced were not.
