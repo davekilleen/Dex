@@ -107,7 +107,7 @@ test('SessionStart runs the connection health checker without changing existing 
   const commands = settings.hooks.SessionStart.flatMap((entry) => entry.hooks || []).map((hook) => hook.command);
   assert.ok(commands.includes('node "$CLAUDE_PROJECT_DIR"/.claude/hooks/connection-health-checker.cjs'));
   assert.ok(commands.includes('bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/session-start.sh'));
-  assert.ok(commands.includes('python3 "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start'));
+  assert.ok(commands.includes('bash "$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh" "$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py" --vault "$CLAUDE_PROJECT_DIR" --session-start'));
   assert.ok(commands.includes('bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/dex-core-orientation.sh'));
 });
 

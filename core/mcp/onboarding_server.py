@@ -22,7 +22,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -215,6 +215,30 @@ ROLE_EMAIL_LOCALS = {
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
+
+
+def marker_age_days(completed_at: str, now: datetime | None = None) -> int:
+    """Whole days since the onboarding marker's completed_at timestamp.
+
+    The marker is written both by Python (naive local time) and by
+    core/provision.cjs (JavaScript toISOString(), UTC with a trailing "Z").
+    Subtracting a timezone-aware value from a naive one raises TypeError, so
+    compare like with like: aware values against an aware UTC "now", naive
+    values against the naive local "now".
+    """
+    raw = str(completed_at).strip()
+    if raw.endswith(("Z", "z")):
+        raw = raw[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(raw)
+    if parsed.tzinfo is not None:
+        current = now if now is not None else datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.astimezone()
+        return (current - parsed).days
+    current = now if now is not None else datetime.now()
+    if current.tzinfo is not None:
+        current = current.astimezone().replace(tzinfo=None)
+    return (current - parsed).days
 
 def create_success_response(data: Any, message: str = None) -> Dict:
     """Create a standardized success response"""
@@ -3331,8 +3355,7 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             
             try:
                 marker_data = json.loads(MARKER_FILE.read_text())
-                completed_at = datetime.fromisoformat(marker_data['completed_at'])
-                age_days = (datetime.now() - completed_at).days
+                age_days = marker_age_days(marker_data['completed_at'])
                 
                 result = create_success_response({
                     "complete": True,

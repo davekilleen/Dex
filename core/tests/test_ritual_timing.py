@@ -97,7 +97,10 @@ def test_hook_is_wired_for_every_event_it_needs() -> None:
             for hook in group.get("hooks", [])
         ]
 
-    expected = 'python3 "$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true'
+    expected = (
+        'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh" '
+        '"$CLAUDE_PROJECT_DIR"/.claude/hooks/ritual-timing.py 2>/dev/null || true'
+    )
     assert expected in commands("PreToolUse", "Skill")
     assert expected in commands("PreToolUse", "mcp__.*__track_event")
     assert expected in commands("Stop", None)

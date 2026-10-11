@@ -102,6 +102,7 @@ System/my-customizations.md
 !.claude/hooks/company-context-injector.cjs
 !.claude/hooks/paths.cjs
 !.claude/hooks/session-start.sh
+!.claude/hooks/dex-python.sh
 !.claude/hooks/session-end.sh
 !.claude/hooks/vault-autocommit.cjs
 !.claude/hooks/health-pulse.sh

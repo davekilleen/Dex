@@ -157,3 +157,61 @@ test('the composition hook carries native Windows Python discovery', () => {
   assert.match(source, /py -3/);
   assert.doesNotMatch(source, /(?:^|\s)python3\s+-[cm]\b/m);
 });
+
+// DEX-242: install.sh puts Dex's Python packages (PyYAML and friends) into the
+// vault .venv. A bare `python3` hook used whatever system Python came first on
+// PATH, so a Homebrew Python upgrade silently disabled update detection.
+const DEX_PYTHON_SHIM = path.join(ROOT, '.claude/hooks/dex-python.sh');
+
+test('no hook command runs Python through a bare python3 or python', () => {
+  const offenders = hookCommands().filter((command) => /(^|[\s;&|(])(python3?|py)\s/.test(command));
+  assert.deepEqual(offenders, [], `route Python hooks through dex-python.sh:\n${offenders.join('\n')}`);
+});
+
+function runShim(vault, env = {}) {
+  return spawnSync('/bin/bash', [DEX_PYTHON_SHIM, '-c', 'import sys; print(sys.executable)'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, CLAUDE_PROJECT_DIR: vault, ...env },
+  });
+}
+
+test('dex-python.sh prefers the vault .venv Python', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-python-venv-'));
+  try {
+    const bin = path.join(vault, '.venv', 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    const fake = path.join(bin, 'python');
+    fs.writeFileSync(fake, '#!/bin/sh\necho "vault-venv $*"\n');
+    fs.chmodSync(fake, 0o755);
+    const result = runShim(vault);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^vault-venv -c import sys/);
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('dex-python.sh honours DEX_PYTHON before the vault .venv', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-python-env-'));
+  try {
+    const fake = path.join(vault, 'chosen-python');
+    fs.writeFileSync(fake, '#!/bin/sh\necho chosen\n');
+    fs.chmodSync(fake, 0o755);
+    const result = runShim(vault, { DEX_PYTHON: fake });
+    assert.equal(result.stdout.trim(), 'chosen');
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});
+
+test('dex-python.sh falls back to the system python3 when the vault has no .venv', () => {
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-python-none-'));
+  try {
+    const result = runShim(vault);
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.stdout.trim().length > 0, 'expected the system Python to answer');
+    assert.ok(!result.stdout.includes(vault), 'must not claim a vault interpreter that does not exist');
+  } finally {
+    fs.rmSync(vault, { recursive: true, force: true });
+  }
+});

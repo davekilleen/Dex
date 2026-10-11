@@ -13,6 +13,8 @@ Use this skill when someone wants the latest Dex capabilities or asks what an up
 
 Every lifecycle operation goes through `core.lifecycle.service` version 1.5.0. Treat its response as authoritative. Do not fall back to direct file operations, Git mutation, an update script, or a hand-built repair when the service refuses.
 
+Whenever this skill runs a Dex Python command, use the vault's own Python: `.venv/Scripts/python.exe` on Windows, `.venv/bin/python` on a Mac or Linux computer, and plain `python3` only when the vault has no `.venv`. A system `python3` can lack the packages Dex installed into `.venv`, and then the update check quietly reports nothing.
+
 Use the service operations in this order:
 
 1. Ask `build_and_preview_topology_migration` to check the installed layout as part of the normal update read.

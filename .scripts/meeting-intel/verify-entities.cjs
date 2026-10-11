@@ -80,11 +80,28 @@ function plural(count, singular, pluralForm = `${singular}s`) {
   return count === 1 ? singular : pluralForm;
 }
 
+// The dead-letter log sits next to the entity pending store. Mirror the
+// fallback in .scripts/lib/entity-engine-client.cjs pendingStorePath(): a
+// generated core/paths.json from an older Dex may not name
+// ENTITY_PENDING_FILE, and path.dirname(undefined) used to throw before any
+// person or company was checked (DEX-241).
+function deadLetterDirectory(paths) {
+  if (typeof paths.ENTITY_PENDING_FILE === 'string' && paths.ENTITY_PENDING_FILE) {
+    return path.dirname(paths.ENTITY_PENDING_FILE);
+  }
+  if (typeof paths.DEX_RUNTIME_DIR === 'string' && paths.DEX_RUNTIME_DIR) {
+    return paths.DEX_RUNTIME_DIR;
+  }
+  if (typeof paths.CONTACTS_STATE_FILE === 'string' && paths.CONTACTS_STATE_FILE) {
+    return path.dirname(paths.CONTACTS_STATE_FILE);
+  }
+  return null;
+}
+
 function readDeadLetters(paths) {
-  const filePath = path.join(
-    path.dirname(paths.ENTITY_PENDING_FILE),
-    'entity-dead-letter.jsonl',
-  );
+  const directory = deadLetterDirectory(paths || {});
+  if (!directory) return { entries: [], error: null };
+  const filePath = path.join(directory, 'entity-dead-letter.jsonl');
   try {
     const entries = fs.readFileSync(filePath, 'utf8')
       .split(/\r?\n/)
@@ -332,4 +349,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { frontmatter, parseDays, summaryLine, verifyEntities };
+module.exports = { frontmatter, parseDays, readDeadLetters, summaryLine, verifyEntities };

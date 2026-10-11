@@ -9,7 +9,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/core/utils/update_verifier.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
           },
           {
             "type": "command",
@@ -21,19 +21,19 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/feedback_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/core/utils/feedback_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/release_notes_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/core/utils/release_notes_sweep.py\" --vault \"$CLAUDE_PROJECT_DIR\" --session-start"
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\" --session-start"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\" --session-start"
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py\" --sweep --vault \"$CLAUDE_PROJECT_DIR\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py\" --sweep --vault \"$CLAUDE_PROJECT_DIR\""
           }
         ]
       }
@@ -51,11 +51,11 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/skill-freshness.py\""
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/soft-promise-detector.py\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/soft-promise-detector.py\""
           },
           {
             "type": "command",
@@ -67,7 +67,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }
@@ -122,7 +122,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       },
@@ -131,7 +131,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }
@@ -149,7 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }
@@ -170,7 +170,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py\" --hook --vault \"$CLAUDE_PROJECT_DIR\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR/core/utils/mcp_session_lifecycle.py\" --hook --vault \"$CLAUDE_PROJECT_DIR\""
           },
           {
             "type": "command",
@@ -186,7 +186,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/dex-python.sh\" \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ritual-timing.py 2>/dev/null || true"
           }
         ]
       }
