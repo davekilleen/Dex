@@ -253,31 +253,14 @@ def _as_glob_list(glob_pattern: str | list[str] | tuple[str, ...]) -> list[str]:
     return [text] if text else ["**/*.md"]
 
 
-def _iter_glob_matches(vault_path: str, globs: list[str]) -> list[Path]:
-    """Expand vault-relative globs without relying on ripgrep's path matching."""
-    root = Path(vault_path)
-    seen: set[str] = set()
-    matches: list[Path] = []
-    for glob_item in globs:
-        pattern = glob_item.replace("\\", "/").strip()
-        if not pattern:
-            continue
-        try:
-            found = root.glob(pattern)
-        except ValueError:
-            continue
-        for path in found:
-            if not path.is_file():
-                continue
-            try:
-                key = str(path.resolve())
-            except OSError:
-                continue
-            if key in seen:
-                continue
-            seen.add(key)
-            matches.append(path)
-    return matches
+def _path_matches_any_glob(filepath: str, vault_path: str, globs: list[str]) -> bool:
+    """Keep grep-without-rg results inside the requested globs."""
+    try:
+        relative = Path(filepath).resolve().relative_to(Path(vault_path).resolve())
+    except ValueError:
+        relative = Path(filepath)
+    posix = relative.as_posix()
+    return any(Path(posix).match(glob_item) or Path(filepath).match(glob_item) for glob_item in globs)
 
 
 def _grep_fallback(
@@ -287,7 +270,7 @@ def _grep_fallback(
     grep_pattern: Optional[str] = None,
     limit: int = 10,
 ) -> list[dict]:
-    """Fall back to local file search when QMD is not available."""
+    """Fall back to ripgrep/grep when QMD is not available."""
     results = []
 
     # Build grep pattern from query words if not provided
@@ -300,30 +283,57 @@ def _grep_fallback(
     if not grep_pattern:
         return []
 
+    globs = _as_glob_list(glob_pattern)
+
     try:
-        matcher = re.compile(grep_pattern, re.IGNORECASE)
-    except re.error:
-        return []
+        rg = shutil.which("rg")
+        files: list[str] = []
+        seen: set[str] = set()
+        # One original rg/grep invocation per glob. Several --glob flags are
+        # OR-ed, but matching is relative to the process cwd, so PARA trees at
+        # different depths miss when passed together against an absolute vault.
+        for glob_item in globs:
+            if rg:
+                cmd = [
+                    rg, "-i", "-l",
+                    "--glob", glob_item,
+                    "-m", "1",
+                    grep_pattern,
+                    vault_path,
+                ]
+            else:
+                cmd = [
+                    "grep", "-r", "-i", "-l",
+                    "--include=*.md",
+                    "-E", grep_pattern,
+                    vault_path,
+                ]
+            result = subprocess.run(
+                cmd,
+                cwd=vault_path,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            for filepath in (f.strip() for f in result.stdout.strip().split("\n") if f.strip()):
+                if filepath in seen:
+                    continue
+                if not rg and not _path_matches_any_glob(filepath, vault_path, [glob_item]):
+                    continue
+                seen.add(filepath)
+                files.append(filepath)
 
-    files: list[str] = []
-    for path in _iter_glob_matches(vault_path, _as_glob_list(glob_pattern)):
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        if matcher.search(text):
-            files.append(str(path))
-        if len(files) >= limit:
-            break
+        for i, filepath in enumerate(files[:limit]):
+            snippet = _extract_snippet(filepath, grep_pattern)
+            results.append({
+                "path": filepath,
+                "score": max(0.1, 1.0 - (i * 0.08)),
+                "snippet": snippet,
+                "source": "grep",
+            })
 
-    for i, filepath in enumerate(files[:limit]):
-        snippet = _extract_snippet(filepath, grep_pattern)
-        results.append({
-            "path": filepath,
-            "score": max(0.1, 1.0 - (i * 0.08)),
-            "snippet": snippet,
-            "source": "grep",
-        })
+    except (subprocess.TimeoutExpired, Exception) as e:
+        logger.debug(f"Grep fallback error: {e}")
 
     return results
 

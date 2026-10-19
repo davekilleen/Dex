@@ -114,6 +114,37 @@ def _baseline_sets(
     return paths, local_only
 
 
+def _older_baseline_paths(policy: ExactPolicy, baseline_version: int) -> set[str]:
+    return {
+        row.path
+        for version, rows in policy.baselines
+        if version < baseline_version
+        for row in rows
+    }
+
+
+def _capture_query_matches_baseline(
+    actual: set[str],
+    policy_paths: set[str],
+    local_paths: set[str],
+    policy: ExactPolicy,
+    transition: PreservationTransition,
+) -> bool:
+    """Allow newly introduced seed paths to be absent; nothing else may drift.
+
+    Capture journals local-only files. Later baselines can add intentional
+    seeds (archived folder starters) that a vault on an older index never
+    received. Those additive rows must not block journaling the preexisting
+    local-only set. Extra tracked-ignored files, missing local-only files,
+    and missing rows that already existed on an older baseline still fail.
+    """
+    older_paths = _older_baseline_paths(policy, transition.baseline_version)
+    introduced = (policy_paths - older_paths) if older_paths else set()
+    missing = policy_paths - actual
+    extra = actual - policy_paths
+    return not extra and not (missing - introduced) and local_paths <= actual
+
+
 def _bootstrap_phase(baseline_version: int) -> str:
     return f"bootstrap-v{baseline_version}"
 
@@ -732,8 +763,10 @@ def capture(repo: Path, journal_dir: Path, policy_path: Path | None = None) -> d
         raise MigrationError("capture requires bootstrap transition metadata")
     if policy.baseline_version != transition.baseline_version:
         raise MigrationError("capture policy active baseline does not match transition metadata")
-    policy_paths, _ = _baseline_sets(policy, transition)
-    if _query_tracked_ignored(repo) != policy_paths:
+    policy_paths, local_paths = _baseline_sets(policy, transition)
+    if not _capture_query_matches_baseline(
+        _query_tracked_ignored(repo), policy_paths, local_paths, policy, transition
+    ):
         raise MigrationError(
             f"live tracked-ignore query differs from the exact {len(policy_paths)}-row baseline; "
             "no preservation journal was created"

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from core.paths import (
+    ARCHIVED_DAILY_PLANS_DIR,
+    ARCHIVED_MEETINGS_DIR,
     ARCHIVES_DIR,
     AREAS_DIR,
     COMPANIES_DIR,
@@ -71,8 +73,16 @@ RETIRED_FOUNDER_PATHS = frozenset(
     }
 )
 FUTURE_APPROVED_ROWS = tuple(row for row in APPROVED_ROWS if row[0] not in RETIRED_FOUNDER_PATHS)
+_ARCHIVE_SEED_ROWS = (
+    (_vault_relative(ARCHIVED_MEETINGS_DIR / "README.md"), "intentional-seed"),
+    (_vault_relative(ARCHIVED_DAILY_PLANS_DIR / "README.md"), "intentional-seed"),
+)
+_PLANS_README = _vault_relative(ARCHIVES_DIR / "Plans" / "README.md")
 PROFILE_SAFE_APPROVED_ROWS = tuple(
-    row for row in APPROVED_ROWS if row[0] != "System/user-profile.yaml"
+    seed
+    for row in APPROVED_ROWS
+    if row[0] != "System/user-profile.yaml"
+    for seed in ((_ARCHIVE_SEED_ROWS + (row,)) if row[0] == _PLANS_README else (row,))
 )
 BASELINE_ROWS = {1: APPROVED_ROWS, 2: FUTURE_APPROVED_ROWS, 3: PROFILE_SAFE_APPROVED_ROWS}
 LOCAL_ONLY_PATHS = tuple(path for path, kind in APPROVED_ROWS if kind == "local-only-must-be-untracked")

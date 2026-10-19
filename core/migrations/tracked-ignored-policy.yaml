@@ -110,7 +110,7 @@ baselines:
       - path: System/integrations/slack.yaml
         classification: local-only-must-be-untracked
   - baseline_version: 3
-    baseline_count: 26
+    baseline_count: 28
     paths:
       - path: 00-Inbox/Daily_Plans/README.md
         classification: intentional-seed
@@ -139,6 +139,10 @@ baselines:
       - path: 05-Areas/People/README.md
         classification: intentional-seed
       - path: 05-Areas/README.md
+        classification: intentional-seed
+      - path: 07-Archives/Meetings/README.md
+        classification: intentional-seed
+      - path: 07-Archives/Plans/Daily/README.md
         classification: intentional-seed
       - path: 07-Archives/Plans/README.md
         classification: intentional-seed

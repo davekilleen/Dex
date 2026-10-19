@@ -191,11 +191,11 @@ def test_repository_policy_carries_exact_current_and_future_baselines():
     for row in rows:
         by_class.setdefault(row.classification, []).append(row.path)
 
-    assert len(by_class["intentional-seed"]) == 22
+    assert len(by_class["intentional-seed"]) == 24
     assert by_class["release-doc"] == ["System/Beta_Communications/2026-02-04_hardcoded_paths_fix.md"]
     assert tuple(by_class["local-only-must-be-untracked"]) == PROFILE_SAFE_LOCAL_ONLY_PATHS
     assert len(BASELINE_ROWS[2]) == 24
-    assert len(BASELINE_ROWS[3]) == 26
+    assert len(BASELINE_ROWS[3]) == 28
     assert FUTURE_LOCAL_ONLY_PATHS == ("System/integrations/slack.yaml",)
 
 
