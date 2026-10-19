@@ -1509,8 +1509,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/enable-semantic-search/SKILL.md",
-        "sha256": "cfd8cda3a6fd2fbd63129ed59a94db64a9dda24007dce2b488144043ee0459af",
-        "byte_size": 18978
+        "sha256": "5da9a0106690c3ab28a3e262e9e6671463517e5e82631b14206c2cd68ef6c1f7",
+        "byte_size": 19139
       },
       "value": "Makes the person's own notes searchable by meaning rather than exact wording, on their own machine — so looking for “customer churn” still finds the note that said “people keep leaving”.",
       "jobs_served": [
