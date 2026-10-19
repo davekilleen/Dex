@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.29] — Calendar deletes finish, Google mail starts again, helpers load on older Python, and checkup proves large pictures (2026-10-19)
+
 Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out, Dex called the calendar broken, and the event stayed put. Thanks to Greg for the report.
 
 **What this fixes for you:**

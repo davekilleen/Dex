@@ -1557,6 +1557,7 @@ core/tests/test_lifecycle_topology_migration.py
 core/tests/test_local_git.py
 core/tests/test_manifest_lifecycle_paths.py
 core/tests/test_manual_note_match.py
+core/tests/test_mcp_lifecycle_forward.py
 core/tests/test_mcp_registration_lifecycle.py
 core/tests/test_mcp_servers.py
 core/tests/test_mcp_session_lifecycle.py
@@ -1596,6 +1597,7 @@ core/tests/test_provision_js_yaml_missing.py
 core/tests/test_provision_parity.py
 core/tests/test_provision_python_selection.py
 core/tests/test_provision_transaction.py
+core/tests/test_python311_dataclass_defaults.py
 core/tests/test_qmd_query_grep_fallback.py
 core/tests/test_reanchor_cli.py
 core/tests/test_relationship_radar_skill.py
