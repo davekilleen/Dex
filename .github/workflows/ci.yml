@@ -34,6 +34,43 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 jobs:
+  # DEX-245: Python 3.11 rejects MappingProxyType as a frozen-dataclass field
+  # default while 3.12 accepts it. The sharded suite runs 3.12, so this job is
+  # the import path that actually crashed (lifecycle → eight MCP servers).
+  py311-mcp-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VAULT_PATH: core/tests/fixtures/vault
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Import the 3.11 crash site and affected MCP servers
+        run: |
+          python -m pip install -q "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
+          python -c "
+          import importlib
+          from core.lifecycle.customizations import ReleaseBaseline
+          assert ReleaseBaseline is not None
+          for module in (
+              'core.mcp.work_server',
+              'core.mcp.calendar_server',
+              'core.mcp.career_server',
+              'core.mcp.resume_server',
+              'core.mcp.onboarding_server',
+              'core.mcp.analytics_server',
+              'core.mcp.dex_improvements_server',
+              'core.mcp.customization_migration_server',
+          ):
+              importlib.import_module(module)
+          print('python', __import__('sys').version.split()[0], 'imports ok')
+          "
+
   # Gates, JS suites, lint, and static checks. The Python test suite runs in the
   # sharded `tests` matrix below; its thresholds are enforced by `test-results`.
   quality:

@@ -11,6 +11,7 @@ Usage:
     calendar_eventkit.py search <calendar_name> <query> <days_back> <days_forward>
     calendar_eventkit.py next <calendar_name>
     calendar_eventkit.py attendees <calendar_name> <start_offset> <end_offset>
+    calendar_eventkit.py delete <calendar_name> <title> <day_offset>
 """
 
 import json
@@ -382,6 +383,62 @@ def get_next_event(calendar_name: str):
     print(json.dumps(format_event(next_event), indent=2))
 
 
+def _event_start_sort_key(event):
+    start = _safe_call(event, "startDate")
+    seconds = _safe_call(start, "timeIntervalSince1970") if start is not None else None
+    return float(seconds) if seconds is not None else 0.0
+
+
+def _remove_event(store, event) -> bool:
+    """Remove one occurrence. Matches the old AppleScript 'delete item 1'."""
+    span = getattr(EventKit, "EKSpanThisEvent", 0)
+    if hasattr(store, "removeEvent_span_commit_error_"):
+        return bool(store.removeEvent_span_commit_error_(event, span, True, None))
+    if hasattr(store, "removeEvent_span_error_"):
+        return bool(store.removeEvent_span_error_(event, span, None))
+    return False
+
+
+def delete_event(calendar_name: str, title: str, day_offset: int = 0):
+    """Delete the first event with an exact title on the target day.
+
+    Uses a one-day EventKit predicate so a busy calendar is not loaded in
+    full. The retired AppleScript helper scanned every event and timed out.
+    """
+    store = EventKit.EKEventStore.alloc().init()
+    if not ensure_calendar_access(store):
+        print(json.dumps({"error": CALENDAR_ACCESS_DENIED}))
+        sys.exit(1)
+
+    target_calendar = find_calendar(store, calendar_name)
+    if not target_calendar:
+        print(json.dumps({"error": f"Calendar not found: {calendar_name}"}))
+        sys.exit(1)
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = today + timedelta(days=day_offset)
+    end_date = start_date + timedelta(days=1)
+
+    predicate = store.predicateForEventsWithStartDate_endDate_calendars_(
+        start_date,
+        end_date,
+        [target_calendar],
+    )
+    events = list(store.eventsMatchingPredicate_(predicate) or [])
+    matching = [event for event in events if (event.title() or "") == title]
+    if not matching:
+        print(f"No event found matching: {title}")
+        return
+
+    matching.sort(key=_event_start_sort_key)
+    event = matching[0]
+    if not _remove_event(store, event):
+        print(json.dumps({"error": f"Failed to delete event: {title}"}))
+        sys.exit(1)
+
+    print(f"Deleted event: {title}")
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
@@ -390,6 +447,7 @@ def main():
         print("  calendar_eventkit.py search <calendar> <query> <days_back> <days_forward>")
         print("  calendar_eventkit.py next <calendar>")
         print("  calendar_eventkit.py attendees <calendar> <start_offset> <end_offset>")
+        print("  calendar_eventkit.py delete <calendar> <title> <day_offset>")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -431,6 +489,12 @@ def main():
         start_offset = int(sys.argv[3])
         end_offset = int(sys.argv[4])
         get_events(calendar_name, start_offset, end_offset, with_attendees=True)
+
+    elif command == "delete":
+        if len(sys.argv) != 5:
+            print("Usage: calendar_eventkit.py delete <calendar> <title> <day_offset>")
+            sys.exit(1)
+        delete_event(sys.argv[2], sys.argv[3], int(sys.argv[4]))
     
     else:
         print(f"Unknown command: {command}")

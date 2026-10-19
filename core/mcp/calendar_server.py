@@ -192,6 +192,16 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
         return False, str(e)
 
 
+DELETE_TIMEOUT_MESSAGE = (
+    "Deleting that event took too long. Your calendar is still working — "
+    "try again, or delete it in Calendar."
+)
+
+
+def _script_timed_out(output: str) -> bool:
+    return "timed out after" in output
+
+
 def _broken_feature_payload(feature: str, error: str) -> dict:
     """Preserve a legacy Calendar/Reminders error while adding status fields."""
     return feature_status(feature, "broken", error, error=error)
@@ -875,16 +885,24 @@ async def _handle_call_tool_inner(
         day_offset = (target_dt - today_dt).days
         
         success, output = run_shell_script(
-            "calendar_delete_event.sh",
+            "calendar_eventkit.py",
+            "delete",
             calendar_name,
             title,
-            str(day_offset)
+            str(day_offset),
         )
         
         if success:
             result = {
                 "success": True,
                 "message": output
+            }
+        elif _script_timed_out(output):
+            # A slow delete is not a broken calendar. Reads and creates on
+            # the same calendar still work (DEX-249).
+            result = {
+                "success": False,
+                "error": DELETE_TIMEOUT_MESSAGE,
             }
         else:
             result = _broken_feature_payload(CALENDAR_FEATURE, output)
