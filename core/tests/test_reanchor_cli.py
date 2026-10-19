@@ -266,6 +266,69 @@ def test_happy_path_reanchors_and_unblocks_the_assessment(
     assert not any(e.reason == UNPROVED for e in after.exclusions)
 
 
+LARGE_STOCK_PATH = "docs/assets/dex-hero.gif"
+LARGE_STOCK_BYTES = b"GIF89a" + b"\x00" * (1024 * 1024)
+
+
+def _unproved_paths(vault: Path) -> tuple[str, ...]:
+    from core.customization_migration.service import assess
+
+    return tuple(
+        exclusion.path
+        for exclusion in assess(vault).exclusions
+        if exclusion.reason == UNPROVED
+    )
+
+
+def test_large_stock_file_preview_matches_checkup_after_reanchor(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """DEX-248: a shipped file over the 1 MiB source-read bound must be proved.
+
+    Preview used to subtract the path because the anchor listed it, while
+    checkup still could not hash it. Completeness then stayed UNKNOWN on a
+    stock install that ships docs/assets/dex-hero.gif.
+    """
+    from core.customization_migration.service import assess
+    from core.update.anchor_generation import generate_release_anchor
+
+    fixture = _release_repo(
+        tmp_path, extra_files={LARGE_STOCK_PATH: LARGE_STOCK_BYTES}
+    )
+    vault = _vault_with_brain(tmp_path, fixture)
+
+    before = assess(vault)
+    assert before.completeness == "UNKNOWN"
+    assert LARGE_STOCK_PATH in _unproved_paths(vault)
+
+    generation = generate_release_anchor(vault)
+    baseline = load_release_baseline(vault)
+    preview = reanchor_cli._preview_counts(
+        vault,
+        generation,
+        manifest_paths=baseline.manifest_paths,
+        unproved=_unproved_paths(vault),
+    )
+
+    return_code, output = _run_flow(
+        vault, monkeypatch, capsys, stdin=_FakeTty("yes\nyes\n")
+    )
+    assert return_code == 0, output
+
+    remaining = _unproved_paths(vault)
+    assert preview["still-unproved"] == len(remaining)
+    assert LARGE_STOCK_PATH not in remaining
+    assert remaining == ()
+
+    shutil.rmtree(vault / ".dex")
+    shutil.rmtree(vault / ".git")
+    (vault / "System/.dex/topology.json").unlink()
+    after = assess(vault)
+    assert after.completeness == "OK"
+    assert after.verdict == "OK"
+    assert not any(exclusion.reason == UNPROVED for exclusion in after.exclusions)
+
+
 def test_happy_path_output_names_the_previewed_digest(
     anchored_vault: Path, monkeypatch, capsys
 ) -> None:

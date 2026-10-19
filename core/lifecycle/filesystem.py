@@ -18,6 +18,10 @@ from core.utils.os_flags import binary_read_flags
 
 DEFAULT_MAX_ENTRIES = 200_000
 DEFAULT_MAX_READ_BYTES = 8 * 1024 * 1024
+# Shared cap for hashing shipped (stock) files. Source-parsing reads stay at
+# 1 MiB (customization_migration.references.MAX_SOURCE_BYTES); this bound is
+# only for identity hashes of files the release already vouches for.
+STOCK_HASH_MAX_BYTES = 16 * 1024 * 1024
 
 
 class FilesystemInspectionError(RuntimeError):
@@ -229,9 +233,72 @@ def sha256_file(root: Path, relative: str, *, max_bytes: int = DEFAULT_MAX_READ_
     return hashlib.sha256(bounded_read(root, relative, max_bytes=max_bytes)).hexdigest()
 
 
+def sha256_stock_file(
+    root: Path,
+    relative: str,
+    *,
+    max_bytes: int = STOCK_HASH_MAX_BYTES,
+) -> tuple[str, str | None]:
+    """Stream-hash a release-vouched file without loading it into memory.
+
+    Returns ``(raw_sha256, crlf_normalized_sha256_or_none)``. The normalized
+    digest is present only when the bytes contain CRLF, matching
+    :func:`core.lifecycle.catalog.crlf_normalized_sha256`.
+    """
+    if max_bytes < 0:
+        raise ValueError("max_bytes cannot be negative")
+    descriptor = _open_beneath(Path(root), relative)
+    try:
+        size = os.fstat(descriptor).st_size
+        if size > max_bytes:
+            raise FilesystemInspectionError(
+                f"bounded read exceeded for {relative}: {size} > {max_bytes}"
+            )
+        raw_hasher = hashlib.sha256()
+        norm_hasher = hashlib.sha256()
+        saw_crlf = False
+        pending_cr = False
+        total = 0
+        while True:
+            chunk = os.read(descriptor, 65_536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise FilesystemInspectionError(
+                    f"bounded read exceeded for {relative}: {total} > {max_bytes}"
+                )
+            raw_hasher.update(chunk)
+            if pending_cr:
+                if chunk.startswith(b"\n"):
+                    saw_crlf = True
+                    norm_hasher.update(b"\n")
+                    chunk = chunk[1:]
+                else:
+                    norm_hasher.update(b"\r")
+                pending_cr = False
+            if chunk.endswith(b"\r"):
+                pending_cr = True
+                chunk = chunk[:-1]
+            if b"\r\n" in chunk:
+                saw_crlf = True
+                chunk = chunk.replace(b"\r\n", b"\n")
+            if chunk:
+                norm_hasher.update(chunk)
+        if pending_cr:
+            norm_hasher.update(b"\r")
+        raw_digest = raw_hasher.hexdigest()
+        if not saw_crlf:
+            return raw_digest, None
+        return raw_digest, norm_hasher.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
 __all__ = [
     "DEFAULT_MAX_ENTRIES",
     "DEFAULT_MAX_READ_BYTES",
+    "STOCK_HASH_MAX_BYTES",
     "FilesystemInspectionError",
     "WalkEntry",
     "WalkReport",
@@ -239,5 +306,6 @@ __all__ = [
     "detect_case_collisions",
     "normalize_relative_path",
     "sha256_file",
+    "sha256_stock_file",
     "walk_read_only",
 ]

@@ -33,7 +33,6 @@ from core.lifecycle.catalog import (
     canonical_catalog_bytes,
     canonical_hash_table_bytes,
     loads_catalog,
-    release_bytes_match,
     with_catalog_identity,
 )
 from core.lifecycle.customizations import (
@@ -42,7 +41,12 @@ from core.lifecycle.customizations import (
     MAX_CATALOG_BYTES,
     MAX_MANIFEST_BYTES,
 )
-from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
+from core.lifecycle.filesystem import (
+    STOCK_HASH_MAX_BYTES,
+    FilesystemInspectionError,
+    bounded_read,
+    sha256_stock_file,
+)
 from core.update.anchor_generation import (
     AnchorGenerationError,
     VerifiedAnchorSource,
@@ -60,7 +64,6 @@ CATALOG_RELATIVE = "System/.release-catalog.json"
 RECEIPT_RELATIVE = "System/.dex/established-baseline.receipt.json"
 RECEIPT_VERSION = 1
 MAX_RECEIPT_BYTES = 64 * 1024
-_PREVIEW_READ_BYTES = 16 * 1024 * 1024
 _HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SEMVER = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
@@ -419,10 +422,14 @@ def infer_best_match(vault_root: Path) -> OfficialBaseline:
 
 def _disk_matches(vault_root: Path, relative: str, expected_sha256: str) -> bool:
     try:
-        raw = bounded_read(Path(vault_root), relative, max_bytes=_PREVIEW_READ_BYTES)
+        raw_digest, crlf_digest = sha256_stock_file(
+            Path(vault_root), relative, max_bytes=STOCK_HASH_MAX_BYTES
+        )
     except FilesystemInspectionError:
         return False
-    return release_bytes_match(expected_sha256, raw)
+    return expected_sha256 == raw_digest or (
+        crlf_digest is not None and expected_sha256 == crlf_digest
+    )
 
 
 def _existing_manifest_paths(vault_root: Path) -> frozenset[str]:
@@ -461,12 +468,16 @@ def preview_against_baseline(
             counts["missing-from-disk"] += 1
             continue
         try:
-            raw = bounded_read(root, path, max_bytes=_PREVIEW_READ_BYTES)
+            raw_digest, crlf_digest = sha256_stock_file(
+                root, path, max_bytes=STOCK_HASH_MAX_BYTES
+            )
         except FilesystemInspectionError:
             rows.append(InventoryRow(path, "unreadable"))
             counts["unreadable"] += 1
             continue
-        if release_bytes_match(expected, raw):
+        if expected == raw_digest or (
+            crlf_digest is not None and expected == crlf_digest
+        ):
             rows.append(InventoryRow(path, "release-pristine"))
             counts["release-pristine"] += 1
         else:

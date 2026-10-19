@@ -10,12 +10,18 @@ Appendix B of the Windows support spec.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
 import pytest
 
-from core.lifecycle.filesystem import bounded_read
+from core.lifecycle.filesystem import (
+    STOCK_HASH_MAX_BYTES,
+    FilesystemInspectionError,
+    bounded_read,
+    sha256_stock_file,
+)
 from core.tests.lifecycle_test_helpers import (
     CTRL_Z_BLOB_SIZE,
     CTRL_Z_OFFSET,
@@ -165,3 +171,36 @@ def test_simulated_text_mode_read_without_obinary_truncates_at_ctrl_z(
         os.close(descriptor)
     assert recovered == blob[:CTRL_Z_OFFSET]
     assert b"\x1a" not in recovered
+
+
+def test_sha256_stock_file_streams_over_source_bound_and_normalizes_crlf(
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    large = b"GIF89a" + b"\x00" * (1024 * 1024)
+    crlf = b"line one\r\nline two\r\n"
+    spanning = (b"x" * 65_535) + b"\r\n" + b"y"
+    (vault / "large.bin").write_bytes(large)
+    (vault / "crlf.txt").write_bytes(crlf)
+    (vault / "span.bin").write_bytes(spanning)
+
+    large_digest, large_norm = sha256_stock_file(vault, "large.bin")
+    assert large_digest == hashlib.sha256(large).hexdigest()
+    assert large_norm is None
+
+    crlf_digest, crlf_norm = sha256_stock_file(vault, "crlf.txt")
+    assert crlf_digest == hashlib.sha256(crlf).hexdigest()
+    assert crlf_norm == hashlib.sha256(b"line one\nline two\n").hexdigest()
+
+    span_digest, span_norm = sha256_stock_file(vault, "span.bin")
+    assert span_digest == hashlib.sha256(spanning).hexdigest()
+    assert span_norm == hashlib.sha256((b"x" * 65_535) + b"\n" + b"y").hexdigest()
+
+    with pytest.raises(FilesystemInspectionError, match="bounded read exceeded"):
+        sha256_stock_file(vault, "large.bin", max_bytes=1024)
+
+
+def test_stock_hash_bound_is_shared_and_larger_than_one_megabyte() -> None:
+    assert STOCK_HASH_MAX_BYTES == 16 * 1024 * 1024
+    assert STOCK_HASH_MAX_BYTES > 1024 * 1024

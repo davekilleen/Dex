@@ -296,6 +296,76 @@ def test_symlink_and_oversized_sources_are_refused_and_excluded_honestly(
     assert b"SENTINEL_FROM_OUTSIDE" not in assessment.canonical_assessment_bytes()
 
 
+def test_stock_file_over_source_read_bound_is_proved_when_catalog_has_hash(
+    tmp_path: Path,
+) -> None:
+    """DEX-248: checkup must hash a vouched shipped asset larger than 1 MiB."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    large_path = "docs/assets/dex-hero.gif"
+    large_bytes = b"GIF89a" + b"\x00" * (1024 * 1024)
+    write_file(vault, SHIPPED_SKILL, SHIPPED_BYTES)
+    write_file(vault, large_path, large_bytes)
+    manifest = write_manifest(vault, [SHIPPED_SKILL, large_path])
+    document = with_catalog_identity(
+        {
+            "catalog_version": 2,
+            "release": {
+                "version": "1.73.0",
+                "channel": "release",
+                "immutable_distribution_tag_pattern": "dist/release/v1.73.0-<release-commit-prefix>",
+                "source_commit": SOURCE_COMMIT,
+                "manifest": {
+                    "path": "System/.installed-files.manifest",
+                    "sha256": hashlib.sha256(manifest).hexdigest(),
+                },
+            },
+            "items": [
+                {
+                    "id": "daily-plan",
+                    "kind": "skill",
+                    "version": "1.0.0",
+                    "files": [
+                        {
+                            "path": SHIPPED_SKILL,
+                            "sha256": hashlib.sha256(SHIPPED_BYTES).hexdigest(),
+                            "ownership_class": "brain",
+                        },
+                        {
+                            "path": large_path,
+                            "sha256": hashlib.sha256(large_bytes).hexdigest(),
+                            "ownership_class": "brain",
+                        },
+                    ],
+                    "dependencies": [],
+                    "capabilities": [],
+                    "rewind": {
+                        "acknowledgement_required": True,
+                        "token": "rewind:daily-plan@1.0.0",
+                    },
+                }
+            ],
+            "integrity": {"catalog_sha256": "0" * 64, "signatures": []},
+        }
+    )
+    write_file(
+        vault,
+        "System/.release-catalog.json",
+        canonical_catalog_bytes(document),
+    )
+
+    assessment = assess(vault)
+    unproved = {
+        exclusion.path
+        for exclusion in assessment.exclusions
+        if exclusion.reason == "release-identity-unproved"
+    }
+
+    assert large_path not in unproved
+    assert assessment.completeness == "OK"
+    assert assessment.verdict == "OK"
+
+
 def test_canonical_assessment_is_byte_identical_across_runs(tmp_path: Path) -> None:
     vault = _linked_customized_vault(tmp_path)
 

@@ -43,9 +43,12 @@ import sys
 from pathlib import Path
 
 from core.customization_migration import service as migration_service
-from core.lifecycle.catalog import release_bytes_match
 from core.lifecycle.customizations import load_release_baseline
-from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
+from core.lifecycle.filesystem import (
+    STOCK_HASH_MAX_BYTES,
+    FilesystemInspectionError,
+    sha256_stock_file,
+)
 from core.lifecycle.release_anchor import (
     RELEASE_ANCHOR_PATH,
     brain_owned_rows,
@@ -64,10 +67,6 @@ from core.update.establish_baseline import (
 )
 
 _UNPROVED_REASON = "release-identity-unproved"
-# Per-file cap for the preview's on-disk comparison reads. Release-owned
-# files are far smaller than this; anything over the cap is honestly counted
-# as unreadable rather than silently classified.
-_PREVIEW_READ_BYTES = 16 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring design, ruling 5).
@@ -264,11 +263,15 @@ def _preview_counts(
             counts["missing-from-disk"] += 1
             continue
         try:
-            raw = bounded_read(vault_root, path, max_bytes=_PREVIEW_READ_BYTES)
+            raw_digest, crlf_digest = sha256_stock_file(
+                vault_root, path, max_bytes=STOCK_HASH_MAX_BYTES
+            )
         except FilesystemInspectionError:
             counts["unreadable"] += 1
             continue
-        if release_bytes_match(expected_sha256, raw):
+        if expected_sha256 == raw_digest or (
+            crlf_digest is not None and expected_sha256 == crlf_digest
+        ):
             counts["release-pristine"] += 1
         else:
             counts["release-modified"] += 1

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core import portable_contract
-from core.lifecycle.catalog import crlf_normalized_sha256
 from core.lifecycle.customizations import (
     CustomizationReport,
     ReleaseBaseline,
@@ -21,10 +20,11 @@ from core.lifecycle.customizations import (
 )
 from core.lifecycle.filesystem import (
     DEFAULT_MAX_ENTRIES,
-    DEFAULT_MAX_READ_BYTES,
+    STOCK_HASH_MAX_BYTES,
     FilesystemInspectionError,
     bounded_read,
     normalize_relative_path,
+    sha256_stock_file,
     walk_read_only,
 )
 from core.lifecycle.machine_state import MachineStateReport, probe_machine_state
@@ -280,7 +280,7 @@ def build_inventory(
     catalog: ReleaseCatalog | None = None,
     catalog_path: str | None = None,
     max_entries: int = DEFAULT_MAX_ENTRIES,
-    max_hash_bytes: int = DEFAULT_MAX_READ_BYTES,
+    max_hash_bytes: int = STOCK_HASH_MAX_BYTES,
 ) -> InventoryReport:
     """Classify every observed path, reporting rather than guessing unknowns."""
     root = Path(vault_root)
@@ -304,14 +304,11 @@ def build_inventory(
             and stock_sha256s(baseline, canonical)
         ):
             try:
-                raw = bounded_read(root, observed.path, max_bytes=max_hash_bytes)
+                digest, normalized_digest = sha256_stock_file(
+                    root, observed.path, max_bytes=max_hash_bytes
+                )
             except FilesystemInspectionError as error:
                 errors.append(str(error))
-            else:
-                # The entry records the honest on-disk digest; the normalized
-                # digest only feeds the release-state comparison (issue #256).
-                digest = hashlib.sha256(raw).hexdigest()
-                normalized_digest = crlf_normalized_sha256(raw)
         release_state = classify_release_state(
             canonical_path=canonical,
             kind=observed.kind,

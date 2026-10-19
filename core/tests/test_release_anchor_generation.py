@@ -89,6 +89,7 @@ def _release_repo(
     *,
     tag_version: str = "1.64.0",
     package_version: str | None = None,
+    extra_files: dict[str, bytes] | None = None,
 ) -> dict[str, object]:
     release = tmp_path / "release"
     release.mkdir()
@@ -96,6 +97,8 @@ def _release_repo(
     _git(release, "config", "user.name", "Anchor Tests")
     _git(release, "config", "user.email", "anchor@example.com")
     for relative, content in BRAIN_FILES.items():
+        _write(release, relative, content)
+    for relative, content in (extra_files or {}).items():
         _write(release, relative, content)
     _write(release, *SEED_FILE)
     _write(release, *RUNTIME_FILE)

@@ -32,7 +32,11 @@ from core.customization_migration.references import (
     read_settings_hook_edges,
 )
 from core.lifecycle.customizations import detect_customizations
-from core.lifecycle.filesystem import FilesystemInspectionError, bounded_read
+from core.lifecycle.filesystem import (
+    STOCK_HASH_MAX_BYTES,
+    FilesystemInspectionError,
+    bounded_read,
+)
 from core.lifecycle.inventory import InventoryEntry, InventoryReport, build_inventory
 
 SCRIPT_SUFFIXES = frozenset({".py", ".js", ".cjs", ".mjs", ".sh", ".bash", ".zsh"})
@@ -486,7 +490,12 @@ def _assign_groups(
 def discover(vault_root: Path) -> DiscoveryResult:
     """Discover customizations without following links, caching, or writing."""
     root = Path(vault_root)
-    inventory = build_inventory(root, max_hash_bytes=MAX_SOURCE_BYTES)
+    # Stock identity hashing is not source parsing. MAX_SOURCE_BYTES (1 MiB)
+    # is the bound for reading user files to extract references. A shipped
+    # asset such as docs/assets/dex-hero.gif is larger than that; hashing it
+    # with the source bound left checkup UNKNOWN after a successful re-anchor
+    # (DEX-248). Stream-hash vouched stock files with the shared stock bound.
+    inventory = build_inventory(root, max_hash_bytes=STOCK_HASH_MAX_BYTES)
     customization_report = detect_customizations(inventory.entries)
     if inventory.baseline.identity_state != "VERIFIED":
         return DiscoveryResult(inventory, (), (), (), (), False)
