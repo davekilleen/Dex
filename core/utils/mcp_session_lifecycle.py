@@ -648,7 +648,10 @@ def _wait_briefly(process: subprocess.Popen[bytes]) -> None:
 
 
 def _forward_bytes(source: object, dest: object, stop: threading.Event | None) -> None:
-    read = getattr(source, "read", None)
+    # BufferedReader.read(n) waits for n bytes or EOF. MCP greetings are a
+    # few hundred bytes and the host keeps the pipe open, so that wait never
+    # ends. read1 returns as soon as any bytes arrive.
+    read = getattr(source, "read1", None) or getattr(source, "read", None)
     write = getattr(dest, "write", None)
     flush = getattr(dest, "flush", None)
     if not callable(read) or not callable(write):
