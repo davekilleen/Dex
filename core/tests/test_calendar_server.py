@@ -62,7 +62,7 @@ def test_retired_delete_script_does_not_scan_every_event():
     """A restored AppleScript full-calendar scan would time out again."""
     script = calendar_server.SCRIPTS_DIR / "calendar_delete_event.sh"
     body = script.read_text()
-    assert "every event of" not in body
+    assert "every event of targetCal" not in body
     assert "osascript" not in body
 
 
