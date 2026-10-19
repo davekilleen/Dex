@@ -195,16 +195,18 @@ Return to user (0.5 seconds)
 
 ---
 
-## Why We Keep AppleScript for Write Operations
+## Why Delete Uses EventKit, and Create Still Uses AppleScript
 
-Write operations (create/delete events) are still using AppleScript because:
+Delete used to run the same AppleScript full-calendar scan as the old read path. On a busy calendar that load took longer than the 120-second helper limit, so "take this event off my calendar" timed out and the event stayed. Delete now uses the same one-day EventKit query as reads, then removes that one occurrence.
 
-1. **Low Frequency:** Users rarely create/delete events from Dex
-2. **Simplicity:** AppleScript "create event" is 5 lines vs 30 lines of EventKit
+Create still uses AppleScript because:
+
+1. **Low Frequency:** Users rarely create events from Dex
+2. **Simplicity:** AppleScript "create event" is a short date-and-properties write
 3. **Permission Safety:** Write operations need explicit user intent
-4. **Good Enough:** 2-second create time is acceptable for rare operations
+4. **Good Enough:** A couple of seconds to create is acceptable for a rare action
 
-**Performance is critical for reads, not writes.**
+**Reads and deletes need a dated query. Create does not.**
 
 ---
 

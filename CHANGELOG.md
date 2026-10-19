@@ -9,6 +9,20 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out, Dex called the calendar broken, and the event stayed put. Thanks to Greg for the report.
+
+**What this fixes for you:**
+
+* **Deleting an event finishes quickly.** Dex now looks only at that day, then removes the matching event. A busy calendar no longer makes this hang or time out. Titles with quotes delete the same as any other.
+* **A slow delete does not call the calendar broken.** You get a clear message, and other calendar asks still work.
+* **If nothing matches, you get a clear answer.** Dex says it could not find that title on that day.
+
+After Dex started shutting Google mail down when you close a tab, opening Dex again could leave mail, calendar, and docs silent. Dex waited half a minute for a first reply that never came. Thanks to Olivier for the report.
+
+**What this fixes for you:**
+
+* **Google mail starts with the session again.** Closing a tab still stops leftover copies. Opening Dex now gets an answer back, so Gmail, Calendar, and Docs work instead of sitting there.
+
 On the older Python that Homebrew still offers as 3.11, Dex's task, calendar, and planning helpers could fail as they started, so they showed as disconnected and those tools were unavailable. Thanks to Michelle for the report.
 
 **What this fixes for you:**

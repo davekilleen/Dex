@@ -25,6 +25,105 @@ def _capture_subprocess_command(monkeypatch):
     return captured
 
 
+def test_calendar_delete_event_uses_eventkit_one_day_query(monkeypatch):
+    """DEX-249: delete used to run AppleScript that loaded every event and
+    timed out after 120s. It must go through EventKit with a day offset."""
+    captured = {}
+
+    def fake_run(script_name, *args):
+        captured["script"] = script_name
+        captured["args"] = args
+        return True, "Deleted event: Hold"
+
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run)
+    monkeypatch.setattr(
+        calendar_server, "_tz_today", lambda: calendar_server.date(2026, 10, 19)
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server._handle_call_tool_inner(
+                "calendar_delete_event",
+                {
+                    "calendar_name": "Work",
+                    "title": "Hold",
+                    "event_date": "2026-10-21",
+                },
+            )
+        )
+    )
+
+    assert payload == {"success": True, "message": "Deleted event: Hold"}
+    assert captured["script"] == "calendar_eventkit.py"
+    assert captured["args"] == ("delete", "Work", "Hold", "2")
+
+
+def test_calendar_delete_event_passes_quoted_title_as_an_argument(monkeypatch):
+    """AppleScript used to interpolate the title into a heredoc, so a quote
+    broke the script. EventKit must receive the title as one argv value."""
+    captured = {}
+    title = 'Hold "Q3" and Pat\'s sync'
+
+    def fake_run(script_name, *args):
+        captured["script"] = script_name
+        captured["args"] = args
+        return True, f"Deleted event: {title}"
+
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run)
+    monkeypatch.setattr(
+        calendar_server, "_tz_today", lambda: calendar_server.date(2026, 10, 19)
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server._handle_call_tool_inner(
+                "calendar_delete_event",
+                {
+                    "calendar_name": "Work",
+                    "title": title,
+                    "event_date": "2026-10-19",
+                },
+            )
+        )
+    )
+
+    assert payload["success"] is True
+    assert captured["script"] == "calendar_eventkit.py"
+    assert captured["args"] == ("delete", "Work", title, "0")
+
+
+def test_retired_delete_script_does_not_scan_every_event():
+    """A restored AppleScript full-calendar scan would time out again."""
+    script = calendar_server.SCRIPTS_DIR / "calendar_delete_event.sh"
+    body = script.read_text()
+    assert "every event of targetCal" not in body
+    assert "osascript" not in body
+
+
+def test_calendar_delete_event_timeout_is_not_a_broken_calendar(monkeypatch):
+    monkeypatch.setattr(
+        calendar_server,
+        "run_shell_script",
+        lambda *args: (False, "Script 'calendar_delete_event.sh' timed out after 120 seconds"),
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server._handle_call_tool_inner(
+                "calendar_delete_event",
+                {"title": "Hold", "event_date": "2026-10-19"},
+            )
+        )
+    )
+
+    assert payload == {
+        "success": False,
+        "error": calendar_server.DELETE_TIMEOUT_MESSAGE,
+    }
+    assert "feature_status" not in payload
+    assert "broken" not in payload.get("error", "").lower()
+
+
 def test_run_shell_script_dispatches_sh_scripts_to_bash(monkeypatch):
     captured = _capture_subprocess_command(monkeypatch)
 
