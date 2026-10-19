@@ -262,6 +262,142 @@ def test_write_only_status_is_usable_after_full_access_upgrade(monkeypatch, caps
     assert capsys.readouterr().out == ""
 
 
+class _DeleteEvent:
+    def __init__(self, title, timestamp):
+        self._title = title
+        self._timestamp = timestamp
+
+    def title(self):
+        return self._title
+
+    def startDate(self):
+        return _NSDate(self._timestamp)
+
+
+class _DeleteStore:
+    def __init__(self, events, calendar_title="Work"):
+        self.events = events
+        self.calendar_title = calendar_title
+        self.predicate_range = None
+        self.removed = []
+
+    def calendarsForEntityType_(self, _entity_type):
+        return [_Calendar()]
+
+    def predicateForEventsWithStartDate_endDate_calendars_(self, start, end, calendars):
+        self.predicate_range = (start, end, calendars)
+        return "one-day-predicate"
+
+    def eventsMatchingPredicate_(self, predicate):
+        assert predicate == "one-day-predicate"
+        return self.events
+
+    def removeEvent_span_commit_error_(self, event, span, commit, error):
+        self.removed.append((event, span, commit))
+        return True
+
+
+def test_delete_event_uses_one_day_predicate_and_removes_first_match(monkeypatch, capsys):
+    """DEX-249: delete must query one day, not every event on the calendar."""
+    store = _DeleteStore(
+        [
+            _DeleteEvent("Hold", 1_710_000_900),
+            _DeleteEvent("Hold", 1_710_000_000),
+            _DeleteEvent("Other", 1_710_000_100),
+        ]
+    )
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 3,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(
+            EKEntityTypeEvent=0,
+            EKSpanThisEvent=0,
+            EKEventStore=event_store,
+        ),
+    )
+    monkeypatch.setattr(calendar_eventkit, "ensure_calendar_access", lambda _store: True)
+
+    calendar_eventkit.delete_event("Work", "Hold", 0)
+
+    assert capsys.readouterr().out.strip() == "Deleted event: Hold"
+    start, end, calendars = store.predicate_range
+    assert (end - start).days == 1
+    assert len(store.removed) == 1
+    removed_event, span, commit = store.removed[0]
+    assert removed_event.title() == "Hold"
+    assert removed_event.startDate().timeIntervalSince1970() == 1_710_000_000
+    assert span == 0
+    assert commit is True
+
+
+def test_delete_event_matches_a_title_with_quotes(monkeypatch, capsys):
+    title = 'Hold "Q3" and Pat\'s sync'
+    store = _DeleteStore([_DeleteEvent(title, 1_710_000_000)])
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 3,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(
+            EKEntityTypeEvent=0,
+            EKSpanThisEvent=0,
+            EKEventStore=event_store,
+        ),
+    )
+    monkeypatch.setattr(calendar_eventkit, "ensure_calendar_access", lambda _store: True)
+
+    calendar_eventkit.delete_event("Work", title, 0)
+
+    assert capsys.readouterr().out.strip() == f"Deleted event: {title}"
+    assert store.removed[0][0].title() == title
+
+
+def test_delete_event_missing_title_is_not_an_error(monkeypatch, capsys):
+    store = _DeleteStore([_DeleteEvent("Other", 1_710_000_000)])
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 3,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(EKEntityTypeEvent=0, EKEventStore=event_store),
+    )
+    monkeypatch.setattr(calendar_eventkit, "ensure_calendar_access", lambda _store: True)
+
+    calendar_eventkit.delete_event("Work", "Hold", 0)
+
+    assert capsys.readouterr().out.strip() == "No event found matching: Hold"
+    assert store.removed == []
+
+
+def test_delete_event_unknown_calendar_exits(monkeypatch, capsys):
+    store = _DeleteStore([], calendar_title="Home")
+    store.calendarsForEntityType_ = lambda _entity_type: []
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 3,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(EKEntityTypeEvent=0, EKEventStore=event_store),
+    )
+    monkeypatch.setattr(calendar_eventkit, "ensure_calendar_access", lambda _store: True)
+
+    with pytest.raises(SystemExit) as exc_info:
+        calendar_eventkit.delete_event("Work", "Hold", 0)
+
+    assert exc_info.value.code == 1
+    assert json.loads(capsys.readouterr().out)["error"] == "Calendar not found: Work"
+
+
 def test_get_events_prints_json(monkeypatch, capsys):
     monkeypatch.setattr(
         calendar_eventkit,
