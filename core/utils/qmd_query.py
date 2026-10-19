@@ -31,7 +31,7 @@ import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -253,6 +253,42 @@ def _as_glob_list(glob_pattern: str | list[str] | tuple[str, ...]) -> list[str]:
     return [text] if text else ["**/*.md"]
 
 
+def _starstar_match(posix: str, pattern: str) -> bool:
+    """Match a vault-relative path where ``**`` means zero or more folders."""
+    regex_parts = ["^"]
+    index = 0
+    while index < len(pattern):
+        if pattern.startswith("**", index):
+            if index + 2 < len(pattern) and pattern[index + 2] == "/":
+                regex_parts.append("(?:.*/)?")
+                index += 3
+            else:
+                regex_parts.append(".*")
+                index += 2
+            continue
+        char = pattern[index]
+        if char == "*":
+            regex_parts.append("[^/]*")
+        elif char == "?":
+            regex_parts.append("[^/]")
+        else:
+            regex_parts.append(re.escape(char))
+        index += 1
+    regex_parts.append("$")
+    return re.fullmatch("".join(regex_parts), posix) is not None
+
+
+def _path_matches_glob(posix: str, glob_item: str) -> bool:
+    pattern = glob_item.replace("\\", "/")
+    full_match = getattr(PurePosixPath(posix), "full_match", None)
+    if callable(full_match):
+        try:
+            return bool(full_match(pattern))
+        except ValueError:
+            pass
+    return _starstar_match(posix, pattern)
+
+
 def _path_matches_any_glob(filepath: str, vault_path: str, globs: list[str]) -> bool:
     """Keep grep-without-rg results inside the requested globs."""
     try:
@@ -260,7 +296,7 @@ def _path_matches_any_glob(filepath: str, vault_path: str, globs: list[str]) -> 
     except ValueError:
         relative = Path(filepath)
     posix = relative.as_posix()
-    return any(Path(posix).match(glob_item) or Path(filepath).match(glob_item) for glob_item in globs)
+    return any(_path_matches_glob(posix, glob_item) for glob_item in globs)
 
 
 def _grep_fallback(

@@ -97,6 +97,39 @@ def test_as_glob_list_accepts_one_or_many_patterns() -> None:
     assert qmd_query._as_glob_list([]) == ["**/*.md"]
 
 
+def test_starstar_match_treats_double_star_as_zero_or_more_folders() -> None:
+    assert qmd_query._starstar_match(
+        "00-Inbox/Meetings/live.md", "00-Inbox/Meetings/**/*.md"
+    )
+    assert qmd_query._starstar_match(
+        "00-Inbox/Meetings/2026-09-02/nested.md", "00-Inbox/Meetings/**/*.md"
+    )
+    assert not qmd_query._starstar_match(
+        "04-Projects/Roadmap.md", "00-Inbox/Meetings/**/*.md"
+    )
+
+
+def test_grep_fallback_starstar_matches_top_level_and_nested(
+    fallback_vault: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(qmd_query.shutil, "which", lambda _name: None)
+    top = _write(fallback_vault, "00-Inbox/Meetings/2026-09-02 - Live.md", "retention at the top\n")
+    nested = _write(
+        fallback_vault, "00-Inbox/Meetings/2026-09-02/nested.md", "retention nested\n"
+    )
+    other = _write(fallback_vault, "04-Projects/Roadmap.md", "retention elsewhere\n")
+
+    results = qmd_query.vault_search(
+        "retention",
+        fallback_glob="00-Inbox/Meetings/**/*.md",
+    )
+
+    paths = {Path(item["path"]).resolve() for item in results}
+    assert top.resolve() in paths
+    assert nested.resolve() in paths
+    assert other.resolve() not in paths
+
+
 def test_grep_fallback_still_accepts_a_single_file_glob(fallback_vault: Path) -> None:
     matching = _write(fallback_vault, "System/Dex_Backlog.md", "retention idea for Dex\n")
     _write(fallback_vault, "00-Inbox/Meetings/2026-09-02.md", "retention plan in a meeting\n")

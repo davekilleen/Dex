@@ -95,6 +95,7 @@ def test_qmd_query_accepts_multiple_fallback_globs(
 ) -> None:
     monkeypatch.setenv("VAULT_PATH", str(tmp_path))
     monkeypatch.setattr(qmd_query, "is_qmd_available", lambda: False)
+    monkeypatch.setattr(qmd_query.shutil, "which", lambda _name: None)
     live = tmp_path / "00-Inbox" / "Meetings"
     archived = tmp_path / "07-Archives" / "Meetings"
     other = tmp_path / "04-Projects"
@@ -102,8 +103,11 @@ def test_qmd_query_accepts_multiple_fallback_globs(
     archived.mkdir(parents=True)
     other.mkdir(parents=True)
     live_note = live / "2026-09-02 - Live.md"
+    nested_note = live / "2026-09-02" / "nested.md"
     archived_note = archived / "2026-01-15 - Old.md"
+    nested_note.parent.mkdir()
     live_note.write_text("retention plan for the account\n", encoding="utf-8")
+    nested_note.write_text("retention in a dated folder\n", encoding="utf-8")
     archived_note.write_text("older retention notes\n", encoding="utf-8")
     (other / "Roadmap.md").write_text("retention is also a project theme\n", encoding="utf-8")
 
@@ -117,6 +121,7 @@ def test_qmd_query_accepts_multiple_fallback_globs(
 
     paths = {Path(item["path"]).resolve() for item in results}
     assert live_note.resolve() in paths
+    assert nested_note.resolve() in paths
     assert archived_note.resolve() in paths
     assert (other / "Roadmap.md").resolve() not in paths
 
