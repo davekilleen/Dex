@@ -334,6 +334,30 @@ def test_delete_event_uses_one_day_predicate_and_removes_first_match(monkeypatch
     assert commit is True
 
 
+def test_delete_event_matches_a_title_with_quotes(monkeypatch, capsys):
+    title = 'Hold "Q3" and Pat\'s sync'
+    store = _DeleteStore([_DeleteEvent(title, 1_710_000_000)])
+    event_store = SimpleNamespace(
+        alloc=lambda: SimpleNamespace(init=lambda: store),
+        authorizationStatusForEntityType_=lambda _: 3,
+    )
+    monkeypatch.setattr(
+        calendar_eventkit,
+        "EventKit",
+        SimpleNamespace(
+            EKEntityTypeEvent=0,
+            EKSpanThisEvent=0,
+            EKEventStore=event_store,
+        ),
+    )
+    monkeypatch.setattr(calendar_eventkit, "ensure_calendar_access", lambda _store: True)
+
+    calendar_eventkit.delete_event("Work", title, 0)
+
+    assert capsys.readouterr().out.strip() == f"Deleted event: {title}"
+    assert store.removed[0][0].title() == title
+
+
 def test_delete_event_missing_title_is_not_an_error(monkeypatch, capsys):
     store = _DeleteStore([_DeleteEvent("Other", 1_710_000_000)])
     event_store = SimpleNamespace(
