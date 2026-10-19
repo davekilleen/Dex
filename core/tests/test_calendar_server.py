@@ -25,6 +25,68 @@ def _capture_subprocess_command(monkeypatch):
     return captured
 
 
+def test_calendar_delete_event_uses_eventkit_one_day_query(monkeypatch):
+    """DEX-249: delete used to run AppleScript that loaded every event and
+    timed out after 120s. It must go through EventKit with a day offset."""
+    captured = {}
+
+    def fake_run(script_name, *args):
+        captured["script"] = script_name
+        captured["args"] = args
+        return True, "Deleted event: Hold"
+
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run)
+    monkeypatch.setattr(
+        calendar_server, "_tz_today", lambda: calendar_server.date(2026, 10, 19)
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server._handle_call_tool_inner(
+                "calendar_delete_event",
+                {
+                    "calendar_name": "Work",
+                    "title": "Hold",
+                    "event_date": "2026-10-21",
+                },
+            )
+        )
+    )
+
+    assert payload == {"success": True, "message": "Deleted event: Hold"}
+    assert captured["script"] == "calendar_eventkit.py"
+    assert captured["args"] == ("delete", "Work", "Hold", "2")
+
+
+def test_retired_delete_script_does_not_scan_every_event():
+    """A restored AppleScript full-calendar scan would time out again."""
+    script = calendar_server.SCRIPTS_DIR / "calendar_delete_event.sh"
+    body = script.read_text()
+    assert "every event of" not in body
+    assert "osascript" not in body
+
+
+def test_calendar_delete_event_timeout_is_broken_not_success(monkeypatch):
+    monkeypatch.setattr(
+        calendar_server,
+        "run_shell_script",
+        lambda *args: (False, "Script 'calendar_eventkit.py' timed out after 120 seconds"),
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(
+            calendar_server._handle_call_tool_inner(
+                "calendar_delete_event",
+                {"title": "Hold", "event_date": "2026-10-19"},
+            )
+        )
+    )
+
+    assert payload["success"] is False
+    assert payload["feature_status"] == "broken"
+    assert "timed out" in payload["error"]
+
+
 def test_run_shell_script_dispatches_sh_scripts_to_bash(monkeypatch):
     captured = _capture_subprocess_command(monkeypatch)
 

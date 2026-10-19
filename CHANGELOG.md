@@ -9,6 +9,13 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out and the event stayed put. Thanks to Michelle for the report.
+
+**What this fixes for you:**
+
+* **Deleting an event finishes quickly.** Dex now looks only at that day, then removes the matching event. A busy calendar no longer makes this hang or time out.
+* **If nothing matches, you get a clear answer.** Dex says it could not find that title on that day, instead of hanging or calling the calendar broken.
+
 ## [1.97.28] — Update notices survive a Python upgrade, setup status answers, and the after-sync people check runs again (2026-10-11)
 
 Three things could quietly stop working depending on what else was on your computer. Dex's background helpers used whichever Python came first on your computer instead of the one Dex installs for itself, so a system Python upgrade could switch off the check for new releases. Asking Dex whether setup was finished could fail for vaults set up by the newer installer. And after a Granola sync, the check that every person in your meetings has a page could stop before looking at anyone. Thanks to Olivier and Gijs for the reports.

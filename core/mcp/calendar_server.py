@@ -875,10 +875,11 @@ async def _handle_call_tool_inner(
         day_offset = (target_dt - today_dt).days
         
         success, output = run_shell_script(
-            "calendar_delete_event.sh",
+            "calendar_eventkit.py",
+            "delete",
             calendar_name,
             title,
-            str(day_offset)
+            str(day_offset),
         )
         
         if success:
