@@ -244,16 +244,6 @@ def _resolve_vault_path() -> str:
     return str(cwd)
 
 
-def _path_matches_any_glob(filepath: str, vault_path: str, globs: list[str]) -> bool:
-    """Keep grep-without-rg results inside the requested globs."""
-    try:
-        relative = Path(filepath).resolve().relative_to(Path(vault_path).resolve())
-    except ValueError:
-        relative = Path(filepath)
-    posix = relative.as_posix()
-    return any(Path(posix).match(glob_item) or Path(filepath).match(glob_item) for glob_item in globs)
-
-
 def _as_glob_list(glob_pattern: str | list[str] | tuple[str, ...]) -> list[str]:
     """Accept one glob or several; empty input keeps the all-markdown default."""
     if isinstance(glob_pattern, (list, tuple)):
@@ -263,6 +253,33 @@ def _as_glob_list(glob_pattern: str | list[str] | tuple[str, ...]) -> list[str]:
     return [text] if text else ["**/*.md"]
 
 
+def _iter_glob_matches(vault_path: str, globs: list[str]) -> list[Path]:
+    """Expand vault-relative globs without relying on ripgrep's path matching."""
+    root = Path(vault_path)
+    seen: set[str] = set()
+    matches: list[Path] = []
+    for glob_item in globs:
+        pattern = glob_item.replace("\\", "/").strip()
+        if not pattern:
+            continue
+        try:
+            found = root.glob(pattern)
+        except ValueError:
+            continue
+        for path in found:
+            if not path.is_file():
+                continue
+            try:
+                key = str(path.resolve())
+            except OSError:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            matches.append(path)
+    return matches
+
+
 def _grep_fallback(
     query: str,
     vault_path: str,
@@ -270,7 +287,7 @@ def _grep_fallback(
     grep_pattern: Optional[str] = None,
     limit: int = 10,
 ) -> list[dict]:
-    """Fall back to ripgrep/grep when QMD is not available."""
+    """Fall back to local file search when QMD is not available."""
     results = []
 
     # Build grep pattern from query words if not provided
@@ -283,46 +300,30 @@ def _grep_fallback(
     if not grep_pattern:
         return []
 
-    globs = _as_glob_list(glob_pattern)
-
     try:
-        rg = shutil.which("rg")
+        matcher = re.compile(grep_pattern, re.IGNORECASE)
+    except re.error:
+        return []
 
-        if rg:
-            cmd = [rg, "-i", "-l"]
-            for glob_item in globs:
-                cmd.extend(["--glob", glob_item])
-            cmd.extend(["-m", "1", grep_pattern, vault_path])
-        else:
-            cmd = [
-                "grep", "-r", "-i", "-l",
-                "--include=*.md",
-                "-E", grep_pattern,
-                vault_path,
-            ]
+    files: list[str] = []
+    for path in _iter_glob_matches(vault_path, _as_glob_list(glob_pattern)):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if matcher.search(text):
+            files.append(str(path))
+        if len(files) >= limit:
+            break
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        files = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
-        if not rg:
-            files = [filepath for filepath in files if _path_matches_any_glob(filepath, vault_path, globs)]
-
-        for i, filepath in enumerate(files[:limit]):
-            snippet = _extract_snippet(filepath, grep_pattern)
-            results.append({
-                "path": filepath,
-                "score": max(0.1, 1.0 - (i * 0.08)),
-                "snippet": snippet,
-                "source": "grep",
-            })
-
-    except (subprocess.TimeoutExpired, Exception) as e:
-        logger.debug(f"Grep fallback error: {e}")
+    for i, filepath in enumerate(files[:limit]):
+        snippet = _extract_snippet(filepath, grep_pattern)
+        results.append({
+            "path": filepath,
+            "score": max(0.1, 1.0 - (i * 0.08)),
+            "snippet": snippet,
+            "source": "grep",
+        })
 
     return results
 

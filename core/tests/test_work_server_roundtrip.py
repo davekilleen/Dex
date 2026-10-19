@@ -988,6 +988,11 @@ def test_python_meeting_cache_recurses_dated_folders_and_skips_queue(
         encoding="utf-8",
     )
     monkeypatch.setattr(work_server, "get_meetings_dir", lambda: meetings_dir)
+    monkeypatch.setattr(
+        work_server,
+        "get_archived_meetings_dir",
+        lambda: task_vault["root"] / "07-Archives" / "Meetings",
+    )
 
     result = work_server.rebuild_meeting_cache_data()
 

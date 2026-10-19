@@ -97,6 +97,15 @@ def test_as_glob_list_accepts_one_or_many_patterns() -> None:
     assert qmd_query._as_glob_list([]) == ["**/*.md"]
 
 
+def test_grep_fallback_still_accepts_a_single_file_glob(fallback_vault: Path) -> None:
+    matching = _write(fallback_vault, "System/Dex_Backlog.md", "retention idea for Dex\n")
+    _write(fallback_vault, "00-Inbox/Meetings/2026-09-02.md", "retention plan in a meeting\n")
+
+    results = qmd_query.vault_search("retention", fallback_glob="System/Dex_Backlog.md")
+
+    assert [result["path"] for result in results] == [str(matching)]
+
+
 def test_grep_fallback_handles_unicode_and_odd_markdown_filenames(
     fallback_vault: Path,
 ):

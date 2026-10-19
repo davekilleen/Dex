@@ -29,6 +29,8 @@ os.environ["VAULT_PATH"] = str(RUNTIME_FIXTURE_VAULT)
 for relative in (
     "05-Areas/Meetings",
     "05-Areas/Meetings/Daily_Log",
+    "07-Archives/Meetings",
+    "07-Archives/Plans/Daily",
     "System/.dex",
     "System/.dex/lifecycle/ledger/events",
     "04-Projects/DexDiff/beta/diffs",
