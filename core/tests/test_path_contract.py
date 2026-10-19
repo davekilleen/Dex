@@ -31,6 +31,15 @@ def test_contract_path_can_be_rebased_onto_an_explicit_vault(tmp_path: Path):
     assert resolve_for_vault(tmp_path, PEOPLE_DIR) == tmp_path / "05-Areas" / "People"
 
 
+def test_archived_reader_paths_are_exported():
+    rel_map = build_relative_paths_contract()["vault_relative_paths"]
+
+    assert {
+        "ARCHIVED_MEETINGS_DIR": "07-Archives/Meetings",
+        "ARCHIVED_DAILY_PLANS_DIR": "07-Archives/Plans/Daily",
+    }.items() <= rel_map.items()
+
+
 def test_lifecycle_and_session_memory_paths_are_exported():
     rel_map = build_relative_paths_contract()["vault_relative_paths"]
 

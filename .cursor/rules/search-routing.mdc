@@ -21,6 +21,7 @@ Use `qmd query "your intent" -c <collection>` for all vault content searches:
 | Content Type | QMD Collection | Fallback Path |
 |--------------|---------------|---------------|
 | Meeting notes | `meetings` | `00-Inbox/Meetings` |
+| Archived meeting notes | `meetings_archive` | `07-Archives/Meetings` |
 | People / person pages | `people` | `05-Areas/People` |
 | Projects / initiatives | `projects` | `04-Projects` |
 | Accounts / deals | `accounts` | `05-Areas/Relationships/Key_Accounts` |

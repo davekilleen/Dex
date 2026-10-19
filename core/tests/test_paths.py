@@ -82,6 +82,13 @@ class TestDerivedPaths:
     def test_daily_plans_dir_parent_is_inbox(self):
         assert paths.DAILY_PLANS_DIR.parent == paths.INBOX_DIR
 
+    def test_archived_meetings_dir_parent_is_archives(self):
+        assert paths.ARCHIVED_MEETINGS_DIR.parent == paths.ARCHIVES_DIR
+
+    def test_archived_daily_plans_dir_under_archives_plans(self):
+        assert paths.ARCHIVED_DAILY_PLANS_DIR.parent == paths.ARCHIVES_DIR / "Plans"
+        assert paths.ARCHIVED_DAILY_PLANS_DIR.name == "Daily"
+
     def test_tasks_file_parent_is_tasks_dir(self):
         assert paths.TASKS_FILE.parent == paths.TASKS_DIR
 

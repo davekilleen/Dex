@@ -231,7 +231,10 @@ async function gardenEntities({
     if (Number.isNaN(nowDate.getTime())) throw new Error('now must be a valid date');
     const maximum = Number.isInteger(Number(limit)) && Number(limit) >= 0 ? Number(limit) : 5;
     const state = withLock(paths.GARDENER_STATE_FILE, () => loadGardenerState(paths.GARDENER_STATE_FILE));
-    const meetings = meetingSignals(paths.MEETINGS_DIR);
+    const meetings = [
+      ...meetingSignals(paths.MEETINGS_DIR),
+      ...meetingSignals(paths.ARCHIVED_MEETINGS_DIR),
+    ].sort((a, b) => b.date.localeCompare(a.date));
     const candidates = [];
     const pendingPages = new Set(
       loadPendingStore(paths.VAULT_ROOT).batches
@@ -413,4 +416,4 @@ async function gardenEntities({
   return result;
 }
 
-module.exports = { gardenEntities };
+module.exports = { gardenEntities, meetingSignals };

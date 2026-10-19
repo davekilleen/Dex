@@ -56,6 +56,8 @@ DEFAULT_FOLDER_PATHS: dict[str, str] = {
     "archives": "07-Archives",
     "archived_projects": "07-Archives/Projects",
     "archived_plans": "07-Archives/Plans",
+    "archived_meetings": "07-Archives/Meetings",
+    "archived_daily_plans": "07-Archives/Plans/Daily",
     "archived_reviews": "07-Archives/Reviews",
     "system": "System",
     "templates": "System/Templates",

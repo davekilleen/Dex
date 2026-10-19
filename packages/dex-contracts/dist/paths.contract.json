@@ -2,6 +2,8 @@
   "contract_version": 1,
   "source": "core/paths.py",
   "vault_relative_paths": {
+    "ARCHIVED_DAILY_PLANS_DIR": "07-Archives/Plans/Daily",
+    "ARCHIVED_MEETINGS_DIR": "07-Archives/Meetings",
     "ARCHIVES_DIR": "07-Archives",
     "AREAS_DIR": "05-Areas",
     "CAREER_DIR": "05-Areas/Career",

@@ -306,6 +306,7 @@ qmd context add <name> "<context description>"
 | `accounts` | `05-Areas/Companies` | `**/*.md` | Company and account pages with deal status, relationship notes, and interaction history | 1 |
 | `accounts` (alt) | `05-Areas/Relationships/Key_Accounts` | `**/*.md` | Key Account pages with deal status, MEDDPICC, and engagement history | 1 |
 | `meetings` | `00-Inbox/Meetings` | `**/*.md` | Meeting notes with attendees, key discussion points, decisions made, and action items | 5 |
+| `meetings_archive` | `07-Archives/Meetings` | `**/*.md` | Archived meeting notes with attendees, key discussion points, decisions made, and action items | 5 |
 | `tasks` | `03-Tasks` | `**/*.md` | Task backlog with priorities (P0-P3), pillar alignment, status tracking, and linked goals | 1 |
 | `projects` | `04-Projects` | `**/*.md` | Active project tracking with status, stakeholders, timelines, and related decisions | 1 |
 | `goals` | `01-Quarter_Goals` | `**/*.md` | Quarterly strategic goals with success criteria, milestones, and progress tracking | 1 |

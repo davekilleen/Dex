@@ -164,7 +164,10 @@ function verifyEntities({ days = 7, now = new Date() } = {}) {
   const internalDomains = new Set(Array.from(getInternalDomains(profile), registrableDomain));
   const deadLetters = readDeadLetters(paths);
 
-  for (const filePath of walkMarkdown(paths.MEETINGS_DIR)) {
+  for (const filePath of [
+    ...walkMarkdown(paths.MEETINGS_DIR),
+    ...walkMarkdown(paths.ARCHIVED_MEETINGS_DIR),
+  ]) {
     const data = frontmatter(filePath);
     if (!data || !Array.isArray(data.attendees)) continue;
     const noteDate = new Date(`${String(data.date || '').slice(0, 10)}T00:00:00Z`);

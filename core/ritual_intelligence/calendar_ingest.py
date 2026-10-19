@@ -8,7 +8,12 @@ from typing import Iterable
 
 import yaml
 
-from core.paths import LEGACY_MEETINGS_DIR, TRACKED_MEETINGS_DIR, USER_PROFILE_FILE
+from core.paths import (
+    ARCHIVED_MEETINGS_DIR,
+    LEGACY_MEETINGS_DIR,
+    TRACKED_MEETINGS_DIR,
+    USER_PROFILE_FILE,
+)
 from core.utils.nudge_calendar import is_dex_nudge_event
 
 from .models import NormalizedAttendee, NormalizedCalendarEvent
@@ -121,4 +126,5 @@ def candidate_manual_note_roots(_vault_root: Path) -> list[Path]:
     return [
         TRACKED_MEETINGS_DIR,
         LEGACY_MEETINGS_DIR,
+        ARCHIVED_MEETINGS_DIR,
     ]

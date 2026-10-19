@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Generator: scripts/generate-architecture-inventory.py -->
-<!-- Content SHA-256: 84ec1a7fc08955bb05fb24a8a1d0cbb98e20688723425e97cc058fc2f3fa876c -->
+<!-- Content SHA-256: 48f77ac7991e4c29eb063339371d77349d46d50e59eb99b60fc414c3d8264716 -->
 
 # Architecture Inventory
 
@@ -154,7 +154,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 | Class | Rule count | Update action |
 | --- | ---: | --- |
 | `brain` | 47 | `replace` |
-| `seed` | 40 | `write-if-absent` |
+| `seed` | 42 | `write-if-absent` |
 | `generated` | 10 | `regenerate` |
 | `vault` | 19 | `never` |
 | `runtime` | 15 | `never` |
@@ -211,7 +211,7 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 
 </details>
 
-<details><summary><code>seed</code> declared paths (40)</summary>
+<details><summary><code>seed</code> declared paths (42)</summary>
 
 - `00-Inbox/Daily_Plans/README.md` (file; `seed-inbox-daily-plans-readme`)
 - `00-Inbox/Ideas/README.md` (file; `seed-inbox-ideas-readme`)
@@ -234,6 +234,8 @@ Derived from `core/portable_contract.py` `RULES` and `MUTATION_POLICY`.
 - `06-Resources/Learnings/Working_Preferences.md` (file; `seed-working-preferences`)
 - `06-Resources/Quarterly_Reviews/README.md` (file; `seed-quarterly-reviews-readme`)
 - `06-Resources/README.md` (file; `seed-resources-readme`)
+- `07-Archives/Meetings/README.md` (file; `seed-archives-meetings-readme`)
+- `07-Archives/Plans/Daily/README.md` (file; `seed-archives-daily-plans-readme`)
 - `07-Archives/Plans/README.md` (file; `seed-archives-plans-readme`)
 - `07-Archives/Projects/README.md` (file; `seed-archives-projects-readme`)
 - `07-Archives/README.md` (file; `seed-archives-readme`)

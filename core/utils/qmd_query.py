@@ -244,10 +244,29 @@ def _resolve_vault_path() -> str:
     return str(cwd)
 
 
+def _path_matches_any_glob(filepath: str, vault_path: str, globs: list[str]) -> bool:
+    """Keep grep-without-rg results inside the requested globs."""
+    try:
+        relative = Path(filepath).resolve().relative_to(Path(vault_path).resolve())
+    except ValueError:
+        relative = Path(filepath)
+    posix = relative.as_posix()
+    return any(Path(posix).match(glob_item) or Path(filepath).match(glob_item) for glob_item in globs)
+
+
+def _as_glob_list(glob_pattern: str | list[str] | tuple[str, ...]) -> list[str]:
+    """Accept one glob or several; empty input keeps the all-markdown default."""
+    if isinstance(glob_pattern, (list, tuple)):
+        globs = [str(item).strip() for item in glob_pattern if str(item).strip()]
+        return globs or ["**/*.md"]
+    text = str(glob_pattern or "").strip()
+    return [text] if text else ["**/*.md"]
+
+
 def _grep_fallback(
     query: str,
     vault_path: str,
-    glob_pattern: str = "**/*.md",
+    glob_pattern: str | list[str] | tuple[str, ...] = "**/*.md",
     grep_pattern: Optional[str] = None,
     limit: int = 10,
 ) -> list[dict]:
@@ -264,17 +283,16 @@ def _grep_fallback(
     if not grep_pattern:
         return []
 
+    globs = _as_glob_list(glob_pattern)
+
     try:
         rg = shutil.which("rg")
 
         if rg:
-            cmd = [
-                rg, "-i", "-l",
-                "--glob", glob_pattern,
-                "-m", "1",
-                grep_pattern,
-                vault_path,
-            ]
+            cmd = [rg, "-i", "-l"]
+            for glob_item in globs:
+                cmd.extend(["--glob", glob_item])
+            cmd.extend(["-m", "1", grep_pattern, vault_path])
         else:
             cmd = [
                 "grep", "-r", "-i", "-l",
@@ -291,6 +309,8 @@ def _grep_fallback(
         )
 
         files = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+        if not rg:
+            files = [filepath for filepath in files if _path_matches_any_glob(filepath, vault_path, globs)]
 
         for i, filepath in enumerate(files[:limit]):
             snippet = _extract_snippet(filepath, grep_pattern)
@@ -339,7 +359,7 @@ def vault_search(
     limit: int = 10,
     min_score: float = 0.0,
     search_type: str = "query",
-    fallback_glob: str = "**/*.md",
+    fallback_glob: str | list[str] | tuple[str, ...] = "**/*.md",
     fallback_grep: Optional[str] = None,
 ) -> list[dict]:
     """
@@ -350,7 +370,7 @@ def vault_search(
         limit:          Maximum results to return
         min_score:      Minimum relevance score (0.0 to 1.0). Only applied to QMD results.
         search_type:    QMD mode — "query" (hybrid), "search" (keyword), "vsearch" (vector)
-        fallback_glob:  Glob pattern for grep fallback file matching
+        fallback_glob:  One glob, or several, for grep fallback file matching
         fallback_grep:  Explicit regex for grep fallback. Auto-generated from query if None.
 
     Returns:

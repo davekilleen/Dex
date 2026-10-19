@@ -32,12 +32,22 @@ from core.meeting_sources.record import MeetingRecord
 # its folders moves this too. Kept relative so callers can pass any root, which
 # is what makes the writer testable and lets a sweep target a scratch vault.
 MEETINGS_RELATIVE = paths.MEETINGS_DIR.relative_to(paths.VAULT_ROOT)
+ARCHIVED_MEETINGS_RELATIVE = paths.ARCHIVED_MEETINGS_DIR.relative_to(paths.VAULT_ROOT)
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _FRONTMATTER = re.compile(r"\A---\s*\n(?P<body>.*?)\n---\s*\n", re.DOTALL)
 
 
 def meetings_dir(vault_root: Path) -> Path:
     return vault_root / MEETINGS_RELATIVE
+
+
+def archived_meetings_dir(vault_root: Path) -> Path:
+    return vault_root / ARCHIVED_MEETINGS_RELATIVE
+
+
+def meeting_read_dirs(vault_root: Path) -> list[Path]:
+    """Live inbox plus archive. Writes still target ``meetings_dir`` only."""
+    return [meetings_dir(vault_root), archived_meetings_dir(vault_root)]
 
 
 def _slug(title: str) -> str:
@@ -58,21 +68,21 @@ def existing_source_ids(vault_root: Path, source: str) -> set[str]:
     """
     key = f"{source}_id"
     found: set[str] = set()
-    folder = meetings_dir(vault_root)
-    if not folder.is_dir():
-        return found
-    for path in folder.rglob("*.md"):
-        try:
-            head = path.read_text(encoding="utf-8")[:2000]
-        except (OSError, UnicodeDecodeError):
+    for folder in meeting_read_dirs(vault_root):
+        if not folder.is_dir():
             continue
-        match = _FRONTMATTER.match(head)
-        if not match:
-            continue
-        for line in match.group("body").splitlines():
-            name, _, value = line.partition(":")
-            if name.strip() == key and value.strip():
-                found.add(value.strip().strip("\"'"))
+        for path in folder.rglob("*.md"):
+            try:
+                head = path.read_text(encoding="utf-8")[:2000]
+            except (OSError, UnicodeDecodeError):
+                continue
+            match = _FRONTMATTER.match(head)
+            if not match:
+                continue
+            for line in match.group("body").splitlines():
+                name, _, value = line.partition(":")
+                if name.strip() == key and value.strip():
+                    found.add(value.strip().strip("\"'"))
     return found
 
 

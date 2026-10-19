@@ -209,6 +209,7 @@ from core.entity_engine import reroute as entity_reroute
 from core.gates.safety import evaluate_safety_gate
 from core.meeting_capture_match import match_capture_to_calendar
 from core.paths import (
+    ARCHIVED_MEETINGS_DIR,
     ARCHIVES_DIR,
     AREAS_DIR,
     COMPANIES_DIR,
@@ -259,6 +260,11 @@ def get_people_dir() -> Path:
 def get_meetings_dir() -> Path:
     """Get the canonical meetings directory."""
     return MEETINGS_DIR
+
+
+def get_archived_meetings_dir() -> Path:
+    """Get the archived meetings directory, rebased onto the active vault."""
+    return Path(BASE_DIR) / _ARCHIVED_MEETINGS_DIR_REL
 
 def get_companies_dir() -> Path:
     """Get the canonical Companies directory."""
@@ -1548,6 +1554,12 @@ _PEOPLE_DIR_REL = PEOPLE_DIR.relative_to(BASE_DIR)
 _COMPANIES_DIR_REL = COMPANIES_DIR.relative_to(BASE_DIR)
 _PEOPLE_INDEX_FILE_REL = PEOPLE_INDEX_FILE.relative_to(BASE_DIR)
 _COMPANY_INDEX_FILE_REL = COMPANY_INDEX_FILE.relative_to(BASE_DIR)
+_MEETINGS_DIR_REL = MEETINGS_DIR.relative_to(BASE_DIR)
+_ARCHIVED_MEETINGS_DIR_REL = ARCHIVED_MEETINGS_DIR.relative_to(BASE_DIR)
+_MEETING_NOTE_GLOBS = (
+    f"{_MEETINGS_DIR_REL.as_posix()}/**/*.md",
+    f"{_ARCHIVED_MEETINGS_DIR_REL.as_posix()}/**/*.md",
+)
 
 
 def _index_path(candidate: Path, fallback: Path) -> Path:
@@ -2138,12 +2150,10 @@ def query_meeting_cache_data(
     }
 
 
-def rebuild_meeting_cache_data() -> Dict[str, Any]:
-    """Rebuild the meeting cache by parsing meeting files in Python."""
-    meetings_dir = get_meetings_dir()
+def _iter_meeting_note_files(meetings_dir: Path) -> List[Path]:
+    """Markdown meeting notes under one root, excluding queue trees and links."""
     if not meetings_dir.exists():
-        return {'success': False, 'error': 'No meetings directory found'}
-
+        return []
     meetings_root = meetings_dir.resolve()
     files = []
     for filepath in meetings_dir.rglob('*.md'):
@@ -2157,6 +2167,14 @@ def rebuild_meeting_cache_data() -> Dict[str, Any]:
         except (OSError, ValueError):
             continue
         files.append(filepath)
+    return files
+
+
+def rebuild_meeting_cache_data() -> Dict[str, Any]:
+    """Rebuild the meeting cache by parsing meeting files in Python."""
+    files = []
+    for meetings_dir in (get_meetings_dir(), get_archived_meetings_dir()):
+        files.extend(_iter_meeting_note_files(meetings_dir))
     if not files:
         return {'success': False, 'error': 'No meeting files found'}
 
@@ -2309,16 +2327,16 @@ def _parse_meeting_file_python(content: str, filename: str, rel_path: str) -> Di
 def find_meetings_for_company(company_name: str, domains: List[str]) -> List[Dict[str, Any]]:
     """Find meetings that involve people from a company"""
     meetings = []
-    
-    if not get_meetings_dir().exists():
+    roots = [get_meetings_dir(), get_archived_meetings_dir()]
+    if not any(root.exists() for root in roots):
         return meetings
-    
+
     company_name_lower = company_name.lower()
-    
-    for meeting_file in get_meetings_dir().glob('*.md'):
+
+    for meeting_file in _iter_meeting_note_files(roots[0]) + _iter_meeting_note_files(roots[1]):
         content = read_vault_text(meeting_file)
         content_lower = content.lower()
-        
+
         # Check if company name or any domain appears in meeting
         matches = company_name_lower in content_lower
         if not matches:
@@ -2326,19 +2344,19 @@ def find_meetings_for_company(company_name: str, domains: List[str]) -> List[Dic
                 if domain.lower() in content_lower:
                     matches = True
                     break
-        
+
         if matches:
             # Extract meeting info
             lines = content.split('\n')
             title = lines[0].lstrip('#').strip() if lines else meeting_file.stem
             date = meeting_file.stem[:10] if len(meeting_file.stem) >= 10 else ''
-            
+
             meetings.append({
                 'date': date,
                 'title': title,
                 'filepath': str(meeting_file)
             })
-    
+
     # Sort by date descending
     meetings.sort(key=lambda x: x['date'], reverse=True)
     return meetings[:10]  # Return last 10 meetings
@@ -4722,7 +4740,7 @@ def get_meeting_context_data(meeting_title: str = None, attendees: List[str] = N
                 query=meeting_title,
                 limit=5,
                 min_score=0.3,
-                fallback_glob="00-Inbox/Meetings/**/*.md"
+                fallback_glob=list(_MEETING_NOTE_GLOBS)
             )
             for r in sem_results:
                 filepath = r.get('filepath', '')

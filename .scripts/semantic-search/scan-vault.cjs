@@ -15,8 +15,14 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { loadPaths } = require('../../core/runtime/paths.cjs');
 
 const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
+const _paths = loadPaths();
+const ARCHIVED_MEETINGS_REL = path
+  .relative(_paths.VAULT_ROOT || VAULT_PATH, _paths.ARCHIVED_MEETINGS_DIR)
+  .split(path.sep)
+  .join('/');
 
 // Collection definitions: what we look for and why it matters
 const COLLECTION_DEFS = [
@@ -49,6 +55,16 @@ const COLLECTION_DEFS = [
     benefit: '"What was discussed about X?" searches meetings specifically',
     example: 'Search "pricing discussion" finds the right meeting without wading through tasks',
     priority: 1
+  },
+  {
+    name: 'meetings_archive',
+    paths: [ARCHIVED_MEETINGS_REL],
+    glob: '**/*.md',
+    minFiles: 5,
+    context: 'Archived meeting notes kept after they leave the inbox: attendees, decisions, and action items',
+    benefit: 'Older meeting search still works after notes move out of the inbox',
+    example: 'Search "pricing discussion" finds last year\'s meeting after it was archived',
+    priority: 2
   },
   {
     name: 'tasks',
@@ -383,6 +399,11 @@ function healthCheck() {
   }
   if (newCandidates.length > 0) {
     suggestions.push(`${newCandidates.length} new collection(s) available — run /enable-semantic-search`);
+  }
+  if (newCandidates.some((candidate) => candidate.name === 'meetings_archive')) {
+    suggestions.push(
+      'Archived meetings are not in semantic search yet — run /enable-semantic-search to add meetings_archive',
+    );
   }
 
   return {

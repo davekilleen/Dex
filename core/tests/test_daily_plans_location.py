@@ -11,6 +11,7 @@ from core.daily_plans_location import (
     skip_default_daily_plans_seed,
 )
 from core.lifecycle.inventory import DEFAULT_FOLDER_PATHS
+from core.paths import ARCHIVED_DAILY_PLANS_DIR, ARCHIVED_MEETINGS_DIR, VAULT_ROOT
 from core.update.apply_update import skip_default_daily_plans_seed as apply_skip
 
 
@@ -24,6 +25,15 @@ def _write_plan(directory: Path, day: str) -> None:
 
 def test_folder_map_names_daily_plans() -> None:
     assert DEFAULT_FOLDER_PATHS["daily_plans"] == DEFAULT_DAILY_PLANS_RELATIVE
+
+
+def test_folder_map_names_archived_reader_homes() -> None:
+    assert DEFAULT_FOLDER_PATHS["archived_meetings"] == ARCHIVED_MEETINGS_DIR.relative_to(
+        VAULT_ROOT
+    ).as_posix()
+    assert DEFAULT_FOLDER_PATHS["archived_daily_plans"] == (
+        ARCHIVED_DAILY_PLANS_DIR.relative_to(VAULT_ROOT).as_posix()
+    )
 
 
 def test_new_vault_uses_the_inbox_default(tmp_path: Path) -> None:
@@ -45,6 +55,21 @@ def test_folder_paths_yaml_wins(tmp_path: Path) -> None:
     assert skip_default_daily_plans_seed(
         f"{DEFAULT_DAILY_PLANS_RELATIVE}/README.md", tmp_path
     ) is True
+
+
+def test_archived_daily_plans_are_not_the_live_folder(tmp_path: Path) -> None:
+    _write_plan(tmp_path / "07-Archives" / "Plans" / "Daily", "2026-09-27")
+    assert detect_existing_daily_plans_relative(tmp_path) is None
+    assert resolve_daily_plans_relative(tmp_path) == DEFAULT_DAILY_PLANS_RELATIVE
+    assert skip_default_daily_plans_seed(
+        f"{DEFAULT_DAILY_PLANS_RELATIVE}/README.md", tmp_path
+    ) is False
+
+
+def test_legacy_archive_plans_still_win_over_archived_daily(tmp_path: Path) -> None:
+    _write_plan(tmp_path / "07-Archives" / "Plans", "2026-09-28")
+    _write_plan(tmp_path / "07-Archives" / "Plans" / "Daily", "2026-09-27")
+    assert resolve_daily_plans_relative(tmp_path) == "07-Archives/Plans"
 
 
 def test_legacy_archive_plans_are_kept(tmp_path: Path) -> None:

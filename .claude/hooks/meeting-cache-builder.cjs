@@ -8,12 +8,14 @@
  * Usage: node meeting-cache-builder.cjs [--rebuild]
  *   --rebuild: Reprocess all meetings (not just recent ones)
  *
- * Reads: Markdown files recursively under 00-Inbox/Meetings/ (excluding queue/ subtrees)
+ * Reads: Markdown files recursively under the live meetings folder and the
+ *        archived meetings folder (excluding queue/ subtrees)
  * Writes: System/Memory/meeting-cache.json
  */
 
 const fs = require("fs");
 const path = require("path");
+const { loadPaths } = require("./paths.cjs");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -21,7 +23,15 @@ const path = require("path");
 
 const VAULT_ROOT =
   process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, "../..");
-const MEETINGS_DIR = path.join(VAULT_ROOT, "00-Inbox", "Meetings");
+const _paths = loadPaths();
+function rebaseContractPath(contractPath) {
+  return path.join(
+    VAULT_ROOT,
+    path.relative(_paths.VAULT_ROOT || VAULT_ROOT, contractPath),
+  );
+}
+const MEETINGS_DIR = rebaseContractPath(_paths.MEETINGS_DIR);
+const ARCHIVED_MEETINGS_DIR = rebaseContractPath(_paths.ARCHIVED_MEETINGS_DIR);
 const CACHE_FILE = path.join(VAULT_ROOT, "System", "Memory", "meeting-cache.json");
 const PRUNE_DAYS = 90;
 const REBUILD = process.argv.includes("--rebuild");
@@ -358,6 +368,7 @@ function pruneOldEntries(cache) {
 // ---------------------------------------------------------------------------
 
 function findMeetingFiles(directory) {
+  if (!directory || !fs.existsSync(directory)) return [];
   const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const entryPath = path.join(directory, entry.name);
@@ -371,15 +382,18 @@ function findMeetingFiles(directory) {
   return files;
 }
 
+function listMeetingSourceFiles(liveDir = MEETINGS_DIR, archivedDir = ARCHIVED_MEETINGS_DIR) {
+  return [...findMeetingFiles(liveDir), ...findMeetingFiles(archivedDir)];
+}
+
 function main() {
-  // Guard: meetings directory must exist
-  if (!fs.existsSync(MEETINGS_DIR)) {
+  // List meeting markdown files recursively from inbox and archive
+  // (skip README and queue subtrees). Write target stays the cache file.
+  const files = listMeetingSourceFiles();
+  if (!files.length && !fs.existsSync(MEETINGS_DIR) && !fs.existsSync(ARCHIVED_MEETINGS_DIR)) {
     process.stderr.write("[meeting-cache] No meetings directory found, skipping\n");
     process.exit(0);
   }
-
-  // List meeting markdown files recursively (skip README and queue subtrees).
-  const files = findMeetingFiles(MEETINGS_DIR);
 
   if (files.length === 0) {
     process.stderr.write("[meeting-cache] No meeting files found\n");
@@ -485,10 +499,14 @@ function main() {
 // Run
 // ---------------------------------------------------------------------------
 
-try {
-  main();
-} catch (err) {
-  // Never crash — hooks must always exit cleanly
-  process.stderr.write(`[meeting-cache] Fatal: ${err.message}\n`);
-  process.exit(0);
+module.exports = { findMeetingFiles, listMeetingSourceFiles };
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (err) {
+    // Never crash — hooks must always exit cleanly
+    process.stderr.write(`[meeting-cache] Fatal: ${err.message}\n`);
+    process.exit(0);
+  }
 }

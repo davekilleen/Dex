@@ -6,7 +6,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from core.paths import LEGACY_MEETINGS_DIR, TRACKED_MEETINGS_DIR
+from core.paths import ARCHIVED_MEETINGS_DIR, LEGACY_MEETINGS_DIR, TRACKED_MEETINGS_DIR
 
 from .db import utc_now
 
@@ -31,6 +31,10 @@ def _candidate_files() -> list[tuple[str, Path]]:
         candidates.extend(("tracked_existing", path) for path in TRACKED_MEETINGS_DIR.glob("*.md"))
     if LEGACY_MEETINGS_DIR.exists():
         candidates.extend(("legacy_read_only", path) for path in LEGACY_MEETINGS_DIR.rglob("*.md"))
+    if ARCHIVED_MEETINGS_DIR.exists():
+        candidates.extend(
+            ("archived_read_only", path) for path in ARCHIVED_MEETINGS_DIR.rglob("*.md")
+        )
     return candidates
 
 

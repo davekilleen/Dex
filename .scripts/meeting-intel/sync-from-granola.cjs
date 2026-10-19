@@ -92,6 +92,10 @@ const LEGACY_STATE_REL = path.join('.scripts', 'meeting-intel', 'processed-meeti
 const RUNTIME_STATE_REL = path.join('System', '.dex', 'processed-meetings.json');
 const MEETINGS_DIR = path.join(VAULT_ROOT, '00-Inbox', 'Meetings');
 const QUEUE_FILE = path.join(MEETINGS_DIR, 'queue.md');
+const ARCHIVED_MEETINGS_DIR = path.join(
+  VAULT_ROOT,
+  path.relative(_paths.VAULT_ROOT || VAULT_ROOT, _paths.ARCHIVED_MEETINGS_DIR),
+);
 const LOG_DIR = path.join(VAULT_ROOT, '.scripts', 'logs');
 const PILLARS_FILE = path.join(VAULT_ROOT, 'System', 'pillars.yaml');
 const PROFILE_FILE = path.join(VAULT_ROOT, 'System', 'user-profile.yaml');
@@ -199,9 +203,7 @@ function resolveProcessedMeetingsFile(vaultRoot = VAULT_ROOT) {
   return runtime;
 }
 
-function collectExistingMeetingIds(meetingsDir = MEETINGS_DIR) {
-  const ids = new Set();
-
+function addGranolaIdsFromNotes(rootDir, ids, { includeQueue = false } = {}) {
   function addFromNote(filePath) {
     const granolaId = readGranolaId(filePath);
     if (granolaId) ids.add(granolaId);
@@ -221,20 +223,20 @@ function collectExistingMeetingIds(meetingsDir = MEETINGS_DIR) {
 
   let entries;
   try {
-    entries = fs.readdirSync(meetingsDir, { withFileTypes: true });
+    entries = fs.readdirSync(rootDir, { withFileTypes: true });
   } catch (error) {
     return ids;
   }
 
   for (const entry of entries) {
     if (entry.isFile() && entry.name.endsWith('.md')) {
-      addFromNote(path.join(meetingsDir, entry.name));
+      addFromNote(path.join(rootDir, entry.name));
     }
   }
 
   for (const dayDirectory of entries) {
     if (!dayDirectory.isDirectory()) continue;
-    const directoryPath = path.join(meetingsDir, dayDirectory.name);
+    const directoryPath = path.join(rootDir, dayDirectory.name);
     let files;
     try {
       files = fs.readdirSync(directoryPath, { withFileTypes: true });
@@ -245,12 +247,26 @@ function collectExistingMeetingIds(meetingsDir = MEETINGS_DIR) {
       if (!file.isFile()) continue;
       const filePath = path.join(directoryPath, file.name);
       if (file.name.endsWith('.md')) addFromNote(filePath);
-      if (dayDirectory.name === 'queue' && file.name.endsWith('.json')) {
+      if (includeQueue && dayDirectory.name === 'queue' && file.name.endsWith('.json')) {
         addFromQueue(filePath);
       }
     }
+    if (!includeQueue) {
+      // Archived notes may be nested by year or day; keep walking.
+      addGranolaIdsFromNotes(directoryPath, ids, { includeQueue: false });
+    }
   }
 
+  return ids;
+}
+
+function collectExistingMeetingIds(meetingsDir = MEETINGS_DIR, extraDirs = [ARCHIVED_MEETINGS_DIR]) {
+  const ids = new Set();
+  addGranolaIdsFromNotes(meetingsDir, ids, { includeQueue: true });
+  for (const extraDir of extraDirs) {
+    if (!extraDir || extraDir === meetingsDir) continue;
+    addGranolaIdsFromNotes(extraDir, ids, { includeQueue: false });
+  }
   return ids;
 }
 

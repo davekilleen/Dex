@@ -88,6 +88,15 @@ def test_grep_fallback_is_case_insensitive_and_uses_any_meaningful_query_term(
     assert all(result["source"] == "grep" for result in results)
 
 
+def test_as_glob_list_accepts_one_or_many_patterns() -> None:
+    assert qmd_query._as_glob_list("notes/**/*.md") == ["notes/**/*.md"]
+    assert qmd_query._as_glob_list(["a/**/*.md", "b/**/*.md"]) == [
+        "a/**/*.md",
+        "b/**/*.md",
+    ]
+    assert qmd_query._as_glob_list([]) == ["**/*.md"]
+
+
 def test_grep_fallback_handles_unicode_and_odd_markdown_filenames(
     fallback_vault: Path,
 ):

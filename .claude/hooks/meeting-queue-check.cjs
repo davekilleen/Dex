@@ -33,8 +33,11 @@ function anchoredPaths(vaultRoot) {
 
   const rel = (contractPath) => path.relative(CONTRACT.VAULT_ROOT, contractPath);
   const meetingsDir = path.join(vaultRoot, rel(CONTRACT.MEETINGS_DIR));
+  const archivedMeetingsDir = CONTRACT.ARCHIVED_MEETINGS_DIR
+    ? path.join(vaultRoot, rel(CONTRACT.ARCHIVED_MEETINGS_DIR))
+    : null;
   const systemDir = path.join(vaultRoot, rel(CONTRACT.SYSTEM_DIR));
-  return { meetingsDir, systemDir };
+  return { meetingsDir, archivedMeetingsDir, systemDir };
 }
 
 function isThrottled(markerPath, nowSeconds) {
@@ -240,6 +243,31 @@ function countWaitingNotes(meetingsDir, nowMilliseconds, existingGranolaIds) {
   return count;
 }
 
+function collectArchivedGranolaIds(archivedDir, existingGranolaIds) {
+  if (!archivedDir) return;
+  let entries;
+  try {
+    entries = fs.readdirSync(archivedDir, { withFileTypes: true });
+  } catch (error) {
+    return;
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(archivedDir, entry.name);
+    if (entry.isDirectory()) {
+      collectArchivedGranolaIds(fullPath, existingGranolaIds);
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+    try {
+      const source = fs.readFileSync(fullPath, 'utf8');
+      const granolaId = granolaIdFromFrontmatter(source);
+      if (granolaId) existingGranolaIds.add(granolaId);
+    } catch (error) {
+      // Unreadable archived notes must not hide a live queue item.
+    }
+  }
+}
+
 function countQueueFiles(meetingsDir, existingGranolaIds) {
   try {
     return fs.readdirSync(path.join(meetingsDir, 'queue'), { withFileTypes: true })
@@ -312,6 +340,7 @@ function checkMeetingQueue(options = {}) {
     if (!meetingsDirectory.isDirectory()) return emptyResult();
 
     const existingGranolaIds = new Set();
+    collectArchivedGranolaIds(paths.archivedMeetingsDir, existingGranolaIds);
     const count = countWaitingNotes(
       paths.meetingsDir,
       nowMilliseconds,

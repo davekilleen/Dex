@@ -20,6 +20,8 @@ const PLAN_FOLDER_NAMES = new Set([
   'dailyprep', 'daily', 'plans',
 ]);
 const DEFAULT_DAILY_PLANS = '00-Inbox/Daily_Plans';
+const ARCHIVES_PREFIX = '07-Archives';
+const LEGACY_ARCHIVE_PLANS = '07-Archives/Plans';
 
 function normalizeRelative(value) {
   const text = String(value || '').trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/');
@@ -85,6 +87,12 @@ function detectExistingDailyPlans(vaultRoot) {
       if (entry.name.startsWith('.')) continue;
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
+        const childRel = relDir === '' ? entry.name : `${relDir}/${entry.name}`;
+        // Live detection may keep legacy 07-Archives/Plans. Skip Plans/Daily
+        // and every other archive subfolder so they cannot become the live home.
+        if (childRel.startsWith(`${ARCHIVES_PREFIX}/`) && childRel !== LEGACY_ARCHIVE_PLANS) {
+          continue;
+        }
         const folded = entry.name.toLowerCase();
         if (['.git', '.dex', '.claude', '.agents', '.scripts', '.cursor', 'node_modules', 'core', 'packages', 'scripts', 'docs', 'system', 'meetings'].includes(folded)) {
           continue;
@@ -148,6 +156,8 @@ function defaultPaths(vaultRoot) {
     MEETINGS_DIR: path.join(vaultRoot, '00-Inbox', 'Meetings'),
     IDEAS_DIR: path.join(vaultRoot, '00-Inbox', 'Ideas'),
     DAILY_PLANS_DIR: path.join(vaultRoot, '00-Inbox', 'Daily_Plans'),
+    ARCHIVED_MEETINGS_DIR: path.join(vaultRoot, '07-Archives', 'Meetings'),
+    ARCHIVED_DAILY_PLANS_DIR: path.join(vaultRoot, '07-Archives', 'Plans', 'Daily'),
     TASKS_FILE: path.join(vaultRoot, '03-Tasks', 'Tasks.md'),
     QUARTER_GOALS_FILE: path.join(vaultRoot, '01-Quarter_Goals', 'Quarter_Goals.md'),
     WEEK_PRIORITIES_FILE: path.join(vaultRoot, '02-Week_Priorities', 'Week_Priorities.md'),
@@ -206,4 +216,4 @@ function loadPaths() {
   return withResolvedDailyPlans(VAULT_ROOT, defaultPaths(VAULT_ROOT));
 }
 
-module.exports = { loadPaths, resolveDailyPlansDir, defaultPaths };
+module.exports = { loadPaths, resolveDailyPlansDir, detectExistingDailyPlans, defaultPaths };

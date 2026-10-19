@@ -51,6 +51,12 @@ MEETINGS_DIR = INBOX_DIR / 'Meetings'
 IDEAS_DIR = INBOX_DIR / 'Ideas'
 DAILY_PLANS_DIR = INBOX_DIR / 'Daily_Plans'
 
+# --- Derived: Archives ---
+# Readers look here after notes/plans move out of the inbox. Writers still
+# target the live inbox folders until the archive pass exists.
+ARCHIVED_MEETINGS_DIR = ARCHIVES_DIR / 'Meetings'
+ARCHIVED_DAILY_PLANS_DIR = ARCHIVES_DIR / 'Plans' / 'Daily'
+
 # --- Derived: Meetings ---
 TRACKED_MEETINGS_DIR = AREAS_DIR / 'Meetings'
 MEETING_DAILY_LOGS_DIR = TRACKED_MEETINGS_DIR / 'Daily_Log'

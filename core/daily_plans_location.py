@@ -26,6 +26,7 @@ from core.paths import (
 DEFAULT_DAILY_PLANS_RELATIVE = DAILY_PLANS_DIR.relative_to(VAULT_ROOT).as_posix()
 FOLDER_MAP_RELATIVE = (SYSTEM_DIR / "folder-paths.yaml").relative_to(VAULT_ROOT).as_posix()
 _MEETINGS_RELATIVE = MEETINGS_DIR.relative_to(VAULT_ROOT).as_posix()
+_ARCHIVES_RELATIVE = ARCHIVES_DIR.relative_to(VAULT_ROOT).as_posix()
 DATED_DAILY_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 DAILY_PLAN_TYPE = re.compile(r"(?m)^type:\s*daily-plan\s*$")
 DAILY_PLAN_HEADING = re.compile(r"(?im)^#\s+daily plan\b")
@@ -134,6 +135,20 @@ def _collect_plan_directories(vault_root: Path) -> dict[str, list[Path]]:
         if rel_dir == _MEETINGS_RELATIVE or rel_dir.startswith(f"{_MEETINGS_RELATIVE}/"):
             dirnames[:] = []
             continue
+        # Live detection may keep legacy 07-Archives/Plans. It must never pick
+        # 07-Archives/Plans/Daily or any other archive subfolder as the live home.
+        legacy_plans = LEGACY_CANDIDATES[0]
+        if rel_dir == _ARCHIVES_RELATIVE:
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if name == Path(legacy_plans).name
+            ]
+        elif rel_dir.startswith(f"{_ARCHIVES_RELATIVE}/"):
+            if rel_dir != legacy_plans:
+                dirnames[:] = []
+                continue
+            dirnames[:] = []
         dirnames[:] = [
             name
             for name in dirnames
