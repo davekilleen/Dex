@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Protocol
@@ -64,7 +64,11 @@ class ReleaseBaseline:
     # Extra Dex-owned hashes that still count as stock for a path. Used for
     # room-delivered skill copies whose current pin is in expected_hashes and
     # whose previous published payloads remain Dex's own bytes, not a user edit.
-    alternate_hashes: Mapping[str, frozenset[str]] = MappingProxyType({})
+    # default_factory is required: Python 3.11 dataclasses reject a
+    # MappingProxyType instance as a field default (DEX-245).
+    alternate_hashes: Mapping[str, frozenset[str]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def expected_sha256(self, canonical_path: str) -> str | None:
         return self.expected_hashes.get(canonical_path)
