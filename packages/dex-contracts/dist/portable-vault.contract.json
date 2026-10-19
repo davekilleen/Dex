@@ -428,6 +428,18 @@
       "ownership": "vault"
     },
     {
+      "id": "seed-archives-meetings-readme",
+      "path": "07-Archives/Meetings/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
+      "id": "seed-archives-daily-plans-readme",
+      "path": "07-Archives/Plans/Daily/README.md",
+      "kind": "file",
+      "ownership": "seed"
+    },
+    {
       "id": "seed-archives-plans-readme",
       "path": "07-Archives/Plans/README.md",
       "kind": "file",
