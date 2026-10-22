@@ -53,7 +53,7 @@ def test_server_starts_from_outside_the_vault_working_directory(tmp_path) -> Non
     assert result.ok, f"{result.error}\nstderr:\n{result.stderr}"
 
 
-def test_missing_database_is_created_with_the_schema_tools_query(
+def test_missing_desktop_app_store_reports_not_set_up_without_creating_it(
     tmp_path, monkeypatch
 ) -> None:
     server = _load_server(monkeypatch, tmp_path)
@@ -63,39 +63,58 @@ def test_missing_database_is_created_with_the_schema_tools_query(
     payloads = asyncio.run(_call_every_advertised_tool(server))
 
     assert len(payloads) == 8
-    assert all("feature_status" not in payload for payload in payloads)
-    assert all("no such table" not in json.dumps(payload) for payload in payloads)
+    assert {payload["feature_status"] for payload in payloads} == {"not_installed"}
+    assert all(payload["success"] is False for payload in payloads)
+    assert all(
+        payload["user_message"] == server.NOT_SET_UP_MESSAGE for payload in payloads
+    )
+    assert all("isn't set up yet" in payload["user_message"] for payload in payloads)
+    assert all("Sessions DB not found" in payload["error"] for payload in payloads)
+    assert not database.exists()
+
+
+def test_present_empty_store_reads_as_empty_not_unset(tmp_path, monkeypatch) -> None:
+    server = _load_server(monkeypatch, tmp_path)
+    server.ensure_database()
+    database = tmp_path / "System" / ".dex-sessions.db"
+
     assert database.is_file()
+    payloads = asyncio.run(_call_every_advertised_tool(server))
 
-    connection = sqlite3.connect(database)
-    try:
-        names = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type IN ('table', 'trigger')"
-            )
-        }
-    finally:
-        connection.close()
+    assert len(payloads) == 8
+    assert all("feature_status" not in payload for payload in payloads)
+    assert all("isn't set up yet" not in json.dumps(payload) for payload in payloads)
+    assert all("no such table" not in json.dumps(payload) for payload in payloads)
 
-    assert {
-        "sessions",
-        "messages",
-        "observations",
-        "sessions_fts",
-        "messages_fts",
-        "observations_fts",
-    } <= names
-    again = asyncio.run(_call_every_advertised_tool(server))
-    assert len(again) == 8
-    assert all("feature_status" not in payload for payload in again)
+    search = json.loads(
+        asyncio.run(server.handle_call_tool("search_sessions", {"query": "anything"}))[0].text
+    )
+    decisions = json.loads(
+        asyncio.run(server.handle_call_tool("get_recent_decisions", {}))[0].text
+    )
+    context = json.loads(
+        asyncio.run(
+            server.handle_call_tool("get_session_context", {"entity_name": "Acme"})
+        )[0].text
+    )
+    summary = json.loads(
+        asyncio.run(
+            server.handle_call_tool("get_session_summary", {"session_id": "missing"})
+        )[0].text
+    )
+
+    assert search == {"sessions": [], "messages": []}
+    assert decisions == []
+    assert context == []
+    assert "feature_status" not in summary
+    assert summary == {"error": "Session not found"}
 
 
 def test_created_database_answers_the_tool_queries(tmp_path, monkeypatch) -> None:
     server = _load_server(monkeypatch, tmp_path)
     database = tmp_path / "System" / ".dex-sessions.db"
+    server.ensure_database()
 
-    asyncio.run(server.handle_call_tool("get_recent_decisions", {}))
     connection = sqlite3.connect(database)
     try:
         connection.execute(
@@ -247,6 +266,6 @@ def test_unwritable_vault_reports_not_installed_without_replacing_a_blocker(
     )
 
     assert payload["feature_status"] == "not_installed"
-    assert "could not create the session memory database" in payload["user_message"]
+    assert payload["user_message"] == server.NOT_SET_UP_MESSAGE
     assert blocker.read_text(encoding="utf-8") == "not a directory"
     assert not (tmp_path / "System" / ".dex-sessions.db").exists()

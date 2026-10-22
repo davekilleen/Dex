@@ -9,6 +9,18 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Asking about earlier conversations when the Dex app is not in use used to come
+back as if you simply had no memories. That made an unused feature look like a
+blank history.
+
+**What this fixes for you:**
+
+* **A missing memory feature says so.** If you have not used the Dex app yet,
+  Dex now says session memory isn't set up yet and how to turn it on, instead of
+  pretending there is nothing to remember. DEX-253
+* **A real empty history still reads as empty.** When the Dex app is in use and
+  there is nothing stored yet, Dex still reports an empty result.
+
 ## [1.97.29] — Calendar deletes finish, Google mail starts again, helpers load on older Python, and checkup proves large pictures (2026-10-19)
 
 Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out, Dex called the calendar broken, and the event stayed put. Thanks to Greg for the report.

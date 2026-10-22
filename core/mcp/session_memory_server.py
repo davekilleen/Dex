@@ -9,9 +9,10 @@ Read-only access to:
 - Observations (tool-use history, decisions, insights)
 - Progressive disclosure (3-layer token-efficient retrieval)
 
-DB location: System/.dex-sessions.db (WAL mode). Starting the server, or the
-first tool call, creates the database and schema when the file is not already
-there.
+DB location: System/.dex-sessions.db (WAL mode). The Dex desktop app creates
+this file. The server never creates it on a read: a missing store means
+session memory is not set up yet, which is different from an empty store
+the app has already created.
 """
 
 import json
@@ -40,6 +41,10 @@ logger = logging.getLogger(__name__)
 # Configuration
 BASE_DIR = Path(os.environ.get('VAULT_PATH', Path.cwd()))
 DB_PATH = BASE_DIR / 'System' / '.dex-sessions.db'
+NOT_SET_UP_MESSAGE = (
+    "Session memory isn't set up yet — open the Dex desktop app and have a "
+    "conversation to enable it."
+)
 
 # Columns match the SELECT lists in the query helpers below. FTS rowids follow
 # the content tables so the existing JOIN ... ON rowid lookups keep working.
@@ -156,8 +161,12 @@ def _remove_incomplete_database() -> None:
 
 
 def ensure_database() -> None:
-    """Create the sessions database and schema the first time it is needed.
+    """Create an empty sessions database with the expected schema.
 
+    The desktop app is what normally writes this file. The MCP server does
+    not call this on startup or on a tool read — a missing file must stay
+    missing so callers can tell "not set up" from "set up and empty."
+    Tests use this helper to stand in for an app that has created the store.
     A file that is already present is left untouched, including a database
     written earlier with its own rows. The new file is created exclusively so
     a failure cannot delete a database another process just wrote.
@@ -203,11 +212,10 @@ def ensure_database() -> None:
 
 
 def get_db() -> sqlite3.Connection:
-    """Open a read-only WAL-mode connection, creating the database on first use."""
-    ensure_database()
+    """Open a read-only WAL-mode connection to the desktop app's store."""
     if not DB_PATH.exists():
         raise FileNotFoundError(
-            f"Sessions DB not found at {DB_PATH}. Could not create it."
+            f"Sessions DB not found at {DB_PATH}. Start the Dex app first to create it."
         )
 
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
@@ -898,13 +906,12 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
             return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
     except FileNotFoundError as e:
-        hint = "Dex could not create the session memory database in this vault."
         payload = feature_status(
             "Session memory",
             "not_installed",
-            hint,
+            NOT_SET_UP_MESSAGE,
             error=str(e),
-            hint=hint,
+            hint=NOT_SET_UP_MESSAGE,
         )
         return [types.TextContent(type="text", text=json.dumps(payload))]
     except Exception as e:
@@ -918,10 +925,6 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
 async def _main():
     logger.info("Starting Dex Session Memory MCP Server")
-    try:
-        ensure_database()
-    except FileNotFoundError as exc:
-        logger.info("%s", exc)
     logger.info(f"Vault path: {BASE_DIR}")
     logger.info(f"DB path: {DB_PATH}")
     logger.info(f"DB exists: {DB_PATH.exists()}")
