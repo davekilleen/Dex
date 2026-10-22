@@ -9,6 +9,15 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## Goal areas from first-time setup now work with quarterly goals (DEX-250)
+
+After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal right after setup then failed, and anyone already set up that way stayed stuck.
+
+**What this fixes for you:**
+
+* **Goals work right after setup.** The areas you name during first-time setup are saved in the shape goals already use, so your first quarterly goal can be created immediately.
+* **Existing setups are read without a redo.** If your focus-area file is still in the older shape, Dex reads it and you can create goals without running setup again.
+
 ## [1.97.29] — Calendar deletes finish, Google mail starts again, helpers load on older Python, and checkup proves large pictures (2026-10-19)
 
 Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out, Dex called the calendar broken, and the event stayed put. Thanks to Greg for the report.
