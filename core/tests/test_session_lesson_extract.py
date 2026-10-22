@@ -326,13 +326,13 @@ def test_extract_and_append_does_not_duplicate_a_crlf_bom_file(tmp_path: Path) -
 
 
 def test_session_already_recorded_normalizes_windows_path_aliases() -> None:
-    stored = "**Transcript:** `C:\\Users\\Ada\\AppData\\transcript.jsonl`\r\n"
+    stored = "**Transcript:** `C:\\Temp\\dex\\transcript.jsonl`\r\n"
     aliases = (
-        r"C:\Users\Ada\AppData\transcript.jsonl",
-        "C:/Users/Ada/AppData/transcript.jsonl",
-        r"c:\users\ada\appdata\transcript.jsonl",
-        r"\\?\C:\Users\Ada\AppData\transcript.jsonl",
-        r"\\?\c:\Users\Ada\AppData\transcript.jsonl",
+        r"C:\Temp\dex\transcript.jsonl",
+        "C:/Temp/dex/transcript.jsonl",
+        r"c:\temp\dex\transcript.jsonl",
+        r"\\?\C:\Temp\dex\transcript.jsonl",
+        r"\\?\c:\Temp\dex\transcript.jsonl",
     )
     for alias in aliases:
         assert extract.session_already_recorded(
@@ -374,8 +374,8 @@ def test_record_session_end_does_not_repeat_windows_path_or_crlf_marker(
 
 
 def test_normalize_path_key_unifies_slash_case_and_extended_prefix() -> None:
-    expected = extract._normalize_path_key(r"C:\Users\Ada\transcript.jsonl")
-    assert expected == "c:/users/ada/transcript.jsonl"
-    assert extract._normalize_path_key("C:/Users/Ada/transcript.jsonl") == expected
-    assert extract._normalize_path_key(r"\\?\C:\Users\Ada\transcript.jsonl") == expected
-    assert extract._normalize_path_key(Path("C:/Users/Ada/transcript.jsonl")) == expected
+    expected = extract._normalize_path_key(r"C:\Temp\dex\transcript.jsonl")
+    assert expected == "c:/temp/dex/transcript.jsonl"
+    assert extract._normalize_path_key("C:/Temp/dex/transcript.jsonl") == expected
+    assert extract._normalize_path_key(r"\\?\C:\Temp\dex\transcript.jsonl") == expected
+    assert extract._normalize_path_key(Path("C:/Temp/dex/transcript.jsonl")) == expected
