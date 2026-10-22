@@ -17,6 +17,14 @@ echo "$NOW" > "$DEDUP_FILE"
 CLAUDE_DIR="$CLAUDE_PROJECT_DIR"
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEX_REPO_DIR="$(cd "$HOOK_DIR/../.." && pwd)"
+
+# launchd cannot start the nightly check if its log folder is missing (exit 78).
+# Existing installs keep an older job file that still writes under the vault,
+# so recreate the folder here rather than waiting for the installer to be run
+# again. Session start stays silent on failure.
+if [[ -n "$CLAUDE_DIR" ]]; then
+    mkdir -p "$CLAUDE_DIR/.scripts/logs" 2>/dev/null || true
+fi
 LEARNINGS_DIR="$CLAUDE_DIR/06-Resources/Learnings"
 MISTAKES_FILE="$LEARNINGS_DIR/Mistake_Patterns.md"
 PREFERENCES_FILE="$LEARNINGS_DIR/Working_Preferences.md"

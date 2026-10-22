@@ -1,22 +1,90 @@
 #!/bin/bash
+# Nightly smoke worker. This script is started by launchd with a bare
+# environment: PATH may be just the system locations, HOME may be missing,
+# and the log folder the job writes to may have been deleted since install.
+# macOS launchd reports exit 78 as "this job's definition is wrong", so this
+# script never returns 78.
 
 set -e
 
-VAULT_PATH=""
-BREADCRUMB="$HOME/.config/dex/vault-path"
-if [ -f "$BREADCRUMB" ]; then
-    VAULT_PATH="$(tr -d '[:space:]' < "$BREADCRUMB")"
+# launchd user agents usually set HOME. Bootstrap, CI, and some SSH sessions
+# do not. The breadcrumb, ~/Library/Logs, and Python's idea of a home folder
+# all need it.
+if [ -z "${HOME:-}" ]; then
+    _user=""
+    if [ -n "${LOGNAME:-}" ]; then
+        _user="$LOGNAME"
+    elif [ -n "${USER:-}" ]; then
+        _user="$USER"
+    elif command -v id >/dev/null 2>&1; then
+        _user="$(id -un)"
+    fi
+    if [ -n "$_user" ]; then
+        _home="$(eval echo "~${_user}")"
+        if [ -n "$_home" ] && [ "$_home" != "~${_user}" ] && [ -d "$_home" ]; then
+            HOME="$_home"
+            export HOME
+        fi
+    fi
+    unset _user _home
 fi
 
-if [ -z "$VAULT_PATH" ] || [ ! -d "$VAULT_PATH" ]; then
+# Prefer the vault the job definition already knows (the plist sets this),
+# then the install breadcrumb, then this script's own location.
+if [ -z "${VAULT_PATH:-}" ] || [ ! -d "${VAULT_PATH:-}" ]; then
+    VAULT_PATH=""
+    BREADCRUMB="${HOME:-}/.config/dex/vault-path"
+    if [ -n "${HOME:-}" ] && [ -f "$BREADCRUMB" ]; then
+        VAULT_PATH="$(tr -d '[:space:]' < "$BREADCRUMB")"
+    fi
+fi
+
+if [ -z "${VAULT_PATH:-}" ] || [ ! -d "${VAULT_PATH:-}" ]; then
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     VAULT_PATH="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
 
-if [ -x "$VAULT_PATH/.venv/bin/python" ]; then
+# launchd opens StandardOutPath before this script starts. If that folder is
+# missing the job never runs and launchd reports 78. Recreate both write
+# locations so a later retry, a manual run, and the success receipt still
+# work after someone deletes the logs folder.
+mkdir -p "$VAULT_PATH/.scripts/logs"
+if [ -n "${HOME:-}" ]; then
+    mkdir -p "$HOME/Library/Logs/Dex"
+fi
+
+# Resolve an absolute Python 3.11+ interpreter. A bare "python3" depends on
+# PATH; launchd's PATH puts /usr/bin first, where macOS ships an Xcode stub
+# or an older CLT python. Pinning a machine path in the plist also goes
+# stale after a Python upgrade. Resolve at runtime instead.
+_python_supported() {
+    [ -n "${1:-}" ] && [ -x "$1" ] && "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1
+}
+
+PYTHON=""
+if _python_supported "${DEX_PYTHON:-}"; then
+    PYTHON="$DEX_PYTHON"
+elif _python_supported "$VAULT_PATH/.venv/bin/python"; then
     PYTHON="$VAULT_PATH/.venv/bin/python"
 else
-    PYTHON="python3"
+    for _candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+        if _python_supported "$_candidate"; then
+            PYTHON="$_candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$PYTHON" ]; then
+    _from_path="$(command -v python3 2>/dev/null || true)"
+    if _python_supported "$_from_path"; then
+        PYTHON="$_from_path"
+    fi
+fi
+unset _candidate _from_path
+
+if [ -z "$PYTHON" ]; then
+    echo "nightly smoke: no usable Python 3.11+ interpreter found" >&2
+    exit 1
 fi
 
 # Make node discoverable, the same way PYTHON is resolved above.
@@ -41,9 +109,23 @@ if ! command -v node >/dev/null 2>&1; then
     done
 fi
 
+_py_dir="$(dirname "$PYTHON")"
+case ":$PATH:" in
+    *":$_py_dir:"*) ;;
+    *) PATH="$PATH:$_py_dir"; export PATH ;;
+esac
+unset _py_dir
+
+# If HOME is still empty, give Python a writable home so Path.home() works.
+if [ -z "${HOME:-}" ]; then
+    HOME="$VAULT_PATH"
+    export HOME
+fi
+
 cd "$VAULT_PATH"
+export VAULT_PATH
 set +e
-VAULT_PATH="$VAULT_PATH" "$PYTHON" core/utils/smoke.py --json --ledger
+"$PYTHON" core/utils/smoke.py --json --ledger
 SMOKE_STATUS=$?
 set -e
 
@@ -55,11 +137,18 @@ if [ -f "System/.smoke-last-run.json" ]; then
         --channel "stable" >/dev/null 2>&1 || true
 fi
 
+# Never leak 78. launchd operators treat that as a broken job definition,
+# which hides a real checkup failure (or a child that used the sysexits
+# configuration code).
+if [ "$SMOKE_STATUS" -eq 78 ]; then
+    echo "nightly smoke: checkup returned 78; remapping to 1 so this is not reported as a configuration error" >&2
+    exit 1
+fi
+
 if [ "$SMOKE_STATUS" -ne 0 ]; then
     exit "$SMOKE_STATUS"
 fi
 
-mkdir -p .scripts/logs
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] nightly smoke completed" >> .scripts/logs/smoke-nightly.log
 
 # Record completion separately from the report. SessionStart requires both a

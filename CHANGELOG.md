@@ -9,6 +9,12 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+The nightly health check on a Mac could still stop with a configuration error after the older-Python helper fix in 1.97.29 (DEX-245). The scheduled check did not have a home folder, a complete tool path, or a log folder the Mac scheduler could write to, so it never ran the checkup itself.
+
+**What this fixes for you:**
+
+* **The nightly health check can finish on a Mac.** It now finds your Dex Python, creates the folders it writes to before it starts, and reports a real checkup result instead of a configuration error.
+
 ## [1.97.29] — Calendar deletes finish, Google mail starts again, helpers load on older Python, and checkup proves large pictures (2026-10-19)
 
 Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out, Dex called the calendar broken, and the event stayed put. Thanks to Greg for the report.
