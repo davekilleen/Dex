@@ -9,6 +9,15 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+On a Windows computer, closing a chat wrote the same correction into that
+day's lessons every time, so one note kept appearing again and again. DEX-252.
+
+**What this fixes for you:**
+
+* **The same correction is not added twice.** Closing a chat now notices a
+  lesson that is already in the day's file, even when Windows has written the
+  file its own way.
+
 ## [1.97.29] — Calendar deletes finish, Google mail starts again, helpers load on older Python, and checkup proves large pictures (2026-10-19)
 
 Asking Dex to take an event off your calendar used to sit there for about two minutes and then give up. It was reading every event on that calendar first, so a busy calendar made the request time out, Dex called the calendar broken, and the event stayed put. Thanks to Greg for the report.

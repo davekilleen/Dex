@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,6 +60,23 @@ _SECRETISH = re.compile(
     r"|xox[baprs]-)"
 )
 _STATUS_LINE = re.compile(r"^\*\*Status:\*\*", re.IGNORECASE)
+_SESSION_MARK = re.compile(r"\*\*Session:\*\*\s*`([^`]+)`", re.IGNORECASE)
+_TRANSCRIPT_MARK = re.compile(
+    r"\*\*Transcript:\*\*\s*(?:recorded as\s+)?`([^`]+)`",
+    re.IGNORECASE,
+)
+# Windows editors and Notepad "smart" punctuation must not look like a new lesson.
+_QUOTE_TRANSLATE = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201b": "'",
+        "\u00b4": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201f": '"',
+    }
+)
 
 # Text the harness writes into a user turn is not the user's words, so it is
 # removed BEFORE anything is classified. Harness blocks are lowercase tags with
@@ -85,6 +103,67 @@ def strip_machine_text(text: str) -> str:
     return remainder
 
 
+def _normalize_text(text: str) -> str:
+    """Undo Windows file-shape differences before any comparison.
+
+    Daily learning files on Windows often arrive with CRLF, a UTF-8 BOM, or
+    NFC/NFD spelling of the same letters. Comparing the raw strings then
+    treats yesterday's correction as new and appends it again.
+    """
+    if not text:
+        return ""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return unicodedata.normalize("NFC", text)
+
+
+def _fingerprint_text(text: str) -> str:
+    """Stable wording key: line endings, quotes, markup, and case do not count."""
+    normalized = _normalize_text(text).translate(_QUOTE_TRANSLATE)
+    lines: list[str] = []
+    for line in normalized.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("> "):
+            stripped = stripped[2:]
+        elif stripped == ">":
+            stripped = ""
+        lines.append(stripped)
+    return " ".join("\n".join(lines).casefold().split())
+
+
+def _normalize_path_key(value: Path | str) -> str:
+    """Compare transcript paths across slash, case, and Windows prefix variants."""
+    text = _normalize_text(str(value)).strip().replace("\\", "/")
+    folded = text.casefold()
+    if folded.startswith("//?/unc/"):
+        text = "//" + text[8:]
+    elif folded.startswith("//?/") or folded.startswith("//./"):
+        text = text[4:]
+    if len(text) >= 2 and text[1] == ":" and (len(text) == 2 or text[2] != "/"):
+        text = f"{text[:2]}/{text[2:]}"
+    if text.startswith("//"):
+        rest = text[2:]
+        while "//" in rest:
+            rest = rest.replace("//", "/")
+        text = "//" + rest
+    else:
+        while "//" in text:
+            text = text.replace("//", "/")
+    return unicodedata.normalize("NFC", text).casefold()
+
+
+def _decode_learning_bytes(data: bytes) -> str:
+    """Read a learning file without assuming UTF-8 or Unix line endings."""
+    if not data:
+        return ""
+    if data.startswith(b"\xef\xbb\xbf"):
+        return data[3:].decode("utf-8", errors="replace")
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    return data.decode("utf-8", errors="replace")
+
+
 @dataclass(frozen=True)
 class Candidate:
     kind: str
@@ -92,7 +171,7 @@ class Candidate:
 
     @property
     def fingerprint(self) -> str:
-        return " ".join(self.text.casefold().split())
+        return _fingerprint_text(self.text)
 
 
 def _int_env(name: str, default: int) -> int:
@@ -295,11 +374,10 @@ def render_entry(candidate: Candidate, when: datetime) -> str:
 
 
 def already_recorded(existing: str, candidate: Candidate) -> bool:
-    haystack = " ".join(existing.casefold().split())
     needle = candidate.fingerprint
     if not needle:
         return True
-    return needle in haystack
+    return needle in _fingerprint_text(existing)
 
 
 _HEADER = (
@@ -317,7 +395,9 @@ def _locked_learning_file(path: Path) -> Iterator[TextIO]:
     still writes; the hook stays fail-open.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle = path.open("a+", encoding="utf-8")
+    # newline="" keeps on-disk CRLF visible so de-dupe can normalise it,
+    # and stops Windows text mode turning every write into a new CRLF copy.
+    handle = path.open("a+", encoding="utf-8", newline="")
     try:
         try:
             import fcntl
@@ -331,8 +411,18 @@ def _locked_learning_file(path: Path) -> Iterator[TextIO]:
 
 
 def _read_locked(handle: TextIO) -> str:
-    handle.seek(0)
-    return handle.read()
+    """Read today's file from disk bytes.
+
+    Windows append-mode handles can seek(0)/read() as empty even when the
+    file has content. Comparing against that empty string re-appends every
+    correction. Bytes + encoding detection is the same file on every OS.
+    """
+    handle.flush()
+    try:
+        return _decode_learning_bytes(Path(handle.name).read_bytes())
+    except OSError:
+        handle.seek(0)
+        return _normalize_text(handle.read())
 
 
 def _write_locked(handle: TextIO, text: str) -> None:
@@ -343,11 +433,19 @@ def _write_locked(handle: TextIO, text: str) -> None:
 
 def session_already_recorded(existing: str, *, transcript: Path | None, session_id: str) -> bool:
     """True when this same session already left a marker in today's file."""
-    if session_id and f"**Session:** `{session_id}`" in existing:
-        return True
+    body = _normalize_text(existing)
+    if session_id and session_id.strip():
+        wanted = session_id.strip().casefold()
+        if any(
+            match.group(1).strip().casefold() == wanted
+            for match in _SESSION_MARK.finditer(body)
+        ):
+            return True
     if transcript is not None:
-        marker = f"**Transcript:** `{transcript}`"
-        if marker in existing or f"**Transcript:** recorded as `{transcript}`" in existing:
+        wanted = _normalize_path_key(transcript)
+        if wanted and any(
+            _normalize_path_key(match.group(1)) == wanted for match in _TRANSCRIPT_MARK.finditer(body)
+        ):
             return True
     return False
 
