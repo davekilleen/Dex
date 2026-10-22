@@ -192,6 +192,9 @@ For each participant in synced meetings:
    entries, removing the oldest, and update `last_interaction` in the
    frontmatter. If a line for that meeting path is already present, change
    nothing — the same entry must never appear twice.
+5. **If lookup returns `status: quarantined` or a `warning`**, do not skip
+   silently. Repeat the warning, naming the page, leave that page untouched,
+   and continue with everyone else.
 
 These page updates are YOUR responsibility; do not assume a hook will make
 them for you.
