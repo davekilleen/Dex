@@ -9,49 +9,49 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
-## Goal areas from first-time setup now work with quarterly goals (DEX-250)
+## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
-After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal right after setup then failed, and anyone already set up that way stayed stuck.
+After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.
 
 **What this fixes for you:**
 
-* **Goals work right after setup.** The areas you name during first-time setup are saved in the shape goals already use, so your first quarterly goal can be created immediately.
+* **Goals work right after setup.** The areas you name during first-time setup are saved in the shape Goals already uses, so your first quarterly goal can be created immediately.
 * **Existing setups are read without a redo.** If your focus-area file is still in the older shape, Dex reads it and you can create goals without running setup again.
 
-People pages written in Dex's earlier layout were skipped when meetings were processed (DEX-251). The meeting note landed, but that person's page never showed it, and nothing said so.
+People pages written in Dex's earlier layout were skipped when meetings were processed. The meeting note landed, but that person's page never showed it, and nothing said so.
 
 **What this fixes for you:**
 
 * **Older people pages get the meeting.** Dex now reads the earlier people-page layout as well as the current one, so a meeting is added to the page you already have.
-* **If a page cannot be read, you see which one.** Dex names the page instead of quietly leaving it out.
+* **If a page cannot be read, you see which one.** Dex names the page in a warning instead of quietly leaving it out.
 * **Readable older pages pick up the current layout** when a meeting is added, without changing the notes you wrote.
 
-The nightly health check on a Mac could still stop with a configuration error after the older-Python helper fix in 1.97.29 (DEX-245). The scheduled check did not have a home folder, a complete tool path, or a log folder the Mac scheduler could write to, so it never ran the checkup itself.
+The nightly health check on a Mac could still stop with a configuration error after the older-Python fix in 1.97.29. The scheduled check had no home folder, an incomplete tool path, and no log folder the Mac scheduler could write to, so it never got as far as the checkup itself.
 
 **What this fixes for you:**
 
-* **The nightly health check can finish on a Mac.** It now finds your Dex Python, creates the folders it writes to before it starts, and reports a real checkup result instead of a configuration error.
+* **The nightly health check can start on a Mac.** It now finds your Dex Python, creates the folders it writes to before it begins, and reports a real checkup result instead of a configuration error.
 
-On a Windows computer, closing a chat wrote the same correction into that
-day's lessons every time, so one note kept appearing again and again. DEX-252.
-
-**What this fixes for you:**
-
-* **The same correction is not added twice.** Closing a chat now notices a
-  lesson that is already in the day's file, even when Windows has written the
-  file its own way.
-
-Asking about earlier conversations when the Dex app is not in use used to come
-back as if you simply had no memories. That made an unused feature look like a
-blank history.
+On a Windows computer, closing a session wrote the same lesson into that day's learnings every time, so one note kept appearing again and again.
 
 **What this fixes for you:**
 
-* **A missing memory feature says so.** If you have not used the Dex app yet,
-  Dex now says session memory isn't set up yet and how to turn it on, instead of
-  pretending there is nothing to remember. DEX-253
-* **A real empty history still reads as empty.** When the Dex app is in use and
-  there is nothing stored yet, Dex still reports an empty result.
+* **The same lesson is not saved twice.** Closing a session now notices a lesson that is already in the day's file, even when Windows has written the file its own way.
+
+Asking about earlier conversations when the Dex app was not in use came back as an empty answer, as if you simply had no memories. That made a feature you had not switched on look like a blank history.
+
+**What this fixes for you:**
+
+* **Session memory says when it is not set up.** If you have not used the Dex app yet, Dex now says session memory isn't set up and how to turn it on, instead of an empty answer.
+* **A real empty history still reads as empty.** When the Dex app is in use and nothing is stored yet, Dex still reports an empty result.
+
+Meeting notes and daily plans you had moved into the archive folder were invisible to the tools that read them.
+
+**What this fixes for you:**
+
+* **Archived meetings and daily plans are found again.** Dex's meeting and daily-plan readers now look in `07-Archives` as well as the usual places. Nothing is moved.
+
+Thanks to the users who reported these.
 
 ## [1.97.29] — Calendar deletes finish, Google mail starts again, helpers load on older Python, and checkup proves large pictures (2026-10-19)
 

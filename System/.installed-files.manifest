@@ -311,6 +311,7 @@
 .claude/hooks/skill-freshness.py
 .claude/hooks/soft-promise-detector.py
 .claude/hooks/tests/adapter-runner.test.cjs
+.claude/hooks/tests/archived-meeting-readers.test.cjs
 .claude/hooks/tests/auto-link-gate.test.cjs
 .claude/hooks/tests/auto-link-people.test.cjs
 .claude/hooks/tests/career-evidence-capture.test.cjs
@@ -937,6 +938,7 @@
 .scripts/lib/tests/llm-client.test.cjs
 .scripts/lib/tests/provision.test.cjs
 .scripts/meeting-intel/__tests__/action-items.test.cjs
+.scripts/meeting-intel/__tests__/archived-meeting-readers.test.cjs
 .scripts/meeting-intel/__tests__/capture-calendar-identity.test.cjs
 .scripts/meeting-intel/__tests__/company-domains.test.cjs
 .scripts/meeting-intel/__tests__/contacts-state.test.cjs
@@ -1006,6 +1008,8 @@
 06-Resources/Learnings/Working_Preferences.md
 06-Resources/Quarterly_Reviews/README.md
 06-Resources/README.md
+07-Archives/Meetings/README.md
+07-Archives/Plans/Daily/README.md
 07-Archives/Plans/README.md
 07-Archives/Projects/README.md
 07-Archives/README.md
@@ -1334,6 +1338,10 @@ core/tests/fixtures/entity_pages/10-utf8-bom.expected.json
 core/tests/fixtures/entity_pages/10-utf8-bom.md
 core/tests/fixtures/entity_pages/11-empty.expected.json
 core/tests/fixtures/entity_pages/11-empty.md
+core/tests/fixtures/entity_pages/12-legacy-sections.expected.json
+core/tests/fixtures/entity_pages/12-legacy-sections.md
+core/tests/fixtures/entity_pages/13-colon-outside-list.expected.json
+core/tests/fixtures/entity_pages/13-colon-outside-list.md
 core/tests/fixtures/entity_pages/company_domains.json
 core/tests/fixtures/entity_pages/render-company.expected.md
 core/tests/fixtures/entity_pages/render-company.input.json
@@ -1408,6 +1416,7 @@ core/tests/test_apple_mail_health.py
 core/tests/test_apple_mail_runtime_macos.py
 core/tests/test_apply_update.py
 core/tests/test_architecture_inventory.py
+core/tests/test_archived_meeting_readers.py
 core/tests/test_atlassian_setup_honesty.py
 core/tests/test_attendee_names.py
 core/tests/test_automation_ownership_contract.py
@@ -1578,6 +1587,7 @@ core/tests/test_obsidian_wikilink_migration.py
 core/tests/test_onboarding_calendar.py
 core/tests/test_onboarding_context_lifecycle.py
 core/tests/test_onboarding_flow_portability.py
+core/tests/test_onboarding_goal_areas_format.py
 core/tests/test_onboarding_marker_age.py
 core/tests/test_os_flags.py
 core/tests/test_path_contract.py
@@ -2252,6 +2262,7 @@ scripts/render-health-page.py
 scripts/resolve-distignore-files.sh
 scripts/run-historic-fleet-darwin.sh
 scripts/run-install-journeys.py
+scripts/run-nightly-smoke-as-launchd.sh
 scripts/run-real-github-pipe.py
 scripts/run-windows-install-journey.sh
 scripts/run-windows-lifecycle-journey.py
