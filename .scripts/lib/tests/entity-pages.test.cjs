@@ -13,6 +13,7 @@ const {
   relationshipEdgeKey,
   renderRelationships,
   renderUpdateLog,
+  unreadablePersonPageWarning,
   upsertFrontmatter,
   renderPersonPage,
   renderCompanyPage,
@@ -21,6 +22,16 @@ const {
 } = require('../entity-pages.cjs');
 
 const FIXTURES = path.resolve(__dirname, '../../../core/tests/fixtures/entity_pages');
+
+test('unreadable person page warning names the page', () => {
+  const warning = unreadablePersonPageWarning(
+    'Alice Smith',
+    '05-Areas/People/External/Alice_Smith.md',
+  );
+  assert.match(warning, /Alice Smith/);
+  assert.match(warning, /05-Areas\/People\/External\/Alice_Smith\.md/);
+  assert.match(warning, /unreadable/);
+});
 
 test('unmarked markdown under People is not inferred as a person', t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-people-'));

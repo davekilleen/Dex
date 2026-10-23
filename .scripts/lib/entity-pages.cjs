@@ -20,16 +20,21 @@ const V2_FIELDS = new Set([
 ]);
 const LIST_FIELDS = new Set(['emails', 'aliases', 'domains']);
 const LABELS = {
-  type: 'type', name: 'name', role: 'role', company: 'company',
+  type: 'type', name: 'name', role: 'role', title: 'role', 'job title': 'role',
+  company: 'company', organization: 'company', organisation: 'company',
+  'works at': 'company',
   'company page': 'company_page', email: 'emails', emails: 'emails', aliases: 'aliases',
   location: 'location', 'last interaction': 'last_interaction',
   'last interaction date': 'last_interaction',
-  'i owe date': 'i_owe_date', 'i owe this': 'i_owe_date',
+  'i owe date': 'i_owe_date', 'i owe this': 'i_owe_date', 'i owe this by': 'i_owe_date',
   'waiting on date': 'waiting_on_date', 'waiting on them': 'waiting_on_date',
-  'waiting on until': 'waiting_on_date',
+  'waiting on until': 'waiting_on_date', 'waiting on them until': 'waiting_on_date',
   website: 'website', domain: 'domains',
   domains: 'domains', status: 'status', stage: 'status',
 };
+const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
+const PERSON_SECTION_RE = /^##\s+(Notes|Overview|Relationship Context|What They Care About|Working Style Notes|Meeting History|Meetings|Recent Interactions|Action Items Involving Them)\s*$/i;
+const HEADING_RE = /^#\s+(.+?)\s*$/m;
 
 function emptyResult() {
   return {
@@ -119,7 +124,11 @@ function normaliseField(key, value) {
   value = normaliseScalar(value);
   if (key === 'type') return value === 'person' || value === 'company' ? value : null;
   if (key === 'location') return ['internal', 'external', 'unknown'].includes(value) ? value : null;
-  if (['last_interaction', 'i_owe_date', 'waiting_on_date'].includes(key) && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  if (['last_interaction', 'i_owe_date', 'waiting_on_date'].includes(key) && value) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const prefix = DATE_PREFIX_RE.exec(value);
+    return prefix ? prefix[1] : null;
+  }
   return value;
 }
 
@@ -224,7 +233,7 @@ function legacyFields(body) {
   const inline = {};
   const formats = [];
   for (const line of body.split(/\r?\n/)) {
-    let match = /^\s*\|\s*(?:\*\*)?([^|*]+?)(?:\*\*)?\s*\|\s*(.*?)\s*\|\s*$/.exec(line);
+    let match = /^\s*\|\s*(?:\*\*)?([^|*]+?)(?:\*\*)?\s*\|\s*(.*?)\s*\|?\s*$/.exec(line);
     if (match) {
       const key = LABELS[match[1].replace(/\s+/g, ' ').trim().toLowerCase().replace(/:$/, '')];
       if (key && match[2].trim() && !(key in pipe)) {
@@ -233,9 +242,9 @@ function legacyFields(body) {
       }
       continue;
     }
-    match = /^\s*\*\*([^*:\n]+):\*\*\s*(.*?)\s*$/.exec(line);
+    match = /^\s*(?:[-*]\s+)?(?:\*\*)?([^*:\n]+?)(?:\*\*)?\s*:\s*(?:\*\*)?(.*?)\s*(?:\*\*)?\s*$/.exec(line);
     if (match) {
-      const key = LABELS[match[1].replace(/\s+/g, ' ').trim().toLowerCase()];
+      const key = LABELS[match[1].replace(/\s+/g, ' ').trim().toLowerCase().replace(/:$/, '')];
       if (key && match[2].trim() && !(key in inline)) {
         inline[key] = match[2].trim();
         if (!formats.includes('inline_bold')) formats.push('inline_bold');
@@ -243,6 +252,18 @@ function legacyFields(body) {
     }
   }
   return { pipe, inline, formats };
+}
+
+function hasLegacyPersonLayout(body) {
+  if (!HEADING_RE.test(body)) return false;
+  return body.split(/\r?\n/).some((line) => PERSON_SECTION_RE.test(line));
+}
+
+function unreadablePersonPageWarning(name, relativePath) {
+  const label = String(name || '').trim() || 'this person';
+  const page = String(relativePath || '').trim() || 'the person page';
+  return `Dex could not update the person page for ${label} (${page}). `
+    + 'The page is unreadable, so this meeting was not added.';
 }
 
 function inferType(_filePath, values) {
@@ -292,8 +313,14 @@ function parseEntityPage(filePath) {
     if (relationships !== null) result.relationships = relationships;
   }
   result.type = inferType(filePath, result);
+  if (!result.type && !result.declared_non_entity && hasLegacyPersonLayout(split.body)) {
+    result.type = 'person';
+    if (!result.source_formats.includes('legacy_sections')) {
+      result.source_formats.push('legacy_sections');
+    }
+  }
   if (result.type && !result.name) {
-    const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
+    const heading = HEADING_RE.exec(split.body);
     result.name = heading ? heading[1].trim() : path.basename(filePath, path.extname(filePath)).replace(/_/g, ' ');
   }
   return result;
@@ -747,6 +774,7 @@ module.exports = {
   mergeFrontmatterText, parseEntityPage, readFrontmatterField, renderUpdateLog,
   relationshipEdgeKey,
   renderRelationships,
+  unreadablePersonPageWarning,
   upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
 };

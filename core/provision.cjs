@@ -936,6 +936,33 @@ function pillarId(name) {
   return name.toLowerCase().replace(/ /g, '-').replace(/_/g, '-');
 }
 
+function canonicalPillar(pillar) {
+  const name = pillarName(pillar).trim();
+  if (!name) return null;
+  const fromObject = pillar && typeof pillar === 'object' ? pillar : {};
+  const existingId = typeof fromObject.id === 'string' ? fromObject.id.trim() : '';
+  const result = {
+    id: existingId || pillarId(name),
+    name,
+    description: pillarDescription(pillar),
+  };
+  if (fromObject.keywords !== undefined) {
+    result.keywords = structuredClone(fromObject.keywords);
+  }
+  return result;
+}
+
+function canonicalPillars(list) {
+  return (list || []).map(canonicalPillar).filter(Boolean);
+}
+
+function canonicalizeProfilePillars(profile) {
+  if (profile && Array.isArray(profile.pillars)) {
+    profile.pillars = canonicalPillars(profile.pillars);
+  }
+  return profile;
+}
+
 function tasksContent(pillars) {
   // Mirrors the shipped seed 03-Tasks/Tasks.md: priority-sectioned so the
   // Work MCP can derive priority from headings and file tasks by priority.
@@ -1445,6 +1472,7 @@ function provision(options) {
         profile = onboardingCompleted
           ? carryForwardProfile(profile, template, overlay)
           : freshProfile;
+        canonicalizeProfilePillars(profile);
         writeIfChanged(
           profilePath,
           yamlLib().dump(profile, { sortKeys: false, lineWidth: -1 }),
@@ -1480,6 +1508,7 @@ function provision(options) {
         } else reporter.skipped(profilePath);
       } else reporter.skipped(profilePath);
     } else {
+      canonicalizeProfilePillars(freshProfile);
       writeIfMissing(
         profilePath,
         yamlLib().dump(freshProfile, { sortKeys: false, lineWidth: -1 }),
@@ -1487,6 +1516,9 @@ function provision(options) {
         options.dryRun,
         provisionTransaction,
       );
+    }
+    if (Array.isArray(profile.pillars)) {
+      profile.pillars = canonicalPillars(profile.pillars);
     }
     if (options.onboard) {
       reporter.summary.profile_plan = {
@@ -1522,10 +1554,7 @@ function provision(options) {
     );
 
     const pillarsPath = path.join(vaultRoot, 'System', 'pillars.yaml');
-    const pillars = (profile.pillars || []).map(pillar => {
-      const name = pillarName(pillar);
-      return { id: pillarId(name), name, description: pillarDescription(pillar) };
-    }).filter(pillar => pillar.name);
+    const pillars = canonicalPillars(profile.pillars);
     const pillarsDocument = { pillars };
     if (options.onboard && onboardingCompleted && fs.existsSync(pillarsPath)) {
       // A kept pillar keeps its curated metadata; a rewrite that dropped

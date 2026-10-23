@@ -60,6 +60,9 @@ def priority_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(work_server, "get_week_priorities_file", lambda: path)
     monkeypatch.setattr(work_server, "QUARTER_GOALS_FILE", goals)
     monkeypatch.setattr(work_server, "PILLARS", PILLARS)
+    monkeypatch.setattr(
+        work_server, "_PILLARS_SIGNATURE", work_server._pillars_file_signature()
+    )
     return path
 
 

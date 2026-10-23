@@ -54,7 +54,12 @@ _FIELD_LABELS = {
     "type": "type",
     "name": "name",
     "role": "role",
+    "title": "role",
+    "job title": "role",
     "company": "company",
+    "organization": "company",
+    "organisation": "company",
+    "works at": "company",
     "company page": "company_page",
     "email": "emails",
     "emails": "emails",
@@ -64,9 +69,11 @@ _FIELD_LABELS = {
     "last interaction date": "last_interaction",
     "i owe date": "i_owe_date",
     "i owe this": "i_owe_date",
+    "i owe this by": "i_owe_date",
     "waiting on date": "waiting_on_date",
     "waiting on them": "waiting_on_date",
     "waiting on until": "waiting_on_date",
+    "waiting on them until": "waiting_on_date",
     "website": "website",
     "domain": "domains",
     "domains": "domains",
@@ -78,9 +85,20 @@ _FRONTMATTER_RE = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 _PIPE_ROW_RE = re.compile(
-    r"^\s*\|\s*(?:\*\*)?([^|*]+?)(?:\*\*)?\s*\|\s*(.*?)\s*\|\s*$"
+    r"^\s*\|\s*(?:\*\*)?([^|*]+?)(?:\*\*)?\s*\|\s*(.*?)\s*\|?\s*$"
 )
-_INLINE_RE = re.compile(r"^\s*\*\*([^*:\n]+):\*\*\s*(.*?)\s*$")
+_INLINE_RE = re.compile(
+    r"^\s*(?:[-*]\s+)?(?:\*\*)?([^*:\n]+?)(?:\*\*)?\s*:\s*(?:\*\*)?(.*?)\s*(?:\*\*)?\s*$"
+)
+_DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+_PERSON_SECTION_RE = re.compile(
+    r"(?im)^##\s+("
+    r"Notes|Overview|Relationship Context|What They Care About|"
+    r"Working Style Notes|Meeting History|Meetings|Recent Interactions|"
+    r"Action Items Involving Them"
+    r")\s*$"
+)
+_HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 _REGION_HEADINGS = {
     "recent-interactions": "Recent Interactions",
@@ -164,10 +182,11 @@ def _normalise_field(key: str, value: Any) -> Any:
         return value if value in {"person", "company"} else None
     if key == "location":
         return value if value in {"internal", "external", "unknown"} else None
-    if key in {"last_interaction", "i_owe_date", "waiting_on_date"} and value and not re.fullmatch(
-        r"\d{4}-\d{2}-\d{2}", value
-    ):
-        return None
+    if key in {"last_interaction", "i_owe_date", "waiting_on_date"} and value:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return value
+        prefix = _DATE_PREFIX_RE.match(value)
+        return prefix.group(1) if prefix else None
     return value
 
 
@@ -357,13 +376,30 @@ def _legacy_fields(
             continue
         match = _INLINE_RE.match(raw_line)
         if match:
-            label = re.sub(r"\s+", " ", match.group(1)).strip().lower()
+            label = re.sub(r"\s+", " ", match.group(1)).strip().lower().rstrip(":")
             field = _FIELD_LABELS.get(label)
             if field and match.group(2).strip() and field not in inline:
                 inline[field] = match.group(2).strip()
                 if "inline_bold" not in formats:
                     formats.append("inline_bold")
     return pipe, inline, formats
+
+
+def _has_legacy_person_layout(body: str) -> bool:
+    """True for the pre-frontmatter person template and the ## Notes layout."""
+    if not _HEADING_RE.search(body):
+        return False
+    return _PERSON_SECTION_RE.search(body) is not None
+
+
+def unreadable_person_page_warning(name: str, relative_path: str) -> str:
+    """Visible meeting-processing warning when a found person page cannot be used."""
+    label = name.strip() or "this person"
+    page = relative_path.strip() or "the person page"
+    return (
+        f"Dex could not update the person page for {label} ({page}). "
+        "The page is unreadable, so this meeting was not added."
+    )
 
 
 def _split_frontmatter(
@@ -467,8 +503,13 @@ def parse_entity_page(path: str | Path) -> dict[str, Any]:
             result["relationships"] = relationships
 
     result["type"] = _infer_type(result)
+    if result["type"] is None and not result["declared_non_entity"]:
+        if _has_legacy_person_layout(body):
+            result["type"] = "person"
+            if "legacy_sections" not in result["source_formats"]:
+                result["source_formats"].append("legacy_sections")
     if result["type"] and not result["name"]:
-        heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)
+        heading = _HEADING_RE.search(body)
         result["name"] = (
             heading.group(1).strip()
             if heading

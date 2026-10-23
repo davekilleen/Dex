@@ -65,6 +65,9 @@ def planning_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str,
     monkeypatch.setattr(work_server, "get_meetings_dir", lambda: meetings)
     monkeypatch.setattr(work_server, "get_people_dir", lambda: people.parent)
     monkeypatch.setattr(work_server, "PILLARS", TEST_PILLARS)
+    monkeypatch.setattr(
+        work_server, "_PILLARS_SIGNATURE", work_server._pillars_file_signature()
+    )
     monkeypatch.setattr(work_server, "_fire_analytics_event", lambda *a, **k: None)
     monkeypatch.setattr(work_server, "refresh_search_index", lambda: None)
     monkeypatch.setattr(work_server, "_tz_today", lambda: date(2026, 10, 2))

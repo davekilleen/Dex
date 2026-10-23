@@ -442,3 +442,65 @@ test('machine region keeps only the newest 20 interactions', (t) => {
   assert.match(region[0], /Roadmap Review/);
   assert.doesNotMatch(region.join('\n'), /Old 19/);
 });
+
+test('an old-format person page receives the meeting and gains current frontmatter', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, [
+    '# Alice Smith',
+    '',
+    '## Overview',
+    '',
+    '| Field | Value |',
+    '|-------|-------|',
+    '| **Phone** | 555-0100 |',
+    '',
+    '## Relationship Context',
+    '',
+    '**Last interaction:** 2026-01-01 — intro call',
+    '',
+    '## Meeting History',
+    '',
+    '| Date | Topic | Notes Link |',
+    '|------|-------|------------|',
+    '',
+  ].join('\n'));
+  const meeting = meetingNote(vault);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.match(updated, /type: person/);
+  assert.match(updated, /name: Alice Smith/);
+  assert.match(updated, /last_touched: '2026-07-10'/);
+  assert.match(updated, /\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\) — 2026-07-10/);
+  assert.match(updated, /## Relationship Context/);
+  assert.match(updated, /intro call/);
+  assert.equal(parseEntityPage(person).type, 'person');
+  assert.equal(parseEntityPage(person).name, 'Alice Smith');
+});
+
+test('an unparseable person page warns by name and is left unchanged', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  const original = [
+    '---',
+    'name: [broken',
+    '---',
+    '# Alice Smith',
+    '',
+    '**Company:** Acme',
+    '',
+  ].join('\n');
+  fs.writeFileSync(person, original);
+  const meeting = meetingNote(vault);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(person, 'utf8'), original);
+  assert.match(result.stderr, /Alice Smith/);
+  assert.match(result.stderr, /05-Areas\/People\/Internal\/Alice_Smith\.md/);
+  assert.match(result.stderr, /unreadable/);
+});
