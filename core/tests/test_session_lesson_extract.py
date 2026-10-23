@@ -283,3 +283,99 @@ def test_compaction_summary_is_not_reread_as_new_lessons(tmp_path: Path) -> None
     )
 
     assert extract.extract_candidates(transcript) == []
+
+
+def test_already_recorded_treats_crlf_and_lf_as_the_same() -> None:
+    words = "no, that's not what I asked"
+    candidate = extract.Candidate(kind="Correction", text=words)
+    lf = f"**What was said:**\n\n> {words}\n"
+    crlf = lf.replace("\n", "\r\n")
+
+    assert extract.already_recorded(lf, candidate)
+    assert extract.already_recorded(crlf, candidate)
+
+
+def test_already_recorded_ignores_bom_quotes_and_blockquote_wrap() -> None:
+    words = "no, stop over inferring from timesheet entries"
+    candidate = extract.Candidate(kind="Correction", text=words)
+    existing = (
+        "\ufeff# Session Learnings\r\n\r\n"
+        "> no, stop over inferring\r\n"
+        "> from timesheet entries\r\n"
+    )
+
+    assert extract.already_recorded(existing, candidate)
+    curly = extract.Candidate(kind="Correction", text="no, that’s not what I asked")
+    assert extract.already_recorded("> no, that's not what I asked\n", curly)
+
+
+def test_extract_and_append_does_not_duplicate_a_crlf_bom_file(tmp_path: Path) -> None:
+    words = "no, that's not what I asked"
+    body = (
+        "# Session Learnings - 2026-09-27\r\n\r\n"
+        "## 09:15 - Correction\r\n\r\n**What was said:**\r\n\r\n"
+        f"> {words}\r\n\r\n**Status:** pending\r\n\r\n---\r\n\r\n"
+    )
+    learning = tmp_path / "2026-09-27.md"
+    learning.write_bytes(b"\xef\xbb\xbf" + body.encode("utf-8"))
+    transcript = _transcript(tmp_path / "session.jsonl", [_user_line(words)])
+
+    assert extract.extract_and_append(transcript, learning, when=WHEN) == 0
+    text = extract._decode_learning_bytes(learning.read_bytes())
+    assert text.count("that's not what I asked") == 1
+
+
+def test_session_already_recorded_normalizes_windows_path_aliases() -> None:
+    stored = "**Transcript:** `C:\\Temp\\dex\\transcript.jsonl`\r\n"
+    aliases = (
+        r"C:\Temp\dex\transcript.jsonl",
+        "C:/Temp/dex/transcript.jsonl",
+        r"c:\temp\dex\transcript.jsonl",
+        r"\\?\C:\Temp\dex\transcript.jsonl",
+        r"\\?\c:\Temp\dex\transcript.jsonl",
+    )
+    for alias in aliases:
+        assert extract.session_already_recorded(
+            stored, transcript=Path(alias), session_id=""
+        ), alias
+
+
+def test_record_session_end_does_not_repeat_windows_path_or_crlf_marker(
+    tmp_path: Path,
+) -> None:
+    words = "no, that's not what I asked"
+    transcript = tmp_path / "session.jsonl"
+    _transcript(transcript, [_user_line(words)])
+    stored_path = str(transcript).replace("/", "\\")
+    learning = tmp_path / "2026-09-27.md"
+    learning.write_bytes(
+        (
+            "# Session Learnings - 2026-09-27\r\n\r\n"
+            "## 17:02 - Session completed\r\n\r\n"
+            "**Session ended**\r\n"
+            "**Session:** `sess-win`\r\n"
+            f"**Transcript:** `{stored_path}`\r\n\r\n"
+            f"## 09:15 - Correction\r\n\r\n**What was said:**\r\n\r\n> {words}\r\n\r\n"
+            "**Status:** pending\r\n\r\n---\r\n\r\n"
+        ).encode("utf-8")
+    )
+
+    written = extract.record_session_end(
+        learning,
+        transcript=transcript,
+        session_id="SESS-WIN",
+        when=WHEN,
+    )
+
+    assert written == 0
+    text = extract._decode_learning_bytes(learning.read_bytes())
+    assert text.count("Session completed") == 1
+    assert text.count("that's not what I asked") == 1
+
+
+def test_normalize_path_key_unifies_slash_case_and_extended_prefix() -> None:
+    expected = extract._normalize_path_key(r"C:\Temp\dex\transcript.jsonl")
+    assert expected == "c:/temp/dex/transcript.jsonl"
+    assert extract._normalize_path_key("C:/Temp/dex/transcript.jsonl") == expected
+    assert extract._normalize_path_key(r"\\?\C:\Temp\dex\transcript.jsonl") == expected
+    assert extract._normalize_path_key(Path("C:/Temp/dex/transcript.jsonl")) == expected

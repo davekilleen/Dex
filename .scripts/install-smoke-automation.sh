@@ -7,6 +7,8 @@ VAULT_PATH="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLIST_NAME="com.dex.smoke-nightly"
 PLIST_TEMPLATE="$SCRIPT_DIR/$PLIST_NAME.plist.template"
 PLIST_DEST="$HOME/Library/LaunchAgents/$PLIST_NAME.plist"
+WORKER="$VAULT_PATH/.scripts/nightly-smoke.sh"
+LAUNCHD_LOG_DIR="$HOME/Library/Logs/Dex"
 
 launchctl_list() { launchctl list; }
 launchctl_load() { launchctl load "$1"; }
@@ -51,10 +53,18 @@ if [ -f "$VAULT_PATH/.git" ] || case "$VAULT_PATH" in */worktrees/*) true;; *) f
     exit 1
 fi
 
-mkdir -p "$HOME/.config/dex" "$HOME/Library/LaunchAgents" "$VAULT_PATH/.scripts/logs"
+# launchd opens StandardOutPath before the worker starts. If either log
+# folder is missing the job exits 78 and never runs. Create both here, and
+# create them again in the worker for installs that keep an older job file.
+mkdir -p "$HOME/.config/dex" "$HOME/Library/LaunchAgents" \
+    "$VAULT_PATH/.scripts/logs" "$LAUNCHD_LOG_DIR"
 echo "$VAULT_PATH" > "$HOME/.config/dex/vault-path"
-chmod +x "$VAULT_PATH/.scripts/nightly-smoke.sh"
-sed "s|__VAULT_PATH__|$VAULT_PATH|g" "$PLIST_TEMPLATE" > "$PLIST_DEST"
+chmod +x "$WORKER"
+if command -v xattr >/dev/null 2>&1; then
+    xattr -d com.apple.quarantine "$WORKER" 2>/dev/null || true
+fi
+sed -e "s|__VAULT_PATH__|$VAULT_PATH|g" -e "s|__HOME__|$HOME|g" \
+    "$PLIST_TEMPLATE" > "$PLIST_DEST"
 
 if is_loaded; then
     launchctl_unload "$PLIST_DEST" 2>/dev/null || true

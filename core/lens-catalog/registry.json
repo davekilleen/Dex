@@ -193,8 +193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/process-meetings/SKILL.md",
-        "sha256": "876d3354a88b1d1abed993f52a07e7fb4d218c2864e5cf034b421a6b20648419",
-        "byte_size": 24414
+        "sha256": "b7fb3d0bbe042b77dacd5c1ca8b1ed16d53265b850fc651931ace74c8fe14c81",
+        "byte_size": 24602
       },
       "value": "Turns meeting material into people context and follow-up tasks, reducing the chance that decisions or promises disappear after the call.",
       "jobs_served": [

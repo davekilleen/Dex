@@ -9,6 +9,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 const {
   parseEntityPage,
+  unreadablePersonPageWarning,
 } = require('../../.scripts/lib/entity-pages.cjs');
 const {
   flushEntityOps,
@@ -192,7 +193,14 @@ try {
     const original = fs.readFileSync(personPath, 'utf8');
     if (original.includes(relativeMeetingPath)) continue;
     const entity = parseEntityPage(personPath);
-    if (entity.quarantined) continue;
+    if (entity.quarantined || entity.type !== 'person') {
+      const relativePersonPath = path.relative(vaultRoot, personPath).split(path.sep).join('/');
+      console.error(unreadablePersonPageWarning(
+        entity.name || stem.replace(/_/g, ' '),
+        relativePersonPath,
+      ));
+      continue;
+    }
     ops.push({
       op: 'mutate',
       path: personPath,

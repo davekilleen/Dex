@@ -370,6 +370,12 @@ function materializeHookIntent(operation, latest, intent) {
   };
   const { merged, lastTouched, rendered } = mergeTouchRecords(latest, [touch]);
   const fieldChanges = {
+    ...(!entity.source_formats.includes('frontmatter')
+      ? {
+          type: 'person',
+          ...(entity.name ? { name: entity.name } : {}),
+        }
+      : {}),
     ...(!entity.last_interaction || interaction.date > entity.last_interaction
       ? { last_interaction: interaction.date }
       : {}),

@@ -183,6 +183,36 @@ test('parallel session-end hooks for the same session write one marker', (t) => 
   assert.equal((text.match(/that is not what I asked/gu) || []).length, 1);
 });
 
+test('does not rewrite a live correction stored with Windows CRLF bytes', (t) => {
+  const vault = sandbox(t);
+  const words = 'no, stop over inferring from timesheet entries';
+  const today = new Date().toISOString().slice(0, 10);
+  const learnings = path.join(vault, 'System', 'Session_Learnings');
+  fs.mkdirSync(learnings, { recursive: true });
+  const windowsBody = [
+    `# Session Learnings - ${today}`,
+    '',
+    '## 09:15 - Correction',
+    '',
+    '**What was said:**',
+    '',
+    `> ${words}`,
+    '',
+    '**Status:** pending',
+    '',
+    '---',
+    '',
+    '',
+  ].join('\r\n');
+  fs.writeFileSync(path.join(learnings, `${today}.md`), Buffer.from(`\uFEFF${windowsBody}`, 'utf8'));
+  const transcript = path.join(vault, 'transcript.jsonl');
+  fs.writeFileSync(transcript, userLine(words));
+
+  run(vault, { stdin: JSON.stringify({ transcript_path: transcript }) });
+
+  assert.equal((learningFile(vault).match(/stop over inferring/gu) || []).length, 1);
+});
+
 test('does not write a second copy of a correction already captured live', (t) => {
   const vault = sandbox(t);
   const words = 'no, stop over inferring from timesheet entries';

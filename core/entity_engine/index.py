@@ -15,7 +15,11 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeVar
 
-from core.entity_engine.contract import fold, parse_entity_page
+from core.entity_engine.contract import (
+    fold,
+    parse_entity_page,
+    unreadable_person_page_warning,
+)
 from core.lifecycle.inventory import load_folder_map
 from core.paths import COMPANIES_DIR, PEOPLE_DIR, VAULT_ROOT
 from core.utils.company_domains import registrable_domain
@@ -1101,10 +1105,19 @@ def lookup_person(
         return [{**person, "_score": score} for person in candidates]
 
     def packed(matches: list[dict[str, Any]]) -> dict[str, Any]:
+        visible = []
+        for person in matches[:10]:
+            row = dict(person)
+            if row.get("status") == "quarantined":
+                row["warning"] = unreadable_person_page_warning(
+                    str(row.get("name") or ""),
+                    str(row.get("path") or ""),
+                )
+            visible.append(row)
         result: dict[str, Any] = {
             "query": name,
             "company_filter": company,
-            "matches": matches[:10],
+            "matches": visible,
             "total_matches": len(matches),
             "index_age": index["built_at"],
         }
