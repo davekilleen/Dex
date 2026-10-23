@@ -9,6 +9,15 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## Goal areas from first-time setup now work with quarterly goals (DEX-250)
+
+After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal right after setup then failed, and anyone already set up that way stayed stuck.
+
+**What this fixes for you:**
+
+* **Goals work right after setup.** The areas you name during first-time setup are saved in the shape goals already use, so your first quarterly goal can be created immediately.
+* **Existing setups are read without a redo.** If your focus-area file is still in the older shape, Dex reads it and you can create goals without running setup again.
+
 People pages written in Dex's earlier layout were skipped when meetings were processed (DEX-251). The meeting note landed, but that person's page never showed it, and nothing said so.
 
 **What this fixes for you:**

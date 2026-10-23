@@ -239,6 +239,7 @@ from core.utils.company_domains import (
 )
 from core.utils.entity_pages import parse_entity_page, render_person_page
 from core.utils.feature_status import feature_status
+from core.utils.validators import normalize_pillar
 
 
 def get_tasks_file() -> Path:
@@ -372,16 +373,22 @@ def load_pillars_from_yaml() -> Dict[str, Dict]:
         
         pillars = {}
         for pillar in data['pillars']:
-            pillar_id = pillar.get('id', f"pillar_{len(pillars)+1}")
+            # Setup once saved a list of names, or objects with only a name.
+            # Goals requires {id, name}; accept and normalize the older shapes
+            # so a vault that already ran setup does not stay broken.
+            normalized = normalize_pillar(pillar)
+            if normalized is None:
+                continue
+            pillar_id = normalized['id']
             pillars[pillar_id] = {
-                'name': pillar.get('name', pillar_id),
-                'description': pillar.get('description', ''),
+                'name': normalized['name'],
+                'description': normalized['description'],
                 # Coerce to str: YAML parses unquoted tokens like 1:1 as ints
                 # (base-60), which would crash guess_pillar's `keyword in text`.
                 # `or []` guards a present-but-empty `keywords:` (parses as None),
                 # which would otherwise raise here and discard ALL pillars via the
                 # outer except.
-                'keywords': [str(k) for k in (pillar.get('keywords') or [])]
+                'keywords': normalized['keywords'],
             }
         
         if not pillars:
@@ -5468,7 +5475,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Goal title (specific, outcome-focused)"},
-                    "pillar": {"type": "string", "enum": pillar_ids, "description": f"Which strategic pillar this supports ({pillar_description})"},
+                    "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Which strategic pillar this supports ({pillar_description})"},
                     "success_criteria": {"type": "string", "description": "What 'done' looks like - specific, measurable outcome"},
                     "milestones": {"type": "array", "items": {"type": "object", "properties": {"title": {"type": "string"}}}, "description": "Key milestones toward the goal"},
                     "quarter": {"type": "string", "description": "Quarter (e.g., 'Q1 2026') - defaults to current quarter"},
@@ -5531,7 +5538,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Priority title (specific outcome)"},
-                    "pillar": {"type": "string", "enum": pillar_ids, "description": f"Which strategic pillar ({pillar_description})"},
+                    "pillar": {"type": "string", "enum": pillar_inputs, "description": f"Which strategic pillar ({pillar_description})"},
                     "quarterly_goal_id": {"type": "string", "description": "Goal ID this priority advances. If omitted, system auto-infers from title+pillar. Use 'operational' to explicitly mark non-goal work."},
                     "success_criteria": {"type": "string", "description": "What success looks like for this priority"},
                     "week_date": {"type": "string", "description": "Monday of target week (YYYY-MM-DD) - defaults to current week"}
@@ -7216,11 +7223,14 @@ async def _handle_call_tool_inner(
         skills_developed = arguments.get('skills_developed', [])
         impact_level = arguments.get('impact_level')
         
-        # Validate pillar
-        if pillar not in PILLARS:
+        # Validate pillar. Setup may have saved the display name; accept that
+        # as well as the id, and reload if onboarding rewrote pillars.yaml
+        # after this process started.
+        pillar = resolve_pillar_id(pillar)
+        if pillar is None:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Invalid pillar '{pillar}'. Must be one of: {list(PILLARS.keys())}"
+                "error": f"Invalid pillar '{arguments['pillar']}'. Must be one of: {list(PILLARS.keys())}"
             }, indent=2))]
         
         # Determine quarter if not provided. An explicit quarter= must be
@@ -7430,11 +7440,13 @@ async def _handle_call_tool_inner(
         success_criteria = arguments.get('success_criteria', '')
         week_date_str = arguments.get('week_date')
         
-        # Validate pillar
-        if pillar not in PILLARS:
+        # Validate pillar. Same contract as create_quarterly_goal: id or the
+        # unique display name from setup, after a pillars.yaml reload.
+        pillar = resolve_pillar_id(pillar)
+        if pillar is None:
             return [types.TextContent(type="text", text=json.dumps({
                 "success": False,
-                "error": f"Invalid pillar '{pillar}'. Must be one of: {list(PILLARS.keys())}"
+                "error": f"Invalid pillar '{arguments['pillar']}'. Must be one of: {list(PILLARS.keys())}"
             }, indent=2))]
         
         # Determine week date
