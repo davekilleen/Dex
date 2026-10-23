@@ -71,6 +71,38 @@ jobs:
           print('python', __import__('sys').version.split()[0], 'imports ok')
           "
 
+  # DEX-245: the nightly check still exited 78 on a real Mac after the 3.11
+  # import fix. This job installs/renders the Launch Agent definition on
+  # macos-latest and runs the worker with launchd's minimal environment.
+  nightly-smoke-launchd:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      VAULT_PATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: setup-python
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Install a vault venv the worker will resolve first
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -q "mcp>=1.0.0,<2.0.0" pyyaml python-dateutil requests
+          test -x .venv/bin/python
+      - name: Run nightly smoke exactly as launchd would
+        run: |
+          chmod +x .scripts/nightly-smoke.sh scripts/run-nightly-smoke-as-launchd.sh
+          bash scripts/run-nightly-smoke-as-launchd.sh \
+            --vault "$GITHUB_WORKSPACE" \
+            --home "$HOME"
+
   # Gates, JS suites, lint, and static checks. The Python test suite runs in the
   # sharded `tests` matrix below; its thresholds are enforced by `test-results`.
   quality:

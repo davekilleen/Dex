@@ -107,6 +107,63 @@ def validate_user_profile_config(config: object) -> list[str]:
     return errors
 
 
+def pillar_id_from_name(name: str) -> str:
+    """Stable id matching the first-time setup writer (spaces and underscores become hyphens)."""
+    return name.strip().lower().replace(" ", "-").replace("_", "-")
+
+
+def normalize_pillar(item: object) -> dict[str, Any] | None:
+    """Accept a name string or a partial object and return the goals-feature shape.
+
+    First-time setup used to save ``["Ship", "Learn"]`` or ``{name: ...}`` without
+    an id. Goals then required ``{id, name}`` and rejected those files. Keep the
+    older shapes readable so existing vaults keep working.
+    """
+    if isinstance(item, str):
+        name = item.strip()
+        if not name:
+            return None
+        return {
+            "id": pillar_id_from_name(name),
+            "name": name,
+            "description": "",
+            "keywords": [],
+        }
+    if not isinstance(item, Mapping):
+        return None
+    name = item.get("name")
+    if isinstance(name, str):
+        name = name.strip()
+    else:
+        name = ""
+    pillar_id = item.get("id")
+    if isinstance(pillar_id, str):
+        pillar_id = pillar_id.strip()
+    else:
+        pillar_id = ""
+    if not name and not pillar_id:
+        return None
+    if not name:
+        name = pillar_id
+    if not pillar_id:
+        pillar_id = pillar_id_from_name(name)
+    description = item.get("description", "")
+    if not isinstance(description, str):
+        description = "" if description is None else str(description)
+    raw_keywords = item.get("keywords") or []
+    keywords = (
+        [str(keyword) for keyword in raw_keywords]
+        if isinstance(raw_keywords, list)
+        else []
+    )
+    return {
+        "id": pillar_id,
+        "name": name,
+        "description": description,
+        "keywords": keywords,
+    }
+
+
 def validate_pillars_config(config: object) -> list[str]:
     """Return minimal schema errors for ``System/pillars.yaml``."""
     if not isinstance(config, Mapping):
@@ -119,18 +176,19 @@ def validate_pillars_config(config: object) -> list[str]:
     errors = []
     for index, pillar in enumerate(pillars):
         label = f"pillars[{index}]"
-        if not isinstance(pillar, Mapping):
-            errors.append(f"{label} must be an object")
+        normalized = normalize_pillar(pillar)
+        if normalized is None:
+            errors.append(f"{label} must be a name or an object with a name")
             continue
-        for field in ("id", "name"):
-            value = pillar.get(field)
-            if not isinstance(value, str) or not value.strip():
-                errors.append(f"{label}.{field} must be a non-empty string")
-        if "description" in pillar and not isinstance(pillar["description"], str):
-            errors.append(f"{label}.description must be a string")
-        keywords = pillar.get("keywords", [])
-        if not isinstance(keywords, list) or not all(isinstance(keyword, str) for keyword in keywords):
-            errors.append(f"{label}.keywords must be a list of strings")
+        if isinstance(pillar, Mapping):
+            if "description" in pillar and not isinstance(pillar["description"], str):
+                errors.append(f"{label}.description must be a string")
+            keywords = pillar.get("keywords", [])
+            if keywords is not None and (
+                not isinstance(keywords, list)
+                or not all(isinstance(keyword, str) for keyword in keywords)
+            ):
+                errors.append(f"{label}.keywords must be a list of strings")
 
     limits = config.get("priority_limits")
     if limits is not None:

@@ -37,6 +37,39 @@ def test_unmarked_markdown_under_people_is_not_a_person(tmp_path: Path) -> None:
     assert parsed["declared_non_entity"] is False
 
 
+def test_pre_frontmatter_template_is_a_person(tmp_path: Path) -> None:
+    page = tmp_path / "Alice_Smith.md"
+    page.write_text(
+        "# Alice Smith\n\n"
+        "## Overview\n\n"
+        "| Field | Value |\n"
+        "|-------|-------|\n"
+        "| **Phone** | 555-0100 |\n\n"
+        "## Relationship Context\n\n"
+        "**Last interaction:** 2026-01-15 — intro call\n\n"
+        "## Meeting History\n\n"
+        "Earlier notes stay here.\n",
+        encoding="utf-8",
+    )
+    parsed = parse_entity_page(page)
+    assert parsed["type"] == "person"
+    assert parsed["name"] == "Alice Smith"
+    assert parsed["last_interaction"] == "2026-01-15"
+    assert "legacy_sections" in parsed["source_formats"] or parsed["last_interaction"]
+
+
+def test_unreadable_person_page_warning_names_the_page() -> None:
+    from core.entity_engine import unreadable_person_page_warning
+
+    warning = unreadable_person_page_warning(
+        "Alice Smith",
+        "05-Areas/People/External/Alice_Smith.md",
+    )
+    assert "Alice Smith" in warning
+    assert "05-Areas/People/External/Alice_Smith.md" in warning
+    assert "unreadable" in warning
+
+
 def test_parse_golden_fixtures() -> None:
     pages = sorted(FIXTURES.glob("[0-9][0-9]-*.md"))
     assert len(pages) >= 10

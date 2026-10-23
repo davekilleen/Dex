@@ -72,6 +72,7 @@ from core.paths import (
 )
 from core.transaction.engine import PlanRejected
 from core.utils.nudge_calendar import build_nudge_calendar, is_dex_nudge_event
+from core.utils.validators import normalize_pillar
 
 
 def _analytics_helper_unavailable_result() -> dict[str, object]:
@@ -690,8 +691,13 @@ def _run_onboarding_provisioner(
     """Return the sanctioned provisioner's receipt for preview or commit."""
     data = _approved_profile_session_data(session)
     data["pillars"] = [
-        {"name": pillar, "description": ""}
+        {
+            "id": normalized["id"],
+            "name": normalized["name"],
+            "description": normalized["description"],
+        }
         for pillar in data.get("pillars", [])
+        if (normalized := normalize_pillar(pillar))
     ]
     selected = _capability_states(data.get("capabilities"))
     data["capabilities"] = {
@@ -3142,8 +3148,11 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 else:
                     pillars_preview = []
                     for pillar in data.get('pillars', []):
-                        pillar_id = pillar.lower().replace(' ', '-').replace('_', '-')
-                        pillars_preview.append({'id': pillar_id, 'name': pillar})
+                        normalized = normalize_pillar(pillar)
+                        if normalized:
+                            pillars_preview.append(
+                                {'id': normalized['id'], 'name': normalized['name']}
+                            )
 
                 # Completion marker preview: an existing marker is updated in
                 # place and keeps its original completed_at.
