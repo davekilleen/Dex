@@ -214,7 +214,7 @@ def _declared_non_entity(declared: str | None) -> bool:
 
 
 def rewrite_relative_meeting_links(text: str) -> str:
-    """Turn `../../00-Inbox/...` (and similar) into vault-relative paths."""
+    """Turn two-folder-up inbox and archive links into vault-relative paths."""
     return _BROKEN_RELATIVE_VAULT_PATH_RE.sub("", text)
 
 
