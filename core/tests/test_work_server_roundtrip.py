@@ -346,6 +346,7 @@ def test_public_week_progress_counts_completed_task_named_in_success_criteria(
         "priority_id": priority_id,
         "title": "Restore customer confidence",
         "pillar": "Test Pillar",
+        "linked_goal_id": None,
         "status": "complete",
         "tasks_done": 1,
         "tasks_total": 1,
