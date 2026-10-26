@@ -240,6 +240,7 @@ from core.utils.company_domains import (
 from core.utils.entity_pages import parse_entity_page, render_person_page
 from core.utils.feature_status import feature_status
 from core.utils.validators import normalize_pillar
+from core.vault_folders import locate_vault_folders
 
 
 def get_tasks_file() -> Path:
@@ -5812,6 +5813,15 @@ async def handle_list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="locate_vault_folders",
+            description=(
+                "Tell automations where Archives and Resources really are in this "
+                "vault. Call this before filing or creating folders. Returns the "
+                "vault-relative paths, including when those folders have been moved."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
             name="create_person",
             description="Create a canonical person page with duplicate protection and refresh the People index.",
             inputSchema={
@@ -6023,6 +6033,7 @@ async def handle_call_tool(
                 "boot_today": "Session boot context failed",
                 "get_person_context": "Person context lookup failed",
                 "check_safety_gate": "Safety gate check failed",
+                "locate_vault_folders": "Vault folder lookup failed",
             }
             _log_health_error(
                 source="work-mcp",
@@ -8329,6 +8340,10 @@ async def _handle_call_tool_inner(
             path=args.get("path", ""),
             vault=BASE_DIR,
         ).as_payload()
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "locate_vault_folders":
+        result = locate_vault_folders(BASE_DIR)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
 
     elif name == "create_person":

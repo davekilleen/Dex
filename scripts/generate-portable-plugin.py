@@ -30,6 +30,7 @@ RUNTIME_SOURCES = (
     Path("core/context/person_context.py"),
     Path("core/context/session_boot.py"),
     Path("core/vault_selection.py"),
+    Path("core/vault_folders.py"),
     Path("core/gates/__init__.py"),
     Path("core/gates/safety.py"),
 )
@@ -167,6 +168,7 @@ def _claude_desktop_manifest() -> dict:
             {"name": "boot_today", "description": "Read today's Dex context."},
             {"name": "get_person_context", "description": "Read context about a person."},
             {"name": "check_safety_gate", "description": "Check a proposed command or path."},
+            {"name": "locate_vault_folders", "description": "Find the real Archives and Resources folders."},
         ],
         "compatibility": {
             "platforms": ["darwin", "win32"],

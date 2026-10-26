@@ -9,6 +9,13 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+A filing helper kept making new folders at the top of Dex instead of using the Archives and Resources folders that were already there.
+
+**What this fixes for you:**
+
+* **New top-level folders are stopped.** If something tries to create a folder next to Inbox and Projects, Dex blocks it and points to the real Archives and Resources folders.
+* **Automations can ask where those folders are.** There is a lookup that returns the actual Archives and Resources paths, including when you have moved them.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

@@ -314,6 +314,7 @@ def test_artifact_builder_produces_installable_gemini_and_mcpb_bundles(
         "boot_today",
         "get_person_context",
         "check_safety_gate",
+        "locate_vault_folders",
     }
     desktop = tmp_path / "dex-claude-desktop"
     desktop_responses = _mcp_roundtrip(
@@ -400,6 +401,7 @@ def test_vendored_runtime_is_byte_identical_to_shared_core() -> None:
         "core/context/person_context.py",
         "core/context/session_boot.py",
         "core/vault_selection.py",
+        "core/vault_folders.py",
         "core/gates/__init__.py",
         "core/gates/safety.py",
     ):
@@ -476,6 +478,7 @@ def test_plugin_mcp_lists_and_calls_shared_read_only_tools(tmp_path: Path) -> No
         "boot_today",
         "get_person_context",
         "check_safety_gate",
+        "locate_vault_folders",
     }
     assert responses[2]["result"]["structuredContent"]["pillars"][0]["name"] == "Focus"
     person = responses[3]["result"]["structuredContent"]

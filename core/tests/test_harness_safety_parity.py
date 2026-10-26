@@ -55,7 +55,7 @@ def test_selected_vault_conflict_is_refused(vaults, native):
     assert result.returncode == 2, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("tool", ["boot_today", "get_person_context", "check_safety_gate"])
+@pytest.mark.parametrize("tool", ["boot_today", "get_person_context", "check_safety_gate", "locate_vault_folders"])
 def test_mcp_request_cannot_override_configured_vault(vaults, tool):
     one, two = vaults
     result = mcp(two, tool, {"vault_path": str(two), "name": "Ada", "path": "note.md"},

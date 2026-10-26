@@ -22,6 +22,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.path_safety import unsafe_existing_parent
+from core.vault_folders import mkdir_targets, new_top_level_folder_reason
 from core.vault_selection import VaultSelectionError, select_vault
 
 DECISION_BLOCK = "block"
@@ -36,6 +37,7 @@ CODE_FORCE_PUSH_MAIN = "force_push_main"
 CODE_SQL_DROP = "sql_drop"
 CODE_GITHUB_REPO_DELETE = "github_repo_delete"
 CODE_UNSAFE_PATH = "unsafe_path"
+CODE_NEW_TOP_LEVEL_FOLDER = "new_top_level_folder"
 CODE_CHMOD_777 = "chmod_777"
 CODE_KILL_9 = "kill_9"
 
@@ -293,6 +295,8 @@ def evaluate_safety_gate(
     command: Any = "",
     path: Any = "",
     vault: str | Path | None = None,
+    cwd: str | Path | None = None,
+    as_directory: bool = False,
 ) -> GateDecision:
     """Refuse known destructive commands and paths; warnings still allow."""
     _ = tool_name  # Reserved for future shared interceptors.
@@ -302,6 +306,10 @@ def evaluate_safety_gate(
         return refusal(str(exc), exc.code)
     command_text = _safe_string(command)
     path_text = _safe_string(path)
+    try:
+        workdir = Path(cwd).expanduser().resolve() if cwd is not None else root
+    except (OSError, RuntimeError, TypeError, ValueError):
+        workdir = root
 
     if command_text and _migration_lock_is_live(root) and GIT_MUTATION.search(command_text):
         return GateDecision(DECISION_BLOCK, REASON_MIGRATION_LOCK, CODE_MIGRATION_LOCK, 2)
@@ -322,7 +330,28 @@ def evaluate_safety_gate(
     path_reason = _unsafe_path_reason(path_text, root)
     if path_reason:
         return GateDecision(DECISION_BLOCK, path_reason, CODE_UNSAFE_PATH, 2)
+    folder_as_directory = as_directory or path_text.endswith(("/", "\\"))
+    folder_reason = new_top_level_folder_reason(root, path_text, as_directory=folder_as_directory)
+    if folder_reason:
+        return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
     if command_text:
+        for target in mkdir_targets(command_text):
+            if _is_catastrophic_path(target):
+                resolved_target = target
+            elif Path(target).is_absolute() or target.startswith(("~/", "$HOME/")):
+                resolved_target = target
+            else:
+                resolved_target = str(workdir / target)
+            target_path_reason = _unsafe_path_reason(resolved_target, root)
+            if target_path_reason:
+                return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
+            target_folder_reason = new_top_level_folder_reason(
+                root, resolved_target, as_directory=True
+            )
+            if target_folder_reason:
+                return GateDecision(
+                    DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
+                )
         if CHMOD_777.search(command_text):
             return GateDecision(DECISION_ALLOW, REASON_CHMOD_777, CODE_CHMOD_777, 0)
         if KILL_9.search(command_text):
@@ -418,7 +447,7 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
         return refusal("Blocked: shell action has no inspectable command.")
     warning = ALLOW
     for command in commands:
-        decision = evaluate_safety_gate(tool_name=tool, command=command, vault=root)
+        decision = evaluate_safety_gate(tool_name=tool, command=command, vault=root, cwd=base)
         if decision.refused:
             return decision
         if decision.reason:

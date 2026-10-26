@@ -83,6 +83,7 @@ def test_safety_hook_is_a_thin_wrapper() -> None:
 def test_work_mcp_advertises_safety_tool() -> None:
     tools = {tool.name for tool in asyncio.run(work_server.handle_list_tools())}
     assert "check_safety_gate" in tools
+    assert "locate_vault_folders" in tools
 
 
 def test_destructive_command_has_identical_hook_and_mcp_decision(tmp_path: Path, monkeypatch) -> None:

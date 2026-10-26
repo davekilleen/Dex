@@ -51,6 +51,10 @@
     {
       "name": "check_safety_gate",
       "description": "Check a proposed command or path."
+    },
+    {
+      "name": "locate_vault_folders",
+      "description": "Find the real Archives and Resources folders."
     }
   ],
   "compatibility": {

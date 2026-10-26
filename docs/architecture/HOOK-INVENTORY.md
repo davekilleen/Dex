@@ -99,5 +99,6 @@ Tests live in `tests/`. The observation layer is intentionally absent.
 | `boot_today` | `dex-work-mcp` | Session start | `session-start.sh` auto-fires the same function |
 | `get_person_context` | `dex-work-mcp` | When a person is mentioned | `person-context-injector.cjs` auto-fires the same function |
 | `check_safety_gate` | `dex-work-mcp` and portable plugin | Before a risky shell/path action; advisory unless an interceptor enforces it | `dex-safety-guard.sh` and trusted portable PreToolUse hooks enforce the same decision |
+| `locate_vault_folders` | `dex-work-mcp` and portable plugin | Before filing or creating folders, to learn where Archives and Resources really are | The PreToolUse safety gate blocks a new top-level folder and points here |
 
 Shared implementation: `core/context/session_boot.py`, `core/context/person_context.py`, and `core/gates/safety.py`.

@@ -90,6 +90,7 @@ def test_inventory_detects_known_tool_and_skill(tmp_path: Path) -> None:
     assert "`boot_today`" in inventory
     assert "`get_person_context`" in inventory
     assert "`check_safety_gate`" in inventory
+    assert "`locate_vault_folders`" in inventory
     assert "`daily-plan`" in inventory
     assert "Build today's plan from calendar" in inventory
 

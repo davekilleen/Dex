@@ -146,6 +146,7 @@ functions — no behaviour fork.
 | Session boot (pillars, quarter goals, week priorities, urgent tasks) | `core/context/session_boot.py` | `boot_today` | `session-start.sh` |
 | Person inject-on-read | `core/context/person_context.py` | `get_person_context` | `person-context-injector.cjs` |
 | Destructive command / unsafe path decision | `core/gates/safety.py` | `check_safety_gate` | `dex-safety-guard.sh` (enforcing wrapper) |
+| Archives and Resources folder location | `core/vault_folders.py` | `locate_vault_folders` | Same safety gate refuses a new top-level folder |
 
 The generated `packages/dex-agent-plugin/` package vendors those exact source
 modules and exposes them through a dependency-free, read-only MCP server. It

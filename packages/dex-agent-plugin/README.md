@@ -26,7 +26,7 @@ Plugins v1 root contract and also includes native manifests for:
 - Other Agent Plugins v1 clients through `plugin.json` and `mcp.json`.
 
 The MCP bridge exposes `boot_today`, `get_person_context`,
-`check_safety_gate`, and `dex_harness_profiles`. It is dependency-free,
+`check_safety_gate`, `locate_vault_folders`, and `dex_harness_profiles`. It is dependency-free,
 relocatable, read-only, and uses the same vendored source modules as dex-core.
 The safety MCP tool is advisory; only a trusted interceptor that runs before
 the action and honors the refusal can enforce it. The

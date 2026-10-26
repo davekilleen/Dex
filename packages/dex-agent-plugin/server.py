@@ -19,6 +19,7 @@ if str(RUNTIME) not in sys.path:
 from core.context.person_context import get_person_context  # noqa: E402
 from core.context.session_boot import build_session_boot  # noqa: E402
 from core.gates.safety import evaluate_safety_gate, refusal  # noqa: E402
+from core.vault_folders import locate_vault_folders  # noqa: E402
 from core.vault_selection import VaultSelectionError, select_vault  # noqa: E402
 
 
@@ -99,6 +100,11 @@ def _tools() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "locate_vault_folders",
+            "description": "Return the real Archives and Resources folder paths for this vault.",
+            "inputSchema": {"type": "object", "properties": vault},
+        },
     ]
 
 
@@ -125,7 +131,7 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
         arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
         if name == "dex_harness_profiles":
             return _tool_result(request_id, _load_registry())
-        if name in {"boot_today", "get_person_context", "check_safety_gate"}:
+        if name in {"boot_today", "get_person_context", "check_safety_gate", "locate_vault_folders"}:
             if raw_arguments is not None and not isinstance(raw_arguments, dict):
                 return _tool_result(request_id, refusal("Blocked: tool arguments must be an object.").as_payload())
             try:
@@ -147,6 +153,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 vault=selected_vault,
             )
             return _tool_result(request_id, decision.as_payload())
+        if name == "locate_vault_folders":
+            return _tool_result(request_id, locate_vault_folders(selected_vault))
         return _error(request_id, -32602, f"unknown tool: {name}")
     if method == "ping":
         return _result(request_id, {})
