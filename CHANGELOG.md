@@ -9,6 +9,13 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Mail search could look fine when you opened Dex, then miss emails that arrived later. The Mail helper only refreshed its copy at start-up, so anything newer stayed invisible until you restarted.
+
+**What this fixes for you:**
+
+* **Mail search stays current while Dex is open.** New setup now turns on live updates, so new mail is searchable without restarting.
+* **If you set this up earlier, checkup names the one change.** `/dex-doctor` notices the older setup and tells you exactly what to change so the copy stops going stale.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

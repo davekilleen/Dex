@@ -656,6 +656,15 @@ def test_apple_mail_setup_closes_live_sessions_before_index_refresh() -> None:
     assert "holds the search-index lock" in setup
 
 
+def test_apple_mail_setup_registers_the_server_with_watch() -> None:
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+
+    assert "claude mcp add --scope user apple-mail -- apple-mail-mcp serve --watch" in setup
+    assert "claude mcp add --scope user apple-mail -- apple-mail-mcp serve\n" not in setup
+    assert "safe with several" in setup
+    assert "only one of them writes the index" in setup
+
+
 def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     paths = (
         ".claude/skills/calendar-setup/SKILL.md",
