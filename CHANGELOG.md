@@ -9,6 +9,13 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+After an update, a saved proof of Dex's own files could still name the old version. The health check then said that record could not be trusted, which sounded like something was broken.
+
+**What this fixes for you:**
+
+* **Dex says the proof just needs refreshing.** After an update, if that record still names the previous version, the update check and the health check say so in plain words and give the one command to run. They no longer call it untrusted.
+* **Nothing refreshes itself.** Dex still waits for you to run that command. An update does not rewrite the proof on its own.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

@@ -2126,10 +2126,17 @@ def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
     """One plain sentence about the release anchor, empty when none exists.
 
     The anchor is the re-anchoring design's repair evidence
-    (System/.dex/release-anchor.json). A verified anchor is reported as such;
-    a rejected anchor — present but unprovable, so ignored — is a warning
-    naming the exact error the fail-closed consumer recorded.
+    (System/.dex/release-anchor.json). A verified anchor is reported as such.
+    A record that still names the previous version after an update is a
+    refresh leftover, not an untrusted file. Any other rejected anchor —
+    present but unprovable, so ignored — is a warning naming the exact error
+    the fail-closed consumer recorded.
     """
+    from core.lifecycle.release_anchor import (
+        proof_record_needs_refresh,
+        proof_record_refresh_notice,
+    )
+
     anchor_state = baseline_detail.get("anchor_state")
     if anchor_state == "verified":
         # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
@@ -2137,6 +2144,12 @@ def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
             " A saved proof record vouches for the files that came with Dex "
             "in this vault."
         )
+    if proof_record_needs_refresh(
+        anchor_state=str(anchor_state or ""),
+        errors=baseline_detail.get("errors"),
+    ):
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-257).
+        return " " + proof_record_refresh_notice(oneline=True)
     if anchor_state == "rejected":
         errors = baseline_detail.get("errors")
         named = next(
@@ -5725,7 +5738,12 @@ def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:
     version = receipt.get("dex_version")
     version_text = f" (after updating to {version})" if isinstance(version, str) else ""
     if receipt.get("ok") is True:
-        return ProbeResult("OK", f"The last post-update check passed{version_text}")
+        from core.lifecycle.release_anchor import proof_record_refresh_notice
+
+        detail = f"The last post-update check passed{version_text}"
+        if receipt.get("proof_record_refresh_needed") is True:
+            detail = f"{detail}. {proof_record_refresh_notice(oneline=True)}"
+        return ProbeResult("OK", detail)
     error = receipt.get("error")
     detail = f": {error}" if isinstance(error, str) and error else ""
     return ProbeResult(

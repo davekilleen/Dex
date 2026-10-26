@@ -177,6 +177,10 @@ def test_anchor_with_wrong_manifest_binding_is_rejected_with_named_error(
     assert baseline.anchor_state == "rejected"
     assert baseline.expected_sha256("core/engine.py") is None
     assert any("manifest binding" in error for error in baseline.errors)
+    assert not release_anchor_module.proof_record_needs_refresh(
+        anchor_state=baseline.anchor_state,
+        errors=baseline.errors,
+    )
 
 
 def test_anchor_with_wrong_catalog_binding_is_rejected_with_named_error(
@@ -229,6 +233,16 @@ def test_anchor_declaring_a_different_release_version_is_rejected(
 
     assert baseline.anchor_state == "rejected"
     assert any("release version" in error for error in baseline.errors)
+    assert release_anchor_module.proof_record_needs_refresh(
+        anchor_state=baseline.anchor_state,
+        errors=baseline.errors,
+    )
+    assert "can't be trusted" not in release_anchor_module.proof_record_refresh_notice()
+    assert "rejected" not in release_anchor_module.proof_record_refresh_notice().casefold()
+    assert (
+        release_anchor_module.PROOF_RECORD_REFRESH_COMMAND
+        in release_anchor_module.proof_record_refresh_notice()
+    )
 
 
 # ---------------------------------------------------------------------------

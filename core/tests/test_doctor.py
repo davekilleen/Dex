@@ -5543,6 +5543,27 @@ def test_post_update_canary_probe_reads_the_receipt(context):
     ok = doctor._probe_post_update_canary(context)
     assert ok.verdict == "OK"
     assert "1.85.0" in ok.detail
+    assert "needs refreshing" not in ok.detail
+
+    receipt.write_text(
+        json.dumps(
+            {
+                "contract": "dex.health.post-update-canary/v1",
+                "checked_at": "2026-08-10T12:00:00+00:00",
+                "dex_version": "1.85.0",
+                "ok": True,
+                "error": None,
+                "proof_record_refresh_needed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    refresh = doctor._probe_post_update_canary(context)
+    assert refresh.verdict == "OK"
+    assert "needs refreshing" in refresh.detail
+    assert "python3 -m core.update.reanchor_cli" in refresh.detail
+    assert "couldn't be trusted" not in refresh.detail
+    assert "can't be trusted" not in refresh.detail
 
     receipt.write_text(
         json.dumps(

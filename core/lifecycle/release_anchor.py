@@ -369,9 +369,51 @@ def consume_release_anchor(
     return ("verified", brain_owned_rows(anchor.files, manifest_paths=manifest_paths), ())
 
 
+# After an update the saved proof record still names the previous version.
+# That is expected (ruling 6: nothing rewrites it automatically). Distinguish
+# that leftover from a record that actually failed its trust checks.
+_STALE_PROOF_VERSION_MARKER = (
+    "declares a different release version than the installed catalog"
+)
+PROOF_RECORD_REFRESH_COMMAND = "python3 -m core.update.reanchor_cli"
+PROOF_RECORD_NEEDS_REFRESH = (
+    "The saved proof record still names the previous version, so it needs refreshing."
+)
+
+
+def proof_record_needs_refresh(*, anchor_state: str, errors: object) -> bool:
+    """True only when a present record names another release than the catalog.
+
+    Other rejections stay untrusted. This never writes or refreshes the record.
+    """
+    if anchor_state != "rejected":
+        return False
+    if not isinstance(errors, (tuple, list)):
+        return False
+    return any(
+        isinstance(error, str) and _STALE_PROOF_VERSION_MARKER in error
+        for error in errors
+    )
+
+
+def proof_record_refresh_notice(*, oneline: bool = False) -> str:
+    """Plain words plus the one on-demand command. Never writes the record."""
+    if oneline:
+        return (
+            f"{PROOF_RECORD_NEEDS_REFRESH} Open the Terminal app in your Dex "
+            f"vault folder and run: {PROOF_RECORD_REFRESH_COMMAND}"
+        )
+    return (
+        f"{PROOF_RECORD_NEEDS_REFRESH} Open the Terminal app in your Dex "
+        f"vault folder and run:\n    {PROOF_RECORD_REFRESH_COMMAND}"
+    )
+
+
 __all__ = [
     "ANCHOR_VERSION",
     "MAX_RELEASE_ANCHOR_BYTES",
+    "PROOF_RECORD_NEEDS_REFRESH",
+    "PROOF_RECORD_REFRESH_COMMAND",
     "RELEASE_ANCHOR_PATH",
     "RELEASE_ANCHOR_RECEIPT_PATH",
     "AnchorError",
@@ -382,4 +424,6 @@ __all__ = [
     "compute_anchor_sha256",
     "consume_release_anchor",
     "parse_release_anchor",
+    "proof_record_needs_refresh",
+    "proof_record_refresh_notice",
 ]
