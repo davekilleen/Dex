@@ -2681,6 +2681,23 @@ def extract_goal_id_tag(text: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def extract_linked_goal_id(text: str) -> Optional[str]:
+    """Extract a goal id from a priority heading or metadata line.
+
+    Accepts [Q4-2026-goal-2], ^Q4-2026-goal-2, and the same id with no
+    brackets or caret. The explicit forms win so a nearby mention cannot
+    steal a more specific link.
+    """
+    tagged = extract_goal_id_tag(text)
+    if tagged:
+        return tagged
+    careted = extract_goal_id(text)
+    if careted:
+        return careted
+    match = _BARE_GOAL_ID_RE.search(text)
+    return match.group(1) if match else None
+
+
 def _pillar_display_name(pillar: str) -> str:
     """Heading label: the pillar's display name, falling back to the id."""
     ensure_pillars_current()
@@ -2904,6 +2921,9 @@ _GOAL_HEADING_RE = re.compile(r'^#{1,6}(?:[ \t]+\S|[ \t]*$)')
 # Exactly "---" is the common case; "----", "***", "___", and "- - -" are too.
 _THEMATIC_BREAK_RE = re.compile(r'^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$')
 _GOAL_TAG_RE = re.compile(r'\[(' + GOAL_ID_PATTERN + r')\]')
+_BARE_GOAL_ID_RE = re.compile(
+    r'(?<![A-Za-z0-9_-])(' + GOAL_ID_PATTERN + r')(?![A-Za-z0-9_-])'
+)
 # Seeded into a new Quarter_Goals.md so the page is not blank. Creating a real
 # goal must replace it, not number around it (DEX-239).
 TEMPLATE_EXAMPLE_GOAL_TITLE = "Replace this with your first goal"
@@ -3526,11 +3546,20 @@ def prepare_week_priorities_file_for_week(
 
 
 _PRIORITY_COMPLETE_MARK_RE = re.compile(r'✅|\bCompleted:', re.IGNORECASE)
+_PRIORITY_IN_PROGRESS_MARK_RE = re.compile(
+    r'🔄|\bin[- ]progress\b|\[/\]',
+    re.IGNORECASE,
+)
 
 
 def _priority_line_is_complete(line: str) -> bool:
     """True when a weekly-priority heading or metadata line is marked done."""
     return bool(_PRIORITY_COMPLETE_MARK_RE.search(line))
+
+
+def _priority_line_is_in_progress(line: str) -> bool:
+    """True when a weekly-priority heading or metadata line is marked started."""
+    return bool(_PRIORITY_IN_PROGRESS_MARK_RE.search(line))
 
 
 def mark_weekly_priority_complete(priority_id: str) -> bool:
@@ -3626,6 +3655,64 @@ def _sync_weekly_priorities_for_task(task_id: str, completed: bool) -> None:
             mark_weekly_priority_complete(priority_id)
 
 
+def _strip_priority_line_annotations(text: str) -> str:
+    """Remove ids and status marks so a pillar-less heading still has a title."""
+    cleaned = text
+    cleaned = re.sub(r'\s+✅\s+\d{4}-\d{2}-\d{2}', '', cleaned)
+    cleaned = re.sub(r'\bCompleted:\s*\S*', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'🔄', '', cleaned)
+    cleaned = re.sub(r'\bin[- ]progress\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\[/\]', '', cleaned)
+    cleaned = re.sub(r'\s*\^(week-\d{4}-W\d{2}-p\d+)', '', cleaned)
+    cleaned = re.sub(r'\s*\^(' + GOAL_ID_PATTERN + r')', '', cleaned)
+    cleaned = re.sub(r'\s*\[(' + GOAL_ID_PATTERN + r')\]', '', cleaned)
+    cleaned = re.sub(r'\s+(' + GOAL_ID_PATTERN + r')(?![A-Za-z0-9_-])', '', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip(' -')
+    return cleaned
+
+
+def _match_weekly_priority_heading(
+    line: str,
+) -> Optional[tuple[int, str, Optional[str]]]:
+    """Return (number, title, pillar) for a weekly-priority heading, or None."""
+    priority_id_tail = (
+        r'(?:\s+✅\s+\d{4}-\d{2}-\d{2})?(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?'
+    )
+    priority_match = re.match(
+        r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*' + priority_id_tail,
+        line,
+    )
+    if not priority_match:
+        priority_match = re.match(
+            r'(\d+)\.\s+\*\*(.+?)\*\*,\s+\*\*(.+?)\*\*' + priority_id_tail,
+            line,
+        )
+    if priority_match:
+        return (
+            int(priority_match.group(1)),
+            priority_match.group(2).strip(),
+            priority_match.group(3).strip(),
+        )
+
+    fallback = re.match(r'^(\d+)\.\s+(.+)$', line)
+    if not fallback:
+        return None
+    title = _strip_priority_line_annotations(fallback.group(2))
+    if not title:
+        return None
+    return int(fallback.group(1)), title, None
+
+
+def _priority_metadata_lines(lines: List[str], start: int) -> List[str]:
+    """Return indented metadata bullets that belong to the heading at start."""
+    metadata: List[str] = []
+    for metadata_line in lines[start + 1:]:
+        if not re.match(r'^\s+-\s+', metadata_line):
+            break
+        metadata.append(metadata_line)
+    return metadata
+
+
 def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     """Parse weekly priorities from Week Priorities.md"""
     if not filepath.exists():
@@ -3638,54 +3725,42 @@ def parse_weekly_priorities(filepath: Path) -> List[Dict[str, Any]]:
     for i, line in enumerate(lines):
         # Match priority lines like:
         # 1. Priority Title — **Pillar** ^week-2026-W05-p1
+        # 1. Priority Title ^week-2026-W05-p1   (pillar omitted)
         # Or task-style: - [ ] **Priority Title** ^week-2026-W05-p1
-        
-        priority_id_tail = (
-            r'(?:\s+✅\s+\d{4}-\d{2}-\d{2})?(?:\s+\^(week-\d{4}-W\d{2}-p\d+))?'
-        )
-        priority_match = re.match(
-            r'(\d+)\.\s+(.+?)\s+—\s+\*\*(.+?)\*\*' + priority_id_tail,
-            line,
-        )
-        if not priority_match:
-            priority_match = re.match(
-                r'(\d+)\.\s+\*\*(.+?)\*\*,\s+\*\*(.+?)\*\*' + priority_id_tail,
-                line,
-            )
-        if priority_match:
-            priority_num = int(priority_match.group(1))
-            title = priority_match.group(2).strip()
-            pillar = priority_match.group(3).strip()
-            priority_id = priority_match.group(4) if priority_match.group(4) else None
-            
-            # Heading tag (... [Q4-2026-goal-2]) or a Quarterly goal: sub-bullet.
-            linked_goal_id = extract_goal_id_tag(line)
-            if not linked_goal_id:
-                for metadata_line in lines[i + 1:]:
-                    if not re.match(r'^\s+-\s+', metadata_line):
-                        break
-                    tagged = extract_goal_id_tag(metadata_line)
-                    if tagged:
-                        linked_goal_id = tagged
-                        break
-            
-            completed = _priority_line_is_complete(line)
-            for metadata_line in lines[i + 1:]:
-                if not re.match(r'^\s+-\s+', metadata_line):
+        heading = _match_weekly_priority_heading(line)
+        if not heading:
+            continue
+        priority_num, title, pillar = heading
+        priority_id = extract_priority_id(line)
+        metadata = _priority_metadata_lines(lines, i)
+
+        # Heading tag (... [Q4-2026-goal-2]), caret, bare id, or a
+        # Quarterly goal: sub-bullet in any of those forms.
+        linked_goal_id = extract_linked_goal_id(line)
+        if not linked_goal_id:
+            for metadata_line in metadata:
+                tagged = extract_linked_goal_id(metadata_line)
+                if tagged:
+                    linked_goal_id = tagged
                     break
-                if _priority_line_is_complete(metadata_line):
-                    completed = True
-                    break
-            
-            priorities.append({
-                'priority_id': priority_id,
-                'priority_num': priority_num,
-                'title': title,
-                'pillar': pillar,
-                'linked_goal_id': linked_goal_id,
-                'completed': completed,
-                'line_number': i + 1
-            })
+
+        completed = _priority_line_is_complete(line) or any(
+            _priority_line_is_complete(metadata_line) for metadata_line in metadata
+        )
+        in_progress = _priority_line_is_in_progress(line) or any(
+            _priority_line_is_in_progress(metadata_line) for metadata_line in metadata
+        )
+
+        priorities.append({
+            'priority_id': priority_id,
+            'priority_num': priority_num,
+            'title': title,
+            'pillar': pillar,
+            'linked_goal_id': linked_goal_id,
+            'completed': completed,
+            'in_progress': in_progress,
+            'line_number': i + 1
+        })
     
     return priorities
 
@@ -4377,6 +4452,7 @@ def get_week_progress_data() -> Dict[str, Any]:
             'priority_id': priority.get('priority_id'),
             'title': priority.get('title'),
             'pillar': priority.get('pillar'),
+            'linked_goal_id': priority.get('linked_goal_id'),
             'status': 'not_started',
             'tasks_done': 0,
             'tasks_total': 0,
@@ -4394,6 +4470,10 @@ def get_week_progress_data() -> Dict[str, Any]:
                     priority_data['status'] = 'complete'
                 elif priority_data['tasks_done'] > 0:
                     priority_data['status'] = 'in_progress'
+
+        # A written in-progress mark counts even when no tasks are linked.
+        if priority.get('in_progress') and priority_data['status'] == 'not_started':
+            priority_data['status'] = 'in_progress'
 
         # A written completion mark wins even when no tasks are linked,
         # so complete_weekly_priority cannot leave the week looking stuck.

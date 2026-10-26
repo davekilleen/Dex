@@ -9,6 +9,15 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+The daily plan's week progress treated every weekly priority as not started — even ones already underway, ones written without a pillar label, and ones already tied to a quarterly goal.
+
+**What this fixes for you:**
+
+* **A priority marked in progress shows as in progress.** If you wrote that you had started a weekly priority, the daily plan and week progress now say in progress instead of not started.
+* **A priority without a pillar still appears.** Writing the week's items as a plain numbered list no longer hides them from the plan.
+* **A goal written next to a priority is still a link.** You no longer have to put the quarterly goal in square brackets for the week view to see it.
+* **The week view names the goal a priority belongs to.** Progress now includes that link, so the plan can show which quarterly goal each priority is serving.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.
