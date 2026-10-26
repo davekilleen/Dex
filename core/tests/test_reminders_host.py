@@ -48,5 +48,4 @@ def test_unavailable_message_tells_the_user_what_to_do_instead():
     assert "can't be switched on from inside VS Code" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
     assert "Claude app" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
     assert "Terminal" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
-    assert "/Users/" not in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
-    assert "~/" not in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
+    assert "home folder" not in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE.lower()

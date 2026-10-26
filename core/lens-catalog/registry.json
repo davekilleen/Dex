@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "b3e747c2f40b72d75b74023e4208563cd1906dfa695069e02f6c69d9cb96f954",
-        "byte_size": 36315
+        "sha256": "154973f179b801b4d31ca72c5e592acb05943719b95644d806afdf1a7a8d61d9",
+        "byte_size": 36395
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "37d76c82d26e6f4a16d76ef1a43ab5a92f0f611f2b1e9aaf66263862586ec8a5",
-        "byte_size": 20449
+        "sha256": "47e974fd0fa63b0e9f186bed99d6f3c1b164c8fa8cc355db53d9d0f265c042a0",
+        "byte_size": 20409
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "1e2bc4815bff2e2800b4d1eddf55c3ad799d319a9bc0b0aec4cbce41771248e7",
-        "byte_size": 20424
+        "sha256": "cc2d872340dc4d599d1aaf975fee5ee1f73a85b9288440b3e3217172a9878bb1",
+        "byte_size": 20685
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
