@@ -3571,6 +3571,56 @@ def test_customization_skills_ignore_empty_retired_skill_directories(context):
     assert result.detail == "Validated 0 user customizations and 1 shipped skill"
 
 
+def test_customization_skills_ignore_empty_nested_folders_after_a_deleted_skill(context):
+    """DEX-258: an empty skill shell is not a broken skill, even with empty subfolders."""
+    _write_skill(context, "daily-plan")
+    leftover = context.vault_root / ".claude" / "skills" / "deleted-skill" / "references"
+    leftover.mkdir(parents=True)
+
+    result = doctor._probe_customization_skills(context)
+
+    assert result.verdict == "OK"
+    assert result.detail == "Validated 0 user customizations and 1 shipped skill"
+    assert "deleted-skill" not in result.detail
+
+
+def test_customization_skills_still_flag_a_nonempty_folder_without_skill_file(context):
+    _write_skill(context, "daily-plan")
+    leftover = context.vault_root / ".claude" / "skills" / "broken-skill"
+    leftover.mkdir(parents=True)
+    (leftover / "notes.md").write_text("left behind\n", encoding="utf-8")
+
+    result = doctor._probe_customization_skills(context)
+
+    relative = (leftover / "SKILL.md").relative_to(context.vault_root).as_posix()
+    assert result.verdict == "BROKEN"
+    assert relative in result.detail
+
+
+def test_capability_rooms_ignore_empty_disabled_skill_folders(context):
+    """DEX-258: an empty disabled-room skill folder is not a live broken skill."""
+    (context.vault_root / "System/.onboarding-complete").touch()
+    (context.vault_root / "System/user-profile.yaml").write_text(
+        "name: Legacy User\n"
+        "capabilities:\n"
+        "  career:\n"
+        "    enabled: false\n"
+        "  companies:\n"
+        "    enabled: false\n"
+        "  quarter_goals:\n"
+        "    enabled: false\n",
+        encoding="utf-8",
+    )
+    empty = context.vault_root / ".claude/skills/quarter-plan"
+    empty.mkdir(parents=True)
+    (empty / "references").mkdir()
+
+    result = doctor._probe_capability_rooms(context)
+
+    assert result.verdict == "OK"
+    assert "quarter-plan" not in result.detail
+
+
 def test_customization_skill_containers_are_not_validated_or_counted_as_skills(context):
     _write_skill(context, "daily-plan")
     assert {"_available", "integrations"} <= doctor.KNOWN_SKILL_CONTAINER_DIRECTORIES

@@ -4193,8 +4193,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/apple-mail-setup/SKILL.md",
-        "sha256": "8978a2e927a3b2414505b10cd05e4410a23551fafc638cd2c0972ea1b09974aa",
-        "byte_size": 9980
+        "sha256": "6cee6a458fd507dba794d4f1a068416fbf53d24fe8fca721a468dcf33644caf5",
+        "byte_size": 10538
       },
       "value": "Set up and verify Apple Mail search on macOS, including the search index that silently returns nothing when it was never built.",
       "jobs_served": [

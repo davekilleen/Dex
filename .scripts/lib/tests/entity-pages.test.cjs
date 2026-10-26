@@ -23,6 +23,65 @@ const {
 
 const FIXTURES = path.resolve(__dirname, '../../../core/tests/fixtures/entity_pages');
 
+test('location type labels are people, notes stay notes', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-pages-type-alias-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const person = path.join(dir, 'Alice_Smith.md');
+  fs.writeFileSync(person, [
+    '---',
+    'type: internal',
+    'name: Alice Smith',
+    '---',
+    '# Alice Smith',
+    '',
+    '## Notes',
+    '',
+    'Kept as written.',
+    '',
+  ].join('\n'));
+  const parsed = parseEntityPage(person);
+  assert.equal(parsed.type, 'person');
+  assert.equal(parsed.name, 'Alice Smith');
+  assert.equal(parsed.declared_non_entity, false);
+  assert.equal(parsed.location, 'internal');
+
+  const note = path.join(dir, 'Playbook.md');
+  fs.writeFileSync(note, '---\ntype: note\nname: Weekly Standup\n---\n# Playbook\n');
+  const skipped = parseEntityPage(note);
+  assert.equal(skipped.type, null);
+  assert.equal(skipped.declared_non_entity, true);
+});
+
+test('rewriteRelativeMeetingLinks strips broken parent prefixes', () => {
+  const {
+    rewriteRelativeMeetingLinks,
+    hasBrokenRelativeMeetingLink,
+  } = require('../entity-pages.cjs');
+  const text = [
+    '- [Roadmap](../../00-Inbox/Meetings/roadmap.md) — 2026-07-10',
+    '- [Archive](../../../07-Archives/Meetings/old.md) — 2026-06-01',
+    '- [Current](00-Inbox/Meetings/today.md) — 2026-07-11',
+    '',
+  ].join('\n');
+  assert.equal(hasBrokenRelativeMeetingLink(text, '00-Inbox/Meetings/roadmap.md'), true);
+  const rewritten = rewriteRelativeMeetingLinks(text);
+  assert.match(rewritten, /\(00-Inbox\/Meetings\/roadmap\.md\)/);
+  assert.match(rewritten, /\(07-Archives\/Meetings\/old\.md\)/);
+  assert.equal(rewritten.includes('../'), false);
+  assert.equal(hasBrokenRelativeMeetingLink(rewritten, '00-Inbox/Meetings/roadmap.md'), false);
+});
+
+test('skipped person page warning names the page', () => {
+  const { skippedPersonPageWarning } = require('../entity-pages.cjs');
+  const warning = skippedPersonPageWarning(
+    'Alice Smith',
+    '05-Areas/People/External/Alice_Smith.md',
+  );
+  assert.match(warning, /Alice Smith/);
+  assert.match(warning, /05-Areas\/People\/External\/Alice_Smith\.md/);
+  assert.match(warning, /skipped/);
+});
+
 test('unreadable person page warning names the page', () => {
   const warning = unreadablePersonPageWarning(
     'Alice Smith',
