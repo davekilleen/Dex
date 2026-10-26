@@ -1476,6 +1476,92 @@ def test_resume_quarantines_a_corrupt_journal_and_recovers_the_rest(
     assert (vault / "System/.installed-files.manifest").read_bytes() == b"old\n"
 
 
+def test_apply_removes_empty_directories_left_after_deleting_the_last_file(
+    tmp_path: Path,
+) -> None:
+    """DEX-258: an update that removes a skill must not leave its empty folder."""
+    vault = _vault(tmp_path)
+    skill = vault / ".claude" / "skills" / "retired-shipped-skill" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_bytes(b"old skill\n")
+    sibling = vault / ".claude" / "skills" / "kept-skill" / "SKILL.md"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_bytes(b"keep me\n")
+    extra = vault / ".claude" / "skills" / "retired-shipped-skill" / "references"
+    extra.mkdir()
+
+    result = Transaction.begin(
+        vault,
+        [
+            PlanEntry(
+                ".claude/skills/retired-shipped-skill/SKILL.md",
+                None,
+                expected_current_sha256=hashlib.sha256(b"old skill\n").hexdigest(),
+            )
+        ],
+    ).run()
+
+    assert result["committed"] is True
+    assert not skill.exists()
+    assert not (vault / ".claude" / "skills" / "retired-shipped-skill").exists()
+    assert sibling.read_bytes() == b"keep me\n"
+    assert (vault / ".claude" / "skills" / "kept-skill").is_dir()
+
+
+def test_apply_keeps_a_skill_folder_that_still_has_user_files(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    skill = vault / ".claude" / "skills" / "kept-notes-skill" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_bytes(b"old skill\n")
+    notes = skill.parent / "notes.md"
+    notes.write_bytes(b"user notes\n")
+
+    Transaction.begin(
+        vault,
+        [
+            PlanEntry(
+                ".claude/skills/kept-notes-skill/SKILL.md",
+                None,
+                expected_current_sha256=hashlib.sha256(b"old skill\n").hexdigest(),
+            )
+        ],
+    ).run()
+
+    assert not skill.exists()
+    assert notes.read_bytes() == b"user notes\n"
+    assert skill.parent.is_dir()
+
+
+def test_apply_removes_empty_folders_it_created_when_a_new_write_is_then_deleted(
+    tmp_path: Path,
+) -> None:
+    """mkdir for a new nested file, then delete it — the shells must go."""
+    vault = _vault(tmp_path)
+    created = Transaction.begin(
+        vault,
+        [PlanEntry("System/Templates/New/Deep/t.md", b"x\n")],
+    ).run()
+    assert created["committed"] is True
+    target = vault / "System/Templates/New/Deep/t.md"
+    assert target.read_bytes() == b"x\n"
+
+    Transaction.begin(
+        vault,
+        [
+            PlanEntry(
+                "System/Templates/New/Deep/t.md",
+                None,
+                expected_current_sha256=hashlib.sha256(b"x\n").hexdigest(),
+            )
+        ],
+    ).run()
+
+    assert not target.exists()
+    assert not (vault / "System/Templates/New/Deep").exists()
+    assert not (vault / "System/Templates/New").exists()
+    assert (vault / "System").exists()
+
+
 def test_rollback_removes_directories_the_transaction_created(tmp_path: Path) -> None:
     """F3: rollback removes empty directories the apply created."""
     vault = _vault(tmp_path)

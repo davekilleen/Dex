@@ -9,6 +9,13 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+After an update, folders for skills you had already removed could come back empty. The checkup then treated those empty folders as broken skills.
+
+**What this fixes for you:**
+
+* **An update no longer leaves empty skill folders behind.** If the update created a folder and then had nothing to put in it — or it removed the last file in a skill folder — it takes that empty folder away again.
+* **Empty skill folders are not reported as broken.** The checkup ignores a skill folder that has no files in it, including one that only has empty subfolders. A folder that still has files, or a skill that is actually damaged, is still flagged.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

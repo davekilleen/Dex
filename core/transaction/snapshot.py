@@ -35,6 +35,29 @@ class SnapshotError(RuntimeError):
     """A snapshot could not be taken or restored safely."""
 
 
+def remove_empty_parents(vault_root: Path, start: Path) -> None:
+    """Remove empty parent directories from *start* up to the vault root.
+
+    Stops at the first directory that is not a real, empty folder — a
+    symlink, a file, or a folder that still has anything in it. Rollback
+    uses this after deleting a file the transaction created; apply uses
+    the same cleanup after a committed deletion so an update does not
+    leave empty skill folders behind.
+    """
+    vault = Path(vault_root)
+    parent = Path(start)
+    while parent != vault and parent.is_dir() and not parent.is_symlink():
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+        parent = parent.parent
+        try:
+            parent.relative_to(vault)
+        except ValueError:
+            break
+
+
 @dataclass(frozen=True)
 class SnapshotEntry:
     relative: str
@@ -238,12 +261,6 @@ class Snapshot:
                     fsync_directory(target.parent)
                     # Remove now-empty parent directories the apply created,
                     # stopping at the first non-empty (or the vault root).
-                    parent = target.parent
-                    while parent != vault and parent.is_dir():
-                        try:
-                            parent.rmdir()
-                        except OSError:
-                            break
-                        parent = parent.parent
+                    remove_empty_parents(vault, target.parent)
             restored.append(entry.relative)
         return restored
