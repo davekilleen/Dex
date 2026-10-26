@@ -51,11 +51,14 @@ when it exists. Prefer `.venv/Scripts/python.exe` on Windows, then
 direct file path matters: it keeps the canary runnable even when the installed
 packages are the thing that broke.
 
-Relay its one-line result verbatim. On
-failure, treat it as part of this update, not a separate errand: tell the user
-plainly that the update applied but something is wrong underneath, and run
-`/dex-doctor` now. Never report the update as complete while the canary is
-failing.
+Relay its complete result verbatim, including any extra line about a proof
+record that still names the previous version. That leftover is expected:
+nothing refreshes the record during an update. Say it needs refreshing and
+give the one command the check printed. Do not say the record can't be
+trusted or was rejected. On failure, treat it as part of this update, not a
+separate errand: tell the user plainly that the update applied but something
+is wrong underneath, and run `/dex-doctor` now. Never report the update as
+complete while the canary is failing.
 
 Newly written `.claude/skills/*/SKILL.md` files are live in this session.
 The host slash list may still omit them until the next session; that does not

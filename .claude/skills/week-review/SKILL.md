@@ -86,7 +86,7 @@ After processing meetings, check for tasks captured from phone that haven't been
 Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
-**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled.
+**If the tool is unavailable or errors** (Apple Reminders phone-capture is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Exception: if the tool says Reminders can't be switched on from inside VS Code, tell the user that one calm line (use the Claude app or Terminal for Reminders). Do not skip that case silently, do not advise reinstalling, and do not raise it again this session.
 
 If items found:
 - Surface them: "📱 **Phone captures not yet triaged** (X items in Dex Inbox)"

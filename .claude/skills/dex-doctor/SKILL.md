@@ -255,8 +255,13 @@ The assessment's `release_baseline` object carries `anchor_state`:
 
 - `verified` — say the release anchor proves the vault's release-owned files;
   nothing to offer.
-- `rejected` — surface the probe's warning verbatim (it names the exact
-  error) and offer the re-anchor flow below to regenerate the anchor.
+- `rejected` because the record still names the previous version — this is
+  the expected leftover after an update, not a broken record. Surface the
+  probe's "needs refreshing" wording verbatim, including the one command.
+  Do not say the record can't be trusted or was rejected.
+- `rejected` for any other reason — surface the probe's warning verbatim
+  (it names the exact error) and offer the re-anchor flow below to
+  regenerate the anchor.
 - `absent` with `release-identity-unproved` exclusions present — offer the
   re-anchor flow below. This is the guided repair those exclusions' guidance
   points at.

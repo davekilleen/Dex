@@ -18,6 +18,7 @@ const {
   renderRelationships,
   renderUpdateLog,
   replaceMachineRegion,
+  rewriteRelativeMeetingLinks,
 } = require('./entity-pages.cjs');
 
 const STORE_VERSION = 1;
@@ -355,6 +356,8 @@ function materializeHookIntent(operation, latest, intent) {
       || !/^\d{4}-\d{2}-\d{2}$/.test(interaction.date || '')) {
     throw new Error(`Invalid hook mutation intent for ${operation.path}`);
   }
+  const originalLatest = latest;
+  latest = rewriteRelativeMeetingLinks(latest);
   const entity = parseEntityPage(operation.path);
   const titleMatch = /^-\s+\[([^\]]+)\]\(/.exec(interaction.line);
   const touch = {
@@ -382,7 +385,7 @@ function materializeHookIntent(operation, latest, intent) {
     touches: merged,
     last_touched: lastTouched,
   };
-  const baseFingerprint = fingerprintText(latest);
+  const baseFingerprint = fingerprintText(originalLatest);
   let materialized;
   let target;
   if (latest.includes('<!-- dex:auto:recent-interactions -->')) {

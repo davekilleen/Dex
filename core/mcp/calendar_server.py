@@ -52,6 +52,10 @@ from core.mcp.calendar_attendees import attendee_is_non_responder, attendee_is_o
 from core.paths import PEOPLE_DIR
 from core.paths import VAULT_ROOT as VAULT_PATH
 from core.utils.feature_status import feature_status
+from core.utils.reminders_host import (
+    VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    is_vscode_host,
+)
 
 # Health system — error queue and health reporting
 try:
@@ -706,6 +710,14 @@ async def _handle_call_tool_inner(
     """Inner tool handler — wrapped by handle_call_tool for health reporting."""
 
     arguments = arguments or {}
+
+    if name.startswith("reminders_") and is_vscode_host():
+        result = feature_status(
+            REMINDERS_FEATURE,
+            "off",
+            VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     if name == "calendar_list_calendars":
         result = _get_calendar_list_result()

@@ -71,6 +71,22 @@ def test_lookup_rebuilds_version_one_index(tmp_path, monkeypatch):
     assert json.loads(index_file.read_text())["version"] == 2
 
 
+def test_lookup_finds_location_type_label_person_pages(tmp_path, monkeypatch):
+    people_dir, _ = _setup(tmp_path, monkeypatch)
+    target = people_dir / "Internal" / "Alice_Smith.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "---\ntype: internal\nname: Alice Smith\n---\n"
+        "# Alice Smith\n\n## Notes\n\nKept as written.\n",
+        encoding="utf-8",
+    )
+
+    result = work_server.lookup_person_data("Alice Smith")
+
+    assert result["matches"][0]["name"] == "Alice Smith"
+    assert "warning" not in result["matches"][0]
+
+
 def test_lookup_finds_pre_frontmatter_person_pages(tmp_path, monkeypatch):
     people_dir, _ = _setup(tmp_path, monkeypatch)
     target = people_dir / "External" / "Alice_Smith.md"

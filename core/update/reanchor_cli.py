@@ -50,8 +50,10 @@ from core.lifecycle.filesystem import (
     sha256_stock_file,
 )
 from core.lifecycle.release_anchor import (
+    PROOF_RECORD_NEEDS_REFRESH,
     RELEASE_ANCHOR_PATH,
     brain_owned_rows,
+    proof_record_needs_refresh,
 )
 from core.update.anchor_generation import (
     AnchorGenerationError,
@@ -307,6 +309,14 @@ def _report_current_state(root: Path) -> tuple[tuple[str, ...], object]:
         )
     if baseline.anchor_state == "verified":
         print("A proof record is already in place and checks out.")
+    elif proof_record_needs_refresh(
+        anchor_state=baseline.anchor_state, errors=baseline.errors
+    ):
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-257): leftover after
+        # an update, not an untrusted record. This flow can replace it.
+        print(
+            f"{PROOF_RECORD_NEEDS_REFRESH} This repair can replace it."
+        )
     elif baseline.anchor_state == "rejected":
         named = next(
             (error for error in baseline.errors if "release anchor" in error),

@@ -137,7 +137,9 @@ Use: reminders_list_completed(list_name="Dex Today")
 For each completed item, match it to an existing task by title and update it:
 `update_task_status(task_title="...", status="d")`. This is a mechanical sync of
 completions the user already made; record what was synced. If the Reminders
-tools are unavailable, skip silently.
+tools are unavailable, skip silently, except when the tool says Reminders
+can't be switched on from inside VS Code — tell the user that one calm line
+(use the Claude app or Terminal for Reminders) and do not raise it again.
 
 ### 1.8 Mobile Capture Check
 
@@ -146,7 +148,11 @@ Use: reminders_list_items(list_name="Dex Inbox")
 ```
 
 If items are found, list them in your report for triage. Do NOT create tasks
-from them; triage is an interactive step in the main conversation.
+from them; triage is an interactive step in the main conversation. If the
+Reminders tools are unavailable, skip silently, except when the tool says
+Reminders can't be switched on from inside VS Code — tell the user that one
+calm line (use the Claude app or Terminal for Reminders) and do not raise it
+again.
 
 ### 1.9 Email Intelligence (if connected)
 

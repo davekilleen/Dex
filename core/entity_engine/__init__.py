@@ -15,6 +15,8 @@ from .contract import (
     render_relationships,
     render_update_log,
     replace_machine_region,
+    rewrite_relative_meeting_links,
+    skipped_person_page_warning,
     unreadable_person_page_warning,
 )
 from .write import (
@@ -48,6 +50,8 @@ __all__ = [
     "render_update_log",
     "replace_machine_region",
     "replace_machine_region_in_file",
+    "rewrite_relative_meeting_links",
+    "skipped_person_page_warning",
     "unreadable_person_page_warning",
     "upsert_frontmatter",
 ]

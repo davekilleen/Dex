@@ -16,6 +16,59 @@ A filing helper kept making new folders at the top of Dex instead of using the A
 * **New top-level folders are stopped.** If something tries to create a folder next to Inbox and Projects, Dex blocks it and points to the real Archives and Resources folders.
 * **Automations can ask where those folders are.** There is a lookup that returns the actual Archives and Resources paths, including when you have moved them.
 
+Inside VS Code, asking Dex to use Apple Reminders never brought up the Mac permission ask, so the feature looked broken or simply vanished.
+
+**What this fixes for you:**
+
+* **Dex says when Reminders can't be switched on.** If you are in VS Code, Dex now tells you the Mac will not show the Reminders permission ask there, and that you can use the Claude app or Terminal for Reminders instead.
+* **Nothing is treated as a silent failure.** You get a clear line, not a confusing error or a quiet skip.
+
+After an update, a saved proof of Dex's own files could still name the old version. The health check then said that record could not be trusted, which sounded like something was broken.
+
+**What this fixes for you:**
+
+* **Dex says the proof just needs refreshing.** After an update, if that record still names the previous version, the update check and the health check say so in plain words and give the one command to run. They no longer call it untrusted.
+* **Nothing refreshes itself.** Dex still waits for you to run that command. An update does not rewrite the proof on its own.
+
+People pages that said they were internal or external in the header — instead of saying they were a person — were skipped when meetings were processed. The meeting note landed, that person's page never showed it, and some older meeting links on those pages pointed at the wrong place.
+
+**What this fixes for you:**
+
+* **Those people pages get the meeting.** Dex now reads an internal or external header as a person page, so the meeting is added to the page you already have.
+* **If a page still cannot be used, you see which one.** Dex names the file in a warning instead of quietly leaving it out.
+* **Older meeting links open the right note.** Links that walked up the wrong number of folders now point at the meeting in your inbox.
+
+Mail search could look fine when you opened Dex, then miss emails that arrived later. The Mail helper only refreshed its copy at start-up, so anything newer stayed invisible until you restarted.
+
+**What this fixes for you:**
+
+* **Mail search stays current while Dex is open.** New setup now turns on live updates, so new mail is searchable without restarting.
+* **If you set this up earlier, checkup names the one change.** `/dex-doctor` notices the older setup and tells you exactly what to change so the copy stops going stale.
+
+After an update, folders for skills you had already removed could come back empty. The checkup then treated those empty folders as broken skills.
+
+**What this fixes for you:**
+
+* **An update no longer leaves empty skill folders behind.** If the update created a folder and then had nothing to put in it, it takes that empty folder away again.
+* **Empty skill folders are not reported as broken.** The checkup ignores a skill folder that has no files in it, including one that only has empty subfolders. A folder that still has files, or a skill that is actually damaged, is still flagged.
+
+An ordinary note that happened to say "don't" or "no", a pasted log, or a question like "Is that not what we discussed?" was being written down as if you had told Dex it was wrong. Only a real correction in your own words is saved now.
+
+**What this fixes for you:**
+
+* **Everyday messages stay ordinary.** Saying "I don't have that" or "no rush" is no longer filed as a lesson. A real correction such as "no, that's not what I asked" is still saved.
+* **A paste or a quote is not a correction.** Text you pasted or quoted is ignored. A correction you typed next to it is still saved.
+* **A plain question is not a correction.** "Is that not what we talked about?" stays a question.
+
+The daily plan's week progress treated every weekly priority as not started — even ones already underway, ones written without a pillar label, and ones already tied to a quarterly goal.
+
+**What this fixes for you:**
+
+* **A priority marked in progress shows as in progress.** If you wrote that you had started a weekly priority, the daily plan and week progress now say in progress instead of not started.
+* **A priority without a pillar still appears.** Writing the week's items as a plain numbered list no longer hides them from the plan.
+* **A goal written next to a priority is still a link.** You no longer have to put the quarterly goal in square brackets for the week view to see it.
+* **The week view names the goal a priority belongs to.** Progress now includes that link, so the plan can show which quarterly goal each priority is serving.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

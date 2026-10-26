@@ -656,6 +656,15 @@ def test_apple_mail_setup_closes_live_sessions_before_index_refresh() -> None:
     assert "holds the search-index lock" in setup
 
 
+def test_apple_mail_setup_registers_the_server_with_watch() -> None:
+    setup = _read(".claude/skills/apple-mail-setup/SKILL.md")
+
+    assert "claude mcp add --scope user apple-mail -- apple-mail-mcp serve --watch" in setup
+    assert "claude mcp add --scope user apple-mail -- apple-mail-mcp serve\n" not in setup
+    assert "safe with several" in setup
+    assert "only one of them writes the index" in setup
+
+
 def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     paths = (
         ".claude/skills/calendar-setup/SKILL.md",
@@ -682,6 +691,31 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     assert "first-class Calendar surfaces" in skill
     assert "Do not promise that a Mac permission dialog will appear" in skill
     assert "Do not send them to a standalone terminal as the only path" in skill
+
+
+def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> None:
+    for relative in (
+        "docs/Dex_System/Calendar_Setup.md",
+        "06-Resources/Dex_System/Calendar_Setup.md",
+    ):
+        text = _read(relative)
+        assert "Reminders cannot be switched on from that app" in text, relative
+        assert "Claude app or Terminal" in text, relative
+        assert "Grant it for the same editor app if you use those features" not in text, relative
+        assert "Claude Code" not in text, relative
+
+    for relative in (
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/daily-review/SKILL.md",
+        ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+    ):
+        text = _read(relative)
+        assert "can't be switched on from inside VS Code" in text, relative
+        assert "Claude app or Terminal" in text, relative
+        assert "Do not skip that case silently" in text or "do not raise it again" in text, relative
+        assert "macOS never shows the permission dialog to that process" not in text, relative
 
 
 def test_goal_backlog_grooming_never_deletes_silently_and_offers_once() -> None:

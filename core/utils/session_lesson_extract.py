@@ -5,8 +5,9 @@ Session-end calls this so a closed session leaves more than a marker.
 Candidates are heuristic — obvious corrections and stated preferences —
 written in the same pending format /daily-review already uses.
 
-This module is self-contained (no Dex imports) so the hook can invoke the
-file directly. It never calls the network. Any failure is silent and exits 0.
+This module is invoked as a file by the session-end hook, so it imports the
+shared correction check as a sibling (no Dex package required at runtime).
+It never calls the network. Any failure is silent and exits 0.
 """
 from __future__ import annotations
 
@@ -23,24 +24,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator, TextIO
 
+try:
+    from .correction_detect import is_correction, user_words
+except ImportError:  # invoked as a file: python core/utils/session_lesson_extract.py
+    from correction_detect import is_correction, user_words
+
 MAX_CHARS = 600
 MAX_BYTES_DEFAULT = 2_000_000
 MAX_CANDIDATES_DEFAULT = 8
 DEADLINE_SECONDS_DEFAULT = 2.0
 MAX_USER_MESSAGES = 400
 
-# Matching .claude/hooks/correction-capture.sh and correction-capture.py.
-# Bare conversational words ("no", "stop", "actually,") are not a lesson.
-# "no" only counts with a comma, an ellipsis, or a repeat; "stop" only
-# with a following verb. "actually," is a discourse marker and is not matched.
-_CORRECTION = re.compile(
-    r"(?i)(?:^|[^A-Za-z0-9])(?:nope|wrong|incorrect)(?:[^A-Za-z0-9]|$)"
-    r"|(?:^|[^A-Za-z0-9])no(?:\s*,|\s*\.\.\.|\s+no\b)"
-    r"|(?:^|[^A-Za-z0-9])stop\s+(?:doing|making|writing|over|inferr|that|this)\b"
-    r"|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what"
-    r"|why (?:did|are|didn'?t) you|i (?:told|said) you"
-    r"|keep (?:doing|writing|failing)|come on"
-)
 _PREFERENCE = re.compile(
     r"(?i)\bi prefer\b|\bi['’]d rather\b|\bi would rather\b"
     r"|\bfrom now on\b|\bgoing forward,"
@@ -49,10 +43,6 @@ _PREFERENCE = re.compile(
     r"|\bnever assume\b|\bi want (?:you to|dex to)\b"
 )
 _NO_PREFERENCE = re.compile(r"(?i)\bno preference\b")
-_ORDINARY_NO = re.compile(
-    r"(?i)\b(?:have no|has no|with no|there(?:'s| is) no|"
-    r"no (?:problem|worries|thanks|rush|need|meetings?|idea|clue))\b"
-)
 _SLASH_ONLY = re.compile(r"^/[A-Za-z][\w:-]*(?:\s.*)?$")
 _SECRETISH = re.compile(
     r"(?i)(api[_-]?key|secret|password|passwd|bearer\s+[a-z0-9._-]"
@@ -78,29 +68,9 @@ _QUOTE_TRANSLATE = str.maketrans(
     }
 )
 
-# Text the harness writes into a user turn is not the user's words, so it is
-# removed BEFORE anything is classified. Harness blocks are lowercase tags with
-# at least one hyphen (<system-reminder>, <task-notification>,
-# <artifact-view-context>, ...); an unclosed one runs to the end of the text.
-# User-pasted text arrives as <pasted_content> (underscore) and is kept, because
-# a pasted correction can be the user's own words. Keep in step with
-# .claude/hooks/correction-capture.py.
-_MACHINE_BLOCK = re.compile(r"<([a-z]+(?:-[a-z]+)+)\b[^>]*>.*?(?:</\1>|\Z)", re.DOTALL)
-# Machine prose that arrives without a tag. Checked on what is LEFT after the
-# strip, so it can never discard a real correction sent alongside a block.
-_MACHINE_PHRASES = (
-    "[SYSTEM NOTIFICATION - NOT USER INPUT]",
-    "automated run of a scheduled task",
-    "This is an automated background-task event",
-)
-
-
 def strip_machine_text(text: str) -> str:
     """Return only the user's own words, or '' if nothing of theirs is left."""
-    remainder = _MACHINE_BLOCK.sub("", text).strip()
-    if any(phrase in remainder for phrase in _MACHINE_PHRASES):
-        return ""
-    return remainder
+    return user_words(text)
 
 
 def _normalize_text(text: str) -> str:
@@ -198,14 +168,14 @@ def _float_env(name: str, default: float) -> float:
 
 def classify(text: str) -> str | None:
     """Return 'Correction' or 'Preference', or None if this is not a lesson."""
-    stripped = text.strip()
+    stripped = user_words(text)
     if not stripped or _NO_PREFERENCE.search(stripped):
         return None
-    if _SLASH_ONLY.match(stripped) and not _CORRECTION.search(stripped):
+    if _SLASH_ONLY.match(stripped) and not is_correction(stripped):
         return None
     if _SECRETISH.search(stripped):
         return None
-    if _CORRECTION.search(stripped) and not _ORDINARY_NO.search(stripped):
+    if is_correction(stripped):
         return "Correction"
     if _PREFERENCE.search(stripped):
         return "Preference"
