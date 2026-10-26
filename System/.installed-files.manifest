@@ -1443,6 +1443,7 @@ core/tests/test_conflict_resolution.py
 core/tests/test_contact_suggest.py
 core/tests/test_cooling.py
 core/tests/test_copilot_cli_host.py
+core/tests/test_correction_detect.py
 core/tests/test_create_person.py
 core/tests/test_credential_remediation.py
 core/tests/test_credential_scanner.py
@@ -1630,6 +1631,7 @@ core/tests/test_release_tag_uniqueness.py
 core/tests/test_release_tree_matches_tag.py
 core/tests/test_release_workflows_draft_first.py
 core/tests/test_reminders_eventkit_script.py
+core/tests/test_reminders_host.py
 core/tests/test_reroute_people.py
 core/tests/test_reset_carry_forward.py
 core/tests/test_resume_export_safety.py
@@ -1677,6 +1679,7 @@ core/tests/test_update_checker_real_installs.py
 core/tests/test_update_journey_protocol.py
 core/tests/test_update_rollback_journey.py
 core/tests/test_usage_tracking.py
+core/tests/test_vault_folders.py
 core/tests/test_wave3_mature_skill_amendments.py
 core/tests/test_wave3_role_skill_contracts.py
 core/tests/test_week_review_clear_completed_tasks_instruction_contract.py
@@ -1698,6 +1701,7 @@ core/tests/test_work_server_task_goal_readers.py
 core/tests/test_work_server_task_priorities.py
 core/tests/test_work_server_weekly_planning_context.py
 core/tests/test_work_server_weekly_priority_creation.py
+core/tests/test_work_week_progress_status.py
 core/tests/test_working_week.py
 core/tests/vault_observed_writes.py
 core/transaction/__init__.py
@@ -1719,6 +1723,7 @@ core/utils/apple_mail_health.py
 core/utils/automation_ownership.py
 core/utils/claude_composition.py
 core/utils/company_domains.py
+core/utils/correction_detect.py
 core/utils/credential_migration_exceptions.json
 core/utils/credential_remediation.py
 core/utils/credential_scanner.py
@@ -1751,6 +1756,7 @@ core/utils/reference_formatter.py
 core/utils/release_channel.py
 core/utils/release_feed.py
 core/utils/release_notes_sweep.py
+core/utils/reminders_host.py
 core/utils/ritual_timing.py
 core/utils/safe_autosave.py
 core/utils/session_health.py
@@ -1765,6 +1771,7 @@ core/utils/trust_registry.py
 core/utils/update_verifier.py
 core/utils/validators.py
 core/utils/working_week.py
+core/vault_folders.py
 core/vault_selection.py
 docs/Dex_System/Background_Processing_Guide.md
 docs/Dex_System/Calendar_Setup.md
@@ -1890,6 +1897,7 @@ packages/dex-agent-plugin/runtime/core/gates/__init__.py
 packages/dex-agent-plugin/runtime/core/gates/safety.py
 packages/dex-agent-plugin/runtime/core/path_safety.py
 packages/dex-agent-plugin/runtime/core/paths.py
+packages/dex-agent-plugin/runtime/core/vault_folders.py
 packages/dex-agent-plugin/runtime/core/vault_selection.py
 packages/dex-agent-plugin/server.py
 packages/dex-agent-plugin/skills/_available/capabilities/career/skills/career-coach/SKILL.md

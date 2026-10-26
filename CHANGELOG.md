@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.31] — Filing stays in your folders, Reminders explains VS Code, update records stay current, more people pages get meetings, Mail search sees new email, removed skills stay removed, ordinary messages stop counting as corrections, and weekly priorities show their progress (2026-10-26)
+
 A filing helper kept making new folders at the top of Dex instead of using the Archives and Resources folders that were already there.
 
 **What this fixes for you:**
