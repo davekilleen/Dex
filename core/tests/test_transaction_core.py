@@ -1487,8 +1487,6 @@ def test_apply_removes_empty_directories_left_after_deleting_the_last_file(
     sibling = vault / ".claude" / "skills" / "kept-skill" / "SKILL.md"
     sibling.parent.mkdir(parents=True)
     sibling.write_bytes(b"keep me\n")
-    extra = vault / ".claude" / "skills" / "retired-shipped-skill" / "references"
-    extra.mkdir()
 
     result = Transaction.begin(
         vault,
@@ -1535,21 +1533,21 @@ def test_apply_keeps_a_skill_folder_that_still_has_user_files(tmp_path: Path) ->
 def test_apply_removes_empty_folders_it_created_when_a_new_write_is_then_deleted(
     tmp_path: Path,
 ) -> None:
-    """mkdir for a new nested file, then delete it — the shells must go."""
+    """mkdir for a new nested skill file, then delete it — the shells must go."""
     vault = _vault(tmp_path)
     created = Transaction.begin(
         vault,
-        [PlanEntry("System/Templates/New/Deep/t.md", b"x\n")],
+        [PlanEntry(".claude/skills/fixture-skill/SKILL.md", b"x\n")],
     ).run()
     assert created["committed"] is True
-    target = vault / "System/Templates/New/Deep/t.md"
+    target = vault / ".claude/skills/fixture-skill/SKILL.md"
     assert target.read_bytes() == b"x\n"
 
     Transaction.begin(
         vault,
         [
             PlanEntry(
-                "System/Templates/New/Deep/t.md",
+                ".claude/skills/fixture-skill/SKILL.md",
                 None,
                 expected_current_sha256=hashlib.sha256(b"x\n").hexdigest(),
             )
@@ -1557,8 +1555,7 @@ def test_apply_removes_empty_folders_it_created_when_a_new_write_is_then_deleted
     ).run()
 
     assert not target.exists()
-    assert not (vault / "System/Templates/New/Deep").exists()
-    assert not (vault / "System/Templates/New").exists()
+    assert not (vault / ".claude/skills/fixture-skill").exists()
     assert (vault / "System").exists()
 
 
