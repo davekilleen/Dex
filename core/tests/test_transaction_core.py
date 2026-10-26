@@ -1476,6 +1476,88 @@ def test_resume_quarantines_a_corrupt_journal_and_recovers_the_rest(
     assert (vault / "System/.installed-files.manifest").read_bytes() == b"old\n"
 
 
+def test_apply_leaves_a_preexisting_folder_after_deleting_its_last_file(
+    tmp_path: Path,
+) -> None:
+    """Deleting a planned file must not also prune folders the plan did not create.
+
+    Rewind and write-observation only declare the file. Removing a
+    pre-existing empty parent would be an undeclared extra write.
+    """
+    vault = _vault(tmp_path)
+    skill = vault / ".claude" / "skills" / "retired-shipped-skill" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_bytes(b"old skill\n")
+    sibling = vault / ".claude" / "skills" / "kept-skill" / "SKILL.md"
+    sibling.parent.mkdir(parents=True)
+    sibling.write_bytes(b"keep me\n")
+
+    result = Transaction.begin(
+        vault,
+        [
+            PlanEntry(
+                ".claude/skills/retired-shipped-skill/SKILL.md",
+                None,
+                expected_current_sha256=hashlib.sha256(b"old skill\n").hexdigest(),
+            )
+        ],
+    ).run()
+
+    assert result["committed"] is True
+    assert not skill.exists()
+    assert (vault / ".claude" / "skills" / "retired-shipped-skill").is_dir()
+    assert sibling.read_bytes() == b"keep me\n"
+    assert (vault / ".claude" / "skills" / "kept-skill").is_dir()
+
+
+def test_apply_keeps_a_skill_folder_that_still_has_user_files(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    skill = vault / ".claude" / "skills" / "kept-notes-skill" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_bytes(b"old skill\n")
+    notes = skill.parent / "notes.md"
+    notes.write_bytes(b"user notes\n")
+
+    Transaction.begin(
+        vault,
+        [
+            PlanEntry(
+                ".claude/skills/kept-notes-skill/SKILL.md",
+                None,
+                expected_current_sha256=hashlib.sha256(b"old skill\n").hexdigest(),
+            )
+        ],
+    ).run()
+
+    assert not skill.exists()
+    assert notes.read_bytes() == b"user notes\n"
+    assert skill.parent.is_dir()
+
+
+def test_apply_removes_empty_folders_it_created_when_nothing_is_left_in_them(
+    tmp_path: Path,
+) -> None:
+    """DEX-258: an apply must take away empty folders it created for a write."""
+    vault = _vault(tmp_path)
+    tx = Transaction.begin(
+        vault,
+        [PlanEntry(".claude/skills/fixture-skill/SKILL.md", b"x\n")],
+    )
+    tx._snapshot_phase()
+    tx._apply_phase()
+    target = vault / ".claude/skills/fixture-skill/SKILL.md"
+    assert target.read_bytes() == b"x\n"
+    target.unlink()
+
+    tx._remove_empty_created_directories()
+
+    assert not (vault / ".claude/skills/fixture-skill").exists()
+    assert not (vault / ".claude/skills").exists()
+    assert not (vault / ".claude").exists()
+    assert (vault / "System").exists()
+    tx.rollback()
+
+
 def test_rollback_removes_directories_the_transaction_created(tmp_path: Path) -> None:
     """F3: rollback removes empty directories the apply created."""
     vault = _vault(tmp_path)

@@ -3785,7 +3785,7 @@ def _probe_capability_rooms(context: DoctorContext) -> ProbeResult:
         else:
             for skill in surfaces.get("skills", []):
                 path = context.vault_root / ".claude/skills" / str(skill)
-                if path.exists() or path.is_symlink():
+                if path.is_symlink() or _skill_directory_has_payload(path):
                     stale_skills.append(f"{room}: {skill}")
 
     findings: list[str] = []
@@ -3855,6 +3855,29 @@ def _unsafe_customization_path(context: DoctorContext, path: Path) -> str | None
     return None
 
 
+def _skill_directory_has_payload(path: Path) -> bool:
+    """True when a skill folder has any real file or symlink.
+
+    An empty folder — or a folder that only contains empty subfolders — is
+    not a skill. Updates can recreate those shells after a user deletes a
+    skill; calling them broken skills is a false alarm.
+    """
+    if path.is_symlink():
+        return True
+    if not path.is_dir():
+        return False
+    try:
+        for current_root, dirnames, filenames in os.walk(path, followlinks=False):
+            if filenames:
+                return True
+            current = Path(current_root)
+            if any((current / name).is_symlink() for name in dirnames):
+                return True
+    except OSError:
+        return True
+    return False
+
+
 def _customization_skill_directories(context: DoctorContext) -> tuple[list[tuple[Path, bool]], str | None]:
     """Skill directories plus whether each one is user-owned.
 
@@ -3884,7 +3907,9 @@ def _customization_skill_directories(context: DoctorContext) -> tuple[list[tuple
             if path.name in KNOWN_SKILL_CONTAINER_DIRECTORIES:
                 continue
             try:
-                populated = path.is_symlink() or (path.is_dir() and any(path.iterdir()))
+                populated = path.is_symlink() or (
+                    path.is_dir() and _skill_directory_has_payload(path)
+                )
             except OSError:
                 populated = False
             if populated:

@@ -168,6 +168,7 @@ class Transaction:
         self._release = None
         self._plan: list[PlanEntry] | None = None
         self._resumed = _resumed
+        self._created_directories: list[Path] = []
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -461,9 +462,11 @@ class Transaction:
                     "NOT-APPLIED",
                     {"index": index, "relative": entry.relative},
                 )
+                self._remove_empty_created_directories()
                 raise
             self.journal.append("APPLIED", {"index": index, "relative": entry.relative})
             _stop_seam(f"mid-apply:{index}")
+        self._remove_empty_created_directories()
         self.journal.append("APPLY-DONE")
 
     def _verify_deletion_precondition(
@@ -541,6 +544,7 @@ class Transaction:
             return
 
         staged = self.tx_dir / "staged" / f"{index:06d}.bin"
+        self._record_created_parents(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.parent / f".{target.name}.tx-{self.tx_id}"
         shutil.copyfile(staged, temporary)
@@ -589,6 +593,39 @@ class Transaction:
             return
         os.replace(temporary, target)
         fsync_directory(target.parent)
+
+    def _record_created_parents(self, target: Path) -> None:
+        """Remember parent folders this write will create so apply can remove leftovers."""
+        current = target.parent
+        missing: list[Path] = []
+        while current != self.vault_root and not current.exists():
+            missing.append(current)
+            current = current.parent
+            try:
+                current.relative_to(self.vault_root)
+            except ValueError:
+                break
+        self._created_directories.extend(reversed(missing))
+
+    def _remove_empty_created_directories(self) -> None:
+        """Drop empty folders this apply created and then had nothing to put in."""
+        for directory in sorted(
+            self._created_directories,
+            key=lambda path: len(path.parts),
+            reverse=True,
+        ):
+            if directory.is_symlink() or not directory.is_dir():
+                continue
+            try:
+                directory.relative_to(self.vault_root)
+            except ValueError:
+                continue
+            if directory == self.vault_root:
+                continue
+            try:
+                directory.rmdir()
+            except OSError:
+                continue
 
     def _verify_phase(self) -> None:
         assert self._plan is not None
