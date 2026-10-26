@@ -8,7 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 const {
+  hasBrokenRelativeMeetingLink,
   parseEntityPage,
+  skippedPersonPageWarning,
   unreadablePersonPageWarning,
 } = require('../../.scripts/lib/entity-pages.cjs');
 const {
@@ -191,11 +193,21 @@ try {
     if (!personPath) continue;
 
     const original = fs.readFileSync(personPath, 'utf8');
-    if (original.includes(relativeMeetingPath)) continue;
+    if (
+      original.includes(relativeMeetingPath)
+      && !hasBrokenRelativeMeetingLink(original, relativeMeetingPath)
+    ) continue;
     const entity = parseEntityPage(personPath);
-    if (entity.quarantined || entity.type !== 'person') {
-      const relativePersonPath = path.relative(vaultRoot, personPath).split(path.sep).join('/');
+    const relativePersonPath = path.relative(vaultRoot, personPath).split(path.sep).join('/');
+    if (entity.quarantined) {
       console.error(unreadablePersonPageWarning(
+        entity.name || stem.replace(/_/g, ' '),
+        relativePersonPath,
+      ));
+      continue;
+    }
+    if (entity.type !== 'person') {
+      console.error(skippedPersonPageWarning(
         entity.name || stem.replace(/_/g, ' '),
         relativePersonPath,
       ));

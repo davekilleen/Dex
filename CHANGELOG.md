@@ -9,6 +9,14 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+People pages that said they were internal or external in the header — instead of saying they were a person — were skipped when meetings were processed. The meeting note landed, that person's page never showed it, and some older meeting links on those pages pointed at the wrong place.
+
+**What this fixes for you:**
+
+* **Those people pages get the meeting.** Dex now reads an internal or external header as a person page, so the meeting is added to the page you already have.
+* **If a page still cannot be used, you see which one.** Dex names the file in a warning instead of quietly leaving it out.
+* **Older meeting links open the right note.** Links that walked up the wrong number of folders now point at the meeting in your inbox.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

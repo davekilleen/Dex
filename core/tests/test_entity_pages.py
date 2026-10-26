@@ -70,6 +70,71 @@ def test_unreadable_person_page_warning_names_the_page() -> None:
     assert "unreadable" in warning
 
 
+def test_skipped_person_page_warning_names_the_page() -> None:
+    from core.entity_engine import skipped_person_page_warning
+
+    warning = skipped_person_page_warning(
+        "Alice Smith",
+        "05-Areas/People/External/Alice_Smith.md",
+    )
+    assert "Alice Smith" in warning
+    assert "05-Areas/People/External/Alice_Smith.md" in warning
+    assert "skipped" in warning
+
+
+@pytest.mark.parametrize(
+    ("declared", "expected_location"),
+    [
+        ("internal", "internal"),
+        ("external", "external"),
+        ("cpo_network", None),
+        ("Internal", "internal"),
+    ],
+)
+def test_location_type_label_is_a_person(
+    tmp_path: Path,
+    declared: str,
+    expected_location: str | None,
+) -> None:
+    page = tmp_path / "Alice_Smith.md"
+    page.write_text(
+        f"---\ntype: {declared}\nname: Alice Smith\n---\n"
+        "# Alice Smith\n\n## Notes\n\nKept as written.\n",
+        encoding="utf-8",
+    )
+    parsed = parse_entity_page(page)
+    assert parsed["type"] == "person"
+    assert parsed["name"] == "Alice Smith"
+    assert parsed["declared_non_entity"] is False
+    assert parsed["location"] == expected_location
+
+
+def test_note_type_label_is_still_not_a_person(tmp_path: Path) -> None:
+    page = tmp_path / "Playbook.md"
+    page.write_text(
+        "---\ntype: note\nname: Weekly Standup\n---\n# Playbook\n",
+        encoding="utf-8",
+    )
+    parsed = parse_entity_page(page)
+    assert parsed["type"] is None
+    assert parsed["declared_non_entity"] is True
+
+
+def test_rewrite_relative_meeting_links_uses_vault_paths() -> None:
+    from core.entity_engine import rewrite_relative_meeting_links
+
+    text = (
+        "- [Roadmap](../../00-Inbox/Meetings/roadmap.md) — 2026-07-10\n"
+        "- [Archive](../../../07-Archives/Meetings/old.md) — 2026-06-01\n"
+        "- [Current](00-Inbox/Meetings/today.md) — 2026-07-11\n"
+    )
+    rewritten = rewrite_relative_meeting_links(text)
+    assert "(00-Inbox/Meetings/roadmap.md)" in rewritten
+    assert "(07-Archives/Meetings/old.md)" in rewritten
+    assert "(00-Inbox/Meetings/today.md)" in rewritten
+    assert "../" not in rewritten
+
+
 def test_parse_golden_fixtures() -> None:
     pages = sorted(FIXTURES.glob("[0-9][0-9]-*.md"))
     assert len(pages) >= 10

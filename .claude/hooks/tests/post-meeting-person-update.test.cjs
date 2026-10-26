@@ -481,6 +481,90 @@ test('an old-format person page receives the meeting and gains current frontmatt
   assert.equal(parseEntityPage(person).name, 'Alice Smith');
 });
 
+test('a location-type person page receives the meeting', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, [
+    '---',
+    'type: internal',
+    'name: Alice Smith',
+    '---',
+    '# Alice Smith',
+    '',
+    '## Recent Interactions',
+    '',
+    '<!-- dex:auto:recent-interactions -->',
+    '<!-- /dex:auto -->',
+    '',
+  ].join('\n'));
+  const meeting = meetingNote(vault);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.match(updated, /\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\) — 2026-07-10/);
+  assert.equal(parseEntityPage(person).type, 'person');
+  assert.doesNotMatch(result.stderr, /skipped|unreadable/);
+});
+
+test('a note-typed page under People is named and left unchanged', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  const original = [
+    '---',
+    'type: note',
+    'name: Alice Smith',
+    '---',
+    '# Alice Smith',
+    '',
+    'Standup reminder, not a person record.',
+    '',
+  ].join('\n');
+  fs.writeFileSync(person, original);
+  const meeting = meetingNote(vault);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(person, 'utf8'), original);
+  assert.match(result.stderr, /Alice Smith/);
+  assert.match(result.stderr, /05-Areas\/People\/Internal\/Alice_Smith\.md/);
+  assert.match(result.stderr, /skipped/);
+});
+
+test('broken relative meeting links are rewritten to vault paths', (t) => {
+  const vault = createVault(t);
+  const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
+  fs.writeFileSync(person, [
+    '---',
+    'type: person',
+    'name: Alice Smith',
+    'last_interaction: 2026-07-10',
+    '---',
+    '# Alice Smith',
+    '',
+    '## Recent Interactions',
+    '',
+    '<!-- dex:auto:recent-interactions -->',
+    '- [Roadmap Review](../../00-Inbox/Meetings/roadmap.md) — 2026-07-10',
+    '<!-- /dex:auto -->',
+    '',
+  ].join('\n'));
+  const meeting = meetingNote(vault);
+
+  const result = runHook(vault, { tool_input: { file_path: meeting } });
+
+  assert.equal(result.status, 0, result.stderr);
+  const updated = fs.readFileSync(person, 'utf8');
+  assert.match(updated, /\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\) — 2026-07-10/);
+  assert.doesNotMatch(updated, /\.\.\/\.\.\/00-Inbox/);
+  assert.equal(
+    (updated.match(/\[Roadmap Review\]\(00-Inbox\/Meetings\/roadmap\.md\)/g) || []).length,
+    1,
+  );
+});
+
 test('an unparseable person page warns by name and is left unchanged', (t) => {
   const vault = createVault(t);
   const person = path.join(vault, '05-Areas/People/Internal/Alice_Smith.md');
