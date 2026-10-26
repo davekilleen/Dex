@@ -354,7 +354,7 @@ Check if any tasks were completed on phone since the last plan:
 Use: reminders_list_completed(list_name="Dex Today")
 ```
 
-**If the tool is unavailable or errors** (Apple Reminders sync is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Note: Reminders access never works when Claude Code runs inside the VS Code extension (macOS never shows the permission dialog to that process) — see the known limitation in `06-Resources/Dex_System/Calendar_Setup.md`. Do not advise reinstalling or reconfiguring; skip silently.
+**If the tool is unavailable or errors** (Apple Reminders sync is optional and may not be set up on this machine): skip this step silently — do not surface an error for a feature the user never enabled. Exception: if the tool says Reminders can't be switched on from inside VS Code, tell the user that one calm line (use the Claude app or Terminal for Reminders). Do not skip that case silently, do not advise reinstalling, and do not raise it again this session.
 
 For each completed item:
 - Match to a Dex task by title
@@ -760,7 +760,7 @@ After generating the plan, push today's P0 and P1 focus tasks to Apple Reminders
 3. **Confirm silently:**
    > "📱 Pushed 3 focus tasks to iPhone Reminders (Dex Today)"
 
-**If the tool is unavailable or errors:** Skip silently — do not surface an error for a feature the user never enabled. (This includes Claude Code running inside the VS Code extension, where macOS never grants Reminders access — see `06-Resources/Dex_System/Calendar_Setup.md`.)
+**If the tool is unavailable or errors:** Skip silently — do not surface an error for a feature the user never enabled. Exception: if the tool says Reminders can't be switched on from inside VS Code, tell the user that one calm line (use the Claude app or Terminal for Reminders). Do not skip that case silently, do not advise reinstalling, and do not raise it again this session.
 
 ---
 

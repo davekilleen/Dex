@@ -9,6 +9,13 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Inside VS Code, asking Dex to use Apple Reminders never brought up the Mac permission ask, so the feature looked broken or simply vanished.
+
+**What this fixes for you:**
+
+* **Dex says when Reminders can't be switched on.** If you are in VS Code, Dex now tells you the Mac will not show the Reminders permission ask there, and that you can use the Claude app or Terminal for Reminders instead.
+* **Nothing is treated as a silent failure.** You get a clear line, not a confusing error or a quiet skip.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

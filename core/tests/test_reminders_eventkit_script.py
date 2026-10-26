@@ -15,6 +15,7 @@ sys.modules.setdefault(
 )
 
 from core.mcp.scripts import reminders_eventkit
+from core.utils.reminders_host import VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
 
 
 class _DeniedStore:
@@ -70,6 +71,7 @@ class _UndeterminedEventStore:
 
 
 def test_ensure_lists_reports_how_to_grant_denied_reminders_access(monkeypatch, capsys):
+    monkeypatch.setattr(reminders_eventkit, "is_vscode_host", lambda: False)
     monkeypatch.setattr(
         reminders_eventkit,
         "EventKit",
@@ -92,6 +94,7 @@ def test_ensure_lists_reports_how_to_grant_denied_reminders_access(monkeypatch, 
 def test_list_lists_requests_fresh_reminders_access_before_reading(monkeypatch, capsys):
     store = _UndeterminedStore()
     _UndeterminedEventStore.store = store
+    monkeypatch.setattr(reminders_eventkit, "is_vscode_host", lambda: False)
     monkeypatch.setattr(
         reminders_eventkit,
         "EventKit",
@@ -125,6 +128,7 @@ class _LegacyStore:
 def test_older_macos_falls_back_to_the_legacy_access_request(monkeypatch, capsys):
     store = _LegacyStore()
     _UndeterminedEventStore.store = store
+    monkeypatch.setattr(reminders_eventkit, "is_vscode_host", lambda: False)
     monkeypatch.setattr(
         reminders_eventkit,
         "EventKit",
@@ -154,6 +158,7 @@ def test_every_reminders_command_refuses_before_reading_when_access_is_denied(
     monkeypatch, capsys, command, args
 ):
     """No public command may touch EventKit data without established access."""
+    monkeypatch.setattr(reminders_eventkit, "is_vscode_host", lambda: False)
     monkeypatch.setattr(
         reminders_eventkit,
         "EventKit",
@@ -167,3 +172,52 @@ def test_every_reminders_command_refuses_before_reading_when_access_is_denied(
     assert json.loads(capsys.readouterr().out) == {
         "error": reminders_eventkit.REMINDERS_ACCESS_DENIED
     }
+
+
+class _AuthorizedEventStore:
+    @classmethod
+    def authorizationStatusForEntityType_(cls, entity_type):
+        return 3
+
+    @classmethod
+    def alloc(cls):
+        return cls()
+
+    def init(self):
+        return _DeniedStore()
+
+
+@pytest.mark.parametrize("command,args", GUARDED_COMMANDS)
+def test_vscode_host_refuses_without_requesting_when_access_is_not_granted(
+    monkeypatch, capsys, command, args
+):
+    store = _UndeterminedStore()
+    _UndeterminedEventStore.store = store
+    monkeypatch.setattr(reminders_eventkit, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(
+        reminders_eventkit,
+        "EventKit",
+        SimpleNamespace(EKEntityTypeReminder=1, EKEventStore=_UndeterminedEventStore),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        getattr(reminders_eventkit, command)(*args)
+
+    assert exc.value.code == 1
+    assert store.requests == []
+    assert json.loads(capsys.readouterr().out) == {
+        "error": VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
+    }
+
+
+def test_vscode_host_still_reads_when_access_is_already_granted(monkeypatch, capsys):
+    monkeypatch.setattr(reminders_eventkit, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(
+        reminders_eventkit,
+        "EventKit",
+        SimpleNamespace(EKEntityTypeReminder=1, EKEventStore=_AuthorizedEventStore),
+    )
+
+    reminders_eventkit.list_lists()
+
+    assert json.loads(capsys.readouterr().out) == []

@@ -115,7 +115,9 @@ Only note genuinely new connections. If QMD is unavailable, skip silently.
    `reminders_find_and_complete(list_name="Dex Today", title_query="...")`
 4. Call `reminders_clear_completed(list_name="Dex Today")`
 
-If the Reminders tools are unavailable, skip silently.
+If the Reminders tools are unavailable, skip silently, except when the tool
+says Reminders can't be switched on from inside VS Code — tell the user that
+one calm line (use the Claude app or Terminal for Reminders) and do not raise it again.
 
 ### 2.6 Email End-of-Day Review (if connected)
 

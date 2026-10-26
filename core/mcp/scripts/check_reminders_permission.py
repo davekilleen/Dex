@@ -9,6 +9,16 @@ both use EventKit.
 
 import sys
 import time
+from pathlib import Path
+
+_repo_root = str(Path(__file__).resolve().parents[3])
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+
+from core.utils.reminders_host import (
+    VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    is_vscode_host,
+)
 
 try:
     import EventKit
@@ -37,7 +47,12 @@ def main():
         print("   EventKit can read and write Reminders.")
         return 0
 
-    elif status == 2:  # Denied
+    if is_vscode_host():
+        print()
+        print(VSCODE_REMINDERS_UNAVAILABLE_MESSAGE)
+        return 1
+
+    if status == 2:  # Denied
         print()
         print("❌ Reminders access was previously denied.")
         print()

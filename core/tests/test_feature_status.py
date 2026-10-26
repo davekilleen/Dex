@@ -16,6 +16,7 @@ from core.mcp import (
     resume_server,
 )
 from core.utils import feature_status as feature_status_module
+from core.utils.reminders_host import VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
 
 
 @pytest.mark.parametrize(
@@ -142,6 +143,7 @@ def test_reminders_failures_report_broken_and_preserve_error(
     output,
     expected_message,
 ):
+    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: False)
     monkeypatch.setattr(
         calendar_server,
         "run_shell_script",
@@ -159,6 +161,68 @@ def test_reminders_failures_report_broken_and_preserve_error(
     assert expected_message in payload["user_message"]
     assert payload["success"] is False
     assert payload["error"] == payload["user_message"]
+
+
+REMINDERS_TOOLS = (
+    "reminders_list_items",
+    "reminders_complete_item",
+    "reminders_create_item",
+    "reminders_ensure_lists",
+    "reminders_list_completed",
+    "reminders_find_and_complete",
+    "reminders_clear_completed",
+)
+
+
+@pytest.mark.parametrize("tool_name", REMINDERS_TOOLS)
+def test_vscode_host_reports_reminders_off_without_running_the_script(
+    monkeypatch,
+    tool_name,
+):
+    called = []
+
+    def fail_if_called(*_args):
+        called.append(_args)
+        raise AssertionError("Reminders must not be requested from VS Code")
+
+    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(calendar_server, "run_shell_script", fail_if_called)
+
+    arguments = {
+        "reminders_complete_item": {"reminder_id": "reminder-1"},
+        "reminders_create_item": {"title": "Follow up"},
+        "reminders_find_and_complete": {"title_query": "Follow up"},
+    }.get(tool_name, {})
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner(tool_name, arguments))
+    )
+
+    assert called == []
+    assert payload == {
+        "success": False,
+        "feature": "Reminders access",
+        "feature_status": "off",
+        "user_message": VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    }
+    assert "error" not in payload
+
+
+def test_vscode_host_does_not_block_calendar_tools(monkeypatch):
+    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(
+        calendar_server,
+        "run_shell_script",
+        lambda *_args: (True, "[]"),
+    )
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner("calendar_list_calendars", {}))
+    )
+
+    assert payload["success"] is True
+    assert payload["calendars"] == []
+    assert "feature_status" not in payload
 
 
 @pytest.mark.parametrize(

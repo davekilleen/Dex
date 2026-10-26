@@ -68,7 +68,9 @@ What to do:
 
 A grant given to Terminal does **not** carry over to the editor. Reinstalling Dex or redoing setup will not change that. Do not treat a standalone terminal as the only path, and do not wait for a permission popup — it often never appears from inside the editor.
 
-Apple Reminders is a separate toggle in the same **Privacy & Security** list. Grant it for the same editor app if you use those features. If Reminders tools still fail after that, Dex skips them — that is not a Calendar failure, and reinstalling will not fix it.
+Apple Reminders is a separate permission from Calendar. When Dex is running inside **VS Code**, the Mac never shows the Reminders permission ask, and Reminders cannot be switched on from that app. That is not a Calendar failure, and reinstalling will not fix it.
+
+If you want Reminders (phone capture and focus-task notifications), use the Claude app or Terminal for that part. You can keep using Dex in VS Code for everything else.
 
 This was verified directly (August 2026): the same calendar check can succeed from Terminal.app and fail from both VS Code's built-in terminal and the editor's own process after access was granted in Terminal.app first. That is why the editor grant in System Settings is the path.
 

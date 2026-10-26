@@ -684,6 +684,31 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     assert "Do not send them to a standalone terminal as the only path" in skill
 
 
+def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> None:
+    for relative in (
+        "docs/Dex_System/Calendar_Setup.md",
+        "06-Resources/Dex_System/Calendar_Setup.md",
+    ):
+        text = _read(relative)
+        assert "Reminders cannot be switched on from that app" in text, relative
+        assert "Claude app or Terminal" in text, relative
+        assert "Grant it for the same editor app if you use those features" not in text, relative
+        assert "Claude Code" not in text, relative
+
+    for relative in (
+        ".claude/skills/daily-plan/SKILL.md",
+        ".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/daily-review/SKILL.md",
+        ".claude/skills/daily-review/AGENT_INSTRUCTIONS.md",
+        ".claude/skills/week-review/SKILL.md",
+    ):
+        text = _read(relative)
+        assert "can't be switched on from inside VS Code" in text, relative
+        assert "Claude app or Terminal" in text, relative
+        assert "Do not skip that case silently" in text or "do not raise it again" in text, relative
+        assert "macOS never shows the permission dialog to that process" not in text, relative
+
+
 def test_goal_backlog_grooming_never_deletes_silently_and_offers_once() -> None:
     """The grooming skill's two ratified promises: no silent removals, no nagging."""
     grooming = _read(".claude/skills/goal-backlog/SKILL.md")
