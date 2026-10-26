@@ -9,6 +9,14 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+An ordinary note that happened to say "don't" or "no", a pasted log, or a question like "Is that not what we discussed?" was being written down as if you had told Dex it was wrong. Only a real correction in your own words is saved now.
+
+**What this fixes for you:**
+
+* **Everyday messages stay ordinary.** Saying "I don't have that" or "no rush" is no longer filed as a lesson. A real correction such as "no, that's not what I asked" is still saved.
+* **A paste or a quote is not a correction.** Text you pasted or quoted is ignored. A correction you typed next to it is still saved.
+* **A plain question is not a correction.** "Is that not what we talked about?" stays a question.
+
 ## [1.97.30] — Goals work after setup, older people pages get meetings, the Mac nightly check can start, Windows stops repeating lessons, and session memory says when it is off (2026-10-23)
 
 After first-time setup, the goal areas you chose could be saved in a shape quarterly goals would not accept. Creating a goal straight after setup then failed, and anyone already set up that way stayed stuck.

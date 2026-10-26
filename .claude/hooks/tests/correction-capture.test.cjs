@@ -6,12 +6,21 @@ const os = require('node:os');
 const path = require('node:path');
 
 const HOOKS_DIR = path.resolve(__dirname, '..');
+const REPO_ROOT = path.resolve(HOOKS_DIR, '..', '..');
 const GATE = path.join(HOOKS_DIR, 'correction-capture.sh');
 
 function sandbox(t) {
   const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-correction-'));
   fs.mkdirSync(path.join(vault, 'System'), { recursive: true });
   fs.cpSync(HOOKS_DIR, path.join(vault, '.claude', 'hooks'), { recursive: true });
+  const utils = path.join(vault, 'core', 'utils');
+  fs.mkdirSync(utils, { recursive: true });
+  fs.writeFileSync(path.join(vault, 'core', '__init__.py'), '');
+  fs.writeFileSync(path.join(utils, '__init__.py'), '');
+  fs.copyFileSync(
+    path.join(REPO_ROOT, 'core', 'utils', 'correction_detect.py'),
+    path.join(utils, 'correction_detect.py'),
+  );
   t.after(() => fs.rmSync(vault, { recursive: true, force: true }));
   return vault;
 }
@@ -42,6 +51,8 @@ const CORRECTIONS = [
   'so why didnt you pick this up in todays plan or yesterdays review?',
   'do nothing then and stop making recommendations you havent thought through',
   'ok, so you keep writing failure patterns and then keep failing on them',
+  "don't do that",
+  "that's not what I asked",
 ];
 
 const ORDINARY = [
@@ -56,6 +67,10 @@ const ORDINARY = [
   'stop',
   'actually, I think we should wait',
   'I have no idea',
+  "I don't have the latest numbers",
+  'please do not forget to send the invoice later',
+  'Is that not what we discussed?',
+  'Is that not what I asked?',
 ];
 
 for (const prompt of CORRECTIONS) {
@@ -190,10 +205,25 @@ test('ignores untagged machine preambles', (t) => {
   assert.equal(captured(vault), '');
 });
 
-test('keeps pasted content, because a pasted correction can be the user words', (t) => {
+test('ignores pasted content; only the user words can be a correction', (t) => {
   const vault = sandbox(t);
 
   submit(vault, 'see below\n<pasted_content id="p1">That is not what I asked for</pasted_content>');
+  submit(vault, '> That is not what I asked for');
 
-  assert.match(captured(vault), /- Correction/u);
+  assert.equal(captured(vault), '', 'a paste or a quote is not the user telling Dex it was wrong');
+});
+
+test('keeps a real correction typed next to a paste, and records only the user words', (t) => {
+  const vault = sandbox(t);
+
+  submit(
+    vault,
+    'no, that is not the file I meant\n<pasted_content id="p1">wrong title, do not ship</pasted_content>',
+  );
+  const text = captured(vault);
+
+  assert.match(text, /- Correction/u);
+  assert.ok(text.includes('no, that is not the file I meant'));
+  assert.ok(!text.includes('do not ship'), 'the paste must not be recorded as the user words');
 });
