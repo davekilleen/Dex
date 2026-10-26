@@ -51,7 +51,7 @@ from core.transaction.fsync import (
 )
 from core.transaction.journal import Journal, JournalCorruptError, JournalSchemaError
 from core.transaction.lock import acquire_owned_lock
-from core.transaction.snapshot import Snapshot, remove_empty_parents
+from core.transaction.snapshot import Snapshot
 from core.utils.os_flags import binary_read_flags
 
 TX_ROOT_RELATIVE = Path("System") / ".dex" / "tx"
@@ -541,10 +541,6 @@ class Transaction:
                 pass
             else:
                 fsync_directory(target.parent)
-            # An update that removes the last file in a skill folder must
-            # not leave the empty folder behind for the health check to
-            # call a broken skill.
-            remove_empty_parents(self.vault_root, target.parent)
             return
 
         staged = self.tx_dir / "staged" / f"{index:06d}.bin"

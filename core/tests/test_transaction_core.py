@@ -1476,10 +1476,14 @@ def test_resume_quarantines_a_corrupt_journal_and_recovers_the_rest(
     assert (vault / "System/.installed-files.manifest").read_bytes() == b"old\n"
 
 
-def test_apply_removes_empty_directories_left_after_deleting_the_last_file(
+def test_apply_leaves_a_preexisting_folder_after_deleting_its_last_file(
     tmp_path: Path,
 ) -> None:
-    """DEX-258: an update that removes a skill must not leave its empty folder."""
+    """Deleting a planned file must not also prune folders the plan did not create.
+
+    Rewind and write-observation only declare the file. Removing a
+    pre-existing empty parent would be an undeclared extra write.
+    """
     vault = _vault(tmp_path)
     skill = vault / ".claude" / "skills" / "retired-shipped-skill" / "SKILL.md"
     skill.parent.mkdir(parents=True)
@@ -1501,7 +1505,7 @@ def test_apply_removes_empty_directories_left_after_deleting_the_last_file(
 
     assert result["committed"] is True
     assert not skill.exists()
-    assert not (vault / ".claude" / "skills" / "retired-shipped-skill").exists()
+    assert (vault / ".claude" / "skills" / "retired-shipped-skill").is_dir()
     assert sibling.read_bytes() == b"keep me\n"
     assert (vault / ".claude" / "skills" / "kept-skill").is_dir()
 
@@ -1530,33 +1534,28 @@ def test_apply_keeps_a_skill_folder_that_still_has_user_files(tmp_path: Path) ->
     assert skill.parent.is_dir()
 
 
-def test_apply_removes_empty_folders_it_created_when_a_new_write_is_then_deleted(
+def test_apply_removes_empty_folders_it_created_when_nothing_is_left_in_them(
     tmp_path: Path,
 ) -> None:
-    """mkdir for a new nested skill file, then delete it — the shells must go."""
+    """DEX-258: an apply must take away empty folders it created for a write."""
     vault = _vault(tmp_path)
-    created = Transaction.begin(
+    tx = Transaction.begin(
         vault,
         [PlanEntry(".claude/skills/fixture-skill/SKILL.md", b"x\n")],
-    ).run()
-    assert created["committed"] is True
+    )
+    tx._snapshot_phase()
+    tx._apply_phase()
     target = vault / ".claude/skills/fixture-skill/SKILL.md"
     assert target.read_bytes() == b"x\n"
+    target.unlink()
 
-    Transaction.begin(
-        vault,
-        [
-            PlanEntry(
-                ".claude/skills/fixture-skill/SKILL.md",
-                None,
-                expected_current_sha256=hashlib.sha256(b"x\n").hexdigest(),
-            )
-        ],
-    ).run()
+    tx._remove_empty_created_directories()
 
-    assert not target.exists()
     assert not (vault / ".claude/skills/fixture-skill").exists()
+    assert not (vault / ".claude/skills").exists()
+    assert not (vault / ".claude").exists()
     assert (vault / "System").exists()
+    tx.rollback()
 
 
 def test_rollback_removes_directories_the_transaction_created(tmp_path: Path) -> None:
