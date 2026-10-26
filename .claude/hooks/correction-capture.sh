@@ -37,10 +37,12 @@
 
     # Machine-generated text (notifications, reminders, scheduled-task preambles)
     # is NOT screened here. This grep is only a cheap pre-filter on the raw
-    # payload, so most prompts exit without starting Python. The Python step
-    # strips machine text first and re-tests the same wording against what is
-    # left, so a correction that arrives alongside a notification is still
-    # recorded, and a notification's own prose never is.
+    # payload, so most prompts exit without starting Python. It is allowed to
+    # over-match (an ordinary "don't" or a paste still starts Python). The
+    # shared check in core/utils/correction_detect.py is the decision: it
+    # reads only the user's own words and re-tests, so a real correction
+    # next to a notification is still recorded, and a paste or a question
+    # never is.
 
     # Cheap gate. Matched against the RAW JSON payload, not a parsed prompt:
     # this only decides whether starting Python is worth it. Note the word

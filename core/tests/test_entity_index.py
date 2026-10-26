@@ -853,6 +853,38 @@ def test_quarantined_page_is_findable_without_trusting_frontmatter(
     assert result["matches"][0]["emails"] == []
 
 
+def test_people_scan_indexes_location_type_labels(
+    entity_vault: dict[str, Path],
+) -> None:
+    internal = entity_vault["people"] / "Internal" / "Alice_Smith.md"
+    external = entity_vault["people"] / "External" / "Jordan_Lee.md"
+    internal.parent.mkdir(parents=True)
+    internal.write_text(
+        "---\ntype: internal\nname: Alice Smith\n---\n"
+        "# Alice Smith\n\n## Notes\n\nKept as written.\n",
+        encoding="utf-8",
+    )
+    external.write_text(
+        "---\ntype: external\nname: Jordan Lee\n---\n"
+        "# Jordan Lee\n\n## Meeting History\n\n"
+        "- [Roadmap](../../00-Inbox/Meetings/roadmap.md) — 2026-07-10\n",
+        encoding="utf-8",
+    )
+
+    entity_index.build_from_vault(entity_vault["root"], **_kwargs(entity_vault))
+
+    people = entity_index.people_index_data(
+        entity_vault["root"], **_kwargs(entity_vault)
+    )
+    names = {entry["name"] for entry in people["people"]}
+    assert names == {"Alice Smith", "Jordan Lee"}
+    alice = entity_index.lookup_person(
+        entity_vault["root"], "Alice Smith", **_kwargs(entity_vault)
+    )
+    assert alice["matches"][0]["name"] == "Alice Smith"
+    assert "warning" not in alice["matches"][0]
+
+
 def test_people_scan_skips_unmarked_markdown_under_people(
     entity_vault: dict[str, Path],
 ) -> None:

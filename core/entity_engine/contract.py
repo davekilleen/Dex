@@ -11,6 +11,8 @@ from typing import Any, Iterable, Mapping
 
 import yaml
 
+from core.paths import ARCHIVES_DIR, INBOX_DIR, VAULT_ROOT
+
 PERSON_FIELDS = (
     "type",
     "name",
@@ -99,6 +101,23 @@ _PERSON_SECTION_RE = re.compile(
     r")\s*$"
 )
 _HEADING_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+# Older people pages labelled location in `type:` (internal/external/cpo_network)
+# instead of `type: person`. Those are people, not notes.
+PERSON_TYPE_ALIASES = frozenset({"internal", "external", "cpo_network"})
+_PERSON_TYPE_ALIAS_LOCATIONS = {
+    "internal": "internal",
+    "external": "external",
+}
+_VAULT_RELATIVE_ROOTS = (
+    INBOX_DIR.relative_to(VAULT_ROOT).as_posix(),
+    ARCHIVES_DIR.relative_to(VAULT_ROOT).as_posix(),
+)
+# From Internal/ or External/, two parent hops miss the vault root.
+_BROKEN_RELATIVE_VAULT_PATH_RE = re.compile(
+    r"(?:\.\.[\\/])+(?=(?:"
+    + "|".join(re.escape(root) for root in _VAULT_RELATIVE_ROOTS)
+    + r")/)"
+)
 
 _REGION_HEADINGS = {
     "recent-interactions": "Recent Interactions",
@@ -174,12 +193,39 @@ def _normalise_list(value: Any, *, lowercase: bool = False) -> list[str] | None:
     return result
 
 
+def _person_type_alias(value: str | None) -> str | None:
+    if not value:
+        return None
+    folded = value.casefold()
+    return folded if folded in PERSON_TYPE_ALIASES else None
+
+
+def _location_from_person_type_alias(value: str | None) -> str | None:
+    alias = _person_type_alias(value)
+    return _PERSON_TYPE_ALIAS_LOCATIONS.get(alias or "")
+
+
+def _declared_non_entity(declared: str | None) -> bool:
+    return bool(
+        declared
+        and declared not in {"person", "company"}
+        and _person_type_alias(declared) is None
+    )
+
+
+def rewrite_relative_meeting_links(text: str) -> str:
+    """Turn two-folder-up inbox and archive links into vault-relative paths."""
+    return _BROKEN_RELATIVE_VAULT_PATH_RE.sub("", text)
+
+
 def _normalise_field(key: str, value: Any) -> Any:
     if key in _LIST_FIELDS:
         return _normalise_list(value, lowercase=key in {"emails", "domains"})
     value = _normalise_scalar(value)
     if key == "type":
-        return value if value in {"person", "company"} else None
+        if value in {"person", "company"}:
+            return value
+        return "person" if _person_type_alias(value) else None
     if key == "location":
         return value if value in {"internal", "external", "unknown"} else None
     if key in {"last_interaction", "i_owe_date", "waiting_on_date"} and value:
@@ -402,6 +448,16 @@ def unreadable_person_page_warning(name: str, relative_path: str) -> str:
     )
 
 
+def skipped_person_page_warning(name: str, relative_path: str) -> str:
+    """Visible warning when a found page exists but must be left untouched."""
+    label = name.strip() or "this person"
+    page = relative_path.strip() or "the person page"
+    return (
+        f"Dex could not update the person page for {label} ({page}). "
+        "The page was skipped, so this meeting was not added."
+    )
+
+
 def _split_frontmatter(
     text: str,
 ) -> tuple[dict[str, Any] | None, str, bool, bool]:
@@ -465,9 +521,7 @@ def parse_entity_page(path: str | Path) -> dict[str, Any]:
         result["exclude_from_matching"] = frontmatter.get("exclude_from_matching") is True
         if "type" in frontmatter:
             declared = _normalise_scalar(frontmatter.get("type"))
-            result["declared_non_entity"] = bool(
-                declared and declared not in {"person", "company"}
-            )
+            result["declared_non_entity"] = _declared_non_entity(declared)
     if had_frontmatter:
         result["source_formats"].append("frontmatter")
     result["source_formats"].extend(legacy_formats)
@@ -508,6 +562,17 @@ def parse_entity_page(path: str | Path) -> dict[str, Any]:
             result["type"] = "person"
             if "legacy_sections" not in result["source_formats"]:
                 result["source_formats"].append("legacy_sections")
+    if (
+        result["type"] == "person"
+        and not result["location"]
+        and frontmatter is not None
+        and not quarantined
+    ):
+        location = _location_from_person_type_alias(
+            _normalise_scalar(frontmatter.get("type"))
+        )
+        if location:
+            result["location"] = location
     if result["type"] and not result["name"]:
         heading = _HEADING_RE.search(body)
         result["name"] = (
@@ -615,10 +680,18 @@ def merge_frontmatter_text(
     )
     if parsed is not None and "type" in parsed:
         declared = _normalise_scalar(parsed.get("type"))
-        effective_current["declared_non_entity"] = bool(
-            declared and declared not in {"person", "company"}
-        )
+        effective_current["declared_non_entity"] = _declared_non_entity(declared)
     effective_current["type"] = _infer_type(effective_current)
+    if (
+        effective_current["type"] == "person"
+        and not effective_current.get("location")
+        and parsed is not None
+    ):
+        location = _location_from_person_type_alias(
+            _normalise_scalar(parsed.get("type"))
+        )
+        if location:
+            effective_current["location"] = location
     if effective_current["type"] and not effective_current["name"]:
         heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)
         effective_current["name"] = (

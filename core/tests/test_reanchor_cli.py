@@ -418,6 +418,73 @@ def test_already_anchored_vault_reports_nothing_to_repair(
     assert (anchored_vault / RELEASE_ANCHOR_PATH).read_bytes() == first_bytes
 
 
+def test_previous_version_proof_record_is_named_as_needing_refresh(
+    tmp_path: Path, capsys
+) -> None:
+    import hashlib
+
+    from core.lifecycle.release_anchor import (
+        PROOF_RECORD_NEEDS_REFRESH,
+        build_release_anchor_document,
+        canonical_anchor_bytes,
+    )
+    from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file
+    from core.tests.test_customization_assessment_doctor import (
+        ANCHORED_ENGINE,
+        ANCHORED_ENGINE_PATH,
+        _install_anchorable_vault,
+    )
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    manifest, catalog_sha256 = _install_anchorable_vault(vault)
+    write_file(
+        vault,
+        RELEASE_ANCHOR_PATH,
+        canonical_anchor_bytes(
+            build_release_anchor_document(
+                release_version="1.72.0",
+                tag=f"dist/release/v1.72.0-{SOURCE_COMMIT[:7]}",
+                tag_object="a" * 40,
+                commit=SOURCE_COMMIT,
+                tree="f" * 40,
+                manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+                catalog_sha256=catalog_sha256,
+                files={
+                    ANCHORED_ENGINE_PATH: hashlib.sha256(ANCHORED_ENGINE).hexdigest()
+                },
+            )
+        ),
+    )
+
+    reanchor_cli._report_current_state(vault)
+    output = capsys.readouterr().out
+
+    assert PROOF_RECORD_NEEDS_REFRESH in output
+    assert "couldn't be trusted" not in output
+    assert "can't be trusted" not in output
+
+
+def test_malformed_proof_record_still_says_it_could_not_be_trusted(
+    tmp_path: Path, capsys
+) -> None:
+    from core.tests.lifecycle_test_helpers import write_file
+    from core.tests.test_customization_assessment_doctor import (
+        _install_anchorable_vault,
+    )
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_anchorable_vault(vault)
+    write_file(vault, RELEASE_ANCHOR_PATH, b"{}\n")
+
+    reanchor_cli._report_current_state(vault)
+    output = capsys.readouterr().out
+
+    assert "couldn't be trusted" in output
+    assert "needs refreshing" not in output
+
+
 # ---------------------------------------------------------------------------
 # A real pseudo-terminal drives the full journey end to end.
 # ---------------------------------------------------------------------------

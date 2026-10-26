@@ -40,8 +40,8 @@ def context(tmp_path):
     )
 
 
-def _register_apple_mail_user_scope(context, name="user-apple-mail", *, env=None):
-    entry = {"command": "apple-mail-mcp", "args": ["serve"]}
+def _register_apple_mail_user_scope(context, name="user-apple-mail", *, env=None, args=None):
+    entry = {"command": "apple-mail-mcp", "args": list(args if args is not None else ["serve", "--watch"])}
     if env is not None:
         entry["env"] = env
     (context.home / ".claude.json").write_text(json.dumps({"mcpServers": {name: entry}}))
@@ -234,6 +234,70 @@ def test_apple_mail_search_is_ok_with_a_fresh_index(monkeypatch, context):
     assert result.verdict == "OK"
     assert result.feature_status == "ok"
     assert result.action is None
+
+
+def test_apple_mail_search_is_broken_when_registration_omits_watch(context):
+    """DEX-144: serve without --watch only refreshes at start-up, then goes stale."""
+    _register_apple_mail_user_scope(context, args=["serve"])
+    _write_apple_mail_index(context, age_days=0)
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert result.feature_status == "broken"
+    assert "--watch" in result.action
+    assert apple_mail_health.APPLE_MAIL_WATCH_REGISTER in result.action
+    assert "start-up" in result.detail
+    assert result.action.count("claude mcp add") == 1
+    assert "apple-mail-mcp index" not in result.action
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        pytest.param(["serve", "--watch"], id="serve-then-watch"),
+        pytest.param(["--watch"], id="watch-without-explicit-serve"),
+        pytest.param(["serve", "--read-only", "--watch"], id="watch-after-other-flags"),
+    ],
+)
+def test_apple_mail_search_is_ok_when_registration_includes_watch(context, args):
+    _register_apple_mail_user_scope(context, args=args)
+    _write_apple_mail_index(context, age_days=0)
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "OK"
+    assert result.action is None
+
+
+def test_apple_mail_search_does_not_treat_similar_flags_as_watch(context):
+    _register_apple_mail_user_scope(context, args=["serve", "--watcher"])
+    _write_apple_mail_index(context, age_days=0)
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "BROKEN"
+    assert "--watch" in result.action
+    assert apple_mail_health.APPLE_MAIL_WATCH_REGISTER in result.action
+
+
+def test_apple_mail_search_detects_watch_inside_a_combined_command(context):
+    (context.home / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "user-apple-mail": {
+                        "command": "apple-mail-mcp serve --watch",
+                    }
+                }
+            }
+        )
+    )
+    _write_apple_mail_index(context, age_days=0)
+
+    result = apple_mail_health.probe(context)
+
+    assert result.verdict == "OK"
 
 
 def test_apple_mail_search_is_broken_when_the_index_cannot_be_read(monkeypatch, context):

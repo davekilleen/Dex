@@ -30,6 +30,25 @@ RECEIPT_RELATIVE = Path("System/.dex/health/post-update-canary.json")
 RECEIPT_CONTRACT = "dex.health.post-update-canary/v1"
 
 
+def _proof_record_refresh_needed(vault_root: Path) -> bool:
+    """Notice-only: a leftover previous-version record after an update.
+
+    Ruling 6: this never writes or regenerates the proof record. A read
+    failure is not a canary failure and is not treated as untrusted.
+    """
+    try:
+        from core.lifecycle.customizations import load_release_baseline
+        from core.lifecycle.release_anchor import proof_record_needs_refresh
+
+        baseline = load_release_baseline(vault_root)
+        return proof_record_needs_refresh(
+            anchor_state=baseline.anchor_state,
+            errors=baseline.errors,
+        )
+    except Exception:  # noqa: BLE001 - notice-only; never fail the canary
+        return False
+
+
 def _dex_version(vault_root: Path) -> str | None:
     try:
         document = json.loads((vault_root / "package.json").read_text(encoding="utf-8"))
@@ -67,6 +86,7 @@ def run_canary(vault_root: str | Path) -> dict[str, object]:
         "dex_version": _dex_version(root),
         "ok": False,
         "error": None,
+        "proof_record_refresh_needed": False,
     }
     try:
         source_root = str(Path(__file__).resolve().parents[2])
@@ -79,6 +99,7 @@ def run_canary(vault_root: str | Path) -> dict[str, object]:
         if "ledger_state" not in state or "plan" not in plan:
             raise RuntimeError("lifecycle read operations returned unexpected shapes")
         receipt["ok"] = True
+        receipt["proof_record_refresh_needed"] = _proof_record_refresh_needed(root)
     except Exception as error:  # noqa: BLE001 - the canary's job is to report, not raise
         receipt["error"] = f"{type(error).__name__}: {error}"
     try:
@@ -104,6 +125,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if receipt["ok"]:
         print("Post-update check passed: Dex's plan and state doors both open.")
+        if receipt.get("proof_record_refresh_needed"):
+            from core.lifecycle.release_anchor import proof_record_refresh_notice
+
+            print(proof_record_refresh_notice())
         return 0
     print(
         "Post-update check FAILED: this update applied, but Dex's plan/state "

@@ -10,6 +10,8 @@ from pathlib import Path
 from core.customization_migration.service import assess
 from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
 from core.lifecycle.release_anchor import (
+    PROOF_RECORD_NEEDS_REFRESH,
+    PROOF_RECORD_REFRESH_COMMAND,
     RELEASE_ANCHOR_PATH,
     build_release_anchor_document,
     canonical_anchor_bytes,
@@ -264,6 +266,34 @@ def test_probe_reports_a_verified_release_anchor(tmp_path: Path) -> None:
     assert baseline["errors"] == []
 
 
+def test_probe_says_a_previous_version_proof_record_needs_refreshing(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path)
+    manifest, catalog_sha256 = _install_anchorable_vault(context.vault_root)
+    stale = build_release_anchor_document(
+        release_version="1.72.0",
+        tag=f"dist/release/v1.72.0-{SOURCE_COMMIT[:7]}",
+        tag_object="a" * 40,
+        commit=SOURCE_COMMIT,
+        tree="f" * 40,
+        manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+        catalog_sha256=catalog_sha256,
+        files={ANCHORED_ENGINE_PATH: hashlib.sha256(ANCHORED_ENGINE).hexdigest()},
+    )
+    write_file(context.vault_root, RELEASE_ANCHOR_PATH, canonical_anchor_bytes(stale))
+
+    result = doctor._probe_customization_assessment(context)
+
+    assert PROOF_RECORD_NEEDS_REFRESH in result.detail
+    assert PROOF_RECORD_REFRESH_COMMAND in result.detail
+    assert "couldn't be trusted" not in result.detail
+    assert "can't be trusted" not in result.detail
+    baseline = result.structured_detail["release_baseline"]
+    assert baseline["anchor_state"] == "rejected"
+    assert any("release version" in error for error in baseline["errors"])
+
+
 def test_probe_warns_about_a_rejected_release_anchor_naming_the_error(
     tmp_path: Path,
 ) -> None:
@@ -312,6 +342,8 @@ def test_doctor_skill_offers_the_reanchor_flow_without_running_it() -> None:
     assert "Never attempt to run it through Bash" in section
     assert "FOUNDER COPY - DRAFT PENDING APPROVAL" in section
     assert "`rejected`" in section and "`verified`" in section
+    assert "needs refreshing" in section
+    assert "can't be trusted" in section
     assert "couldn't verify which version is installed" in section
 
 

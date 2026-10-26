@@ -2126,10 +2126,17 @@ def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
     """One plain sentence about the release anchor, empty when none exists.
 
     The anchor is the re-anchoring design's repair evidence
-    (System/.dex/release-anchor.json). A verified anchor is reported as such;
-    a rejected anchor — present but unprovable, so ignored — is a warning
-    naming the exact error the fail-closed consumer recorded.
+    (System/.dex/release-anchor.json). A verified anchor is reported as such.
+    A record that still names the previous version after an update is a
+    refresh leftover, not an untrusted file. Any other rejected anchor —
+    present but unprovable, so ignored — is a warning naming the exact error
+    the fail-closed consumer recorded.
     """
+    from core.lifecycle.release_anchor import (
+        proof_record_needs_refresh,
+        proof_record_refresh_notice,
+    )
+
     anchor_state = baseline_detail.get("anchor_state")
     if anchor_state == "verified":
         # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring ruling 5).
@@ -2137,6 +2144,12 @@ def _release_anchor_note(baseline_detail: dict[str, object]) -> str:
             " A saved proof record vouches for the files that came with Dex "
             "in this vault."
         )
+    if proof_record_needs_refresh(
+        anchor_state=str(anchor_state or ""),
+        errors=baseline_detail.get("errors"),
+    ):
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-257).
+        return " " + proof_record_refresh_notice(oneline=True)
     if anchor_state == "rejected":
         errors = baseline_detail.get("errors")
         named = next(
@@ -3785,7 +3798,7 @@ def _probe_capability_rooms(context: DoctorContext) -> ProbeResult:
         else:
             for skill in surfaces.get("skills", []):
                 path = context.vault_root / ".claude/skills" / str(skill)
-                if path.exists() or path.is_symlink():
+                if path.is_symlink() or _skill_directory_has_payload(path):
                     stale_skills.append(f"{room}: {skill}")
 
     findings: list[str] = []
@@ -3855,6 +3868,29 @@ def _unsafe_customization_path(context: DoctorContext, path: Path) -> str | None
     return None
 
 
+def _skill_directory_has_payload(path: Path) -> bool:
+    """True when a skill folder has any real file or symlink.
+
+    An empty folder — or a folder that only contains empty subfolders — is
+    not a skill. Updates can recreate those shells after a user deletes a
+    skill; calling them broken skills is a false alarm.
+    """
+    if path.is_symlink():
+        return True
+    if not path.is_dir():
+        return False
+    try:
+        for current_root, dirnames, filenames in os.walk(path, followlinks=False):
+            if filenames:
+                return True
+            current = Path(current_root)
+            if any((current / name).is_symlink() for name in dirnames):
+                return True
+    except OSError:
+        return True
+    return False
+
+
 def _customization_skill_directories(context: DoctorContext) -> tuple[list[tuple[Path, bool]], str | None]:
     """Skill directories plus whether each one is user-owned.
 
@@ -3884,7 +3920,9 @@ def _customization_skill_directories(context: DoctorContext) -> tuple[list[tuple
             if path.name in KNOWN_SKILL_CONTAINER_DIRECTORIES:
                 continue
             try:
-                populated = path.is_symlink() or (path.is_dir() and any(path.iterdir()))
+                populated = path.is_symlink() or (
+                    path.is_dir() and _skill_directory_has_payload(path)
+                )
             except OSError:
                 populated = False
             if populated:
@@ -5725,7 +5763,12 @@ def _probe_post_update_canary(context: DoctorContext) -> ProbeResult:
     version = receipt.get("dex_version")
     version_text = f" (after updating to {version})" if isinstance(version, str) else ""
     if receipt.get("ok") is True:
-        return ProbeResult("OK", f"The last post-update check passed{version_text}")
+        from core.lifecycle.release_anchor import proof_record_refresh_notice
+
+        detail = f"The last post-update check passed{version_text}"
+        if receipt.get("proof_record_refresh_needed") is True:
+            detail = f"{detail}. {proof_record_refresh_notice(oneline=True)}"
+        return ProbeResult("OK", detail)
     error = receipt.get("error")
     detail = f": {error}" if isinstance(error, str) and error else ""
     return ProbeResult(

@@ -35,6 +35,17 @@ const LABELS = {
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
 const PERSON_SECTION_RE = /^##\s+(Notes|Overview|Relationship Context|What They Care About|Working Style Notes|Meeting History|Meetings|Recent Interactions|Action Items Involving Them)\s*$/i;
 const HEADING_RE = /^#\s+(.+?)\s*$/m;
+const PERSON_TYPE_ALIASES = new Set(['internal', 'external', 'cpo_network']);
+const PERSON_TYPE_ALIAS_LOCATIONS = {
+  internal: 'internal',
+  external: 'external',
+};
+const INBOX_ROOT = ['00', 'Inbox'].join('-');
+const ARCHIVES_ROOT = ['07', 'Archives'].join('-');
+const BROKEN_RELATIVE_VAULT_PATH_RE = new RegExp(
+  `(?:\\.\\.[\\\\/])+(?=(?:${INBOX_ROOT}|${ARCHIVES_ROOT})/)`,
+  'g',
+);
 
 function emptyResult() {
   return {
@@ -52,6 +63,36 @@ function normaliseScalar(value) {
   if (value === null || value === undefined || Array.isArray(value) || typeof value === 'object') return null;
   const text = String(value).trim();
   return text || null;
+}
+
+function personTypeAlias(value) {
+  if (!value) return null;
+  const folded = String(value).toLowerCase();
+  return PERSON_TYPE_ALIASES.has(folded) ? folded : null;
+}
+
+function locationFromPersonTypeAlias(value) {
+  const alias = personTypeAlias(value);
+  return alias ? (PERSON_TYPE_ALIAS_LOCATIONS[alias] || null) : null;
+}
+
+function declaredNonEntity(declared) {
+  return Boolean(
+    declared
+    && declared !== 'person'
+    && declared !== 'company'
+    && !personTypeAlias(declared),
+  );
+}
+
+function rewriteRelativeMeetingLinks(text) {
+  return String(text).replace(BROKEN_RELATIVE_VAULT_PATH_RE, '');
+}
+
+function hasBrokenRelativeMeetingLink(text, vaultRelativePath) {
+  if (!vaultRelativePath) return false;
+  const escaped = String(vaultRelativePath).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:\\.\\.[\\\\/])+${escaped}`).test(String(text));
 }
 
 function normaliseList(value, lowercase = false) {
@@ -122,7 +163,10 @@ function normaliseField(key, value) {
   if (key === 'relationships') return normaliseRelationships(value);
   if (LIST_FIELDS.has(key)) return normaliseList(value, key === 'emails' || key === 'domains');
   value = normaliseScalar(value);
-  if (key === 'type') return value === 'person' || value === 'company' ? value : null;
+  if (key === 'type') {
+    if (value === 'person' || value === 'company') return value;
+    return personTypeAlias(value) ? 'person' : null;
+  }
   if (key === 'location') return ['internal', 'external', 'unknown'].includes(value) ? value : null;
   if (['last_interaction', 'i_owe_date', 'waiting_on_date'].includes(key) && value) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -266,6 +310,13 @@ function unreadablePersonPageWarning(name, relativePath) {
     + 'The page is unreadable, so this meeting was not added.';
 }
 
+function skippedPersonPageWarning(name, relativePath) {
+  const label = String(name || '').trim() || 'this person';
+  const page = String(relativePath || '').trim() || 'the person page';
+  return `Dex could not update the person page for ${label} (${page}). `
+    + 'The page was skipped, so this meeting was not added.';
+}
+
 function inferType(_filePath, values) {
   if (values.type === 'person' || values.type === 'company') return values.type;
   if (values.declared_non_entity) return null;
@@ -286,9 +337,8 @@ function parseEntityPage(filePath) {
   if (split.frontmatter && !split.quarantined) {
     result.exclude_from_matching = split.frontmatter.exclude_from_matching === true;
     if (Object.hasOwn(split.frontmatter, 'type')) {
-      const declared = normaliseScalar(split.frontmatter.type);
-      result.declared_non_entity = Boolean(
-        declared && declared !== 'person' && declared !== 'company',
+      result.declared_non_entity = declaredNonEntity(
+        normaliseScalar(split.frontmatter.type),
       );
     }
   }
@@ -318,6 +368,10 @@ function parseEntityPage(filePath) {
     if (!result.source_formats.includes('legacy_sections')) {
       result.source_formats.push('legacy_sections');
     }
+  }
+  if (result.type === 'person' && !result.location && split.frontmatter && !split.quarantined) {
+    const location = locationFromPersonTypeAlias(normaliseScalar(split.frontmatter.type));
+    if (location) result.location = location;
   }
   if (result.type && !result.name) {
     const heading = HEADING_RE.exec(split.body);
@@ -529,12 +583,15 @@ function mergeFrontmatterText(
     split.frontmatter?.relationships,
   ) || [];
   if (split.frontmatter && Object.hasOwn(split.frontmatter, 'type')) {
-    const declared = normaliseScalar(split.frontmatter.type);
-    effectiveCurrent.declared_non_entity = Boolean(
-      declared && declared !== 'person' && declared !== 'company',
+    effectiveCurrent.declared_non_entity = declaredNonEntity(
+      normaliseScalar(split.frontmatter.type),
     );
   }
   effectiveCurrent.type = inferType(filePath, effectiveCurrent);
+  if (effectiveCurrent.type === 'person' && !effectiveCurrent.location && split.frontmatter) {
+    const location = locationFromPersonTypeAlias(normaliseScalar(split.frontmatter.type));
+    if (location) effectiveCurrent.location = location;
+  }
   if (effectiveCurrent.type && !effectiveCurrent.name) {
     const heading = /^#\s+(.+?)\s*$/m.exec(split.body);
     effectiveCurrent.name = heading
@@ -774,6 +831,9 @@ module.exports = {
   mergeFrontmatterText, parseEntityPage, readFrontmatterField, renderUpdateLog,
   relationshipEdgeKey,
   renderRelationships,
+  rewriteRelativeMeetingLinks,
+  hasBrokenRelativeMeetingLink,
+  skippedPersonPageWarning,
   unreadablePersonPageWarning,
   upsertFrontmatter, renderPersonPage, renderCompanyPage,
   replaceMachineRegion, replaceMachineRegionInFile,
