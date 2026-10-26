@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Append a user correction to today's session-learning file, verbatim.
 
-Reached only when the bash gate has already decided a prompt looks like a
-correction, so this pays no cost on an ordinary turn.
+Reached only when the bash gate has already decided a prompt *might* be a
+correction, so this pays no cost on an ordinary turn. The decision itself
+lives in core/utils/correction_detect.py — this file is the live writer.
 
 Design notes worth keeping:
 
 - **The user's words are stored, not a paraphrase.** An assistant that
-  misunderstood a correction will summarise it wrongly, and the summary is what
-  would survive. Verbatim text is the only version that stays true regardless
-  of whether the correction landed.
+  misunderstood a correction will summarise it wrongly, and the summary is
+  what would survive. Verbatim text is the only version that stays true
+  regardless of whether the correction landed.
 - **Status is `pending`**, matching the format CLAUDE.md already specifies, so
   the existing routing step in /daily-review consumes these without change.
-- **Long prompts are truncated**, because a correction embedded in a wall of
-  pasted context is still a correction and the file should stay readable.
+- **Long prompts are truncated**, because a correction typed next to a wall
+  of context is still a correction and the file should stay readable.
 - **Nothing is classified here.** Deciding whether a correction is behavioural,
   a skill defect or a one-off is judgement, and it belongs in the review step
   that has the context to do it.
@@ -21,19 +22,25 @@ Design notes worth keeping:
 from __future__ import annotations
 
 import json
-import re
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 MAX_CHARS = 600
-HEADING = "## {time} - Correction from the user"
 
 
 def _vault_root() -> Path:
-    import os
-
     return Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+
+
+def _shared():
+    root = _vault_root()
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from core.utils.correction_detect import is_correction, user_words
+
+    return is_correction, user_words
 
 
 def _prompt(payload: dict) -> str:
@@ -42,66 +49,6 @@ def _prompt(payload: dict) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
-
-
-# Text the harness writes into a submitted prompt is not the user's words. The
-# bash gate greps the raw payload, so a long enough machine block trips an
-# inclusive correction pattern on its own prose: CI events, task notifications
-# and the slide viewer's live state have all been filed as "corrections" this
-# way. Naming the offending markers one at a time never kept up, so match the
-# CLASS: every harness block is a lowercase tag with at least one hyphen, and
-# an unclosed one runs to the end of the text. User-pasted text arrives as
-# <pasted_content> (underscore) and is deliberately NOT matched, because a
-# pasted correction can be the user's own words.
-#
-# Stripping here rather than excluding in the gate keeps a REAL correction that
-# arrives with a reminder appended: what survives the strip is what is tested
-# and recorded. Keep in step with core/utils/session_lesson_extract.py.
-MACHINE_BLOCK = re.compile(
-    r"<([a-z]+(?:-[a-z]+)+)\b[^>]*>"
-    r".*?(?:</\1>|\Z)",
-    re.DOTALL,
-)
-
-
-def _strip_machine_blocks(text: str) -> str:
-    return MACHINE_BLOCK.sub("", text).strip()
-
-
-# The same wording the bash gate greps for, applied AFTER machine text is gone.
-# The gate reads the raw payload, so a notification that happens to say "wrong"
-# or "don't" gets a prompt this far; re-testing here is what stops the user's
-# unrelated words ("run the daily plan") being recorded as a correction.
-# Keep in step with the grep pattern in correction-capture.sh and
-# core/utils/session_lesson_extract.py.
-#
-# Bare conversational words ("no", "stop", "actually,") are not a correction
-# on their own. "no" only counts with a comma, an ellipsis, or a repeat
-# ("no, that's not", "no... I meant", "no no no"). "stop" only counts with
-# a following verb. "actually," is a discourse marker and is not matched.
-CORRECTION = re.compile(
-    r"(^|[^0-9A-Za-z])(nope|wrong|incorrect)([^0-9A-Za-z]|$)"
-    r"|(^|[^0-9A-Za-z])no(\s*,|\s*\.\.\.|\s+no\b)"
-    r"|(^|[^0-9A-Za-z])stop\s+(doing|making|writing|over|inferr|that|this)\b"
-    r"|don'?t |you did ?n'?t|you'?re not|that'?s not|thats not|not what"
-    r"|why (did|are|didn'?t) you|again[,.]|i (told|said) you"
-    r"|keep (doing|writing|failing)|stupid|come on",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-# Machine prose that does not arrive inside a tag, checked against what is LEFT
-# after stripping, so it can never throw away a real correction sent with it.
-MACHINE_PHRASES = (
-    "[SYSTEM NOTIFICATION - NOT USER INPUT]",
-    "automated run of a scheduled task",
-    "This is an automated background-task event",
-)
-
-
-def _is_correction(text: str) -> bool:
-    if any(phrase in text for phrase in MACHINE_PHRASES):
-        return False
-    return bool(CORRECTION.search(text))
 
 
 def _truncate(text: str) -> str:
@@ -118,8 +65,13 @@ def main() -> int:
     if not isinstance(payload, dict):
         return 0
 
-    prompt = _strip_machine_blocks(_prompt(payload))
-    if not prompt or not _is_correction(prompt):
+    try:
+        is_correction, user_words = _shared()
+    except Exception:
+        return 0
+
+    prompt = user_words(_prompt(payload))
+    if not prompt or not is_correction(prompt):
         return 0
 
     vault = _vault_root()

@@ -63,11 +63,15 @@ If `pipx` itself is missing: `brew install pipx && pipx ensurepath`
 
 ### 3. Register the server at user scope
 
-Dex requires an explicit scope (a hook enforces this). Register it for the user:
+Dex requires an explicit scope (a hook enforces this). Register it for the user
+with live watching, so the search copy stays current after start-up:
 
 ```
-claude mcp add --scope user apple-mail -- apple-mail-mcp serve
+claude mcp add --scope user apple-mail -- apple-mail-mcp serve --watch
 ```
+
+`--watch` is safe with several Dex, Claude, or Cursor sessions on the supported
+0.4.3 server: only one of them writes the index; the others keep searching.
 
 ### 4. Grant Full Disk Access to two apps — the terminal *and* the app that launches Mail search
 
@@ -157,7 +161,7 @@ Then tell them the two maintenance facts that matter:
 |---|---|
 | `OFF` | No Apple Mail server registered — opt-in, not a problem |
 | `OK` | The configured SQLite index has real schema and data, a successful sync within its configured freshness limit, private file permissions, *and* this process can read `~/Library/Mail` |
-| `BROKEN` | Command missing; config invalid; index missing, empty, unreadable, corrupt, incomplete, stale, readable by other local accounts, or the serving process cannot read the Mail store — each with the exact fix and the Full Disk Access prerequisite |
+| `BROKEN` | Command missing; older registration without live watching; config invalid; index missing, empty, unreadable, corrupt, incomplete, stale, readable by other local accounts, or the serving process cannot read the Mail store — each with the exact fix and the Full Disk Access prerequisite |
 | `UNKNOWN` | A server is registered but this isn't macOS |
 
 ---
@@ -181,6 +185,10 @@ the permission at launch.
 Run `apple-mail-mcp status`, then `/dex-doctor`. A recent last-sync time is not enough —
 if Doctor says the serving process cannot read `~/Library/Mail`, grant Full Disk Access
 to Dex / Claude / Cursor (not only Terminal), quit and reopen that app, then rebuild.
+If Doctor says the server was registered without live watching, add `--watch` to the
+server command (`apple-mail-mcp serve --watch`), then restart Dex — that is the one
+change. The older registration only refreshes the copy at start-up, so mail that
+arrives later stays invisible.
 If Doctor asks you to refresh or rebuild the index, quit every Dex, Claude, or Cursor session that is using Mail search first — a live Mail server holds the search-index lock for its whole life, so the refresh command fails while those sessions stay open.
 
 **Search returns subject-looking hits labelled as body matches:**

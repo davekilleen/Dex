@@ -73,6 +73,12 @@ APPLE_MAIL_SERVING_FDA_FIX = (
     "Full Disk Access. Quit and reopen that app, then run /apple-mail-setup. "
     "Background sync reads ~/Library/Mail; without that grant it can report a fresh sync after reading nothing."
 )
+APPLE_MAIL_WATCH_FLAG = "--watch"
+APPLE_MAIL_WATCH_REGISTER = "claude mcp add --scope user apple-mail -- apple-mail-mcp serve --watch"
+APPLE_MAIL_WATCH_FIX = (
+    "Add `--watch` to the Mail search server command, then restart Dex: "
+    f"`{APPLE_MAIL_WATCH_REGISTER}`."
+)
 APPLE_MAIL_STORE_RELATIVE = Path("Library") / "Mail"
 
 
@@ -141,6 +147,30 @@ def _registration(context: Context) -> dict[str, object] | None:
         if any("apple-mail-mcp" in token for token in tokens):
             return entry
     return None
+
+
+def _registration_tokens(registration: dict[str, object]) -> list[str]:
+    tokens: list[str] = []
+    command = registration.get("command")
+    if isinstance(command, str) and command:
+        try:
+            tokens.extend(shlex.split(command))
+        except ValueError:
+            tokens.append(command)
+    args = registration.get("args", [])
+    if isinstance(args, str):
+        try:
+            tokens.extend(shlex.split(args))
+        except ValueError:
+            tokens.append(args)
+    elif isinstance(args, list):
+        tokens.extend(str(argument) for argument in args if isinstance(argument, str))
+    return tokens
+
+
+def registration_has_watch(registration: dict[str, object]) -> bool:
+    """True when the registered server will keep the index current after start-up."""
+    return APPLE_MAIL_WATCH_FLAG in _registration_tokens(registration)
 
 
 def _validate_config(data: dict[str, object], path: Path) -> None:
@@ -453,6 +483,18 @@ def probe(context: Context) -> Result:
                 "Mail search is registered but the apple-mail-mcp command is missing. "
                 f"Install the tested community release with `{APPLE_MAIL_MCP_INSTALL}`, "
                 "then run /apple-mail-setup."
+            ),
+        )
+    if not registration_has_watch(registration):
+        return Result(
+            "BROKEN",
+            "Apple Mail search is registered without --watch, so the index only "
+            "refreshes at start-up and then goes stale",
+            action=APPLE_MAIL_WATCH_FIX,
+            feature_status="broken",
+            user_message=(
+                "Mail search only refreshes when Dex starts, so newer mail goes missing. "
+                + APPLE_MAIL_WATCH_FIX
             ),
         )
     try:
