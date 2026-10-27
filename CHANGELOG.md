@@ -20,6 +20,14 @@ After the late-October update, a safety check treated the computer's scratch fol
 
 Thanks to Michelle Wright for reporting this.
 
+Inside VS Code or the Claude app, the Mac often never asked for Calendar or Reminders permission, so those features looked broken or simply vanished.
+
+**What this fixes for you:**
+
+* **A small Dex app on your Mac can ask in its own name.** Dex uses that app to read and write Calendar and Reminders, so the permission prompt can appear even when you are in VS Code or the Claude app.
+* **If that app is not on your Mac yet, Dex keeps working the old way.** Reminders in VS Code still tells you to use the Claude app or Terminal. Calendar still uses the path you already had.
+* **Nothing is signed or published here.** Trusting that app on a new Mac is a later step that needs an explicit go-ahead. This change does not sign anything.
+
 ## [1.97.33] — One bad file can no longer stop your vault backup, and Dex tells you if backups stop (2026-10-29)
 
 A tester's automatic backup failed for two days because one file was already marked for deletion — and Dex said nothing. He had to notice the missing copies himself.

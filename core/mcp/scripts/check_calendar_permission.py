@@ -8,15 +8,35 @@ access to Calendar.app for fast EventKit queries.
 
 import sys
 import time
+from pathlib import Path
+
+_repo_root = str(Path(__file__).resolve().parents[3])
+if _repo_root not in sys.path:
+    sys.path.append(_repo_root)
+
+from core.utils.macos_privacy_helper import helper_is_available, run_helper
 
 try:
     import EventKit
 except ImportError:
-    print("❌ EventKit not installed. Run: pip3 install pyobjc-framework-EventKit")
-    sys.exit(1)
+    EventKit = None
 
 
 def main():
+    if helper_is_available():
+        print("Using Dex Helper — Calendar permission is requested under that app's name.")
+        result = run_helper(["request-access"])
+        if result is None:
+            print("Dex Helper was found but could not be started. Falling back.")
+        else:
+            ok, output = result
+            print(output)
+            return 0 if ok else 1
+
+    if EventKit is None:
+        print("❌ EventKit not installed. Run: pip3 install pyobjc-framework-EventKit")
+        return 1
+
     store = EventKit.EKEventStore.alloc().init()
     status = EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent)
     

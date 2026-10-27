@@ -16,6 +16,10 @@ description: "Grant Python calendar access for ~30x faster calendar queries. Use
 
 ## Process
 
+0. **Prefer Dex Helper when it is installed.**
+   - If `python3 -m core.utils.macos_privacy_helper status` says it is available, Calendar and Reminders permission belong to that small app. Ask the person to grant Calendar (Full) and Reminders to **Dex Helper** in System Settings if needed. The permission ask can appear for Dex Helper even inside VS Code or the Claude app.
+   - If it is not installed, continue with the editor path below. That is the fallback.
+
 1. **Check current permission status:**
    - Run the permission checker: `python3 core/mcp/scripts/check_calendar_permission.py`
    - Show the user what status was returned
@@ -56,10 +60,10 @@ description: "Grant Python calendar access for ~30x faster calendar queries. Use
 ## Technical Notes
 
 - **EventKit vs AppleScript:** EventKit uses database queries (fast), AppleScript loads all events then filters (slow)
-- **Permission is per app:** macOS grants Calendar access to the app that is asking. When Dex runs inside VS Code or Cursor, grant that editor. A Terminal grant does not carry over.
-- **Permission is persistent:** Once granted to the editor, access lasts until it is revoked
+- **Permission is per app:** macOS grants Calendar access to the app that is asking. When Dex Helper is installed, grant that app. When Dex runs inside VS Code or Cursor without the helper, grant that editor. A Terminal grant does not carry over.
+- **Permission is persistent:** Once granted to the helper or the editor, access lasts until it is revoked
 - **Privacy:** All calendar data stays local - Dex never sends calendar data anywhere
-- **Fallback:** If EventKit isn't available, Dex falls back to AppleScript (works but slower)
+- **Fallback:** If Dex Helper is not installed, Dex uses the existing EventKit scripts (and AppleScript to create events). If EventKit isn't available, create still uses AppleScript.
 
 ---
 

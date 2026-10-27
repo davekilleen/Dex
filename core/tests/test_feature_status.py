@@ -186,6 +186,7 @@ def test_vscode_host_reports_reminders_off_without_running_the_script(
         raise AssertionError("Reminders must not be requested from VS Code")
 
     monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(calendar_server, "helper_is_available", lambda: False)
     monkeypatch.setattr(calendar_server, "run_shell_script", fail_if_called)
 
     arguments = {
@@ -206,6 +207,35 @@ def test_vscode_host_reports_reminders_off_without_running_the_script(
         "user_message": VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
     }
     assert "error" not in payload
+
+
+@pytest.mark.parametrize("tool_name", REMINDERS_TOOLS)
+def test_vscode_host_uses_reminders_when_helper_is_available(monkeypatch, tool_name):
+    called = []
+
+    def fake_run(script_name, *args):
+        called.append((script_name, args))
+        if tool_name in {"reminders_list_items", "reminders_list_completed"}:
+            return True, "[]"
+        return True, '{"success": true}'
+
+    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(calendar_server, "helper_is_available", lambda: True)
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run)
+
+    arguments = {
+        "reminders_complete_item": {"reminder_id": "reminder-1"},
+        "reminders_create_item": {"title": "Follow up"},
+        "reminders_find_and_complete": {"title_query": "Follow up"},
+    }.get(tool_name, {})
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner(tool_name, arguments))
+    )
+
+    assert called, tool_name
+    assert payload.get("feature_status") != "off"
+    assert payload.get("user_message") != VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
 
 
 def test_vscode_host_does_not_block_calendar_tools(monkeypatch):
