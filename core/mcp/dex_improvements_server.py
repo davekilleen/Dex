@@ -35,10 +35,14 @@ from core.mcp.analytics_receipts import (
     unavailable_analytics_delivery,
 )
 from core.utils.learning_title import (
+    body_match_threshold,
+    content_fingerprint,
     contents_match,
+    idea_title_from_learning,
+    infer_kind,
     is_generic_template,
     is_generic_title,
-    title_from_content,
+    learning_title_from_text,
 )
 from core.utils.learning_title_backfill import backfill_vault
 
@@ -387,18 +391,27 @@ def parse_session_learnings(since_date: Optional[str] = None) -> List[Dict[str, 
             if not status_match or status_match.group(1) != 'pending':
                 continue
 
-            title_match = re.search(r'##\s*\[?\d{2}:\d{2}\]?\s*-?\s*(.+)', block)
+            title_match = re.search(r'##\s*\[?\d{1,2}:\d{2}\]?\s*-?\s*(.+)', block)
+            kind_match = re.search(r'\*\*Kind:\*\*\s*(.+)', block)
             fix_match = re.search(r'\*\*Suggested fix:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
             what_match = re.search(r'\*\*What happened:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
             said_match = re.search(r'\*\*What was said:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
             why_match = re.search(r'\*\*Why it matters:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
 
             if title_match:
+                title = title_match.group(1).strip()
+                said = said_match.group(1).strip() if said_match else ""
+                happened = what_match.group(1).strip() if what_match else ""
                 learnings.append({
                     "date": file_date,
-                    "title": title_match.group(1).strip(),
-                    "what_happened": what_match.group(1).strip() if what_match else "",
-                    "what_was_said": said_match.group(1).strip() if said_match else "",
+                    "title": title,
+                    "kind": infer_kind(
+                        title=title,
+                        body=f"{said}\n{happened}",
+                        explicit=kind_match.group(1).strip() if kind_match else "",
+                    ),
+                    "what_happened": happened,
+                    "what_was_said": said,
                     "why_it_matters": why_match.group(1).strip() if why_match else "",
                     "suggested_fix": fix_match.group(1).strip() if fix_match else "",
                     "file": str(filepath),
@@ -407,8 +420,8 @@ def parse_session_learnings(since_date: Optional[str] = None) -> List[Dict[str, 
     return learnings
 
 
-def learning_content_text(learning: Dict[str, str]) -> str:
-    """Words that describe the note itself. The heading is never included."""
+def learning_body_text(learning: Dict[str, str]) -> str:
+    """What was said / happened plus a real suggested fix. Not the heading."""
     parts: List[str] = []
     for key in ("what_was_said", "what_happened"):
         value = (learning.get(key) or "").strip()
@@ -417,9 +430,18 @@ def learning_content_text(learning: Dict[str, str]) -> str:
     fix = (learning.get("suggested_fix") or "").strip()
     if fix and not is_generic_template(fix):
         parts.append(fix)
-    why = (learning.get("why_it_matters") or "").strip()
-    if why and not is_generic_template(why):
-        parts.append(why)
+    return "\n".join(parts)
+
+
+def learning_content_text(learning: Dict[str, str]) -> str:
+    """Similarity input: title + body + suggested fix."""
+    parts: List[str] = []
+    title = (learning.get("title") or "").strip()
+    if title:
+        parts.append(title)
+    body = learning_body_text(learning)
+    if body:
+        parts.append(body)
     return "\n".join(parts)
 
 
@@ -429,17 +451,20 @@ def idea_content_text(idea: Dict[str, Any]) -> str:
 
 
 def learning_idea_title(learning: Dict[str, str]) -> str:
-    """Name the backlog idea from the learning's content."""
-    content = learning_content_text(learning)
-    derived = title_from_content(content, fallback="")
-    if not derived and not is_generic_title(learning.get("title") or ""):
-        derived = (learning.get("title") or "").strip()
-    if not derived:
-        derived = title_from_content(learning.get("title") or "", fallback="Learning")
-    if derived.lower().startswith("fix:"):
-        return derived[:80]
-    title = f"Fix: {derived}"
-    return title[:80]
+    """Name the backlog idea from the learning's content, never Fix: Correction."""
+    content = learning_body_text(learning)
+    derived = learning_title_from_text(content, learning.get("kind") or "")
+    if not derived or is_generic_title(derived):
+        heading = (learning.get("title") or "").strip()
+        if heading and not is_generic_title(heading):
+            derived = heading
+        else:
+            derived = learning_title_from_text(heading, learning.get("kind") or "Learning")
+    return idea_title_from_learning(
+        derived,
+        learning.get("suggested_fix") or "",
+        learning.get("kind") or "",
+    )
 
 def enrich_idea_in_backlog(idea_id: str, evidence: str, source: str) -> Dict[str, Any]:
     """Append evidence to an existing idea's entry in the backlog"""
@@ -1453,26 +1478,35 @@ async def _handle_call_tool_inner(
         ideas_created = 0
         ideas_enriched = 0
         synthesis_details = []
+        fingerprints: Dict[str, Dict[str, Any]] = {}
 
         for learning in learnings:
-            content = learning_content_text(learning)
-            if not content:
+            body = learning_body_text(learning)
+            if not body:
                 continue
-            best_match = None
+            fingerprint = content_fingerprint(body)
+            best_match = fingerprints.get(fingerprint) if fingerprint else None
+            threshold = body_match_threshold(learning.get("title") or "")
 
-            for idea in existing_ideas:
-                if is_generic_title(idea.get('title') or ''):
-                    continue
-                idea_body = idea_content_text(idea)
-                if not idea_body:
-                    continue
-                if contents_match(content, idea_body):
-                    best_match = idea
-                    break
+            if best_match is None:
+                for idea in existing_ideas:
+                    if is_generic_title(idea.get('title') or ''):
+                        continue
+                    idea_body = idea_content_text(idea)
+                    if not idea_body:
+                        continue
+                    idea_threshold = body_match_threshold(
+                        learning.get("title") or "",
+                        idea.get("title") or "",
+                    )
+                    bar = max(threshold, idea_threshold)
+                    if contents_match(body, idea_body, threshold=bar):
+                        best_match = idea
+                        break
 
+            heading = learning_title_from_text(body, learning.get('kind') or learning.get('title') or '')
             if best_match:
-                heading = title_from_content(content, fallback=learning.get('title') or 'learning')
-                evidence = f"Session learning ({learning['date']}): {heading}. {content}"
+                evidence = f"Session learning ({learning['date']}): {heading}. {body}"
                 enrich_result = enrich_idea_in_backlog(best_match['id'], evidence, f"Session Learning {learning['date']}")
                 if enrich_result.get('success'):
                     ideas_enriched += 1
@@ -1482,11 +1516,13 @@ async def _handle_call_tool_inner(
                         "idea_title": best_match['title'],
                         "learning": heading,
                     })
+                    if fingerprint:
+                        fingerprints[fingerprint] = best_match
             else:
                 idea_id = generate_idea_id()
                 title = learning_idea_title(learning)
                 description = (
-                    f"From session learning ({learning['date']}): {content}"
+                    f"From session learning ({learning['date']}): {body}"
                 )
                 category = 'system'
                 source = "Session Learning Synthesis"
@@ -1494,13 +1530,16 @@ async def _handle_call_tool_inner(
                 success = add_ai_idea_to_backlog(idea_id, title, description, category, source)
                 if success:
                     ideas_created += 1
+                    created = {"id": idea_id, "title": title, "description": description}
                     synthesis_details.append({
                         "action": "created",
                         "idea_id": idea_id,
                         "title": title,
-                        "learning": title_from_content(content, fallback=learning.get('title') or ''),
+                        "learning": heading,
                     })
-                    existing_ideas.append({"id": idea_id, "title": title, "description": description})
+                    existing_ideas.append(created)
+                    if fingerprint:
+                        fingerprints[fingerprint] = created
 
         state["last_learnings_synthesis"] = datetime.now().strftime('%Y-%m-%d')
         state.setdefault("synthesis_history", []).append({

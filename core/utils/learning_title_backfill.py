@@ -18,22 +18,22 @@ from pathlib import Path
 from typing import Any, Iterator
 
 try:
-    from .learning_routing import _DAY_FILE, _HEADING, LEARNINGS_RELATIVE, parse_file
+    from .learning_routing import _DAY_FILE, LEARNINGS_RELATIVE
     from .learning_title import (
         contents_match,
         is_generic_template,
         is_generic_title,
-        is_rewritable_generic_title,
-        title_from_content,
+        learning_title_from_text,
+        retitle_learning_entry,
     )
 except ImportError:  # invoked as a file
-    from learning_routing import _DAY_FILE, _HEADING, LEARNINGS_RELATIVE, parse_file
+    from learning_routing import _DAY_FILE, LEARNINGS_RELATIVE
     from learning_title import (
         contents_match,
         is_generic_template,
         is_generic_title,
-        is_rewritable_generic_title,
-        title_from_content,
+        learning_title_from_text,
+        retitle_learning_entry,
     )
 
 RECEIPT_RELATIVE = Path("System") / ".dex" / "learning-title-backfill.json"
@@ -124,31 +124,17 @@ def _retitle_file_locked(path: Path) -> int:
         text = text[1:]
     else:
         bom = False
-    newline = "\r\n" if "\r\n" in text else "\n"
-    lines = text.splitlines()
-    entries = parse_file(path)
+    pieces = re.split(r"(\r?\n---\r?\n)", text)
     changed = 0
-    for entry in entries:
-        if not is_rewritable_generic_title(entry.title):
-            continue
-        new_title = title_from_content(entry.body, fallback="")
-        if not new_title or new_title == entry.title:
-            continue
-        index = entry.line_number - 1
-        if index < 0 or index >= len(lines):
-            continue
-        heading = _HEADING.match(lines[index])
-        if not heading:
-            continue
-        prefix = "[" if lines[index].lstrip().startswith("## [") else ""
-        suffix = "]" if prefix else ""
-        lines[index] = f"## {prefix}{entry.time}{suffix} - {new_title}"
-        changed += 1
+    rewritten_parts: list[str] = []
+    for piece in pieces:
+        updated = retitle_learning_entry(piece)
+        if updated != piece:
+            changed += 1
+        rewritten_parts.append(updated)
     if not changed:
         return 0
-    rewritten = newline.join(lines)
-    if text.endswith(("\n", "\r\n")):
-        rewritten += newline
+    rewritten = "".join(rewritten_parts)
     payload = ("\ufeff" if bom else "") + rewritten
     try:
         path.write_text(payload, encoding="utf-8", newline="")
@@ -190,9 +176,8 @@ def _split_generic_backlog_locked(path: Path) -> dict[str, Any]:
             continue
         groups = _group_idea_evidence(idea)
         if not groups:
-            new_title = title_from_content(
+            new_title = learning_title_from_text(
                 f"{idea.get('description', '')}\n{idea.get('evidence_text', '')}",
-                fallback="",
             )
             if new_title and new_title != idea["title"]:
                 replacements.append((idea["raw_title_line"], _retitle_line(idea["raw_title_line"], new_title)))
@@ -200,7 +185,7 @@ def _split_generic_backlog_locked(path: Path) -> dict[str, Any]:
             continue
 
         first, *rest = groups
-        first_title = title_from_content(first["content"], fallback="")
+        first_title = learning_title_from_text(first["content"])
         if first_title and first_title != idea["title"]:
             replacements.append((idea["raw_title_line"], _retitle_line(idea["raw_title_line"], first_title)))
             split_count += 1
@@ -213,7 +198,7 @@ def _split_generic_backlog_locked(path: Path) -> dict[str, Any]:
                 replacements.append((idea["block"], new_block))
             for extra in rest:
                 next_id += 1
-                extra_title = title_from_content(extra["content"], fallback=f"Learning {next_id:03d}")
+                extra_title = learning_title_from_text(extra["content"], f"Learning {next_id:03d}")
                 created_blocks.append(
                     _render_split_idea(
                         idea_id=f"idea-{next_id:03d}",

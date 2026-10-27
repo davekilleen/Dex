@@ -57,7 +57,32 @@ def test_entries_are_parsed_with_their_location(tmp_path):
     assert entries[0].time == "09:15"
     assert "timesheet codes" in entries[0].body
     assert entries[0].day == date(2026, 8, 18)
+    assert entries[0].kind == "Correction"
     assert all(e.is_pending for e in entries)
+
+
+def test_parsers_accept_old_and_new_shapes(tmp_path):
+    _day_file(
+        tmp_path,
+        "2026-08-18",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n> stop over inferring from timesheet codes\n\n"
+        "**Status:** pending\n\n---\n\n"
+        "## [10:00] - I prefer summaries in bullet points\n\n"
+        "**Kind:** Preference\n\n"
+        "**What was said:**\n\n> I prefer summaries in bullet points\n\n"
+        "**Status:** pending\n\n---\n",
+    )
+
+    entries = routing.read_all(tmp_path)
+
+    assert len(entries) == 2
+    assert entries[0].title == "Correction"
+    assert entries[0].kind == "Correction"
+    assert entries[0].time == "09:15"
+    assert entries[1].title == "I prefer summaries in bullet points"
+    assert entries[1].kind == "Preference"
+    assert entries[1].time == "10:00"
 
 
 def test_a_file_that_is_not_a_day_is_ignored(tmp_path):

@@ -102,7 +102,8 @@ test('the boundary is not whitespace, because JSON puts a quote before the word'
   // from bare text.
   submit(vault, 'wrong');
 
-  assert.match(captured(vault), /^## \d{2}:\d{2} - Wrong\s*$/mu);
+  assert.match(captured(vault), /^## \d{2}:\d{2} - /mu);
+  assert.match(captured(vault), /\*\*Kind:\*\* Correction/u);
 });
 
 test('stores the user words verbatim rather than a summary', (t) => {
@@ -122,6 +123,8 @@ test('writes the pending status the routing step already expects', (t) => {
 
   assert.match(text, /\*\*Status:\*\* pending/u);
   assert.match(text, /\*\*What was said:\*\*/u);
+  assert.match(text, /\*\*Kind:\*\* Correction/u);
+  assert.doesNotMatch(text, /^## \d{2}:\d{2} - Correction\s*$/mu);
 });
 
 test('truncates a correction buried in a wall of pasted context', (t) => {

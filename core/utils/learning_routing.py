@@ -23,9 +23,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 try:
-    from .learning_title import contents_match
+    from .learning_title import contents_match, infer_kind
 except ImportError:  # invoked as a file
-    from learning_title import contents_match
+    from learning_title import contents_match, infer_kind
 
 LEARNINGS_RELATIVE = Path("System") / "Session_Learnings"
 
@@ -35,6 +35,7 @@ DROPPED = "dropped"
 
 _HEADING = re.compile(r"^##\s+\[?(?P<time>\d{1,2}:\d{2})\]?\s*[-–]\s*(?P<title>.+?)\s*$")
 _STATUS = re.compile(r"^\*\*Status:\*\*\s*(?P<status>\w+)", re.IGNORECASE)
+_KIND = re.compile(r"^\*\*Kind:\*\*\s*(?P<kind>.+?)\s*$", re.IGNORECASE)
 _DAY_FILE = re.compile(r"^(?P<day>\d{4}-\d{2}-\d{2})\.md$")
 
 # Josh's routing table from #503, kept as data so it can be edited without
@@ -82,6 +83,7 @@ class Entry:
     status: str
     source_file: Path
     line_number: int
+    kind: str = ""
 
     @property
     def is_pending(self) -> bool:
@@ -144,15 +146,21 @@ def parse_file(path: Path) -> list[Entry]:
     def flush() -> None:
         if current is None:
             return
+        body_text = "\n".join(body).strip()
         entries.append(
             Entry(
                 day=day,
                 time=current["time"],
                 title=current["title"],
-                body="\n".join(body).strip(),
+                body=body_text,
                 status=current["status"],
                 source_file=path,
                 line_number=current["line"],
+                kind=infer_kind(
+                    title=current["title"],
+                    body=body_text,
+                    explicit=current.get("kind") or "",
+                ),
             )
         )
 
@@ -165,6 +173,7 @@ def parse_file(path: Path) -> list[Entry]:
                 "time": heading.group("time"),
                 "title": heading.group("title"),
                 "status": PENDING,
+                "kind": "",
                 "line": index,
             }
             continue
@@ -173,6 +182,10 @@ def parse_file(path: Path) -> list[Entry]:
         status = _STATUS.match(line.strip())
         if status:
             current["status"] = status.group("status").lower()
+            continue
+        kind_line = _KIND.match(line.strip())
+        if kind_line:
+            current["kind"] = kind_line.group("kind")
             continue
         body.append(line)
     flush()
@@ -196,9 +209,9 @@ def pending(entries: list[Entry]) -> list[Entry]:
 def cluster(entries: list[Entry]) -> list[Cluster]:
     """Group pending entries whose content is about the same thing.
 
-    Titles are ignored. Two notes both headed ``Correction`` stay apart unless
-    their bodies actually match. Destination is still proposed from the
-    combined wording of a cluster, so a real group still has one place to go.
+    This is a signal for /daily-review, not a synthesis merge key. Titles are
+    ignored. Two notes both headed ``Correction`` stay apart unless their
+    bodies actually match.
     """
     clusters: list[Cluster] = []
     for entry in pending(entries):

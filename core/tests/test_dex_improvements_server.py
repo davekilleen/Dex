@@ -225,12 +225,63 @@ def test_mark_implemented_moves_idea_to_archive_without_changing_title(
     assert content.index("## Archive (Implemented)") < content.index("idea-001")
 
 
+def test_parse_session_learnings_accepts_old_and_new_shapes(backlog_file: Path):
+    _write_learning(
+        backlog_file,
+        "2026-07-12",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n> stop over inferring from timesheet codes\n\n"
+        "**Status:** pending\n\n---\n\n"
+        "## 10:00 - I prefer summaries in bullet points\n\n"
+        "**Kind:** Preference\n\n"
+        "**What was said:**\n\n> I prefer summaries in bullet points\n\n"
+        "**Status:** pending\n\n---\n",
+    )
+
+    parsed = improvements.parse_session_learnings("2026-07-01")
+
+    assert len(parsed) == 2
+    assert parsed[0]["title"] == "Correction"
+    assert parsed[0]["kind"] == "Correction"
+    assert parsed[1]["title"] == "I prefer summaries in bullet points"
+    assert parsed[1]["kind"] == "Preference"
+
+
 def _write_learning(backlog_file: Path, day: str, body: str) -> Path:
     folder = backlog_file.parent / "Session_Learnings"
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{day}.md"
     path.write_text(f"# Session Learnings - {day}\n\n---\n\n{body}", encoding="utf-8")
     return path
+
+
+def test_synthesize_learnings_does_not_collapse_generic_titles(backlog_file: Path):
+    bodies = (
+        "stop over inferring from timesheet codes when planning the day",
+        "the daily-plan skill skipped step 5.8 entirely this morning",
+        "don't invent folders at the top of the vault next to Projects",
+        "treat ordinary messages that say no as ordinary work not lessons",
+        "keep Apple Mail search current while the app stays open",
+    )
+    blocks = []
+    for index, body in enumerate(bodies, start=9):
+        blocks.append(
+            f"## {index:02d}:15 - Correction\n\n"
+            f"**What was said:**\n\n> {body}\n\n"
+            "**Suggested fix:** confirm during /daily-review and route to "
+            "`Mistake_Patterns.md`\n"
+            "**Status:** pending\n"
+        )
+    _write_learning(backlog_file, "2026-07-12", "\n---\n\n".join(blocks) + "\n---\n")
+
+    result = _call_tool("synthesize_learnings", {"days_back": 30})
+
+    assert result["success"] is True
+    assert result["ideas_created"] == 5
+    assert result["ideas_enriched"] == 0
+    titles = [idea["title"] for idea in improvements.parse_backlog_file()]
+    assert all(title != "Fix: Correction" for title in titles)
+    assert all("Correction" not in title for title in titles)
 
 
 def test_synthesize_learnings_keeps_unrelated_corrections_apart(backlog_file: Path):
@@ -288,7 +339,7 @@ def test_synthesize_learnings_merges_only_when_content_matches(backlog_file: Pat
         "2026-07-13",
         "## 10:00 - Correction\n\n"
         "**What was said:**\n\n"
-        "> stop over inferring from timesheet codes\n\n"
+        "> stop over inferring from timesheet codes while planning the day\n\n"
         "**Suggested fix:** write a rule that timesheet codes are not meetings\n"
         "**Status:** pending\n\n---\n",
     )
