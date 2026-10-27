@@ -188,6 +188,22 @@ def test_helper_plist_declares_calendar_and_reminders_usage():
     assert "NSRemindersUsageDescription" in plist
 
 
+def test_helper_search_paths_never_include_source_build_dir(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEX_HELPER_PATH", raising=False)
+    source_build = helper.helper_source_dir() / "build" / helper.HELPER_APP_NAME
+    paths = helper.helper_search_paths(env={}, vault_root=tmp_path)
+    assert helper.helper_executable_from_app(source_build) not in paths
+    assert all("core/macos/dex-helper/build" not in path.as_posix() for path in paths)
+
+
+def test_helper_version_sources_agree():
+    version = (helper.helper_source_dir() / "VERSION").read_text(encoding="utf-8").strip()
+    swift = (helper.helper_source_dir() / "Sources" / "main.swift").read_text(encoding="utf-8")
+    plist = (helper.helper_source_dir() / "Info.plist").read_text(encoding="utf-8")
+    assert f'helperVersion = "{version}"' in swift
+    assert f"<key>CFBundleShortVersionString</key>\n\t<string>{version}</string>" in plist
+
+
 @pytest.mark.skipif(sys.platform != "darwin", reason="Swift helper builds only on macOS")
 def test_unsigned_helper_builds_when_swift_is_present(tmp_path):
     if not helper.shutil.which("swiftc"):
