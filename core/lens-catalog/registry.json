@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "154973f179b801b4d31ca72c5e592acb05943719b95644d806afdf1a7a8d61d9",
-        "byte_size": 36395
+        "sha256": "20032c5987201c72af609403e7868ddf571662bb82ba4eaefb280e9fcfd320fb",
+        "byte_size": 36537
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "47e974fd0fa63b0e9f186bed99d6f3c1b164c8fa8cc355db53d9d0f265c042a0",
-        "byte_size": 20409
+        "sha256": "971d32002d9868e8aaad51e064407e43eb9831096928306854a28d8c2772d152",
+        "byte_size": 20551
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with — so the loop finishes instead of drifting.",
       "jobs_served": [
@@ -564,8 +564,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/week-review/SKILL.md",
-        "sha256": "cc2d872340dc4d599d1aaf975fee5ee1f73a85b9288440b3e3217172a9878bb1",
-        "byte_size": 20685
+        "sha256": "a17dacfb8d3c8f2997d56917d770a1b930c00b46c3f43a57981824164a366fd1",
+        "byte_size": 20756
       },
       "value": "Reviews the week in concrete finished work and the patterns behind it, and deliberately refuses to invent a completion percentage that would make a bad week look measured.",
       "jobs_served": [
@@ -4318,8 +4318,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/calendar-setup/SKILL.md",
-        "sha256": "869f40739647c2a4cdb249010907278bb19767965e374bbe8d394d7af6828378",
-        "byte_size": 3671
+        "sha256": "af0f9cec55b8a509897f5d5bdf1d93b74a164e49d73ea0bec9b393206362c0cc",
+        "byte_size": 4303
       },
       "value": "Grant Python calendar access for ~30x faster calendar queries.",
       "jobs_served": [
