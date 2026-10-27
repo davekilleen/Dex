@@ -200,6 +200,39 @@ def test_name_coincidence_and_other_project_are_ignored(vault: Path) -> None:
     assert "Work the other project" not in text
 
 
+def test_project_name_in_metadata_is_an_explicit_link(vault: Path) -> None:
+    _write_profile(vault, True)
+    project = vault / "04-Projects" / "Customer_Renewal.md"
+    project.write_text("# Customer Renewal\n\n## Status\n\n", encoding="utf-8")
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n"
+        + _task_line(
+            "Write the renewal brief",
+            task_id="task-20261027-020",
+            project="Customer Renewal",
+        )
+        + _task_line(
+            "Mention Customer Renewal in passing",
+            task_id="task-20261027-021",
+        )
+        + _task_line(
+            "Linked by short wikilink",
+            task_id="task-20261027-022",
+            extra_title=" | [[Customer_Renewal]]",
+        ),
+        encoding="utf-8",
+    )
+
+    project_related_tasks.sync_project_page(
+        vault, "04-Projects/Customer_Renewal.md"
+    )
+    text = project.read_text(encoding="utf-8")
+
+    assert "Write the renewal brief" in text
+    assert "Linked by short wikilink" in text
+    assert "Mention Customer Renewal in passing" not in text
+
+
 def test_recently_done_keeps_only_three(vault: Path) -> None:
     _write_profile(vault, True)
     project = vault / "04-Projects" / "Launch.md"

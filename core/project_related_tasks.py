@@ -5,8 +5,9 @@ project. Open work comes first. A few recently done tasks sit underneath.
 The list points at the real task in 03-Tasks/Tasks.md — it never copies the
 task or its checkbox. Ticking stays in the main task list.
 
-Matching is explicit only: a ``Project:`` metadata field or a vault path /
-wikilink to the project file. A shared word in the title is not a link.
+Matching is explicit only: a ``Project:`` metadata field (path or project
+name), or a vault path / wikilink to the project file. A shared word in
+the title is not a link.
 
 New installs ship with the list on. Existing vaults are asked once before
 any project page is changed.
@@ -58,6 +59,20 @@ def normalize_project_ref(value: str) -> str:
     text = text.strip("[]").split("|", 1)[0].strip()
     text = text.removeprefix("./")
     return text.rstrip("/").removesuffix(".md").casefold()
+
+
+def _project_match_keys(value: str) -> set[str]:
+    """Keys that count as the same explicit project link.
+
+    A ``Project: Launch`` field or ``[[Launch]]`` wikilink is a real link,
+    not a name coincidence. A title that merely mentions Launch is not.
+    """
+    normalised = normalize_project_ref(value)
+    if not normalised:
+        return set()
+    name = normalised.rsplit("/", 1)[-1]
+    keys = {normalised, name, name.replace("_", " "), name.replace(" ", "_")}
+    return {key for key in keys if key}
 
 
 def is_project_page(page_path: str) -> bool:
@@ -130,11 +145,11 @@ def _render_preference(original: str, enabled: bool) -> str:
 
 
 def _task_explicitly_linked(task: dict[str, Any], project_rel: str) -> bool:
-    wanted = normalize_project_ref(project_rel)
+    wanted = _project_match_keys(project_rel)
     if not wanted:
         return False
     project_field = task.get("project")
-    if project_field and normalize_project_ref(str(project_field)) == wanted:
+    if project_field and (_project_match_keys(str(project_field)) & wanted):
         return True
     from core.mcp.work_server import extract_file_refs_from_task
 
@@ -146,7 +161,7 @@ def _task_explicitly_linked(task: dict[str, Any], project_rel: str) -> bool:
     for haystack in haystacks:
         refs.extend(extract_file_refs_from_task(haystack))
         refs.extend(_WIKILINK_RE.findall(haystack))
-    return any(normalize_project_ref(ref) == wanted for ref in refs if ref)
+    return any(_project_match_keys(ref) & wanted for ref in refs if ref)
 
 
 def _completed_stamp(task: dict[str, Any], lines: list[str]) -> str:

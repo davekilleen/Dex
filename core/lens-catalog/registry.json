@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "154973f179b801b4d31ca72c5e592acb05943719b95644d806afdf1a7a8d61d9",
-        "byte_size": 36395
+        "sha256": "a9cdcd09b26b4c65dbeece2ec420d1e107c0d5bb8b992c02992f68ba20728aa6",
+        "byte_size": 36755
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -1020,8 +1020,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/project-health/SKILL.md",
-        "sha256": "60d48c8c1b79b6c1cae82b2059ccdfeee28d6a75fd10644873f7a39979978dc7",
-        "byte_size": 2853
+        "sha256": "9d854f4af62f3a5fe2fffe7802c82e0db4a8ebc35259fb4f66b27290f0acb1bf",
+        "byte_size": 3724
       },
       "value": "Answers “what’s stuck?” across every active project in one pass: how long since anything moved, what is blocked, and whether the next step is actually clear.",
       "jobs_served": [
