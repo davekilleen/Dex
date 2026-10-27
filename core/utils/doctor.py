@@ -686,6 +686,7 @@ DEEP_CHECKS = (
     CheckDefinition("config.claude_composition", "CLAUDE customisations live", "_probe_claude_composition"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
+    CheckDefinition("helper.privacy", "Dex Helper", "_probe_helper_privacy"),
     CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
@@ -6238,6 +6239,15 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
             ),
         )
     return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
+
+
+def _probe_helper_privacy(context: DoctorContext) -> ProbeResult:
+    from core.utils.macos_privacy_helper import doctor_status_line, helper_app_bundle
+
+    line = doctor_status_line(vault_root=context.vault_root)
+    if helper_app_bundle(vault_root=context.vault_root) is None:
+        return ProbeResult("OFF", line)
+    return ProbeResult("OK", line)
 
 
 def _apple_mail_cli_present() -> bool:

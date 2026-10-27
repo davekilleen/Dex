@@ -16,10 +16,7 @@ if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 
 from core.utils.macos_privacy_helper import helper_is_available, run_helper
-from core.utils.reminders_host import (
-    VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
-    is_vscode_host,
-)
+from core.utils.reminders_host import reminders_blocked_without_helper
 
 try:
     import EventKit
@@ -61,9 +58,10 @@ def main():
         print("   EventKit can read and write Reminders.")
         return 0
 
-    if is_vscode_host():
+    blocked = reminders_blocked_without_helper()
+    if blocked:
         print()
-        print(VSCODE_REMINDERS_UNAVAILABLE_MESSAGE)
+        print(blocked)
         return 1
 
     if status == 2:  # Denied

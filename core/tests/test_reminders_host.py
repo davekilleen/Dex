@@ -5,8 +5,13 @@ from __future__ import annotations
 import pytest
 
 from core.utils.reminders_host import (
+    CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE,
     VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    is_claude_desktop_host,
+    is_cursor_host,
+    is_terminal_host,
     is_vscode_host,
+    reminders_blocked_without_helper,
 )
 
 
@@ -49,3 +54,18 @@ def test_unavailable_message_tells_the_user_what_to_do_instead():
     assert "Claude app" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
     assert "Terminal" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
     assert "home folder" not in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE.lower()
+
+
+def test_claude_desktop_and_cursor_and_terminal_hosts():
+    assert is_claude_desktop_host({"CLAUDE_DESKTOP": "1"}) is True
+    assert is_claude_desktop_host({"__CFBundleIdentifier": "com.anthropic.claudefordesktop"}) is True
+    assert is_claude_desktop_host({"CLAUDE_CODE": "1", "CLAUDE_DESKTOP": "1"}) is False
+    assert is_cursor_host({"CURSOR_TRACE_ID": "abc"}) is True
+    assert is_terminal_host({"TERM": "xterm-256color"}) is True
+    assert is_terminal_host({"TERM_PROGRAM": "vscode"}) is False
+    assert reminders_blocked_without_helper({"TERM_PROGRAM": "vscode"}) == VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
+    assert reminders_blocked_without_helper({"CLAUDE_DESKTOP": "1"}) == CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE
+    assert reminders_blocked_without_helper({"CURSOR_TRACE_ID": "abc"}) is None
+    assert reminders_blocked_without_helper(
+        {"TERM_PROGRAM": "vscode", "DEX_HELPER_PROCESS": "1"}
+    ) is None

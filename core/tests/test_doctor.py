@@ -83,6 +83,7 @@ DEEP_IDS = [
     "config.claude_composition",
     "update.post-canary",
     "calendar.access",
+    "helper.privacy",
     "mail.apple-search",
     "qmd.live",
     "integrations.enabled",

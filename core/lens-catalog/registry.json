@@ -4318,8 +4318,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/calendar-setup/SKILL.md",
-        "sha256": "af0f9cec55b8a509897f5d5bdf1d93b74a164e49d73ea0bec9b393206362c0cc",
-        "byte_size": 4303
+        "sha256": "4cc562cc1998d6a7dd87440199f351e5383211e6316e0e618409b94910317416",
+        "byte_size": 5168
       },
       "value": "Grant Python calendar access for ~30x faster calendar queries.",
       "jobs_served": [

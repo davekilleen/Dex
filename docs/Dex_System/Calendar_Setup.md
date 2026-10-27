@@ -12,7 +12,7 @@ If `/google-workspace-setup` already set your calendar source to Google, skip th
 
 ## How it works in one sentence
 
-Dex reads your calendar from the **Calendar app** that came with your Mac. So you add your Google account to that app once, let Dex Helper or the app Dex is running in use it, and Dex sees your meetings.
+Dex reads your calendar from the **Calendar app** that came with your Mac. So you add your Google account to that app once, let Dex Helper or the app Dex is running in use it, and Dex sees your meetings. Dex will open a small helper so macOS can ask.
 
 ---
 
@@ -34,7 +34,7 @@ Your Google events will now appear in the Calendar app. Once they're here, Dex c
 
 macOS only lets an app see your calendar if you allow **that** app.
 
-**Preferred:** if **Dex Helper** is installed (the installer puts it in your Applications folder), grant Calendar and Reminders to **Dex Helper**. Dex then reads and writes through that small app, so the permission ask can appear even when you are in VS Code or the Claude app.
+**Preferred:** Dex will open a small helper so macOS can ask. If **Dex Helper** is installed (the installer puts it in your Applications folder, or `/calendar-setup` builds it on a Mac), grant Calendar and Reminders to **Dex Helper**. Dex then reads and writes through that small app, so the permission ask can appear even when you are in VS Code or the Claude app. Rebuilding that helper resets the grant — you will need to allow it again. Terminal is the fallback if you want Calendar or Reminders without the helper.
 
 1. Open **System Settings** (or **System Preferences** on older macOS).
 2. Go to **Privacy & Security** → **Calendars**.
