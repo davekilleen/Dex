@@ -12,9 +12,10 @@ import json
 import os
 import re
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 try:
     from .learning_routing import _DAY_FILE, _HEADING, LEARNINGS_RELATIVE, parse_file
@@ -48,6 +49,22 @@ _SESSION_LEARNING_EVIDENCE = re.compile(
     r"Session learning\s*\((?P<date>\d{4}-\d{2}-\d{2})\):\s*(?P<rest>.+)",
     re.IGNORECASE,
 )
+
+
+@contextmanager
+def _locked(path: Path) -> Iterator[None]:
+    """Hold an exclusive lock while rewriting. Fail-open if lock is missing."""
+    handle = path.open("a+b")
+    try:
+        try:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
+        yield
+    finally:
+        handle.close()
 
 
 def backfill_vault(vault_root: Path) -> dict[str, Any]:
@@ -89,6 +106,14 @@ def _retitle_learnings(vault_root: Path) -> dict[str, Any]:
 
 
 def _retitle_file(path: Path) -> int:
+    try:
+        with _locked(path):
+            return _retitle_file_locked(path)
+    except OSError:
+        return 0
+
+
+def _retitle_file_locked(path: Path) -> int:
     try:
         original = path.read_bytes()
         text = original.decode("utf-8", errors="replace")
@@ -136,6 +161,14 @@ def _split_generic_backlog(vault_root: Path) -> dict[str, Any]:
     path = vault_root / BACKLOG_RELATIVE
     if not path.is_file():
         return {"count": 0, "files": []}
+    try:
+        with _locked(path):
+            return _split_generic_backlog_locked(path)
+    except OSError:
+        return {"count": 0, "files": []}
+
+
+def _split_generic_backlog_locked(path: Path) -> dict[str, Any]:
     try:
         content = path.read_text(encoding="utf-8")
     except OSError:

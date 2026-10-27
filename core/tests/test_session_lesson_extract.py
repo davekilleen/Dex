@@ -113,6 +113,22 @@ def test_appends_pending_entries_daily_review_already_parses(tmp_path: Path) -> 
     assert entries[0].title != "Correction"
 
 
+def test_preference_entries_are_named_from_what_was_said(tmp_path: Path) -> None:
+    learning = tmp_path / "2026-09-27.md"
+    learning.write_text("# Session Learnings - 2026-09-27\n\n---\n\n", encoding="utf-8")
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [_user_line("I prefer summaries in bullet points")],
+    )
+
+    extract.extract_and_append(transcript, learning, when=WHEN)
+
+    entries = routing.parse_file(learning)
+    assert len(entries) == 1
+    assert entries[0].title == "I prefer summaries in bullet points"
+    assert entries[0].title != "Preference"
+
+
 def test_does_not_duplicate_a_live_correction_already_in_the_file(tmp_path: Path) -> None:
     words = "no no no - stop over inferring from timesheet entries"
     learning = tmp_path / "2026-09-27.md"

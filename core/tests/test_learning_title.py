@@ -4,6 +4,7 @@ from __future__ import annotations
 from core.utils.learning_title import (
     contents_match,
     is_generic_title,
+    is_rewritable_generic_title,
     title_from_content,
 )
 
@@ -64,3 +65,30 @@ def test_contents_match_ignores_titles_and_markup() -> None:
     assert contents_match(left, right) is True
     assert contents_match(left, other) is False
     assert contents_match("Correction", "Correction") is False
+
+
+def test_short_unrelated_notes_do_not_fuzzy_match() -> None:
+    assert contents_match("stop that", "stop doing that") is False
+    assert contents_match("stop that", "stop that") is True
+
+
+def test_same_line_field_prefix_is_not_kept_in_the_title() -> None:
+    assert (
+        title_from_content("**What happened:** stop over inferring from timesheet codes")
+        == "Stop over inferring from timesheet codes"
+    )
+    assert is_rewritable_generic_title("Correction.")
+
+
+def test_shared_auto_capture_boilerplate_does_not_merge_unrelated_notes() -> None:
+    boilerplate = (
+        "**Why it matters:** a correction is the highest-value signal about how this "
+        "assistant fails, and it is lost when nobody writes it down.\n\n"
+        "**Suggested fix:** classify during /daily-review and route to "
+        "`Mistake_Patterns.md`\n"
+    )
+    left = f"**What was said:**\n\n> stop over inferring from timesheet codes\n\n{boilerplate}"
+    right = f"**What was said:**\n\n> the daily-plan skill skipped step 5.8 entirely\n\n{boilerplate}"
+
+    assert contents_match(left, right) is False
+    assert contents_match(left, left) is True

@@ -114,6 +114,31 @@ def test_unrelated_corrections_are_not_one_cluster(tmp_path):
     assert any("daily-plan" in body for body in bodies)
 
 
+def test_identical_auto_capture_boilerplate_does_not_cluster(tmp_path):
+    """Stock why/fix text is the same on every auto-capture. It is not a match."""
+    stock = (
+        "**Why it matters:** a correction is the highest-value signal about how this "
+        "assistant fails, and it is lost when the session ends.\n\n"
+        "**Suggested fix:** classify during /daily-review and route to "
+        "`Mistake_Patterns.md`\n"
+        "**Status:** pending\n\n---\n\n"
+    )
+    _day_file(
+        tmp_path,
+        "2026-08-18",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n> stop over inferring from timesheet codes\n\n"
+        f"{stock}"
+        "## 11:40 - Correction\n\n"
+        "**What was said:**\n\n> the daily-plan skill skipped step 5.8 entirely\n\n"
+        f"{stock}",
+    )
+
+    clusters = routing.cluster(routing.read_all(tmp_path))
+
+    assert len(clusters) == 2
+
+
 def test_a_cluster_of_several_entries_becomes_one_edit(tmp_path):
     """Josh's point: eight related entries are one rule, not eight edits."""
     many = "".join(

@@ -25,6 +25,9 @@ REWRITABLE_GENERIC_TITLES = frozenset({"correction", "preference"})
 
 MAX_TITLE_CHARS = 72
 CONTENT_MATCH_THRESHOLD = 0.65
+# Short notes only group when the wording is the same. Fuzzy matching on
+# "stop that" vs "stop doing that" is how unrelated corrections got one idea.
+MIN_FUZZY_CHARS = 24
 
 _GENERIC_TEMPLATE = re.compile(
     r"(?i)(classify during /daily-review|confirm during /daily-review"
@@ -42,6 +45,9 @@ _SESSION_PREFIX = re.compile(
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _MARKUP = re.compile(r"[*_`>#]+")
 _WHITESPACE = re.compile(r"\s+")
+_FIELD_PREFIX = re.compile(
+    r"(?i)^(?:\*\*)?(?:what was said|what happened|why it matters|suggested fix)(?:\*\*)?:?\s*"
+)
 
 
 def is_generic_title(title: str) -> bool:
@@ -58,6 +64,7 @@ def is_generic_title(title: str) -> bool:
 def is_rewritable_generic_title(title: str) -> bool:
     """True for headings the backfill is allowed to replace from content."""
     cleaned = _WHITESPACE.sub(" ", (title or "").strip()).casefold()
+    cleaned = cleaned.rstrip(".")
     return cleaned in REWRITABLE_GENERIC_TITLES
 
 
@@ -67,21 +74,11 @@ def is_generic_template(text: str) -> bool:
 
 
 def content_fingerprint(text: str) -> str:
-    """Stable wording key: markup, quotes, and case do not count."""
-    if not text:
+    """Stable wording key: markup, quotes, templates, and case do not count."""
+    usable = _usable_text(text)
+    if not usable:
         return ""
-    cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
-    lines: list[str] = []
-    for line in cleaned.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("> "):
-            stripped = stripped[2:]
-        elif stripped == ">":
-            stripped = ""
-        stripped = _MARKUP.sub("", stripped).strip()
-        if stripped and not stripped.casefold().startswith("**status:**"):
-            lines.append(stripped)
-    collapsed = _WHITESPACE.sub(" ", " ".join(lines)).casefold()
+    collapsed = usable.casefold()
     collapsed = _SESSION_PREFIX.sub("", collapsed)
     return " ".join(collapsed.split())
 
@@ -96,6 +93,8 @@ def contents_match(left: str, right: str, *, threshold: float = CONTENT_MATCH_TH
         return False
     if first == second:
         return True
+    if min(len(first), len(second)) < MIN_FUZZY_CHARS:
+        return False
     return SequenceMatcher(None, first, second).ratio() >= threshold
 
 
@@ -124,19 +123,8 @@ def _usable_text(text: str) -> str:
     kept: list[str] = []
     for raw in cleaned.split("\n"):
         line = raw.strip()
-        if not line:
+        if not line or line.startswith("#"):
             continue
-        if line.startswith("**") and line.endswith("**") and line.count("**") == 2:
-            # Skip bare field labels such as **What was said:**
-            label = line.strip("*").rstrip(":").strip()
-            if label.casefold() in {
-                "what was said",
-                "what happened",
-                "why it matters",
-                "suggested fix",
-                "status",
-            }:
-                continue
         if line.casefold().startswith("**status:**"):
             continue
         if is_generic_template(line):
@@ -145,9 +133,18 @@ def _usable_text(text: str) -> str:
             line = line[2:]
         elif line == ">":
             continue
+        line = _FIELD_PREFIX.sub("", line).strip()
         line = _MARKUP.sub("", line).strip()
-        if line:
-            kept.append(line)
+        line = _FIELD_PREFIX.sub("", line).strip()
+        if not line or line.casefold() in {
+            "what was said",
+            "what happened",
+            "why it matters",
+            "suggested fix",
+            "status",
+        }:
+            continue
+        kept.append(line)
     return " ".join(kept)
 
 

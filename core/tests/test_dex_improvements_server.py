@@ -234,7 +234,7 @@ def _write_learning(backlog_file: Path, day: str, body: str) -> Path:
 
 
 def test_synthesize_learnings_keeps_unrelated_corrections_apart(backlog_file: Path):
-    _write_learning(
+    path = _write_learning(
         backlog_file,
         "2026-07-12",
         "## 09:15 - Correction\n\n"
@@ -250,10 +250,13 @@ def test_synthesize_learnings_keeps_unrelated_corrections_apart(backlog_file: Pa
     )
 
     result = _call_tool("synthesize_learnings", {"days_back": 30})
+    text = path.read_text(encoding="utf-8")
 
     assert result["success"] is True
     assert result["ideas_created"] == 2
     assert result["ideas_enriched"] == 0
+    assert "## 09:15 - Correction" not in text
+    assert "## 11:40 - Correction" not in text
     ideas = improvements.parse_backlog_file()
     titles = [idea["title"] for idea in ideas]
     assert all("Correction" not in title for title in titles)

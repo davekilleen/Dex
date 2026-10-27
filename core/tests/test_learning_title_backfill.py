@@ -129,3 +129,118 @@ def test_missing_folders_are_a_silent_success(tmp_path: Path) -> None:
     assert result["unchanged"] is True
     assert result["retitled"] == 0
     assert result["split"] == 0
+
+
+def test_retitles_bracketed_headings_and_what_happened_entries(tmp_path: Path) -> None:
+    path = _learning(
+        tmp_path,
+        "2026-10-01",
+        "## [09:15] - Correction\n\n"
+        "**What happened:** stop over inferring from timesheet codes\n\n"
+        "**Status:** pending\n\n---\n\n"
+        "## 10:00 - Preference\n\n"
+        "**What was said:**\n\n"
+        "> I prefer summaries in bullet points\n\n"
+        "**Status:** pending\n\n---\n",
+    )
+
+    backfill_vault(tmp_path)
+    text = path.read_text(encoding="utf-8")
+
+    assert "## [09:15] - Stop over inferring from timesheet codes" in text
+    assert "## 10:00 - I prefer summaries in bullet points" in text
+    assert "Correction" not in text
+    assert "Preference" not in text
+
+
+def test_leaves_descriptive_titles_and_empty_generic_notes_alone(tmp_path: Path) -> None:
+    path = _learning(
+        tmp_path,
+        "2026-10-01",
+        "## 09:15 - Stop inventing top-level folders\n\n"
+        "> stop inventing top-level folders\n\n"
+        "**Status:** pending\n\n---\n\n"
+        "## 10:00 - Correction\n\n"
+        "**Status:** pending\n\n---\n",
+    )
+    before = path.read_text(encoding="utf-8")
+
+    result = backfill_vault(tmp_path)
+
+    assert result["retitled"] == 0
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_preserves_crlf_and_does_not_drop_bodies(tmp_path: Path) -> None:
+    folder = tmp_path / "System" / "Session_Learnings"
+    folder.mkdir(parents=True)
+    path = folder / "2026-10-01.md"
+    words = "stop over inferring from timesheet codes"
+    path.write_bytes(
+        (
+            "# Session Learnings - 2026-10-01\r\n\r\n"
+            f"## 09:15 - Correction\r\n\r\n"
+            f"**What was said:**\r\n\r\n> {words}\r\n\r\n"
+            "**Status:** pending\r\n\r\n---\r\n"
+        ).encode("utf-8")
+    )
+
+    backfill_vault(tmp_path)
+    data = path.read_bytes()
+
+    assert b"\r\n" in data
+    assert words.encode("utf-8") in data
+    assert b"## 09:15 - Correction" not in data
+
+
+def test_retitles_trailing_period_and_preserves_bom(tmp_path: Path) -> None:
+    folder = tmp_path / "System" / "Session_Learnings"
+    folder.mkdir(parents=True)
+    path = folder / "2026-10-01.md"
+    words = "stop over inferring from timesheet codes"
+    path.write_bytes(
+        (
+            "\ufeff# Session Learnings - 2026-10-01\n\n"
+            f"## 09:15 - Correction.\n\n> {words}\n\n"
+            "**Status:** pending\n\n---\n"
+        ).encode("utf-8")
+    )
+
+    result = backfill_vault(tmp_path)
+    data = path.read_bytes()
+
+    assert result["retitled"] == 1
+    assert data.startswith("\ufeff".encode("utf-8"))
+    assert words.encode("utf-8") in data
+    assert b"## 09:15 - Correction." not in data
+    assert b"## 09:15 - Stop over inferring from timesheet codes" in data
+
+
+def test_skips_readme_and_implemented_ideas(tmp_path: Path) -> None:
+    readme = tmp_path / "System" / "Session_Learnings" / "README.md"
+    readme.parent.mkdir(parents=True)
+    readme.write_text("## 09:00 - Correction\n\n> do not retitle a readme\n", encoding="utf-8")
+    path = _backlog(
+        tmp_path,
+        "- **[idea-001]** Fix: Correction\n"
+        "  - **Implemented:** 2026-10-01\n\n",
+    )
+    # Archive heading is already after the low-priority section in the helper,
+    # so move this idea into the archive block.
+    path.write_text(
+        "# Dex Improvement Backlog\n\n"
+        "### 💡 Low Priority (Score: <60)\n\n"
+        "## Archive (Implemented)\n\n"
+        "- **[idea-001]** Fix: Correction\n"
+        "  - **Implemented:** 2026-10-01\n",
+        encoding="utf-8",
+    )
+    before_readme = readme.read_text(encoding="utf-8")
+    before_backlog = path.read_text(encoding="utf-8")
+
+    result = backfill_vault(tmp_path)
+
+    assert result["retitled"] == 0
+    assert result["split"] == 0
+    assert readme.read_text(encoding="utf-8") == before_readme
+    assert path.read_text(encoding="utf-8") == before_backlog
