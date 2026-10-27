@@ -17,6 +17,14 @@ Inside VS Code or the Claude app, the Mac often never asked for Calendar or Remi
 * **If that app is not on your Mac yet, Dex keeps working the old way.** Reminders in VS Code still tells you to use the Claude app or Terminal. Calendar still uses the path you already had.
 * **Nothing is signed or published here.** Trusting that app on a new Mac is a later step that needs an explicit go-ahead. This change does not sign anything.
 
+When you started a session, Dex's list of urgent tasks was usually empty. It only noticed a task as urgent if the word "P0", "urgent", "today" or "overdue" sat in the task's own title, but Dex itself records priority and due dates on the line underneath, or files the task under the P0 heading.
+
+**What this fixes for you:**
+
+* **Your P0 tasks show up when a session starts.** A task marked P0 on its details line, or sitting under the P0 heading in your task list, now appears in the urgent list.
+* **Tasks due today or overdue show up too.** A task whose due date is today or already past is listed, whatever its priority.
+* **Older tasks still work.** A task with no priority recorded is still picked up when its title says it is urgent or due today.
+
 ## [1.97.31] — Filing stays in your folders, Reminders explains VS Code, update records stay current, more people pages get meetings, Mail search sees new email, removed skills stay removed, ordinary messages stop counting as corrections, and weekly priorities show their progress (2026-10-26)
 
 A filing helper kept making new folders at the top of Dex instead of using the Archives and Resources folders that were already there.

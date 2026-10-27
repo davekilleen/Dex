@@ -41,7 +41,10 @@ GOAL_LIMIT = 10
 GOAL_HEADER = re.compile(r"^###\s+[0-9]+\.\s+")
 PROGRESS_LINE = re.compile(r"^\*\*Progress:\*\*")
 WEEK_HEADING = re.compile(r"^##\s+(?:🎯\s+)?(?:Top 3 )?This Week\s*$")
-UNCHECKED_TASK = re.compile(r"^- \[ \] ")
+TASK_CHECKBOX = re.compile(r"^-\s*\[([ bBsSxX/])\]")
+INDENTED_BULLET = re.compile(r"^[ \t]+-\s+")
+TASK_FIELD = re.compile(r"^\s*(Priority|Due)\s*:\s*(.*?)\s*$", re.IGNORECASE)
+LEGEND_HEADINGS = frozenset({"task format", "legend", "examples", "example", "task examples"})
 URGENT_HINT = re.compile(r"p0|urgent|today|overdue", re.IGNORECASE)
 TEMPLATE_GOAL = "[Goal 1 Title]"
 
@@ -176,17 +179,113 @@ def _load_week_priorities(vault: Path) -> list[str]:
     return items
 
 
-def _load_urgent_tasks(vault: Path) -> list[str]:
+def _section_priority(heading: str) -> str | None:
+    """Read a P0-P3 heading the same way the Work MCP's task parser does."""
+    upper = heading.upper()
+    if upper.startswith("P0") or "URGENT" in upper:
+        return "P0"
+    if upper.startswith("P1") or "IMPORTANT" in upper:
+        return "P1"
+    if upper.startswith("P2") or "NORMAL" in upper:
+        return "P2"
+    if upper.startswith("P3") or "BACKLOG" in upper:
+        return "P3"
+    return None
+
+
+def _indent_width(line: str) -> int:
+    return len(line[: len(line) - len(line.lstrip(" \t"))].expandtabs(4))
+
+
+def _task_fields(lines: list[str], index: int) -> dict[str, str]:
+    """Return Priority/Due from a task's direct child bullets.
+
+    Mirrors the Work MCP: only the shallowest indented bullets belong to the
+    task, and one bullet may carry several ``Field: value`` parts split by
+    ``|``. A nested sibling task's metadata is never borrowed.
+    """
+    task_indent = _indent_width(lines[index])
+    children: list[tuple[int, str]] = []
+    cursor = index + 1
+    while cursor < len(lines) and INDENTED_BULLET.match(lines[cursor]):
+        indent = _indent_width(lines[cursor])
+        if indent <= task_indent:
+            break
+        children.append((indent, lines[cursor]))
+        cursor += 1
+    if not children:
+        return {}
+    direct = min(indent for indent, _line in children)
+    fields: dict[str, str] = {}
+    for indent, child in children:
+        if indent != direct:
+            continue
+        bullet = re.sub(r"^[ \t]+-\s*", "", child, count=1)
+        for part in bullet.split("|"):
+            match = TASK_FIELD.match(part)
+            if match:
+                fields[match.group(1).lower()] = match.group(2)
+    return fields
+
+
+def _is_due(value: str | None, today: date) -> bool:
+    if not value or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        return date.fromisoformat(value) <= today
+    except ValueError:
+        return False
+
+
+def _load_urgent_tasks(vault: Path, today: date | None = None) -> list[str]:
+    """List open tasks that are P0 or due today or earlier.
+
+    Priority is read the way Core writes it: the task's ``Priority:`` child
+    bullet, else the P0-P3 section it sits under. Only a task with neither
+    falls back to urgent words in its own text.
+
+    The due-date rule replaces the old "today"/"overdue" text hint. Skipping
+    fenced code blocks and the Task Format legend mirrors ``parse_tasks_file``
+    in ``core/mcp/work_server.py``.
+    """
     path = resolve_for_vault(vault, TASKS_FILE)
     if not path.is_file():
         return []
+    stamp = today if isinstance(today, date) else date.today()
+    lines = _read_text(path).splitlines()
     urgent: list[str] = []
-    for line in _read_text(path).splitlines():
-        if not UNCHECKED_TASK.match(line) or not URGENT_HINT.search(line):
+    section_priority: str | None = None
+    in_legend = False
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
             continue
-        urgent.append(line.rstrip())
-        if len(urgent) >= URGENT_LIMIT:
-            break
+        if in_fence:
+            continue
+        if line.startswith("# ") or line.startswith("## "):
+            heading = line.lstrip("#").strip()
+            section_priority = _section_priority(heading)
+            in_legend = heading.casefold() in LEGEND_HEADINGS
+            continue
+        if in_legend or "task-YYYYMMDD" in line:
+            continue
+        checkbox = TASK_CHECKBOX.match(stripped)
+        if not checkbox or checkbox.group(1) != " ":
+            continue
+        fields = _task_fields(lines, index)
+        priority = fields.get("priority")
+        if priority not in ("P0", "P1", "P2", "P3"):
+            priority = section_priority
+        if priority is None:
+            is_urgent = bool(URGENT_HINT.search(line))
+        else:
+            is_urgent = priority == "P0"
+        if is_urgent or _is_due(fields.get("due"), stamp):
+            urgent.append(line.rstrip())
+            if len(urgent) >= URGENT_LIMIT:
+                break
     return urgent
 
 
@@ -204,7 +303,7 @@ def build_session_boot(
     pillars = _load_pillars(root) if root is not None else []
     goals = _load_quarter_goals(root) if root is not None else []
     priorities = _load_week_priorities(root) if root is not None else []
-    urgent = _load_urgent_tasks(root) if root is not None else []
+    urgent = _load_urgent_tasks(root, today) if root is not None else []
     payload: dict[str, Any] = {
         "today": _today_label(today),
         "pillars": pillars,
