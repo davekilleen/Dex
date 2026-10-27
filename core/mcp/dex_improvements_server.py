@@ -34,6 +34,13 @@ from core.mcp.analytics_receipts import (
     surface_analytics_attempt,
     unavailable_analytics_delivery,
 )
+from core.utils.learning_title import (
+    contents_match,
+    is_generic_template,
+    is_generic_title,
+    title_from_content,
+)
+from core.utils.learning_title_backfill import backfill_vault
 
 # QMD semantic search (optional - gracefully degrade if not available)
 try:
@@ -383,6 +390,7 @@ def parse_session_learnings(since_date: Optional[str] = None) -> List[Dict[str, 
             title_match = re.search(r'##\s*\[?\d{2}:\d{2}\]?\s*-?\s*(.+)', block)
             fix_match = re.search(r'\*\*Suggested fix:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
             what_match = re.search(r'\*\*What happened:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
+            said_match = re.search(r'\*\*What was said:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
             why_match = re.search(r'\*\*Why it matters:\*\*\s*(.+?)(?:\n\*\*|\n---|\Z)', block, re.DOTALL)
 
             if title_match:
@@ -390,12 +398,48 @@ def parse_session_learnings(since_date: Optional[str] = None) -> List[Dict[str, 
                     "date": file_date,
                     "title": title_match.group(1).strip(),
                     "what_happened": what_match.group(1).strip() if what_match else "",
+                    "what_was_said": said_match.group(1).strip() if said_match else "",
                     "why_it_matters": why_match.group(1).strip() if why_match else "",
                     "suggested_fix": fix_match.group(1).strip() if fix_match else "",
                     "file": str(filepath),
                 })
 
     return learnings
+
+
+def learning_content_text(learning: Dict[str, str]) -> str:
+    """Words that describe the note itself. The heading is never included."""
+    parts: List[str] = []
+    for key in ("what_was_said", "what_happened"):
+        value = (learning.get(key) or "").strip()
+        if value:
+            parts.append(value)
+    fix = (learning.get("suggested_fix") or "").strip()
+    if fix and not is_generic_template(fix):
+        parts.append(fix)
+    why = (learning.get("why_it_matters") or "").strip()
+    if why and not is_generic_template(why):
+        parts.append(why)
+    return "\n".join(parts)
+
+
+def idea_content_text(idea: Dict[str, Any]) -> str:
+    """Compare learnings to an idea by its body, not its title."""
+    return (idea.get("description") or "").strip()
+
+
+def learning_idea_title(learning: Dict[str, str]) -> str:
+    """Name the backlog idea from the learning's content."""
+    content = learning_content_text(learning)
+    derived = title_from_content(content, fallback="")
+    if not derived and not is_generic_title(learning.get("title") or ""):
+        derived = (learning.get("title") or "").strip()
+    if not derived:
+        derived = title_from_content(learning.get("title") or "", fallback="Learning")
+    if derived.lower().startswith("fix:"):
+        return derived[:80]
+    title = f"Fix: {derived}"
+    return title[:80]
 
 def enrich_idea_in_backlog(idea_id: str, evidence: str, source: str) -> Dict[str, Any]:
     """Append evidence to an existing idea's entry in the backlog"""
@@ -1384,6 +1428,11 @@ async def _handle_call_tool_inner(
         days_back = (arguments or {}).get('days_back', 30)
         since_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
 
+        try:
+            backfill_vault(BASE_DIR)
+        except Exception:
+            pass
+
         state = load_synthesis_state()
         last_synthesis = state.get("last_learnings_synthesis")
         if last_synthesis:
@@ -1406,20 +1455,24 @@ async def _handle_call_tool_inner(
         synthesis_details = []
 
         for learning in learnings:
-            search_text = learning['title'] + ' ' + learning.get('suggested_fix', '')
+            content = learning_content_text(learning)
+            if not content:
+                continue
             best_match = None
-            best_similarity = 0.0
 
             for idea in existing_ideas:
-                title_sim = calculate_similarity(search_text, idea['title'])
-                desc_sim = calculate_similarity(search_text, idea.get('description', ''))
-                combined = max(title_sim, desc_sim)
-                if combined > best_similarity:
-                    best_similarity = combined
+                if is_generic_title(idea.get('title') or ''):
+                    continue
+                idea_body = idea_content_text(idea)
+                if not idea_body:
+                    continue
+                if contents_match(content, idea_body):
                     best_match = idea
+                    break
 
-            if best_match and best_similarity > 0.5:
-                evidence = f"Session learning ({learning['date']}): {learning['title']}. {learning.get('suggested_fix', '')}"
+            if best_match:
+                heading = title_from_content(content, fallback=learning.get('title') or 'learning')
+                evidence = f"Session learning ({learning['date']}): {heading}. {content}"
                 enrich_result = enrich_idea_in_backlog(best_match['id'], evidence, f"Session Learning {learning['date']}")
                 if enrich_result.get('success'):
                     ideas_enriched += 1
@@ -1427,26 +1480,16 @@ async def _handle_call_tool_inner(
                         "action": "enriched",
                         "idea_id": best_match['id'],
                         "idea_title": best_match['title'],
-                        "learning": learning['title'],
+                        "learning": heading,
                     })
             else:
-                if not learning.get('suggested_fix'):
-                    continue
-
                 idea_id = generate_idea_id()
-                title = f"Fix: {learning['title']}"
-                if len(title) > 80:
-                    title = title[:77] + '...'
+                title = learning_idea_title(learning)
                 description = (
-                    f"From session learning ({learning['date']}): {learning.get('what_happened', '')} "
-                    f"Suggested fix: {learning['suggested_fix']}"
+                    f"From session learning ({learning['date']}): {content}"
                 )
                 category = 'system'
                 source = "Session Learning Synthesis"
-
-                similar = find_similar_ideas(title, description)
-                if similar and similar[0]['similarity'] > 0.7:
-                    continue
 
                 success = add_ai_idea_to_backlog(idea_id, title, description, category, source)
                 if success:
@@ -1455,7 +1498,7 @@ async def _handle_call_tool_inner(
                         "action": "created",
                         "idea_id": idea_id,
                         "title": title,
-                        "learning": learning['title'],
+                        "learning": title_from_content(content, fallback=learning.get('title') or ''),
                     })
                     existing_ideas.append({"id": idea_id, "title": title, "description": description})
 

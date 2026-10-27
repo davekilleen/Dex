@@ -9,6 +9,14 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Every correction was being saved under the same heading, so Dex treated unrelated notes as one idea.
+
+**What this fixes for you:**
+
+* **Each lesson keeps its own name.** Dex now names a learning from what you actually said, not a generic "Correction" label.
+* **Unrelated lessons stay separate.** Dex only groups notes that are really about the same thing. Sharing a heading is not enough.
+* **Older notes are cleaned up in the background.** Existing generic headings are renamed from their content, and notes that were wrongly piled together are split apart. Nothing is deleted, and you do not have to do anything.
+
 When you started a session, Dex's list of urgent tasks was usually empty. It only noticed a task as urgent if the word "P0", "urgent", "today" or "overdue" sat in the task's own title, but Dex itself records priority and due dates on the line underneath, or files the task under the P0 heading.
 
 **What this fixes for you:**

@@ -96,8 +96,22 @@ def test_clusters_group_by_destination_not_by_wording(tmp_path):
 
     assert "behavioural" in kinds
     assert "skill-defect" in kinds
+    assert len(clusters) == 2
     for c in clusters:
         assert c.destination, "every cluster must name where it goes"
+
+
+def test_unrelated_corrections_are_not_one_cluster(tmp_path):
+    """A shared generic title must not merge two different notes."""
+    _day_file(tmp_path, "2026-08-18", ENTRY)
+
+    clusters = routing.cluster(routing.read_all(tmp_path))
+
+    assert all(entry.title == "Correction" for cluster in clusters for entry in cluster.entries)
+    assert len(clusters) == 2
+    bodies = {" ".join(entry.body for entry in cluster.entries) for cluster in clusters}
+    assert any("timesheet" in body for body in bodies)
+    assert any("daily-plan" in body for body in bodies)
 
 
 def test_a_cluster_of_several_entries_becomes_one_edit(tmp_path):

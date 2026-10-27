@@ -22,6 +22,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
+try:
+    from .learning_title import contents_match
+except ImportError:  # invoked as a file
+    from learning_title import contents_match
+
 LEARNINGS_RELATIVE = Path("System") / "Session_Learnings"
 
 PENDING = "pending"
@@ -189,18 +194,24 @@ def pending(entries: list[Entry]) -> list[Entry]:
 
 
 def cluster(entries: list[Entry]) -> list[Cluster]:
-    """Group pending entries by proposed destination, oldest cluster first.
+    """Group pending entries whose content is about the same thing.
 
-    Grouping is by destination rather than by topic similarity on purpose: two
-    entries that belong in the same file are worth reviewing together even when
-    they read differently, and one that belongs somewhere else is not made
-    easier to handle by sitting next to them.
+    Titles are ignored. Two notes both headed ``Correction`` stay apart unless
+    their bodies actually match. Destination is still proposed from the
+    combined wording of a cluster, so a real group still has one place to go.
     """
-    buckets: dict[str, Cluster] = {}
+    clusters: list[Cluster] = []
     for entry in pending(entries):
-        kind = _classify(entry.text)
-        buckets.setdefault(kind, Cluster(kind=kind)).entries.append(entry)
-    return sorted(buckets.values(), key=lambda c: c.oldest_days, reverse=True)
+        placed = False
+        for existing in clusters:
+            if contents_match(entry.body, existing.entries[0].body):
+                existing.entries.append(entry)
+                existing.kind = _classify("\n".join(item.text for item in existing.entries))
+                placed = True
+                break
+        if not placed:
+            clusters.append(Cluster(kind=_classify(entry.text), entries=[entry]))
+    return sorted(clusters, key=lambda c: c.oldest_days, reverse=True)
 
 
 def should_review(

@@ -31,6 +31,12 @@ def backlog_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(improvements, "BASE_DIR", tmp_path)
     monkeypatch.setattr(improvements, "SYSTEM_DIR", system_dir)
     monkeypatch.setattr(improvements, "BACKLOG_FILE", path)
+    monkeypatch.setattr(
+        improvements, "SESSION_LEARNINGS_DIR", system_dir / "Session_Learnings"
+    )
+    monkeypatch.setattr(
+        improvements, "SYNTHESIS_STATE_FILE", system_dir / ".synthesis-state.json"
+    )
     monkeypatch.setattr(improvements, "datetime", _FixedDateTime)
     monkeypatch.setattr(improvements, "HAS_QMD", False)
     monkeypatch.setattr(improvements, "_fire_analytics_event", lambda *_args: None)
@@ -217,3 +223,75 @@ def test_mark_implemented_moves_idea_to_archive_without_changing_title(
     }
     content = backlog_file.read_text(encoding="utf-8")
     assert content.index("## Archive (Implemented)") < content.index("idea-001")
+
+
+def _write_learning(backlog_file: Path, day: str, body: str) -> Path:
+    folder = backlog_file.parent / "Session_Learnings"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{day}.md"
+    path.write_text(f"# Session Learnings - {day}\n\n---\n\n{body}", encoding="utf-8")
+    return path
+
+
+def test_synthesize_learnings_keeps_unrelated_corrections_apart(backlog_file: Path):
+    _write_learning(
+        backlog_file,
+        "2026-07-12",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n"
+        "> stop over inferring from timesheet codes\n\n"
+        "**Suggested fix:** write a rule that timesheet codes are not meetings\n"
+        "**Status:** pending\n\n---\n\n"
+        "## 11:40 - Correction\n\n"
+        "**What was said:**\n\n"
+        "> the daily-plan skill skipped step 5.8 entirely\n\n"
+        "**Suggested fix:** run step 5.8 even when the calendar looks empty\n"
+        "**Status:** pending\n\n---\n",
+    )
+
+    result = _call_tool("synthesize_learnings", {"days_back": 30})
+
+    assert result["success"] is True
+    assert result["ideas_created"] == 2
+    assert result["ideas_enriched"] == 0
+    ideas = improvements.parse_backlog_file()
+    titles = [idea["title"] for idea in ideas]
+    assert all("Correction" not in title for title in titles)
+    assert any(
+        "timesheet" in idea["title"].lower() or "timesheet" in idea["description"].lower()
+        for idea in ideas
+    )
+    assert any(
+        "daily-plan" in idea["title"].lower() or "5.8" in idea["description"]
+        for idea in ideas
+    )
+
+
+def test_synthesize_learnings_merges_only_when_content_matches(backlog_file: Path):
+    _write_learning(
+        backlog_file,
+        "2026-07-12",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n"
+        "> stop over inferring from timesheet codes\n\n"
+        "**Suggested fix:** write a rule that timesheet codes are not meetings\n"
+        "**Status:** pending\n\n---\n",
+    )
+    first = _call_tool("synthesize_learnings", {"days_back": 30})
+    assert first["ideas_created"] == 1
+
+    _write_learning(
+        backlog_file,
+        "2026-07-13",
+        "## 10:00 - Correction\n\n"
+        "**What was said:**\n\n"
+        "> stop over inferring from timesheet codes\n\n"
+        "**Suggested fix:** write a rule that timesheet codes are not meetings\n"
+        "**Status:** pending\n\n---\n",
+    )
+    second = _call_tool("synthesize_learnings", {"days_back": 30})
+
+    assert second["ideas_created"] == 0
+    assert second["ideas_enriched"] == 1
+    ideas = [idea for idea in improvements.parse_backlog_file() if idea["status"] == "active"]
+    assert len(ideas) == 1

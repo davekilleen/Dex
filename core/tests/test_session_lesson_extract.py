@@ -109,7 +109,8 @@ def test_appends_pending_entries_daily_review_already_parses(tmp_path: Path) -> 
     entries = routing.parse_file(learning)
     assert len(entries) == 1
     assert entries[0].is_pending
-    assert entries[0].title == "Correction"
+    assert entries[0].title == "STOP over inferring from timesheet codes"
+    assert entries[0].title != "Correction"
 
 
 def test_does_not_duplicate_a_live_correction_already_in_the_file(tmp_path: Path) -> None:
