@@ -688,9 +688,12 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
         assert 'Find "Python" or "python3" in the list' not in text, relative
 
     skill = _read(".claude/skills/calendar-setup/SKILL.md")
+    assert "Dex will open a small helper so macOS can ask" in skill
     assert "first-class Calendar surfaces" in skill
     assert "Do not promise that a Mac permission dialog will appear" in skill
     assert "Do not send them to a standalone terminal as the only path" in skill
+    assert "codesign -s -" in skill
+    assert "rebuilding" in skill.lower() and "grant" in skill.lower()
 
 
 def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> None:
@@ -699,6 +702,7 @@ def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> No
         "06-Resources/Dex_System/Calendar_Setup.md",
     ):
         text = _read(relative)
+        assert "Dex will open a small helper so macOS can ask" in text, relative
         assert "Reminders cannot be switched on from that app" in text, relative
         assert "Claude app or Terminal" in text, relative
         assert "Dex Helper" in text, relative
@@ -722,15 +726,22 @@ def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> No
 def test_helper_signing_is_documented_as_a_later_approved_step() -> None:
     guide = _read("docs/macos-privacy-helper.md")
     build = _read("core/macos/dex-helper/build.sh")
-    assert "unsigned" in guide.lower()
+    assert "ad-hoc" in guide.lower()
+    assert "codesign -s -" in guide or "codesign --sign -" in guide
+    assert "rebuilding resets" in guide.lower()
     assert "later" in guide.lower()
     assert "explicit" in guide.lower() and "approval" in guide.lower()
     assert "Do not add signing secrets" in guide
+    assert "notarytool" not in build
+    assert "stapler" not in build
+    assert "codesign --force --sign -" in build or "codesign --force -s -" in build
     for line in build.splitlines():
         command = line.split("#", 1)[0].strip()
         if command:
-            assert "codesign" not in command
             assert "notarytool" not in command
+            assert "stapler" not in command
+            if command.split()[:1] == ["codesign"]:
+                assert "--sign -" in command or "-s -" in command
 
 
 def test_goal_backlog_grooming_never_deletes_silently_and_offers_once() -> None:

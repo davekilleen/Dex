@@ -1,11 +1,14 @@
 # Dex Helper source
 
-Unsigned Mac app that asks for Calendar and Reminders permission under
-`ai.heydex.DexHelper`. Dex calls this app for those reads and writes.
+Mac app that asks for Calendar and Reminders permission under
+`ai.heydex.DexHelper`. Dex opens this app through LaunchServices so the
+permission ask belongs to the helper, not the editor.
 
 ```
 bash build.sh          # macOS only; skips elsewhere
 ```
 
-Do not sign this app from here. Signing is a later, separately approved
-release step. See `docs/macos-privacy-helper.md`.
+The dev build ad-hoc signs with `codesign --sign -`. Rebuilding resets
+the Calendar and Reminders grant. Developer ID and notarization are a
+later release step that needs explicit founder approval. See
+`docs/macos-privacy-helper.md`.

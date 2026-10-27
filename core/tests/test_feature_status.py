@@ -16,7 +16,10 @@ from core.mcp import (
     resume_server,
 )
 from core.utils import feature_status as feature_status_module
-from core.utils.reminders_host import VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
+from core.utils.reminders_host import (
+    CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE,
+    VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+)
 
 
 @pytest.mark.parametrize(
@@ -143,7 +146,7 @@ def test_reminders_failures_report_broken_and_preserve_error(
     output,
     expected_message,
 ):
-    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: False)
+    monkeypatch.setattr(calendar_server, "reminders_blocked_without_helper", lambda: None)
     monkeypatch.setattr(
         calendar_server,
         "run_shell_script",
@@ -185,7 +188,11 @@ def test_vscode_host_reports_reminders_off_without_running_the_script(
         called.append(_args)
         raise AssertionError("Reminders must not be requested from VS Code")
 
-    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(
+        calendar_server,
+        "reminders_blocked_without_helper",
+        lambda: VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    )
     monkeypatch.setattr(calendar_server, "helper_is_available", lambda: False)
     monkeypatch.setattr(calendar_server, "run_shell_script", fail_if_called)
 
@@ -219,7 +226,11 @@ def test_vscode_host_uses_reminders_when_helper_is_available(monkeypatch, tool_n
             return True, "[]"
         return True, '{"success": true}'
 
-    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(
+        calendar_server,
+        "reminders_blocked_without_helper",
+        lambda: VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    )
     monkeypatch.setattr(calendar_server, "helper_is_available", lambda: True)
     monkeypatch.setattr(calendar_server, "run_shell_script", fake_run)
 
@@ -239,7 +250,11 @@ def test_vscode_host_uses_reminders_when_helper_is_available(monkeypatch, tool_n
 
 
 def test_vscode_host_does_not_block_calendar_tools(monkeypatch):
-    monkeypatch.setattr(calendar_server, "is_vscode_host", lambda: True)
+    monkeypatch.setattr(
+        calendar_server,
+        "reminders_blocked_without_helper",
+        lambda: VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+    )
     monkeypatch.setattr(
         calendar_server,
         "run_shell_script",
@@ -253,6 +268,69 @@ def test_vscode_host_does_not_block_calendar_tools(monkeypatch):
     assert payload["success"] is True
     assert payload["calendars"] == []
     assert "feature_status" not in payload
+
+
+@pytest.mark.parametrize("tool_name", REMINDERS_TOOLS)
+def test_claude_desktop_host_skips_reminders_without_helper(monkeypatch, tool_name):
+    called = []
+
+    def fail_if_called(*_args):
+        called.append(_args)
+        raise AssertionError("Reminders must not start a denial loop in Claude desktop")
+
+    monkeypatch.setattr(
+        calendar_server,
+        "reminders_blocked_without_helper",
+        lambda: CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE,
+    )
+    monkeypatch.setattr(calendar_server, "helper_is_available", lambda: False)
+    monkeypatch.setattr(calendar_server, "run_shell_script", fail_if_called)
+
+    arguments = {
+        "reminders_complete_item": {"reminder_id": "reminder-1"},
+        "reminders_create_item": {"title": "Follow up"},
+        "reminders_find_and_complete": {"title_query": "Follow up"},
+    }.get(tool_name, {})
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner(tool_name, arguments))
+    )
+
+    assert called == []
+    assert payload["feature_status"] == "off"
+    assert payload["user_message"] == CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE
+
+
+@pytest.mark.parametrize("tool_name", REMINDERS_TOOLS)
+def test_claude_desktop_host_uses_reminders_when_helper_is_available(monkeypatch, tool_name):
+    called = []
+
+    def fake_run(script_name, *args):
+        called.append((script_name, args))
+        if tool_name in {"reminders_list_items", "reminders_list_completed"}:
+            return True, "[]"
+        return True, '{"success": true}'
+
+    monkeypatch.setattr(
+        calendar_server,
+        "reminders_blocked_without_helper",
+        lambda: CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE,
+    )
+    monkeypatch.setattr(calendar_server, "helper_is_available", lambda: True)
+    monkeypatch.setattr(calendar_server, "run_shell_script", fake_run)
+
+    arguments = {
+        "reminders_complete_item": {"reminder_id": "reminder-1"},
+        "reminders_create_item": {"title": "Follow up"},
+        "reminders_find_and_complete": {"title_query": "Follow up"},
+    }.get(tool_name, {})
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner(tool_name, arguments))
+    )
+
+    assert called, tool_name
+    assert payload.get("feature_status") != "off"
 
 
 @pytest.mark.parametrize(
