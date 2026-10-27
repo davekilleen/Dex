@@ -701,6 +701,7 @@ def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> No
         text = _read(relative)
         assert "Reminders cannot be switched on from that app" in text, relative
         assert "Claude app or Terminal" in text, relative
+        assert "Dex Helper" in text, relative
         assert "Grant it for the same editor app if you use those features" not in text, relative
         assert "Claude Code" not in text, relative
 
@@ -716,6 +717,20 @@ def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> No
         assert "Claude app or Terminal" in text, relative
         assert "Do not skip that case silently" in text or "do not raise it again" in text, relative
         assert "macOS never shows the permission dialog to that process" not in text, relative
+
+
+def test_helper_signing_is_documented_as_a_later_approved_step() -> None:
+    guide = _read("docs/macos-privacy-helper.md")
+    build = _read("core/macos/dex-helper/build.sh")
+    assert "unsigned" in guide.lower()
+    assert "later" in guide.lower()
+    assert "explicit" in guide.lower() and "approval" in guide.lower()
+    assert "Do not add signing secrets" in guide
+    for line in build.splitlines():
+        command = line.split("#", 1)[0].strip()
+        if command:
+            assert "codesign" not in command
+            assert "notarytool" not in command
 
 
 def test_goal_backlog_grooming_never_deletes_silently_and_offers_once() -> None:
