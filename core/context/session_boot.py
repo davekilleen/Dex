@@ -243,6 +243,10 @@ def _load_urgent_tasks(vault: Path, today: date | None = None) -> list[str]:
     Priority is read the way Core writes it: the task's ``Priority:`` child
     bullet, else the P0-P3 section it sits under. Only a task with neither
     falls back to urgent words in its own text.
+
+    The due-date rule replaces the old "today"/"overdue" text hint. Skipping
+    fenced code blocks and the Task Format legend mirrors ``parse_tasks_file``
+    in ``core/mcp/work_server.py``.
     """
     path = resolve_for_vault(vault, TASKS_FILE)
     if not path.is_file():
