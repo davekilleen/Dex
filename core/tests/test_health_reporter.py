@@ -45,11 +45,11 @@ def test_doctor_report_is_normalized_across_the_complete_registry():
     assert envelope.contract == "dex.health.reporter/v1"
     assert envelope.reporter == DOCTOR_REPORTER_IDENTITY
     assert envelope.refresh_id == "refresh-001"
-    # lifecycle.byte-mode and platform.support joined the complete Doctor
-    # registry after adoption.plan. This literal is a deliberate tripwire:
-    # adding a probe must update the complete reporter contract rather than
-    # silently changing its result set.
-    assert len(envelope.results) == 43
+    # helper.privacy joined the complete Doctor registry with the Calendar
+    # and Reminders helper. This literal is a deliberate tripwire: adding a
+    # probe must update the complete reporter contract rather than silently
+    # changing its result set.
+    assert len(envelope.results) == 44
     assert [result.id for result in envelope.results] == [
         f"doctor.core/{definition.id}"
         for definition in (*doctor.QUICK_CHECKS, *doctor.DEEP_CHECKS)
