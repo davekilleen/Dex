@@ -405,6 +405,7 @@ For each active project:
 - Key stakeholders
 - Timeline and milestones
 - Related meetings and decisions
+- Related tasks near the top (open first, a few recently done underneath). Only tasks explicitly linked to that project appear — never a name coincidence. The list links to the real task in `03-Tasks/Tasks.md`; ticking stays there. New installs have this on. If `System/user-profile.yaml` has no `project_related_tasks` key, ask once with the short question from `set_project_related_tasks` / `refresh_project_related_tasks` before writing the section. Call `set_project_related_tasks` with their yes or no. Do not ask again after they answer.
 
 ### Daily Capture
 Help the user capture:

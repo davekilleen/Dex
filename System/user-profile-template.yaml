@@ -101,6 +101,11 @@ meeting_sources:
 entity_creation:
   mode: suggest
 
+# Related tasks list on project pages. New installs start on.
+# Existing vaults are asked once before the section is written.
+project_related_tasks:
+  enabled: true
+
 # Background person-summary maintenance; missing key is enabled, explicit false disables.
 entity_gardener:
   enabled: true

@@ -6,6 +6,8 @@ Creates person pages, meeting notes, and other content with proper reference for
 from datetime import datetime
 from typing import List, Optional
 
+from core.paths import TASKS_DIR, TASKS_FILE
+
 from .entity_pages import render_person_page
 from .reference_formatter import (
     format_person_reference,
@@ -130,6 +132,13 @@ def generate_project_page(
     
     if description:
         content += f"{description}\n\n"
+
+    content += "## Related Tasks\n\n"
+    content += f"*Open first. Tick these in {TASKS_DIR.name}/{TASKS_FILE.name}.*\n\n"
+    content += (
+        "*No linked tasks yet. Link a task to this project from the "
+        "main task list.*\n\n"
+    )
     
     content += "## Status\n\n"
     if status:

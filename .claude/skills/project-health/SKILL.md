@@ -70,6 +70,14 @@ For each project folder or file:
 - Before 1:1s to surface blocked projects
 - When deciding what to work on next
 
+## Related tasks
+
+Each project page can show a Related tasks list near the top — open work first, a few recently done underneath. The list links to the real task; ticking stays in `03-Tasks/Tasks.md`. Only tasks with an explicit `Project:` link or a path/wikilink to that project file appear.
+
+1. Call `refresh_project_related_tasks` (no path) while scanning.
+2. If the result is `needs_opt_in`, ask once: "Project pages can show a Related tasks list near the top — open work first, a few recently done underneath. Only tasks you linked to that project appear, and you still tick them in the main task list. Turn it on?" Then call `set_project_related_tasks` with `enabled` true or false. Do not write the section before they answer, and do not ask again after they answer.
+3. If the result is `on` or `off`, say nothing about the preference.
+
 ## Follow-up Actions
 
 For yellow projects:

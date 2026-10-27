@@ -475,4 +475,13 @@ if [[ -f "$CLAUDE_DIR/core/utils/health_session.py" && ${#DEX_PYTHON_CMD[@]} -gt
     ) 2>/dev/null || true
 fi
 
+# Once-a-day catch-up for project Related Tasks after hand edits.
+# Writes only when the user already has the list on (new installs start on).
+if [[ -f "$ONBOARDING_MARKER" && -f "$CLAUDE_DIR/core/project_related_tasks.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+    (
+        cd "$CLAUDE_DIR" || exit 0
+        "${DEX_PYTHON_CMD[@]}" -m core.project_related_tasks --daily-refresh --vault "$CLAUDE_DIR"
+    ) >/dev/null 2>&1 || true
+fi
+
 echo "=== End Session Context ==="

@@ -140,6 +140,10 @@ If items found, triage them before building the plan so task counts are accurate
 
 **If empty:** Skip silently.
 
+## Step 0.6: Project related tasks (one ask, then never again)
+
+Call `refresh_project_related_tasks` with no path. If the result is `needs_opt_in`, ask once using the returned `ask` text, then call `set_project_related_tasks` with their yes or no. If the result is `on` or `off`, or the tool is unavailable, skip silently. Do not write project pages by hand.
+
 ---
 
 ## Step 1: Background Checks (Silent)

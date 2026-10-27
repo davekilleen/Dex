@@ -131,6 +131,8 @@ Dex includes a Python MCP server (`core/mcp/work_server.py`) providing determini
 | `suggest_focus` | Top 3 tasks to focus on based on priorities |
 | `get_pillar_summary` | Task distribution across your pillars |
 | `sync_task_refs` | Refresh Related Tasks section on a page |
+| `set_project_related_tasks` | Turn the Related tasks list on project pages on or off |
+| `refresh_project_related_tasks` | Refresh that list on one project page, or every project page |
 | `create_company` | Create a new company page |
 | `refresh_company` | Update all aggregated sections on a company page |
 | `list_companies` | List all company pages with contact counts |
@@ -310,6 +312,8 @@ Dex/
 ├── Tasks.md                  # Main task list
 └── CLAUDE.md                 # System configuration
 ```
+
+Project pages can show a **Related tasks** list near the top — the same idea as person and meeting pages. Open work comes first, with a few recently done underneath. The list links to the real task in `03-Tasks/Tasks.md`; ticking stays in the main task list. Only tasks you explicitly linked to that project appear. New installs have this on. Existing vaults are asked once before the section is written. It refreshes when a linked task is added or completed, and once a day for hand edits.
 
 ---
 

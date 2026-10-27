@@ -42,6 +42,7 @@ _ANALYTICS_REPO_ROOT = str(Path(__file__).resolve().parents[2])
 if _ANALYTICS_REPO_ROOT not in sys.path:
     sys.path.insert(0, _ANALYTICS_REPO_ROOT)
 
+from core import project_related_tasks
 from core.mcp.analytics_receipts import (
     surface_analytics_attempt,
     unavailable_analytics_delivery,
@@ -224,6 +225,7 @@ from core.paths import (
     PROJECTS_DIR,
     QUARTER_GOALS_FILE,
     SKILL_RATINGS_FILE,
+    TASKS_DIR,
     TASKS_FILE,
     USER_PROFILE_FILE,
     WEEK_PRIORITIES_FILE,
@@ -1437,6 +1439,9 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
 
 def sync_task_refs_for_page(page_path: str) -> Dict[str, Any]:
     """Sync Related Tasks section for a page by reading 03-Tasks/Tasks.md"""
+    if project_related_tasks.is_project_page(page_path):
+        return project_related_tasks.sync_project_page(BASE_DIR, page_path)
+
     tasks = find_tasks_for_page(page_path)
     success = update_related_tasks_section(page_path, tasks)
     
@@ -5508,13 +5513,40 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="sync_task_refs",
-            description="Refresh the Related Tasks section on an account or people page by reading from 03-Tasks/Tasks.md",
+            description=f"Refresh the Related Tasks section on an account, people, or project page by reading from {TASKS_DIR.name}/{TASKS_FILE.name}",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "page_path": {"type": "string", "description": "Path to the page to sync"}
                 },
                 "required": ["page_path"]
+            }
+        ),
+        types.Tool(
+            name="set_project_related_tasks",
+            description="Turn the Related tasks list on project pages on or off after the one opt-in ask. New installs start on.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "True turns the list on and refreshes project pages. False leaves project pages untouched.",
+                    }
+                },
+                "required": ["enabled"],
+            }
+        ),
+        types.Tool(
+            name="refresh_project_related_tasks",
+            description="Refresh the Related tasks list on one project page or every project page. Only writes when the feature is on.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_path": {
+                        "type": "string",
+                        "description": f"Vault-relative project page (e.g. {PROJECTS_DIR.name}/Launch.md). Omit to refresh every project page.",
+                    }
+                },
             }
         ),
         types.Tool(
@@ -6009,7 +6041,8 @@ WRITE_TOOLS = {
     "create_task", "update_task_status", "confirm_goal_link", "set_task_next_up",
     "create_company", "refresh_company",
     "sync_external_tasks",
-    "sync_task_refs", "create_quarterly_goal", "update_goal_progress",
+    "sync_task_refs", "set_project_related_tasks", "refresh_project_related_tasks",
+    "create_quarterly_goal", "update_goal_progress",
     "create_weekly_priority", "complete_weekly_priority",
     "process_inbox_with_dedup", "migrate_quarterly_goals", "migrate_weekly_priorities",
     "build_people_index", "build_company_index", "create_person", "reroute_people",
@@ -6085,6 +6118,8 @@ async def handle_call_tool(
                 "suggest_focus": "Focus suggestion failed",
                 "get_pillar_summary": "Pillar summary failed",
                 "sync_task_refs": "Task reference sync failed",
+                "set_project_related_tasks": "Project related tasks preference update failed",
+                "refresh_project_related_tasks": "Project related tasks refresh failed",
                 "refresh_company": "Company page refresh failed",
                 "list_companies": "Company listing failed",
                 "create_company": "Company creation failed",
@@ -6611,6 +6646,7 @@ async def _handle_call_tool_inner(
         referenced_pages = [
             page for page in (account, *people, source) if page
         ]
+        # Project pages use the dedicated linker (explicit Project: field only).
         for page in referenced_pages:
             try:
                 result_sync = sync_task_refs_for_page(page)
@@ -6637,6 +6673,11 @@ async def _handle_call_tool_inner(
                 "people": people if people else None,
                 "source": source if source else None
             },
+            "project_related_tasks": project_related_tasks.sync_after_task_change(
+                BASE_DIR,
+                project=project or None,
+                task_id=task_id,
+            ),
             "links": {
                 "account": account_link,
                 "people": people_links,
@@ -6898,6 +6939,12 @@ async def _handle_call_tool_inner(
             # Also sync Related Tasks sections
             synced_pages = propagate_task_status_to_refs(result['title'], completed)
             result['related_tasks_synced'] = synced_pages
+            result['project_related_tasks'] = (
+                project_related_tasks.sync_after_task_change(
+                    BASE_DIR,
+                    task_id=task_id,
+                )
+            )
             
             if completed:
                 surface_analytics_attempt(
@@ -6951,6 +6998,13 @@ async def _handle_call_tool_inner(
                 # Also sync Related Tasks sections
                 synced_pages = propagate_task_status_to_refs(task['title'], completed)
                 result['related_tasks_synced'] = synced_pages
+                result['project_related_tasks'] = (
+                    project_related_tasks.sync_after_task_change(
+                        BASE_DIR,
+                        project=task.get('project'),
+                        task_id=task.get('task_id'),
+                    )
+                )
                 
                 if completed:
                     surface_analytics_attempt(
@@ -7267,6 +7321,25 @@ async def _handle_call_tool_inner(
         
         result = sync_task_refs_for_page(page_path)
         
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "set_project_related_tasks":
+        enabled = arguments.get("enabled")
+        if not isinstance(enabled, bool):
+            result = {
+                "success": False,
+                "error": "enabled must be true or false",
+            }
+        else:
+            result = project_related_tasks.set_preference(BASE_DIR, enabled)
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
+
+    elif name == "refresh_project_related_tasks":
+        project_path = arguments.get("project_path") or ""
+        if project_path:
+            result = project_related_tasks.sync_project_page(BASE_DIR, project_path)
+        else:
+            result = project_related_tasks.refresh_all_project_pages(BASE_DIR)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2, cls=DateTimeEncoder))]
     
     elif name == "refresh_company":
