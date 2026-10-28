@@ -57,7 +57,32 @@ def test_entries_are_parsed_with_their_location(tmp_path):
     assert entries[0].time == "09:15"
     assert "timesheet codes" in entries[0].body
     assert entries[0].day == date(2026, 8, 18)
+    assert entries[0].kind == "Correction"
     assert all(e.is_pending for e in entries)
+
+
+def test_parsers_accept_old_and_new_shapes(tmp_path):
+    _day_file(
+        tmp_path,
+        "2026-08-18",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n> stop over inferring from timesheet codes\n\n"
+        "**Status:** pending\n\n---\n\n"
+        "## [10:00] - I prefer summaries in bullet points\n\n"
+        "**Kind:** Preference\n\n"
+        "**What was said:**\n\n> I prefer summaries in bullet points\n\n"
+        "**Status:** pending\n\n---\n",
+    )
+
+    entries = routing.read_all(tmp_path)
+
+    assert len(entries) == 2
+    assert entries[0].title == "Correction"
+    assert entries[0].kind == "Correction"
+    assert entries[0].time == "09:15"
+    assert entries[1].title == "I prefer summaries in bullet points"
+    assert entries[1].kind == "Preference"
+    assert entries[1].time == "10:00"
 
 
 def test_a_file_that_is_not_a_day_is_ignored(tmp_path):
@@ -96,8 +121,47 @@ def test_clusters_group_by_destination_not_by_wording(tmp_path):
 
     assert "behavioural" in kinds
     assert "skill-defect" in kinds
+    assert len(clusters) == 2
     for c in clusters:
         assert c.destination, "every cluster must name where it goes"
+
+
+def test_unrelated_corrections_are_not_one_cluster(tmp_path):
+    """A shared generic title must not merge two different notes."""
+    _day_file(tmp_path, "2026-08-18", ENTRY)
+
+    clusters = routing.cluster(routing.read_all(tmp_path))
+
+    assert all(entry.title == "Correction" for cluster in clusters for entry in cluster.entries)
+    assert len(clusters) == 2
+    bodies = {" ".join(entry.body for entry in cluster.entries) for cluster in clusters}
+    assert any("timesheet" in body for body in bodies)
+    assert any("daily-plan" in body for body in bodies)
+
+
+def test_identical_auto_capture_boilerplate_does_not_cluster(tmp_path):
+    """Stock why/fix text is the same on every auto-capture. It is not a match."""
+    stock = (
+        "**Why it matters:** a correction is the highest-value signal about how this "
+        "assistant fails, and it is lost when the session ends.\n\n"
+        "**Suggested fix:** classify during /daily-review and route to "
+        "`Mistake_Patterns.md`\n"
+        "**Status:** pending\n\n---\n\n"
+    )
+    _day_file(
+        tmp_path,
+        "2026-08-18",
+        "## 09:15 - Correction\n\n"
+        "**What was said:**\n\n> stop over inferring from timesheet codes\n\n"
+        f"{stock}"
+        "## 11:40 - Correction\n\n"
+        "**What was said:**\n\n> the daily-plan skill skipped step 5.8 entirely\n\n"
+        f"{stock}",
+    )
+
+    clusters = routing.cluster(routing.read_all(tmp_path))
+
+    assert len(clusters) == 2
 
 
 def test_a_cluster_of_several_entries_becomes_one_edit(tmp_path):

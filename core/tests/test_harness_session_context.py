@@ -131,6 +131,7 @@ def test_session_start_is_a_wrapper_and_preserves_offload_logic() -> None:
     assert "DEX_PYTHON_CMD" in text
     assert ".venv/Scripts/python.exe" in text
     assert "py -3" in text
+    assert "core.utils.learning_title_backfill" in text
 
 
 def test_person_hook_is_a_wrapper() -> None:

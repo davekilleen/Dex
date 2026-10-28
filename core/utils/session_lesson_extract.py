@@ -26,8 +26,10 @@ from typing import Iterator, TextIO
 
 try:
     from .correction_detect import is_correction, user_words
+    from .learning_title import learning_title_from_text
 except ImportError:  # invoked as a file: python core/utils/session_lesson_extract.py
     from correction_detect import is_correction, user_words
+    from learning_title import learning_title_from_text
 
 MAX_CHARS = 600
 MAX_BYTES_DEFAULT = 2_000_000
@@ -333,8 +335,10 @@ def render_entry(candidate: Candidate, when: datetime) -> str:
         if candidate.kind == "Correction"
         else "a stated preference should survive the session, not wait on a review that may not run."
     )
+    title = learning_title_from_text(candidate.text, candidate.kind)
     return (
-        f"## {when:%H:%M} - {candidate.kind}\n\n"
+        f"## {when:%H:%M} - {title}\n\n"
+        f"**Kind:** {candidate.kind}\n\n"
         f"**What was said:**\n\n{_blockquote(candidate.text)}\n\n"
         f"**Why it matters:** {why}\n\n"
         "**Suggested fix:** confirm during /daily-review and route to "

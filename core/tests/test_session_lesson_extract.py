@@ -105,11 +105,32 @@ def test_appends_pending_entries_daily_review_already_parses(tmp_path: Path) -> 
     text = learning.read_text(encoding="utf-8")
     assert "**Status:** pending" in text
     assert "**What was said:**" in text
+    assert "**Kind:** Correction" in text
     assert "STOP over inferring from timesheet codes" in text
     entries = routing.parse_file(learning)
     assert len(entries) == 1
     assert entries[0].is_pending
-    assert entries[0].title == "Correction"
+    assert entries[0].kind == "Correction"
+    assert entries[0].title == "STOP over inferring from timesheet codes"
+    assert entries[0].title != "Correction"
+
+
+def test_preference_entries_are_named_from_what_was_said(tmp_path: Path) -> None:
+    learning = tmp_path / "2026-09-27.md"
+    learning.write_text("# Session Learnings - 2026-09-27\n\n---\n\n", encoding="utf-8")
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [_user_line("I prefer summaries in bullet points")],
+    )
+
+    extract.extract_and_append(transcript, learning, when=WHEN)
+
+    entries = routing.parse_file(learning)
+    assert len(entries) == 1
+    assert entries[0].title == "I prefer summaries in bullet points"
+    assert entries[0].title != "Preference"
+    assert entries[0].kind == "Preference"
+    assert "**Kind:** Preference" in learning.read_text(encoding="utf-8")
 
 
 def test_does_not_duplicate_a_live_correction_already_in_the_file(tmp_path: Path) -> None:

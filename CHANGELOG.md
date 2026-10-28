@@ -17,6 +17,14 @@ Inside VS Code or the Claude app, the Mac often never asked for Calendar or Remi
 * **If that app is not on your Mac yet, Dex stays honest.** Reminders in VS Code still tells you the Mac will not show the ask there. The Claude app gets the same kind of clear status instead of a confusing denial. Calendar still uses the path you already had. Terminal is the fallback.
 * **Rebuilding that helper means you grant again.** The everyday local build is for your Mac only. A trusted copy for other Macs is a later step that needs an explicit go-ahead.
 
+Every correction was being saved under the same heading, so Dex treated unrelated notes as one idea.
+
+**What this fixes for you:**
+
+* **Each lesson keeps its own name.** Dex now names a learning from what you actually said, not a generic "Correction" label.
+* **Unrelated lessons stay separate.** Dex only groups notes that are really about the same thing. Sharing a heading is not enough.
+* **Older notes are cleaned up in the background.** Existing generic headings are renamed from their content, and notes that were wrongly piled together are split apart. Nothing is deleted, and you do not have to do anything.
+
 When you started a session, Dex's list of urgent tasks was usually empty. It only noticed a task as urgent if the word "P0", "urgent", "today" or "overdue" sat in the task's own title, but Dex itself records priority and due dates on the line underneath, or files the task under the P0 heading.
 
 **What this fixes for you:**
