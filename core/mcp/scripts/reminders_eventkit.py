@@ -28,10 +28,7 @@ _repo_root = str(Path(__file__).resolve().parents[3])
 if _repo_root not in sys.path:
     sys.path.append(_repo_root)
 
-from core.utils.reminders_host import (
-    VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
-    is_vscode_host,
-)
+from core.utils.reminders_host import reminders_blocked_without_helper
 
 REMINDERS_ACCESS_DENIED = (
     "Reminders access denied. Enable it in System Settings → "
@@ -40,9 +37,7 @@ REMINDERS_ACCESS_DENIED = (
 
 
 def _reminders_unavailable_message() -> str:
-    if is_vscode_host():
-        return VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
-    return REMINDERS_ACCESS_DENIED
+    return reminders_blocked_without_helper() or REMINDERS_ACCESS_DENIED
 
 
 def request_reminders_access(store, completion):
@@ -64,9 +59,10 @@ def ensure_reminders_access(store):
     if status == full_access:
         return True
 
-    # VS Code never shows the Reminders permission ask. Requesting it here
-    # fails silently and can wait a full minute for a dialog that never appears.
-    if is_vscode_host():
+    # VS Code and Claude desktop never show a useful Reminders ask without
+    # Dex Helper. Requesting here can wait a minute for a dialog that never
+    # appears, which looks like a denial loop.
+    if reminders_blocked_without_helper():
         return False
 
     not_determined = getattr(EventKit, "EKAuthorizationStatusNotDetermined", 0)

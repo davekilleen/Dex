@@ -9,6 +9,14 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+Inside VS Code or the Claude app, the Mac often never asked for Calendar or Reminders permission, so those features looked broken or simply vanished.
+
+**What this fixes for you:**
+
+* **Dex will open a small helper so macOS can ask.** That small app on your Mac asks for Calendar and Reminders in its own name, even when you are in VS Code or the Claude app.
+* **If that app is not on your Mac yet, Dex stays honest.** Reminders in VS Code still tells you the Mac will not show the ask there. The Claude app gets the same kind of clear status instead of a confusing denial. Calendar still uses the path you already had. Terminal is the fallback.
+* **Rebuilding that helper means you grant again.** The everyday local build is for your Mac only. A trusted copy for other Macs is a later step that needs an explicit go-ahead.
+
 Every correction was being saved under the same heading, so Dex treated unrelated notes as one idea.
 
 **What this fixes for you:**

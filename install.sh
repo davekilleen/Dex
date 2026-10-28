@@ -1649,6 +1649,19 @@ else
     dex_log "Work MCP skipped: PYTHON_CMD='$PYTHON_CMD' VENV_PYTHON='$VENV_PYTHON'"
 fi
 
+# Optional unsigned Calendar/Reminders helper. Never fail install if this
+# step is skipped — Dex keeps the existing EventKit / AppleScript path.
+if [ "$(uname -s)" = "Darwin" ] && [ -n "${VENV_PYTHON:-}" ] && [ -x "${VENV_PYTHON:-}" ]; then
+    echo ""
+    dex_user_progress "Setting up a small Mac app so Calendar and Reminders can ask permission in their own name..." "Setting up Dex Helper..."
+    if DEX_VAULT_PATH="$(pwd)" "$VENV_PYTHON" -m core.utils.macos_privacy_helper install; then
+        dex_user_progress "Dex Helper is ready. Grant Calendar and Reminders to Dex Helper in System Settings if asked." "Dex Helper installed"
+    else
+        dex_user_progress "Calendar and Reminders will keep using the existing path." "Dex Helper skipped"
+        dex_log "Dex Helper install skipped or failed; fallback path remains"
+    fi
+fi
+
 # Converge Git clones to the split Brain/Vault topology through the migration
 # engine that also handles existing installs. A bounded migration may ask to
 # resume, so keep routing back to that engine until it reaches a terminal state.
