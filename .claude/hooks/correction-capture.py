@@ -39,8 +39,9 @@ def _shared():
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
     from core.utils.correction_detect import is_correction, user_words
+    from core.utils.learning_title import learning_title_from_text
 
-    return is_correction, user_words
+    return is_correction, user_words, learning_title_from_text
 
 
 def _prompt(payload: dict) -> str:
@@ -66,7 +67,7 @@ def main() -> int:
         return 0
 
     try:
-        is_correction, user_words = _shared()
+        is_correction, user_words, learning_title_from_text = _shared()
     except Exception:
         return 0
 
@@ -93,9 +94,12 @@ def main() -> int:
         except OSError:
             return 0
 
+    words = _truncate(prompt)
+    title = learning_title_from_text(words, "Correction")
     entry = (
-        f"## {now:%H:%M} - Correction\n\n"
-        f"**What was said:**\n\n> {_truncate(prompt).replace(chr(10), chr(10) + '> ')}\n\n"
+        f"## {now:%H:%M} - {title}\n\n"
+        f"**Kind:** Correction\n\n"
+        f"**What was said:**\n\n> {words.replace(chr(10), chr(10) + '> ')}\n\n"
         "**Why it matters:** a correction is the highest-value signal about how this "
         "assistant fails, and it is lost when the session ends.\n\n"
         "**Suggested fix:** classify during /daily-review and route to "

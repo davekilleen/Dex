@@ -21,6 +21,10 @@ function sandbox(t) {
     path.join(REPO_ROOT, 'core', 'utils', 'correction_detect.py'),
     path.join(utils, 'correction_detect.py'),
   );
+  fs.copyFileSync(
+    path.join(REPO_ROOT, 'core', 'utils', 'learning_title.py'),
+    path.join(utils, 'learning_title.py'),
+  );
   t.after(() => fs.rmSync(vault, { recursive: true, force: true }));
   return vault;
 }
@@ -77,7 +81,8 @@ for (const prompt of CORRECTIONS) {
   test(`captures: ${prompt.slice(0, 44)}`, (t) => {
     const vault = sandbox(t);
     submit(vault, prompt);
-    assert.match(captured(vault), /- Correction/u);
+    assert.match(captured(vault), /^## \d{2}:\d{2} - /mu);
+    assert.doesNotMatch(captured(vault), /^## \d{2}:\d{2} - Correction\s*$/mu);
   });
 }
 
@@ -97,7 +102,8 @@ test('the boundary is not whitespace, because JSON puts a quote before the word'
   // from bare text.
   submit(vault, 'wrong');
 
-  assert.match(captured(vault), /- Correction/u);
+  assert.match(captured(vault), /^## \d{2}:\d{2} - /mu);
+  assert.match(captured(vault), /\*\*Kind:\*\* Correction/u);
 });
 
 test('stores the user words verbatim rather than a summary', (t) => {
@@ -117,6 +123,8 @@ test('writes the pending status the routing step already expects', (t) => {
 
   assert.match(text, /\*\*Status:\*\* pending/u);
   assert.match(text, /\*\*What was said:\*\*/u);
+  assert.match(text, /\*\*Kind:\*\* Correction/u);
+  assert.doesNotMatch(text, /^## \d{2}:\d{2} - Correction\s*$/mu);
 });
 
 test('truncates a correction buried in a wall of pasted context', (t) => {
@@ -135,7 +143,8 @@ test('appends, so several corrections in one day all survive', (t) => {
   submit(vault, 'STOP doing that');
   submit(vault, 'no, thats wrong');
 
-  assert.equal((captured(vault).match(/- Correction/gu) || []).length, 2);
+  assert.equal((captured(vault).match(/^## \d{2}:\d{2} - /gmu) || []).length, 2);
+  assert.doesNotMatch(captured(vault), /^## \d{2}:\d{2} - Correction\s*$/mu);
 });
 
 test('never blocks a prompt, whatever the payload', (t) => {
@@ -191,7 +200,8 @@ test('keeps a real correction that arrives with a harness block, and records onl
   submit(vault, 'no, that is not the file I meant\n<example-monitor-event>build is wrong</example-monitor-event>');
   const text = captured(vault);
 
-  assert.match(text, /- Correction/u);
+  assert.match(text, /^## \d{2}:\d{2} - /mu);
+  assert.doesNotMatch(text, /^## \d{2}:\d{2} - Correction\s*$/mu);
   assert.ok(text.includes('no, that is not the file I meant'));
   assert.ok(!text.includes('build is wrong'), 'the harness block must not be recorded as the user words');
 });
@@ -223,7 +233,8 @@ test('keeps a real correction typed next to a paste, and records only the user w
   );
   const text = captured(vault);
 
-  assert.match(text, /- Correction/u);
+  assert.match(text, /^## \d{2}:\d{2} - /mu);
+  assert.doesNotMatch(text, /^## \d{2}:\d{2} - Correction\s*$/mu);
   assert.ok(text.includes('no, that is not the file I meant'));
   assert.ok(!text.includes('do not ship'), 'the paste must not be recorded as the user words');
 });

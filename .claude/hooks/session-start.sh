@@ -155,6 +155,14 @@ PY
         fi
     fi
 
+    # Retitle generic "Correction" headings and split notes that were piled
+    # together. Fail-open, background, no user action. The job is idempotent.
+    if [[ -f "$CLAUDE_DIR/core/utils/learning_title_backfill.py" && ${#DEX_PYTHON_CMD[@]} -gt 0 ]]; then
+        (cd "$CLAUDE_DIR" && VAULT_PATH="$CLAUDE_DIR" \
+            "${DEX_PYTHON_CMD[@]}" -m core.utils.learning_title_backfill \
+            --vault "$CLAUDE_DIR") >/dev/null 2>&1 &
+    fi
+
     # Wait briefly for checks to complete (but don't block session start)
     sleep 0.1
 fi
