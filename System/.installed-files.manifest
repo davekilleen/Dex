@@ -1281,6 +1281,7 @@ core/path_contract.py
 core/path_safety.py
 core/paths.py
 core/portable_contract.py
+core/project_related_tasks.py
 core/provision-contract.json
 core/provision.cjs
 core/provision_transaction.py
@@ -1353,6 +1354,7 @@ core/tests/fixtures/release-catalog-v1.96.2-historic-shape.json
 core/tests/fixtures/release-catalog-v1.96.2-installed-files.manifest
 core/tests/fixtures/release-catalog-v1.96.2-tag-split.json
 core/tests/fixtures/releases-feed.md
+core/tests/fixtures/session_boot_urgent_tasks.md
 core/tests/fixtures/sync-folder-vectors.json
 core/tests/fixtures/vault/00-Inbox/Daily_Plans/.gitkeep
 core/tests/fixtures/vault/00-Inbox/Ideas/.gitkeep
@@ -1544,6 +1546,8 @@ core/tests/test_learning_automation.py
 core/tests/test_learning_capture_command_name.py
 core/tests/test_learning_review_prompt.py
 core/tests/test_learning_routing.py
+core/tests/test_learning_title.py
+core/tests/test_learning_title_backfill.py
 core/tests/test_lens_catalog_ci_trigger.py
 core/tests/test_lens_catalog_discovery.py
 core/tests/test_lens_catalog_enriched_discovery.py
@@ -1604,6 +1608,7 @@ core/tests/test_preflight_paths.py
 core/tests/test_process_meetings_capture_calendar_wiring.py
 core/tests/test_process_meetings_soft_commitment_wiring.py
 core/tests/test_product_agents_bootstrap.py
+core/tests/test_project_related_tasks.py
 core/tests/test_provision_js_yaml_missing.py
 core/tests/test_provision_parity.py
 core/tests/test_provision_python_selection.py
@@ -1642,6 +1647,7 @@ core/tests/test_ritual_match.py
 core/tests/test_ritual_timing.py
 core/tests/test_safe_autosave.py
 core/tests/test_security_gate.py
+core/tests/test_session_boot_urgent_tasks.py
 core/tests/test_session_health.py
 core/tests/test_session_lesson_extract.py
 core/tests/test_session_lesson_honesty.py
@@ -1741,6 +1747,8 @@ core/utils/history_hygiene.py
 core/utils/integration_credentials.py
 core/utils/launch_agents.py
 core/utils/learning_routing.py
+core/utils/learning_title.py
+core/utils/learning_title_backfill.py
 core/utils/local_git.py
 core/utils/manifest.py
 core/utils/mcp_handshake.py

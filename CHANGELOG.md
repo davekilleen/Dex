@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.32] — Lessons keep their own names, project pages show their tasks, and urgent tasks appear when a session starts (2026-10-28)
+
 Every correction was being saved under the same heading, so Dex treated unrelated notes as one idea.
 
 **What this fixes for you:**
