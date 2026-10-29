@@ -1643,8 +1643,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/backup-setup/SKILL.md",
-        "sha256": "bbcec8b57013f56e10d3de80ae5db46d2fe56dd5e77e3f9c68fa5ac8c12167da",
-        "byte_size": 5265
+        "sha256": "7712caadeacd51efb140f7de510454ba80fefee0a30f0e007fa06ca83da8a4ed",
+        "byte_size": 5394
       },
       "value": "Puts the person's whole working record on a schedule that copies it somewhere else, keeps a ladder of older copies, and says so loudly when it quietly stops working.",
       "jobs_served": [
