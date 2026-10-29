@@ -37,6 +37,7 @@ config parser when PyYAML is unavailable rather than dying silently.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import io
 import json
@@ -319,6 +320,16 @@ def _add_runbook(tar: tarfile.TarFile, vault: Path,
     tar.addfile(info, io.BytesIO(payload))
 
 
+def _skip_reason(error: BaseException) -> str:
+    """Plain-language why one vault entry was left out of the archive."""
+    if isinstance(error, FileNotFoundError) or getattr(error, "errno", None) == errno.ENOENT:
+        return "the file was missing or already deleted"
+    if getattr(error, "errno", None) in {errno.EACCES, errno.EPERM}:
+        return "the backup process is not allowed to read it"
+    detail = str(error).strip() or error.__class__.__name__
+    return detail.splitlines()[0][:120]
+
+
 def _add_vault_tree(tar: tarfile.TarFile, vault: Path, escaping: list[str],
                     unreadable: list[str]) -> int:
     """Add the vault to the archive one entry at a time; return how many files went in.
@@ -345,8 +356,8 @@ def _add_vault_tree(tar: tarfile.TarFile, vault: Path, escaping: list[str],
             try:
                 tar.add(path, arcname=f"{ARCNAME}/{relative}", recursive=False,
                         filter=apply)
-            except OSError:
-                unreadable.append(str(relative))
+            except (OSError, tarfile.TarError) as error:
+                unreadable.append(f"{relative} ({_skip_reason(error)})")
                 continue
             if path.is_file() and not path.is_symlink():
                 added += 1
@@ -365,10 +376,10 @@ def build_artifacts(vault: Path, workdir: Path, stamp: str,
 
     The same rule applies inside the archive. A single file the scheduled
     process cannot read (a per-file access list on an image saved by a
-    sandboxed app was the real case) must cost that file, not the whole
-    night's backup: it is skipped, named in a recorded warning, and the run
-    still stores everything else. Only a vault with nothing readable at all
-    fails the run.
+    sandboxed app, or a note already marked for deletion) must cost that
+    file, not the whole night's backup: it is skipped, named in a recorded
+    warning with the reason, and the run still stores everything else. Only
+    a vault with nothing readable at all fails the run.
     """
     archive = workdir / f"{PREFIX}{stamp}.tar.gz"
     escaping: list[str] = []
@@ -385,8 +396,7 @@ def build_artifacts(vault: Path, workdir: Path, stamp: str,
         warnings.append(
             f"{len(unreadable)} file(s) could not be read by the backup process "
             f"and are missing from this set ({shown}); everything else is "
-            "backed up. Check the file's permissions, or whether macOS is "
-            "restricting the backup job's access to it")
+            "backed up")
     if escaping and warnings is not None:
         shown = ", ".join(sorted(escaping)[:5])
         warnings.append(
@@ -552,12 +562,46 @@ def prune(backend, retention: dict) -> list[str]:
     return pruned
 
 
+def _read_stamp(vault: Path) -> dict:
+    """Return the previous last-run record, or {} if none can be read."""
+    try:
+        raw = json.loads(stamp_path(vault).read_text())
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def success_time(stamp: dict) -> str | None:
+    """The timestamp of the newest successful run recorded in *stamp*.
+
+    Failed runs rewrite the same file, so ``timestamp`` alone is not proof of
+    success. Prefer the dedicated ``last_success`` field; an older successful
+    record that predates that field still counts via ``timestamp`` when
+    ``ok`` is true, so an update does not look like backups never worked.
+    """
+    value = stamp.get("last_success")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if stamp.get("ok") is True:
+        value = stamp.get("timestamp")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def write_stamp(vault: Path, ok: bool, detail: dict) -> None:
     """Record the outcome of every run, success or failure, for /dex-doctor."""
+    previous = _read_stamp(vault)
     target = stamp_path(vault)
     target.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
-               "ok": ok, **detail}
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    payload = {"timestamp": now, "ok": ok, **detail}
+    if ok:
+        payload["last_success"] = now
+    else:
+        inherited = success_time(previous)
+        if inherited:
+            payload["last_success"] = inherited
     target.write_text(json.dumps(payload, indent=2) + "\n")
 
 

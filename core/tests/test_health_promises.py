@@ -89,6 +89,48 @@ def test_malformed_receipts_read_as_never_succeeded(tmp_path: Path) -> None:
         assert promises.audit_promise(tmp_path, promise, now=NOW).state == "never"
 
 
+def test_vault_backup_promise_uses_last_success_not_a_failed_timestamp(
+    tmp_path: Path,
+) -> None:
+    """Failed runs rewrite backup-last-run.json; only last_success proves a save."""
+    promise = promises.promise_by_id("com.dex.vault-backup")
+    assert promise is not None
+    assert promise.receipt_path == "System/.dex/backup-last-run.json"
+    assert promise.receipt_key == "last_success"
+    assert promise.cadence == timedelta(days=2)
+
+    receipt = tmp_path / promise.receipt_path
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(
+        json.dumps({
+            "ok": False,
+            "timestamp": NOW.isoformat(),
+            "error": "one file blocked the archive",
+            "last_success": (NOW - timedelta(days=3)).isoformat(),
+        }),
+        encoding="utf-8",
+    )
+
+    audit = promises.audit_promise(tmp_path, promise, now=NOW)
+    assert audit.state == "broken"
+    assert "Vault backup last completed successfully" in audit.detail()
+
+
+def test_vault_backup_promise_reads_a_legacy_ok_timestamp_as_success(
+    tmp_path: Path,
+) -> None:
+    """Records written before last_success existed must not false-alarm on update."""
+    promise = promises.promise_by_id("com.dex.vault-backup")
+    assert promise is not None
+    receipt = tmp_path / promise.receipt_path
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text(
+        json.dumps({"ok": True, "timestamp": (NOW - timedelta(hours=1)).isoformat()}),
+        encoding="utf-8",
+    )
+    assert promises.audit_promise(tmp_path, promise, now=NOW).state == "kept"
+
+
 def test_smoke_receipt_is_the_success_only_log_not_the_ledger() -> None:
     """The ledger (System/.smoke-last-run.json) is rewritten even by failing
     runs, so it can never be the smoke job's success receipt."""

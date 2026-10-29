@@ -10,6 +10,8 @@ const HOOK_PATH = path.resolve(__dirname, '..', 'session-start.sh');
 const MEETING_INTEL_PLIST = 'com.dex.meeting-intel.plist';
 const MEETING_INTEL_STATE = 'System/.dex/processed-meetings.json';
 const LEGACY_MEETING_INTEL_STATE = '.scripts/meeting-intel/processed-meetings.json';
+const VAULT_BACKUP_PLIST = 'com.dex.vault-backup.plist';
+const VAULT_BACKUP_STAMP = 'System/.dex/backup-last-run.json';
 
 function createSandbox(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dex-session-staleness-'));
@@ -28,6 +30,24 @@ function createSandbox(t) {
 
 function installMeetingIntel(sandbox) {
   fs.writeFileSync(path.join(sandbox.launchAgents, MEETING_INTEL_PLIST), '<plist/>\n');
+}
+
+function installVaultBackup(sandbox) {
+  fs.writeFileSync(path.join(sandbox.launchAgents, VAULT_BACKUP_PLIST), '<plist/>\n');
+}
+
+function writeBackupStamp(sandbox, { lastSuccess, ok = true, timestamp } = {}) {
+  const stampPath = path.join(sandbox.vault, VAULT_BACKUP_STAMP);
+  fs.mkdirSync(path.dirname(stampPath), { recursive: true });
+  const payload = {
+    ok,
+    timestamp: (timestamp || lastSuccess || new Date()).toISOString(),
+  };
+  if (lastSuccess) {
+    payload.last_success = lastSuccess.toISOString();
+  }
+  fs.writeFileSync(stampPath, `${JSON.stringify(payload)}\n`);
+  return stampPath;
 }
 
 function writeMeetingIntelState(sandbox, lastSync) {
@@ -242,6 +262,54 @@ test('session start suppresses Core freshness warnings for a valid Dex Solo clai
   const stdout = runSessionStart(sandbox);
 
   assert.doesNotMatch(stdout, /⏰ Meeting sync/);
+});
+
+test('session start warns when an installed vault backup last succeeded 3 days ago', (t) => {
+  const sandbox = createSandbox(t);
+  installVaultBackup(sandbox);
+  writeBackupStamp(sandbox, {
+    ok: false,
+    timestamp: new Date(),
+    lastSuccess: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+  });
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(
+    stdout,
+    /⏰ Vault backup last completed successfully 3 days ago \(expected every 2 days\) — run \/dex-doctor to investigate\./,
+  );
+});
+
+test('session start stays silent for a recently succeeded vault backup', (t) => {
+  const sandbox = createSandbox(t);
+  installVaultBackup(sandbox);
+  writeBackupStamp(sandbox, { lastSuccess: new Date() });
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /⏰ Vault backup/);
+});
+
+test('session start stays silent for a legacy successful backup stamp without last_success', (t) => {
+  const sandbox = createSandbox(t);
+  installVaultBackup(sandbox);
+  writeBackupStamp(sandbox, { ok: true, timestamp: new Date() });
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /⏰ Vault backup/);
+});
+
+test('session start ignores a stale vault backup stamp when the job is not installed', (t) => {
+  const sandbox = createSandbox(t);
+  writeBackupStamp(sandbox, {
+    lastSuccess: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+  });
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /⏰ Vault backup/);
 });
 
 test('session start warns when meeting sync keeps running but has never succeeded', (t) => {

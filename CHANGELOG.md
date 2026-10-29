@@ -9,6 +9,17 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.33] — One bad file can no longer stop your vault backup, and Dex tells you if backups stop (2026-10-29)
+
+A tester's automatic backup failed for two days because one file was already marked for deletion — and Dex said nothing. He had to notice the missing copies himself.
+
+**What this fixes for you:**
+
+* **One problem file no longer blocks the rest.** If a note is missing, already deleted, or cannot be read, Dex skips that file, records which one and why, and still saves everything else.
+* **Dex tells you when backups stop.** The next time you open Dex, you see a clear warning if the last successful backup is more than two days old, or if the last run failed. The ordinary checkup shows the same problem and the recorded error — you do not have to ask for an extra scan.
+
+Thanks to Olivier Fontenelle for reporting this.
+
 ## [1.97.32] — Lessons keep their own names, project pages show their tasks, and urgent tasks appear when a session starts (2026-10-28)
 
 Every correction was being saved under the same heading, so Dex treated unrelated notes as one idea.

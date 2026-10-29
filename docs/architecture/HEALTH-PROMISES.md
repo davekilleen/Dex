@@ -16,6 +16,7 @@ not health; only receipts count, and activity-only entries say so.
 | `com.dex.changelog-checker` | Claude update watcher | every 168 h | `.scripts/logs/changelog-checker.log` | activity only |
 | `com.dex.learning-review` | Learning review | every 168 h | `.scripts/logs/learning-review.log` | activity only |
 | `com.dex.obsidian-sync` | Obsidian sync daemon | continuous | `System/obsidian-sync.log` | liveness only (launchd) |
+| `com.dex.vault-backup` | Vault backup | every 48 h | `System/.dex/backup-last-run.json` → `last_success` | a completed run |
 
 ## Where each job is declared
 
@@ -24,3 +25,4 @@ not health; only receipts count, and activity-only entries say so.
 - `com.dex.meeting-intel`: `.scripts/meeting-intel/com.dex.meeting-intel.plist.template`, `.scripts/meeting-intel/install-automation.sh`
 - `com.dex.obsidian-sync`: `core/obsidian/install_sync_daemon.sh`
 - `com.dex.smoke-nightly`: `.scripts/com.dex.smoke-nightly.plist.template`, `.scripts/install-smoke-automation.sh`
+- `com.dex.vault-backup`: `core/backup/install_backup_job.py`

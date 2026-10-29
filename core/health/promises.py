@@ -106,6 +106,17 @@ PROMISES: tuple[HealthPromise, ...] = (
         receipt_path="System/obsidian-sync.log",
         activity_only=True,
     ),
+    HealthPromise(
+        id="com.dex.vault-backup",
+        label="Vault backup",
+        cadence=timedelta(days=2),
+        # backup-last-run.json is rewritten on failure as well as success, so
+        # its ``timestamp`` cannot be the receipt. last_success is copied
+        # forward on a failed run and is only advanced when a run stores a set.
+        receipt_kind="json-timestamp",
+        receipt_path="System/.dex/backup-last-run.json",
+        receipt_key="last_success",
+    ),
 )
 
 
@@ -172,6 +183,15 @@ def read_receipt_timestamp(vault_root: str | Path, promise: HealthPromise) -> da
     except (OSError, json.JSONDecodeError):
         return None
     value = document.get(promise.receipt_key) if isinstance(document, dict) else None
+    if (
+        value is None
+        and promise.receipt_key == "last_success"
+        and isinstance(document, dict)
+        and document.get("ok") is True
+    ):
+        # Records written before last_success existed still prove a success
+        # when ok is true; treating them as "never" would false-alarm on update.
+        value = document.get("timestamp")
     parsed = parse_timestamp(value)
     return parsed.astimezone(timezone.utc) if parsed is not None else None
 

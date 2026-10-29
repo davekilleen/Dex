@@ -71,6 +71,7 @@ QUICK_IDS = [
     "config.claude_direct_edits",
     "core.drift",
     "rituals.duration",
+    "backup.freshness",
     "doctor.self",
 ]
 
@@ -88,7 +89,6 @@ DEEP_IDS = [
     "integrations.enabled",
     "mcp.importable",
     "smoke.journeys",
-    "backup.freshness",
 ]
 
 
@@ -2924,6 +2924,7 @@ def test_jobs_loaded_degrades_to_unknown_off_macos(monkeypatch, context):
         ("com.dex.meeting-intel", timedelta(hours=48)),
         ("com.dex.changelog-checker", timedelta(days=7)),
         ("com.dex.learning-review", timedelta(days=7)),
+        ("com.dex.vault-backup", timedelta(days=2)),
     ],
 )
 def test_freshness_thresholds_are_strictly_greater_than_the_limit(label, expected_max_age, context):
@@ -4737,6 +4738,40 @@ def test_backup_freshness_broken_when_configured_but_never_ran(context):
     assert result.verdict == "BROKEN"
     assert "never recorded a run" in result.detail
     assert result.heal.tier == 3
+
+
+def test_backup_freshness_runs_in_the_ordinary_checkup(monkeypatch, context):
+    """A silent backup failure must not hide behind the extra live-service scan."""
+    _stub_probes(monkeypatch)
+    report = doctor.collect(context=context)
+    assert any(check["id"] == "backup.freshness" for check in report["checks"])
+    assert "backup.freshness" in {definition.id for definition in doctor.QUICK_CHECKS}
+    assert "backup.freshness" not in {definition.id for definition in doctor.DEEP_CHECKS}
+
+
+def test_vault_backup_freshness_uses_last_success_not_a_failed_run_timestamp(context):
+    """A job that fails every night still has a recent timestamp; that is not health."""
+    _write_plist(context, "com.dex.vault-backup")
+    promise = health_promises.promise_by_id("com.dex.vault-backup")
+    assert promise is not None
+    receipt = context.vault_root / promise.receipt_path
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    stale_success = NOW - timedelta(days=3)
+    receipt.write_text(
+        json.dumps({
+            "ok": False,
+            "timestamp": NOW.isoformat().replace("+00:00", "Z"),
+            "error": "one file blocked the archive",
+            "last_success": stale_success.isoformat().replace("+00:00", "Z"),
+        }),
+        encoding="utf-8",
+    )
+
+    result = doctor._probe_jobs_fresh(context)
+
+    assert result.verdict == "BROKEN"
+    assert "Vault backup" in result.detail
+    assert stale_success.date().isoformat() in result.detail
 
 
 def test_backup_freshness_unknown_when_stamp_is_unreadable(context):

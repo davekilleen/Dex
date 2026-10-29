@@ -12,8 +12,9 @@ apart. With ``--write`` it renders ``docs/architecture/HEALTH-PROMISES.md``;
 with ``--check`` it verifies the rendered view is current (CI drift gate).
 
 Coverage boundary: the scan reads shipped ``.plist``/``.plist.template``
-files and ``.sh`` installers. A launchd job introduced from another language
-must add its promise to the register deliberately.
+files, ``.sh`` installers, and ``install_*.py`` installers (tests excluded).
+A launchd job introduced from any other shape must add its promise to the
+register deliberately.
 """
 
 from __future__ import annotations
@@ -27,8 +28,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = REPO_ROOT / "docs" / "architecture" / "HEALTH-PROMISES.md"
 SESSION_START = REPO_ROOT / ".claude" / "hooks" / "session-start.sh"
 LABEL_PATTERN = re.compile(r"com\.dex\.[a-z0-9][a-z0-9-]*")
-# Files that can introduce a launchd job.
+# Files that can introduce a launchd job. Python installers are included so a
+# job like com.dex.vault-backup cannot slip past the register: that installer
+# is Python, not a shipped plist template, and the previous suffix list missed it.
 CANDIDATE_SUFFIXES = (".plist", ".plist.template", ".sh")
+INSTALLER_PYTHON_PREFIX = "install_"
 MIRROR_ROW = re.compile(
     r"^(?P<label>com\.dex\.[a-z0-9-]+)\|(?P<path>[^|]+)\|(?P<seconds>\d+)\|[^|]+\|[^|]+\|(?P<mode>[A-Za-z:_-]+)$",
     re.MULTILINE,
@@ -47,11 +51,21 @@ def _tracked_files() -> list[Path]:
     ]
 
 
+def _is_candidate(path: Path) -> bool:
+    """Return whether this tracked file can declare a launchd job."""
+    posix = path.as_posix()
+    if "/tests/" in posix or path.name.startswith("test_"):
+        return False
+    if path.name.endswith(CANDIDATE_SUFFIXES):
+        return True
+    return path.name.endswith(".py") and path.name.startswith(INSTALLER_PYTHON_PREFIX)
+
+
 def discovered_labels() -> dict[str, list[str]]:
     """Scan shipped installers and templates for launchd job labels."""
     found: dict[str, list[str]] = {}
     for path in _tracked_files():
-        if not path.name.endswith(CANDIDATE_SUFFIXES):
+        if not _is_candidate(path):
             continue
         try:
             text = path.read_text(encoding="utf-8")

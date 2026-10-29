@@ -666,6 +666,7 @@ QUICK_CHECKS = (
     ),
     CheckDefinition("core.drift", "Shipped-file drift", "_probe_core_drift"),
     CheckDefinition("rituals.duration", "Ritual run times", "_probe_ritual_duration"),
+    CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
     CheckDefinition("doctor.self", "Doctor instruments", "_probe_doctor_self"),
 )
 
@@ -691,7 +692,6 @@ DEEP_CHECKS = (
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
     CheckDefinition("mcp.importable", "MCP imports", "_probe_mcp_importable"),
     CheckDefinition("smoke.journeys", "End-to-end smoke journeys", "_probe_smoke_journeys"),
-    CheckDefinition("backup.freshness", "Vault backups", "_probe_backup_freshness"),
 )
 
 START_PROGRESS = "Starting Dex checkup..."

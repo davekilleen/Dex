@@ -473,6 +473,60 @@ def test_links_pointing_outside_the_vault_are_reported_at_backup_time(vault, tmp
     assert any("linked.md" in warning for warning in warnings)
 
 
+def test_a_file_already_deleted_costs_that_file_not_the_backup(vault, tmp_path, monkeypatch):
+    """Olivier's case: one note already marked for deletion must not abort the set.
+
+    The archive lists the file, then cannot open it (ENOENT). That used to raise
+    out of a single tar.add() of the whole vault and store nothing.
+    """
+    gone = vault / "05-Areas" / "People" / "gone.md"
+    gone.write_text("# gone\n")
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    real_add = tarfile.TarFile.add
+
+    def add_but_the_deleted_file_is_gone(self, name, arcname=None, recursive=True,
+                                         *, filter=None):
+        if Path(name) == gone:
+            raise FileNotFoundError(2, "No such file or directory", str(gone))
+        return real_add(self, name, arcname=arcname, recursive=recursive, filter=filter)
+
+    monkeypatch.setattr(tarfile.TarFile, "add", add_but_the_deleted_file_is_gone)
+    assert backup_vault.run_backup(vault) == 0
+
+    stamp = read_stamp(vault)
+    assert stamp["ok"] is True
+    assert stamp["last_success"] == stamp["timestamp"]
+    assert any("gone.md" in warning and "already deleted" in warning
+               for warning in stamp["warnings"])
+    with tarfile.open(dest / f"{backup_vault.PREFIX}{stamp['set']}.tar.gz") as tar:
+        names = tar.getnames()
+    assert f"{backup_vault.ARCNAME}/05-Areas/People/Ada_Lovelace.md" in names
+    assert f"{backup_vault.ARCNAME}/05-Areas/People/gone.md" not in names
+
+
+def test_a_failed_run_keeps_the_previous_successful_timestamp(vault, tmp_path):
+    """A failing job rewrites the last-run record; last_success must not follow it."""
+    dest = tmp_path / "backups"
+    write_config(vault, destination=str(dest))
+    assert backup_vault.run_backup(vault) == 0
+    first = read_stamp(vault)
+    assert first["last_success"] == first["timestamp"]
+    pinned = "2026-07-01T12:00:00+00:00"
+    first["last_success"] = pinned
+    first["timestamp"] = pinned
+    (vault / "System" / ".dex" / "backup-last-run.json").write_text(
+        json.dumps(first, indent=2) + "\n"
+    )
+
+    write_config(vault, destination="")
+    assert backup_vault.run_backup(vault) == 1
+    second = read_stamp(vault)
+    assert second["ok"] is False
+    assert second["last_success"] == pinned
+    assert second["timestamp"] != pinned
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can read anything")
 def test_one_unreadable_file_costs_that_file_not_the_backup(vault, tmp_path):
     """A scheduled run that cannot read one file must still store the rest.

@@ -95,4 +95,4 @@ Finish by telling them three things: where backups are going, how to get one on 
 
 ## If backups stop working
 
-`/dex-doctor` checks the last-run record and flags it when the newest successful backup is more than two days old. That check exists because a backup can fail silently for weeks and look identical to a healthy one. If they ask why a warning appeared, read `System/.dex/backup-last-run.json` and report the recorded error verbatim rather than guessing.
+Opening Dex warns when the newest successful backup is more than two days old, or the last run failed — the same ⏰ notice used for meeting sync. Ordinary `/dex-doctor` (no extra scan) reads the last-run record and says what went wrong. If they ask why a warning appeared, read `System/.dex/backup-last-run.json` and report the recorded error verbatim rather than guessing. A single file that could not be read is named in that record and does not block the rest of the backup.
