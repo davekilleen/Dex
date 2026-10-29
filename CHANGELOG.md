@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.33] — One bad file can no longer stop your vault backup, and Dex tells you if backups stop (2026-10-29)
+
 A tester's automatic backup failed for two days because one file was already marked for deletion — and Dex said nothing. He had to notice the missing copies himself.
 
 **What this fixes for you:**
