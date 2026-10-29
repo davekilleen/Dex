@@ -301,6 +301,34 @@ test('session start stays silent for a legacy successful backup stamp without la
   assert.doesNotMatch(stdout, /⏰ Vault backup/);
 });
 
+test('session start reads a spaced legacy ok:true backup stamp the way macOS writes JSON', (t) => {
+  const sandbox = createSandbox(t);
+  installVaultBackup(sandbox);
+  const stampPath = path.join(sandbox.vault, VAULT_BACKUP_STAMP);
+  fs.mkdirSync(path.dirname(stampPath), { recursive: true });
+  fs.writeFileSync(
+    stampPath,
+    `{\n  "ok": true,\n  "timestamp": "${new Date().toISOString()}"\n}\n`,
+  );
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.doesNotMatch(stdout, /⏰ Vault backup/);
+});
+
+test('session start warns when a legacy backup stamp recorded a failed run and no success', (t) => {
+  const sandbox = createSandbox(t);
+  installVaultBackup(sandbox);
+  writeBackupStamp(sandbox, { ok: false, timestamp: new Date() });
+
+  const stdout = runSessionStart(sandbox);
+
+  assert.match(
+    stdout,
+    /⏰ Vault backup is installed but has never completed a successful run — run \/dex-doctor to investigate\./,
+  );
+});
+
 test('session start ignores a stale vault backup stamp when the job is not installed', (t) => {
   const sandbox = createSandbox(t);
   writeBackupStamp(sandbox, {

@@ -431,8 +431,9 @@ fi
             if [[ -z "$JOB_TS" ]]; then
                 # Older vault-backup receipts used timestamp + ok, with no
                 # last_success field. A successful record still counts.
-                OK_FLAG=$(sed -n 's/.*"ok"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$JOB_LOG" | head -1)
-                if [[ "$OK_FLAG" == "true" ]]; then
+                # grep, not sed alternation: macOS /usr/bin/sed does not treat
+                # \| as OR, so a GNU-only pattern would miss every legacy stamp.
+                if grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' "$JOB_LOG"; then
                     JOB_TS=$(sed -n 's/.*"timestamp"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$JOB_LOG" | head -1)
                 fi
             fi
