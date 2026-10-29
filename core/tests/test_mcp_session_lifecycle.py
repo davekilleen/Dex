@@ -255,11 +255,15 @@ def test_zombie_pid_is_not_treated_as_alive() -> None:
 
 
 def test_pid_reuse_does_not_kill_unrelated_process(isolated_lifecycle: Path) -> None:
+    # Own process group: a victim that shares the pytest worker's group is not
+    # unrelated. If reap_session ever killpg'd that shared group, the CI step
+    # died with "operation was canceled" instead of a failed assertion.
     victim = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
     try:
         lifecycle.write_lease(
