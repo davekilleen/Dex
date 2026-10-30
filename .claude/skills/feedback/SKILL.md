@@ -8,6 +8,13 @@ description: Report a Dex bug to the Dex team with zero homework — Dex investi
 Turn "something in Dex is broken" into a high-quality report on the Dex team's desk,
 with the user doing nothing but approving. Contract: `docs/feedback-loop-contract.md`.
 
+`/feedback` is for something that only showed up on this machine (a broken index,
+a Doctor lie, a missing file). Dex investigates locally; the user approves what
+leaves. Product defects, design, and anything another contributor should see
+belong on GitHub issues — that is the public record. A proposed change is a
+GitHub PR: issues argue, PRs show the bytes. If this reporting channel is down,
+GitHub is the backstop.
+
 ## Cardinal rules (read every time)
 
 1. **The conversation is never a source.** A report may contain ONLY the allowed
