@@ -6561,8 +6561,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/wispr-setup/SKILL.md",
-        "sha256": "3204914ba11f57a85dae7f69f3a181538f192797b04b6a48366920c7b7a9b90e",
-        "byte_size": 4143
+        "sha256": "f5a783e1792b036fd16538643c4e18052f6fae969692ddc7a7ae1160dcad5b15",
+        "byte_size": 4755
       },
       "value": "Connect Wispr Flow so meeting captures arrive in the vault on their own.",
       "jobs_served": [
