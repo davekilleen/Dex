@@ -23,9 +23,11 @@ def test_proactive_capture_only_reads_the_current_message_and_skips_morning_plan
 
     daily_plan = _read(".claude/skills/daily-plan/SKILL.md")
     agent = _read(".claude/skills/daily-plan/AGENT_INSTRUCTIONS.md")
-    assert "Do not call `capture_idea` during this skill" in daily_plan
-    assert "morning plan must not harvest" in daily_plan
-    assert "Do not call `capture_idea`" in agent
+    assert "Do not harvest improvement ideas during this skill" in daily_plan
+    assert "morning plan must not" in daily_plan
+    assert "Do not harvest improvement ideas" in agent
+    assert "capture_idea" not in daily_plan
+    assert "capture_idea" not in agent
 
 
 def test_daily_review_treats_cancelled_and_moved_meetings_as_not_missed() -> None:

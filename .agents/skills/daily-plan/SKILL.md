@@ -81,8 +81,8 @@ found for a named date/file, or none.
 
 Generate your daily plan with full context awareness. Automatically gathers information from your calendar, tasks, meetings, relationships, and weekly progress to create a focused plan with genuine situational awareness.
 
-Do not call `capture_idea` during this skill. The morning plan must not harvest
-chat history into the improvements backlog.
+Do not harvest improvement ideas during this skill. The morning plan must not
+turn chat history into the improvements backlog.
 
 ## Usage
 

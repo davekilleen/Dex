@@ -8,8 +8,8 @@ needs the user (triage decisions, task creation confirmations, goal-link
 confirmations) is flagged in your final report and handled by the main
 conversation.
 
-Do not call `capture_idea`. The morning plan must not harvest chat history into
-the improvements backlog.
+Do not harvest improvement ideas. The morning plan must not turn chat history
+into the improvements backlog.
 
 **Target date:** {{TARGET_DATE}} ({{DAY_NAME}}, {{MONTH}} {{DD}})
 
