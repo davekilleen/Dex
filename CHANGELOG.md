@@ -18,7 +18,23 @@ After the late-October update, a safety check treated the computer's scratch fol
 * **A custom skill can use the scratch folder again.** Drafts and working files in the computer's temp location are allowed.
 * **Your notes and system files stay protected.** Writing into Dex still has to stay inside your Dex folder. Your home folder and system files stay blocked.
 
-Thanks to Michelle Wright for reporting this.
+Thanks to testers who reported these.
+
+Obsidian settings were being overwritten, a project-page list was eating the next heading, finishing one task could tick the wrong work and close the week's priority, the morning plan was stuffing the idea backlog, pasted skill text was saved as a "correction," moved meetings looked missed, setup never said to start a new chat, and a certificate error always sounded like a workplace network.
+
+**What this fixes for you:**
+
+* **Your Obsidian settings stay yours.** An update or Obsidian setup no longer wipes the look, shortcuts, or layout you already chose. Dex keeps what you have, fills in only what is missing, and saves a dated copy first.
+* **Project pages keep the rest of the page.** The related-tasks list no longer glues itself onto the next heading or deletes the section after it. Pages already damaged get that heading put back on its own line. Body text that was already deleted cannot be invented, but the wipe stops.
+* **Finishing a task does not close the week's priority.** You mark the week's priority done yourself. A finished task still ticks on the task list.
+* **Two jobs on one line no longer tick the wrong one.** If a line carries more than one task marker, Dex leaves it alone rather than completing the other job.
+* **The idea backlog only records what you just said.** Dex no longer harvests older chat or the morning plan into the improvements list.
+* **Pasted skill text is not a correction.** A scheduled run that loads a skill's instructions is no longer saved as you telling Dex it got something wrong.
+* **Moved or cancelled meetings are not "missed."** The daily review checks the date, skips cancelled events, and lists a moved meeting as rescheduled.
+* **Setup ends by asking you to start a new chat.** That is what loads the tools. Creating tasks, goals, or weekly priorities in the same setup chat will fail until you do.
+* **A certificate problem names the real cause.** If this computer's certificates are out of date, Dex says so. It only mentions a workplace network inspecting traffic when this computer is set up to send web traffic through another machine.
+
+Thanks to testers who reported these.
 
 ## [1.97.33] — One bad file can no longer stop your vault backup, and Dex tells you if backups stop (2026-10-29)
 

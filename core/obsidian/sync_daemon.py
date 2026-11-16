@@ -70,10 +70,15 @@ class DexSyncHandler(FileSystemEventHandler):
     @staticmethod
     def _read_task_states(file_path: Path):
         content = file_path.read_text()
-        return [
-            (task_id, _checkbox_token(checkbox_state))
-            for checkbox_state, task_id in TASK_PATTERN.findall(content)
-        ]
+        states = []
+        for line in content.splitlines():
+            ids = re.findall(r'\^(task-\d{8}-\d{3,})', line)
+            if len(ids) != 1:
+                continue
+            match = TASK_PATTERN.search(line)
+            if match and match.group(2) == ids[0]:
+                states.append((ids[0], _checkbox_token(match.group(1))))
+        return states
 
     def _prime_last_seen_states(self, vault_root: Path):
         """Capture checkbox baselines before file events begin."""

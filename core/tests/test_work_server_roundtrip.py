@@ -1005,3 +1005,30 @@ def test_python_meeting_cache_recurses_dated_folders_and_skips_queue(
         f"00-Inbox/Meetings/{day}/customer-sync.md"
     )
     assert cache["meetings"][0]["action_items"] == ["Close old loop", "Close new loop"]
+
+
+def test_two_task_ids_on_one_line_are_left_unchanged(task_vault, monkeypatch):
+    first = "task-20260101-001"
+    second = "task-20260101-002"
+    archive = task_vault["root"] / "07-Archives" / "Reviews" / "week.md"
+    archive.parent.mkdir(parents=True)
+    archive_line = (
+        f"- [ ] Due today, not done: Alpha ^{first}, Beta ^{second}\n"
+    )
+    archive.write_text("# Review\n\n" + archive_line, encoding="utf-8")
+    task_vault["tasks"].write_text(
+        "# Tasks\n\n"
+        f"- [ ] Alpha ^{first}\n"
+        f"- [ ] Beta ^{second}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "_tz_now", lambda: datetime(2026, 1, 1, 10, 0))
+
+    result = work_server.update_task_status_everywhere(second, "d")
+
+    tasks = task_vault["tasks"].read_text(encoding="utf-8")
+    assert f"- [x] Beta ✅ 2026-01-01 10:00 ^{second}" in tasks
+    assert f"- [ ] Alpha ^{first}" in tasks
+    assert archive.read_text(encoding="utf-8").endswith(archive_line)
+    failed = result.get("failed_files") or []
+    assert any("more than one task id" in str(item.get("error", "")) for item in failed)

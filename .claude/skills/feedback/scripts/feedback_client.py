@@ -40,6 +40,14 @@ HEYDEX_API_BASE_URL = "https://gallant-reindeer-229.eu-west-1.convex.site"
 HEYDEX_SITE_BASE_URL = "https://heydex.ai"
 AUTH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 HTTP_TIMEOUT_SECONDS = 20
+_PROXY_ENV_NAMES = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+)
 
 SCHEMA_VERSION = 1
 
@@ -235,6 +243,27 @@ def load_auth(reference_ms: "int | None" = None, site_base: "str | None" = None)
     return auth
 
 
+def _proxy_env_configured() -> bool:
+    return any(str(os.environ.get(name) or "").strip() for name in _PROXY_ENV_NAMES)
+
+
+def _certificate_error_message(api_base: str) -> str:
+    host = get_api_base_url(api_base)
+    if _proxy_env_configured():
+        return (
+            f"Could not verify the secure certificate from {host}. "
+            "This can happen when a corporate network inspects encrypted traffic; "
+            "your internet connection may still be working. Ask your IT team to check "
+            "the network's certificate setup, then try again."
+        )
+    return (
+        f"Could not verify the secure certificate from {host}. "
+        "This usually means this computer's certificate store is missing or out of date, "
+        "not that someone is intercepting the connection. Your internet connection may "
+        "still be working. Check this computer's certificate setup, then try again."
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
@@ -264,22 +293,12 @@ def _request_json(
         raise _http_error_to_feedback_error(error)
     except urllib.error.URLError as error:
         if isinstance(error.reason, ssl.SSLCertVerificationError):
-            raise CertificateError(
-                f"Could not verify the secure certificate from {get_api_base_url(api_base)}. "
-                "This can happen when a corporate network inspects encrypted traffic; "
-                "your internet connection may still be working. Ask your IT team to check "
-                "the network's certificate setup, then try again."
-            ) from error
+            raise CertificateError(_certificate_error_message(api_base)) from error
         raise NetworkError(
             f"Could not reach {get_api_base_url(api_base)}. Check your internet connection and try again."
         ) from error
     except ssl.SSLCertVerificationError as error:
-        raise CertificateError(
-            f"Could not verify the secure certificate from {get_api_base_url(api_base)}. "
-            "This can happen when a corporate network inspects encrypted traffic; "
-            "your internet connection may still be working. Ask your IT team to check "
-            "the network's certificate setup, then try again."
-        ) from error
+        raise CertificateError(_certificate_error_message(api_base)) from error
     except (TimeoutError, OSError) as error:
         raise NetworkError(
             f"Could not reach {get_api_base_url(api_base)}. Check your internet connection and try again."

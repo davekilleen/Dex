@@ -362,3 +362,38 @@ def test_direct_edit_to_canonical_tasks_file_propagates(
     # The write-back this triggers is caught by the last-seen guard, not re-pushed.
     handler.sync_file_tasks(canonical_file)
     assert updates == [(task_id, True)]
+
+
+def test_two_anchor_line_is_not_credited_to_the_first_id(
+    tmp_path, monkeypatch, sync_daemon
+):
+    from core.mcp import work_server
+
+    first = "task-20260101-001"
+    second = "task-20260101-002"
+    canonical_file = tmp_path / "03-Tasks" / "Tasks.md"
+    note_file = tmp_path / "07-Archives" / "Reviews" / "week.md"
+    canonical_file.parent.mkdir(parents=True)
+    note_file.parent.mkdir(parents=True)
+    canonical_file.write_text(
+        f"- [ ] Alpha ^{first}\n- [ ] Beta ^{second}\n", encoding="utf-8"
+    )
+    dual = f"- [ ] Due today, not done: Alpha ^{first}, Beta ^{second}\n"
+    note_file.write_text(dual, encoding="utf-8")
+    monkeypatch.setattr(work_server, "get_tasks_file", lambda: canonical_file)
+
+    updates = []
+    monkeypatch.setattr(
+        work_server,
+        "update_task_status_everywhere",
+        lambda changed_id, completed: updates.append((changed_id, completed))
+        or {"success": True, "task_id": changed_id},
+    )
+
+    handler = sync_daemon.DexSyncHandler(tmp_path)
+    assert handler._read_task_states(note_file) == []
+    note_file.write_text(dual.replace("- [ ]", "- [x]", 1), encoding="utf-8")
+    handler.sync_file_tasks(note_file)
+
+    assert updates == []
+    assert f"- [ ] Alpha ^{first}" in canonical_file.read_text(encoding="utf-8")

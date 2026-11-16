@@ -66,6 +66,7 @@ _MACHINE_PHRASES = (
     "[SYSTEM NOTIFICATION - NOT USER INPUT]",
     "automated run of a scheduled task",
     "This is an automated background-task event",
+    "Base directory for this skill:",
 )
 
 _QUOTE_TRANSLATE = str.maketrans(

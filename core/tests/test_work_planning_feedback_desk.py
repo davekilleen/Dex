@@ -184,7 +184,7 @@ def test_update_task_status_skips_non_user_markdown(planning_vault):
     assert "- [x]" in planning_vault["tasks"].read_text(encoding="utf-8")
 
 
-def test_update_task_status_marks_weekly_priority_when_linked_tasks_finish(
+def test_update_task_status_does_not_mark_weekly_priority_complete(
     planning_vault,
 ):
     priority_id = "week-2026-W40-p2"
@@ -208,12 +208,12 @@ def test_update_task_status_marks_weekly_priority_when_linked_tasks_finish(
 
     assert result["success"] is True
     week_text = planning_vault["priorities"].read_text(encoding="utf-8")
-    assert f"✅ 2026-10-02 ^{priority_id}" in week_text
+    assert f"✅ 2026-10-02 ^{priority_id}" not in week_text
+    assert f"^{priority_id}" in week_text
     assert f"- [x] Restore customer confidence ✅ 2026-10-02 09:15 ^{task_id}" in week_text
 
     progress = _call("get_week_progress")
     [priority] = progress["priorities"]
-    assert priority["status"] == "complete"
     assert priority["tasks_done"] == 1
     assert priority["tasks_total"] == 1
 
