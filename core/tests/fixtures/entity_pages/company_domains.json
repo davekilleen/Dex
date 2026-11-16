@@ -1,9 +1,0 @@
-[
-  {"input": "mail.acme.co.uk", "registrable_domain": "acme.co.uk", "company_name": "Acme", "freemail": false},
-  {"input": "ACME.COM.", "registrable_domain": "acme.com", "company_name": "Acme", "freemail": false},
-  {"input": "sales.foo-bar.com.au", "registrable_domain": "foo-bar.com.au", "company_name": "Foo Bar", "freemail": false},
-  {"input": "mail.gmail.com", "registrable_domain": "gmail.com", "company_name": "Gmail", "freemail": true},
-  {"input": "@pm.me", "registrable_domain": "pm.me", "company_name": "Pm", "freemail": true},
-  {"input": "localhost", "registrable_domain": "localhost", "company_name": "Localhost", "freemail": false},
-  {"input": "", "registrable_domain": "", "company_name": "", "freemail": false}
-]
