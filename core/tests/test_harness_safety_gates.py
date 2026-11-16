@@ -269,7 +269,8 @@ def test_os_temp_allowance_does_not_open_home_or_system_paths(
     tmp_path: Path, monkeypatch
 ) -> None:
     vault = _vault(tmp_path)
-    home = Path("/Users/dex-test-home")
+    # /Users/testuser is a documented fixture name for the founder-content gate.
+    home = Path("/Users/testuser")
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setenv("HOME", str(home))
     _isolate_tempdir(monkeypatch, tmp_path / "scratch").mkdir()
@@ -278,10 +279,11 @@ def test_os_temp_allowance_does_not_open_home_or_system_paths(
         "~/secret.md",
         "$HOME/.ssh/id_rsa",
         "/etc/passwd",
+        "/private/etc/passwd",
         "/usr/bin/python",
         "/var/log/system.log",
         "/var/folders/zz/abcdefgh/Caches/secret",
-        "/Users/dex-test-home/Documents/note.md",
+        "/Users/testuser/Documents/note.md",
         "$HOME/var/folders/zz/abcdefgh/T/out.md",
         "~/Documents/var/folders/zz/abcdefgh/T/note.md",
         "/usr/local/var/folders/zz/abcdefgh/T/out.md",
@@ -295,7 +297,7 @@ def test_os_temp_allowance_does_not_open_home_or_system_paths(
     poisoned = evaluate_safety_gate(path="/etc/passwd", vault=vault)
     assert poisoned.refused and poisoned.code == "unsafe_path"
 
-    monkeypatch.setenv("TMPDIR", str(Path("/Users/dex-test-home")))
+    monkeypatch.setenv("TMPDIR", str(Path("/Users/testuser")))
     monkeypatch.setattr("tempfile.tempdir", None)
     home_as_temp = evaluate_safety_gate(path="$TMPDIR/secret.md", vault=vault)
     assert home_as_temp.refused and home_as_temp.code == "unsafe_path"

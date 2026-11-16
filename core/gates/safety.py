@@ -278,6 +278,9 @@ def _temp_root_is_safe(root: Path) -> bool:
     except (OSError, RuntimeError, TypeError, ValueError):
         return False
     collapsed = str(resolved).rstrip("/") or "/"
+    if collapsed.startswith("/private/") and collapsed != "/private":
+        # macOS: /etc, /tmp, and /var are shortcuts to /private/...
+        collapsed = collapsed[len("/private") :] or "/"
     if collapsed in _UNSAFE_TEMP_ROOTS:
         return False
     try:
