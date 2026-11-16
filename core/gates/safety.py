@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -85,6 +86,40 @@ CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
 CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "/Users"})
 MIGRATION_LOCK_RELATIVE = Path("System") / ".dex" / "mutation.lock"
+# Temp-root values that must never become an outside-vault allowance. Home
+# itself is checked separately so a Windows temp folder under the profile
+# can still be used as scratch.
+_UNSAFE_TEMP_ROOTS = frozenset(
+    {
+        "/",
+        "/Users",
+        "/home",
+        "/etc",
+        "/System",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/Library",
+        "/opt",
+        "/var",
+        "/private",
+        "/root",
+        "/Applications",
+    }
+)
+_TEMP_ENV_PREFIXES = (
+    ("TMPDIR", "$TMPDIR/"),
+    ("TEMP", "$TEMP/"),
+    ("TMP", "$TMP/"),
+)
+
+
+def _is_temp_env_specifier(candidate: str) -> bool:
+    """True for $TMPDIR/$TEMP/$TMP, with or without a path under them."""
+    for _env_name, prefix in _TEMP_ENV_PREFIXES:
+        if candidate == prefix[:-1] or candidate.startswith(prefix):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -219,6 +254,140 @@ def _absolute_home_or_literal(candidate: str) -> Path | None:
     return path if path.is_absolute() else None
 
 
+def _expand_temp_shorthand(candidate: str) -> Path | None:
+    """Expand $TMPDIR/$TEMP/$TMP prefixes, or return an absolute literal path."""
+    expanded = _absolute_home_or_literal(candidate)
+    if expanded is not None:
+        return expanded
+    for env_name, prefix in _TEMP_ENV_PREFIXES:
+        if candidate == prefix[:-1]:
+            raw = os.environ.get(env_name, "").strip()
+            return Path(raw) if raw else None
+        if candidate.startswith(prefix):
+            raw = os.environ.get(env_name, "").strip()
+            if not raw:
+                return None
+            return Path(raw) / candidate[len(prefix) :]
+    return None
+
+
+def _temp_root_is_safe(root: Path) -> bool:
+    """False when a claimed temp root is home, the filesystem root, or a system dir."""
+    try:
+        resolved = root.resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    collapsed = str(resolved).rstrip("/") or "/"
+    if collapsed in _UNSAFE_TEMP_ROOTS:
+        return False
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    if resolved == home:
+        return False
+    try:
+        home.relative_to(resolved)
+    except ValueError:
+        return True
+    # The claimed temp root is an ancestor of home (for example TMPDIR=/tmp
+    # while a test places HOME under /tmp). Too broad to treat as scratch.
+    return False
+
+
+def _macos_user_temp_root(resolved: Path) -> Path | None:
+    """Return the /var/folders/.../T root for a resolved macOS user temp path."""
+    parts = resolved.parts
+    try:
+        index = parts.index("folders")
+    except ValueError:
+        return None
+    if index < 1 or parts[index - 1] != "var":
+        return None
+    if index + 3 >= len(parts) or parts[index + 3] != "T":
+        return None
+    return Path(*parts[: index + 4])
+
+
+def _recognized_temp_roots() -> tuple[Path, ...]:
+    """Safe OS temp directories custom skills may scratch in."""
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(raw: str | Path | None) -> None:
+        if not raw:
+            return
+        try:
+            candidate = Path(raw)
+        except (OSError, TypeError, ValueError):
+            return
+        if not candidate.is_absolute():
+            return
+        try:
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return
+        if not _temp_root_is_safe(resolved):
+            return
+        key = str(resolved)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(resolved)
+
+    _add(tempfile.gettempdir())
+    for env_name, _prefix in _TEMP_ENV_PREFIXES:
+        _add(os.environ.get(env_name, "").strip())
+    for well_known in ("/tmp", "/private/tmp", "/var/tmp"):
+        _add(well_known)
+    return tuple(roots)
+
+
+def _is_under_root(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_os_temp_path(candidate: str) -> bool:
+    """True for files under the OS temp directory (and well-known temp roots).
+
+    Custom skills scratch here. The vault, home, and system paths stay
+    protected: a symlink or ``..`` that resolves outside a recognized temp
+    root is not allowed. A ``$TMPDIR/...`` specifier must stay under that
+    env root, not merely land somewhere else that is also temp.
+    """
+    target = _expand_temp_shorthand(candidate)
+    if target is None:
+        return False
+    try:
+        resolved = target.resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    if _is_temp_env_specifier(candidate):
+        for env_name, prefix in _TEMP_ENV_PREFIXES:
+            if candidate != prefix[:-1] and not candidate.startswith(prefix):
+                continue
+            raw = os.environ.get(env_name, "").strip()
+            if not raw:
+                return False
+            try:
+                env_root = Path(raw).resolve()
+            except (OSError, RuntimeError, TypeError, ValueError):
+                return False
+            return _temp_root_is_safe(env_root) and _is_under_root(resolved, env_root)
+        return False
+    for root in _recognized_temp_roots():
+        if _is_under_root(resolved, root):
+            return True
+    macos_root = _macos_user_temp_root(resolved)
+    if macos_root is None or not _temp_root_is_safe(macos_root):
+        return False
+    return _is_under_root(resolved, macos_root)
+
+
 def _is_this_vault_claude_memory_path(candidate: str, vault: Path) -> bool:
     """True only for Claude Code's auto-memory folder for this vault.
 
@@ -297,6 +466,7 @@ def evaluate_safety_gate(
     vault: str | Path | None = None,
     cwd: str | Path | None = None,
     as_directory: bool = False,
+    allow_os_temp: bool = True,
 ) -> GateDecision:
     """Refuse known destructive commands and paths; warnings still allow."""
     _ = tool_name  # Reserved for future shared interceptors.
@@ -327,21 +497,33 @@ def evaluate_safety_gate(
         if GITHUB_REPO_DELETE.search(command_text):
             return GateDecision(DECISION_BLOCK, REASON_GITHUB_DELETE, CODE_GITHUB_REPO_DELETE, 2)
 
-    path_reason = _unsafe_path_reason(path_text, root)
-    if path_reason:
-        return GateDecision(DECISION_BLOCK, path_reason, CODE_UNSAFE_PATH, 2)
-    folder_as_directory = as_directory or path_text.endswith(("/", "\\"))
-    folder_reason = new_top_level_folder_reason(root, path_text, as_directory=folder_as_directory)
-    if folder_reason:
-        return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
+    path_is_os_temp = allow_os_temp and _is_os_temp_path(path_text)
+    if _is_temp_env_specifier(path_text) and not path_is_os_temp:
+        return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
+    if not path_is_os_temp:
+        path_reason = _unsafe_path_reason(path_text, root)
+        if path_reason:
+            return GateDecision(DECISION_BLOCK, path_reason, CODE_UNSAFE_PATH, 2)
+        folder_as_directory = as_directory or path_text.endswith(("/", "\\"))
+        folder_reason = new_top_level_folder_reason(root, path_text, as_directory=folder_as_directory)
+        if folder_reason:
+            return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
     if command_text:
         for target in mkdir_targets(command_text):
             if _is_catastrophic_path(target):
                 resolved_target = target
-            elif Path(target).is_absolute() or target.startswith(("~/", "$HOME/")):
+            elif (
+                Path(target).is_absolute()
+                or target.startswith(("~/", "$HOME/"))
+                or _is_temp_env_specifier(target)
+            ):
                 resolved_target = target
             else:
                 resolved_target = str(workdir / target)
+            if allow_os_temp and _is_os_temp_path(target):
+                continue
+            if _is_temp_env_specifier(target):
+                return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
             target_path_reason = _unsafe_path_reason(resolved_target, root)
             if target_path_reason:
                 return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
@@ -456,11 +638,21 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
         # Relative paths are relative to the host's working directory, which
         # may be below the selected vault root. Preserve explicit root/home
         # refusals, but treat all other prefixes as literal filename characters.
-        if _is_catastrophic_path(path):
+        # Temp allowance is for paths the caller named as scratch (/tmp,
+        # $TMPDIR, …). A relative path joined onto a vault that happens to
+        # live under /tmp is not scratch — it still has to stay in the vault.
+        if _is_os_temp_path(path):
             target = path
+            allow_os_temp = True
+        elif _is_catastrophic_path(path):
+            target = path
+            allow_os_temp = False
         else:
             target = str(base / path)
-        decision = evaluate_safety_gate(tool_name=tool, path=target, vault=root)
+            allow_os_temp = False
+        decision = evaluate_safety_gate(
+            tool_name=tool, path=target, vault=root, allow_os_temp=allow_os_temp
+        )
         if decision.refused:
             return decision
     return warning
