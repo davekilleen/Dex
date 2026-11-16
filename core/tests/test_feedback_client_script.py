@@ -413,8 +413,21 @@ def test_beta_gate_http_error_is_not_a_dexdiff_membership_refusal():
         assert converted.exit_code != 0
 
 
+def _clear_proxy_env(monkeypatch):
+    for name in (
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "ALL_PROXY",
+        "https_proxy",
+        "http_proxy",
+        "all_proxy",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_link_reports_wrapped_certificate_failure_as_a_trust_problem(monkeypatch, capsys):
     client = _load_script()
+    _clear_proxy_env(monkeypatch)
     certificate_error = ssl.SSLCertVerificationError(
         1,
         "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
@@ -433,5 +446,34 @@ def test_link_reports_wrapped_certificate_failure_as_a_trust_problem(monkeypatch
     assert code == 3
     output = capsys.readouterr().out
     assert output.startswith("CERTIFICATE ERROR: ")
-    assert "corporate network" in output
+    assert "certificate store" in output
+    assert "corporate network" not in output
     assert "internet connection may still be working" in output
+
+
+def test_link_reports_proxy_certificate_failure_as_network_inspection(
+    monkeypatch, capsys
+):
+    client = _load_script()
+    _clear_proxy_env(monkeypatch)
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
+    certificate_error = ssl.SSLCertVerificationError(
+        1,
+        "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+        "self signed certificate in certificate chain",
+    )
+
+    def reject_certificate(*args, **kwargs):
+        raise urllib.error.URLError(certificate_error)
+
+    monkeypatch.setattr(client.urllib.request, "urlopen", reject_certificate)
+
+    code = client.main(
+        ["link", "--code", "ABC123", "--api-base", "https://feedback.example"]
+    )
+
+    assert code == 3
+    output = capsys.readouterr().out
+    assert output.startswith("CERTIFICATE ERROR: ")
+    assert "corporate network" in output
+    assert "certificate store" not in output

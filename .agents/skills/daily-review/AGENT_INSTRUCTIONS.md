@@ -92,6 +92,11 @@ notes service.
 Apply CLAUDE.md's **Calendar response confidence contract** before consuming
 events or passing them to `analyze_calendar_capacity`.
 
+Verify each calendar event's date against {{TARGET_DATE}} before listing it.
+Skip cancelled, canceled, or declined events — they are not missed meetings.
+If today's plan names a meeting the calendar now shows at a different time or
+on another day, record it as rescheduled, not missing.
+
 ### 2.4 Semantic Context Enrichment (if QMD available)
 
 Check the QMD `status` tool. If available:

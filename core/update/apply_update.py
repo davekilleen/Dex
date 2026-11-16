@@ -17,12 +17,14 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic as _monotonic
 from typing import Any, Callable
 
 from core import portable_contract
 from core.daily_plans_location import skip_default_daily_plans_seed
+from core.obsidian.preserve_config import backup_relative, merge_obsidian_json
 from core.transaction.engine import PlanEntry, Transaction
 from core.transaction.fsync import fsync_directory
 from core.utils import release_channel
@@ -502,9 +504,17 @@ def _compose_gitignore(release_blob: bytes, vault_root: Path) -> bytes:
     return f"{base}\n\n{_vault_mode_gitignore_section()}\n".encode("utf-8")
 
 
+def _compose_obsidian_app_json(template: bytes, vault_root: Path) -> bytes:
+    """Merge shipped Obsidian app settings with the user's live file."""
+    live = Path(vault_root) / ".obsidian" / "app.json"
+    existing = live.read_bytes() if live.is_file() else None
+    return merge_obsidian_json(existing, template, filename="app.json")
+
+
 COMPOSERS: dict[str, Callable[[bytes, Path], bytes]] = {
     "CLAUDE.md": _compose_claude,
     ".gitignore": _compose_gitignore,
+    ".obsidian/app.json": _compose_obsidian_app_json,
 }
 
 
@@ -847,6 +857,26 @@ def build_update_plan(vault_root: Path, release: VerifiedReleaseRef) -> UpdatePl
         if _matches_entry(root, entry, content):
             untouched.append(entry.path)
             continue
+        if entry.path == ".obsidian/app.json":
+            live = target
+            if live.is_file():
+                current = live.read_bytes()
+                if current != content:
+                    backup_path = backup_relative(
+                        "app.json", datetime.now(timezone.utc)
+                    )
+                    backup_verdict = portable_contract.update_write_verdict(
+                        backup_path, exists=False
+                    )
+                    if backup_verdict.allowed:
+                        planned.append(
+                            PlanEntry(
+                                backup_path,
+                                current,
+                                entry.mode,
+                                expected_absent=True,
+                            )
+                        )
         planned.append(PlanEntry(entry.path, content, entry.mode))
         if verdict.ownership == "brain":
             replaced.append(entry.path)

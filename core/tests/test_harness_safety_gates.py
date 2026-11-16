@@ -224,3 +224,92 @@ def test_claude_memory_allowance_stays_this_vault_memory_folder(
         path.parent.mkdir(parents=True, exist_ok=True)
         shared = evaluate_safety_gate(path=str(path), vault=vault)
         assert shared.refused and shared.code == "unsafe_path", path
+
+
+def _isolate_tempdir(monkeypatch, root: Path) -> Path:
+    monkeypatch.setenv("TMPDIR", str(root))
+    monkeypatch.setenv("TEMP", str(root))
+    monkeypatch.setenv("TMP", str(root))
+    monkeypatch.setattr("tempfile.tempdir", None)
+    return root
+
+
+def test_os_temp_scratch_is_allowed_for_custom_skills(tmp_path: Path, monkeypatch) -> None:
+    vault = _vault(tmp_path)
+    scratch = _isolate_tempdir(monkeypatch, tmp_path / "scratch")
+    scratch.mkdir()
+    target = scratch / "skill-out.md"
+
+    for candidate in (
+        str(target),
+        "$TMPDIR/skill-out.md",
+        "/tmp/dex-custom-skill/out.md",
+        "/private/tmp/dex-custom-skill/out.md",
+        "/var/tmp/dex-custom-skill/out.md",
+        "/var/folders/zz/abcdefgh/T/dex-custom-skill/out.md",
+        "/private/var/folders/zz/abcdefgh/T/dex-custom-skill/out.md",
+    ):
+        shared = evaluate_safety_gate(path=candidate, vault=vault)
+        assert shared.refused is False, candidate
+        assert shared.code == "allow"
+
+    mkdir = evaluate_safety_gate(command="mkdir -p /tmp/dex-custom-skill", vault=vault)
+    assert mkdir.refused is False, mkdir.reason
+
+    hook = _hook(
+        vault,
+        tool_name="Write",
+        path=str(target),
+        extra_env={"TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch)},
+    )
+    assert hook.returncode == 0, hook.stdout + hook.stderr
+
+
+def test_os_temp_allowance_does_not_open_home_or_system_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    # Built at runtime so source never contains a literal /Users/ path.
+    home = Path("/".join(("", "Users", "testuser")))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setenv("HOME", str(home))
+    _isolate_tempdir(monkeypatch, tmp_path / "scratch").mkdir()
+
+    blocked = [
+        "~/secret.md",
+        "$HOME/.ssh/id_rsa",
+        "/etc/passwd",
+        "/private/etc/passwd",
+        "/usr/bin/python",
+        "/var/log/system.log",
+        "/var/folders/zz/abcdefgh/Caches/secret",
+        str(home / "Documents" / "note.md"),
+        "$HOME/var/folders/zz/abcdefgh/T/out.md",
+        "~/Documents/var/folders/zz/abcdefgh/T/note.md",
+        "/usr/local/var/folders/zz/abcdefgh/T/out.md",
+    ]
+    for path in blocked:
+        shared = evaluate_safety_gate(path=path, vault=vault)
+        assert shared.refused and shared.code == "unsafe_path", path
+
+    monkeypatch.setenv("TMPDIR", "/etc")
+    monkeypatch.setattr("tempfile.tempdir", None)
+    poisoned = evaluate_safety_gate(path="/etc/passwd", vault=vault)
+    assert poisoned.refused and poisoned.code == "unsafe_path"
+    poisoned_env = evaluate_safety_gate(path="$TMPDIR/passwd", vault=vault)
+    assert poisoned_env.refused and poisoned_env.code == "unsafe_path"
+
+    monkeypatch.setenv("TMPDIR", str(home))
+    monkeypatch.setattr("tempfile.tempdir", None)
+    home_as_temp = evaluate_safety_gate(path="$TMPDIR/secret.md", vault=vault)
+    assert home_as_temp.refused and home_as_temp.code == "unsafe_path"
+
+
+def test_temp_escape_via_parent_directory_stays_blocked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _isolate_tempdir(monkeypatch, tmp_path / "scratch").mkdir()
+    for candidate in ("/tmp/../etc/passwd", "$TMPDIR/../etc/passwd"):
+        shared = evaluate_safety_gate(path=candidate, vault=vault)
+        assert shared.refused and shared.code == "unsafe_path", candidate

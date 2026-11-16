@@ -481,6 +481,12 @@ The MCP returns a summary of what was created (folders, files, configs).
 
 Show the summary from the MCP response.
 
+Then say, as its own required step, not an optional extra:
+
+"Start a new chat now so Dex can load your tools. Creating tasks, goals, or weekly
+priorities in this same chat will fail until you do. Once the new chat is open,
+you are ready to use Dex."
+
 ### Confirm working context and calendar
 
 The profile now exists, so collect the small amount of context Dex needs to be
@@ -910,7 +916,7 @@ Say: "No problem! You can set them up later with `/quarter-plan`."
 
 After all chosen post-onboarding features are set up (or skipped):
 
-Say: "All done! You're ready to use Dex. What would you like to work on first?"
+Say: "All done! Start a new chat now so Dex can load your tools — then you are ready to use Dex. What would you like to work on first?"
 
 ## For Existing Notes
 

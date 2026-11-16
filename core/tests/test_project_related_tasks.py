@@ -380,3 +380,76 @@ def test_mcp_tools_are_registered() -> None:
     tools = {tool.name for tool in asyncio.run(work_server.handle_list_tools())}
     assert "set_project_related_tasks" in tools
     assert "refresh_project_related_tasks" in tools
+
+
+def test_refresh_keeps_the_blank_line_and_never_deletes_the_next_section(
+    vault: Path,
+) -> None:
+    _write_profile(vault, True)
+    project = vault / "04-Projects" / "Alpha.md"
+    original = (
+        "# Project Alpha\n\n"
+        "Intro.\n\n"
+        "## Background\n\n"
+        "Para.\n\n"
+        "## Verdict\n\n"
+        "Text.\n\n"
+        "## Next steps\n\n"
+        "- step\n"
+    )
+    project.write_text(original, encoding="utf-8")
+
+    first = project_related_tasks.sync_project_page(vault, "04-Projects/Alpha.md")
+    second = project_related_tasks.sync_project_page(vault, "04-Projects/Alpha.md")
+    third = project_related_tasks.sync_project_page(vault, "04-Projects/Alpha.md")
+    text = project.read_text(encoding="utf-8")
+
+    assert first["success"] is True
+    assert second["changed"] is False
+    assert third["changed"] is False
+    assert text == project_related_tasks._insert_near_top(
+        original, project_related_tasks.render_section([], [])
+    )
+    for heading in ("## Background", "## Verdict", "## Next steps"):
+        assert f"\n{heading}\n" in text
+        assert not any(
+            line.endswith(heading) and not line.startswith("##")
+            for line in text.splitlines()
+        )
+    assert "Para." in text
+    assert "Text." in text
+    assert "- step" in text
+
+
+def test_glued_heading_is_repaired_and_the_following_section_is_kept(
+    vault: Path,
+) -> None:
+    _write_profile(vault, True)
+    project = vault / "04-Projects" / "Launch.md"
+    project.write_text(
+        "# Launch\n\n"
+        "## Related Tasks\n\n"
+        "*No linked tasks yet. Link a task to this project from the "
+        "main task list.*## Background\n\n"
+        "Keep this paragraph.\n\n"
+        "## Verdict\n\n"
+        "Still here.\n",
+        encoding="utf-8",
+    )
+
+    result = project_related_tasks.repair_glued_headings_in_vault(vault)
+    text = project.read_text(encoding="utf-8")
+
+    assert result["count"] == 1
+    assert "04-Projects/Launch.md" in result["repaired"]
+    assert "*## Background" not in text
+    assert "\n## Background\n" in text
+    assert "Keep this paragraph." in text
+    assert "\n## Verdict\n" in text
+    assert "Still here." in text
+
+    project_related_tasks.sync_project_page(vault, "04-Projects/Launch.md")
+    refreshed = project.read_text(encoding="utf-8")
+    assert "Keep this paragraph." in refreshed
+    assert "Still here." in refreshed
+    assert "*## Background" not in refreshed
