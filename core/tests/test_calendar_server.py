@@ -124,6 +124,21 @@ def test_calendar_delete_event_timeout_is_not_a_broken_calendar(monkeypatch):
     assert "broken" not in payload.get("error", "").lower()
 
 
+def test_run_shell_script_prefers_helper_when_it_answers(monkeypatch):
+    monkeypatch.setattr(
+        calendar_server,
+        "run_mapped_helper",
+        lambda script_name, args, **_kwargs: (True, "from-helper"),
+    )
+    captured = _capture_subprocess_command(monkeypatch)
+
+    success, output = calendar_server.run_shell_script("calendar_eventkit.py", "list")
+
+    assert success
+    assert output == "from-helper"
+    assert "command" not in captured
+
+
 def test_run_shell_script_dispatches_sh_scripts_to_bash(monkeypatch):
     captured = _capture_subprocess_command(monkeypatch)
 
