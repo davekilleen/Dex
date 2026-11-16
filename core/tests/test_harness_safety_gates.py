@@ -296,6 +296,8 @@ def test_os_temp_allowance_does_not_open_home_or_system_paths(
     monkeypatch.setattr("tempfile.tempdir", None)
     poisoned = evaluate_safety_gate(path="/etc/passwd", vault=vault)
     assert poisoned.refused and poisoned.code == "unsafe_path"
+    poisoned_env = evaluate_safety_gate(path="$TMPDIR/passwd", vault=vault)
+    assert poisoned_env.refused and poisoned_env.code == "unsafe_path"
 
     monkeypatch.setenv("TMPDIR", str(home))
     monkeypatch.setattr("tempfile.tempdir", None)
