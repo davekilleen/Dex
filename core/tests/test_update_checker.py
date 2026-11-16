@@ -1288,11 +1288,17 @@ def test_tls_trust_markers_are_not_folded_into_the_offline_markers(tmp_path: Pat
         assert marker not in update_verifier_module._OFFLINE_MARKERS
 
 
+def _clear_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in update_verifier_module._PROXY_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_release_identity_proof_reports_tls_untrusted_not_evidence_invalid(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     vault = _installed_vault(tmp_path / "vault")
+    _clear_proxy_env(monkeypatch)
 
     def reject(*_args, **_kwargs):
         raise update_verifier_module.TlsTrustError(
@@ -1313,7 +1319,35 @@ def test_release_identity_proof_reports_tls_untrusted_not_evidence_invalid(
     assert result["reason"] != "evidence-invalid"
     message = result["message"]
     assert "secure connection" in message
-    assert "proxy" in message
+    assert "certificate store" in message
+    assert "proxy" not in message
+
+
+def test_tls_untrusted_message_names_a_proxy_when_one_is_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = _installed_vault(tmp_path / "vault")
+    _clear_proxy_env(monkeypatch)
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
+
+    def reject(*_args, **_kwargs):
+        raise update_verifier_module.TlsTrustError(
+            "bounded canonical fetch could not verify a secure connection"
+        )
+
+    monkeypatch.setattr(UpdateVerifier, "_remote_release_tags", reject)
+
+    result = update_verifier_module.prove_latest_release(
+        vault,
+        "stable",
+        state_root=tmp_path / "state",
+        wall_clock_seconds=10.0,
+    )
+
+    assert result["reason"] == "tls-untrusted"
+    assert "proxy" in result["message"]
+    assert "certificate store" not in result["message"]
 
 
 def test_check_reports_tls_untrusted_with_an_honest_user_facing_message(

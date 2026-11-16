@@ -265,6 +265,14 @@ If tracking completion rates:
 
 From calendar or meeting notes, list meetings that happened today.
 
+Apply CLAUDE.md's Date Accuracy Protocol: verify each event's date field against
+today before listing it. Adjacent-day bleed is not today's meeting.
+
+Treat cancelled, canceled, or declined calendar events as cancelled, not missed.
+If a meeting on today's plan was moved (same title, a later date or a different
+time on the calendar), list it as **rescheduled**, not missing. Do not ask for
+follow-ups on a meeting that did not happen.
+
 ### 4.2 For Each Meeting, Ask:
 
 ```

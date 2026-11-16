@@ -43,10 +43,8 @@ OPT_IN_ASK = (
 )
 _COMPLETED_RE = re.compile(r"✅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}))?")
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-_SECTION_RE = re.compile(
-    r"^##[ \t]+Related Tasks[ \t]*\r?\n.*?(?=^##[ \t]+|\Z)",
-    re.MULTILINE | re.DOTALL,
-)
+_SECTION_HEADING_RE = re.compile(r"^##[ \t]+Related Tasks[ \t]*\r?$")
+_GLUED_HEADING_RE = re.compile(r"^(?P<body>.*\S)##[ \t]+(?P<heading>\S.*)$")
 _PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 _PROFILE_BLOCK_RE = re.compile(
     r"(?m)^project_related_tasks:\r?\n(?:[ \t]+.+\r?\n)*"
@@ -253,23 +251,108 @@ def render_section(tasks: Iterable[dict[str, Any]], lines: list[str]) -> str:
     return "\n".join(parts)
 
 
-def _insert_near_top(content: str, section: str) -> str:
-    if _SECTION_RE.search(content):
-        return _SECTION_RE.sub(section.rstrip(), content, count=1)
+def repair_glued_related_task_headings(content: str) -> str:
+    """Split a Related Tasks last line that was glued onto the next heading.
 
+    An earlier replace stripped the blank line before the following ``##``
+    heading. That glued heading no longer starts a line, so the next refresh
+    treated it as part of Related Tasks and deleted the section after it.
+    """
+    repaired: list[str] = []
+    changed = False
+    for line in content.split("\n"):
+        match = _GLUED_HEADING_RE.match(line)
+        if match and not line.lstrip().startswith("##"):
+            repaired.append(match.group("body").rstrip())
+            repaired.append("")
+            repaired.append(f"## {match.group('heading').strip()}")
+            changed = True
+        else:
+            repaired.append(line)
+    return "\n".join(repaired) if changed else content
+
+
+def repair_glued_headings_in_vault(vault_root: Path) -> dict[str, Any]:
+    """Restore headings glued onto the previous line on project pages.
+
+    This is the one-off safety repair for pages already damaged. It puts the
+    heading back on its own line. It cannot invent body text that a later
+    refresh already deleted.
+    """
+    repaired: list[str] = []
+    for relative in iter_project_pages(vault_root):
+        page = Path(vault_root) / relative
+        try:
+            original = text_io.read_text(page)
+        except (OSError, UnicodeError):
+            continue
+        updated = repair_glued_related_task_headings(original)
+        if updated == original:
+            continue
+        text_io.write_text(page, updated)
+        repaired.append(relative)
+    return {"repaired": repaired, "count": len(repaired)}
+
+
+def _is_related_tasks_heading(line: str) -> bool:
+    return bool(_SECTION_HEADING_RE.match(line))
+
+
+def _is_foreign_heading(line: str) -> bool:
+    """True for a markdown heading this feature does not own."""
+    if _is_related_tasks_heading(line):
+        return False
+    if line.startswith("### "):
+        return False
+    return line.startswith("## ")
+
+
+def _machine_section_span(lines: list[str]) -> tuple[int, int] | None:
+    """Return ``[start, end)`` of the Related Tasks block, stopping at the next heading it does not own."""
+    start = None
+    for index, line in enumerate(lines):
+        if _is_related_tasks_heading(line):
+            start = index
+            break
+    if start is None:
+        return None
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if _is_foreign_heading(lines[index]):
+            end = index
+            break
+    return start, end
+
+
+def _join_section(prefix: str, section: str, suffix: str) -> str:
+    head = prefix.rstrip("\n")
+    body = section.strip("\n")
+    tail = suffix.lstrip("\n")
+    if not head:
+        return f"{body}\n\n{tail}" if tail else f"{body}\n"
+    if tail:
+        return f"{head}\n\n{body}\n\n{tail}"
+    return f"{head}\n\n{body}\n"
+
+
+def _insert_near_top(content: str, section: str) -> str:
+    content = repair_glued_related_task_headings(content)
     lines = content.split("\n")
+    span = _machine_section_span(lines)
+    if span is not None:
+        start, end = span
+        prefix = "\n".join(lines[:start])
+        suffix = "\n".join(lines[end:])
+        return _join_section(prefix, section, suffix)
+
     insert_at = len(lines)
     for index, line in enumerate(lines):
-        if line.startswith("## ") and not line.startswith(f"## {SECTION_HEADING}"):
+        if _is_foreign_heading(line):
             insert_at = index
             break
-    block = section if section.endswith("\n") else f"{section}\n"
-    if insert_at == 0:
-        return block + content
-    prefix = "\n".join(lines[:insert_at]).rstrip("\n")
-    suffix = "\n".join(lines[insert_at:]).lstrip("\n")
-    glued = f"{prefix}\n\n{block}"
-    return f"{glued}\n{suffix}" if suffix else glued
+    prefix = "\n".join(lines[:insert_at])
+    suffix = "\n".join(lines[insert_at:])
+    return _join_section(prefix, section, suffix)
 
 
 def _project_page_path(vault_root: Path, project_rel: str) -> Path | None:
@@ -439,14 +522,28 @@ def mark_daily_refresh(vault_root: Path, today: date | None = None) -> None:
 
 def maybe_daily_refresh(vault_root: Path) -> dict[str, Any]:
     """Once-a-day catch-up for hand edits. Silent when off or already done."""
+    glue = repair_glued_headings_in_vault(vault_root)
     state = load_preference(vault_root)
     if state != "on":
-        return {"success": True, "status": state, "ran": False}
+        return {
+            "success": True,
+            "status": state,
+            "ran": bool(glue.get("count")),
+            "glued_repaired": glue.get("count", 0),
+            "glued_pages": glue.get("repaired", []),
+        }
     if not daily_refresh_due(vault_root):
-        return {"success": True, "status": "on", "ran": False, "reason": "already_today"}
+        return {
+            "success": True,
+            "status": "on",
+            "ran": False,
+            "reason": "already_today",
+            "glued_repaired": glue.get("count", 0),
+        }
     result = refresh_all_project_pages(vault_root)
     mark_daily_refresh(vault_root)
     result["ran"] = True
+    result["glued_repaired"] = glue.get("count", 0)
     return result
 
 
@@ -463,6 +560,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Refresh every project page now (still respects opt-in)",
     )
+    parser.add_argument(
+        "--repair-glued",
+        action="store_true",
+        help="Split headings glued onto the previous line on project pages",
+    )
     args = parser.parse_args(argv)
     vault = Path(args.vault)
     if args.daily_refresh:
@@ -471,7 +573,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.refresh_all:
         print(json.dumps(refresh_all_project_pages(vault)))
         return 0
-    parser.error("pass --daily-refresh or --refresh-all")
+    if args.repair_glued:
+        print(json.dumps(repair_glued_headings_in_vault(vault)))
+        return 0
+    parser.error("pass --daily-refresh, --refresh-all, or --repair-glued")
     return 2
 
 

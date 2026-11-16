@@ -676,10 +676,19 @@ def generate_task_id() -> str:
     next_num = max(existing_ids, default=0) + 1
     return f"task-{date_str}-{next_num:03d}"
 
+_TASK_ANCHOR_RE = re.compile(r'\^(task-\d{8}-\d{3,})')
+
+
+def task_ids_on_line(line: str) -> List[str]:
+    """Return every canonical task anchor on a checkbox line."""
+    return _TASK_ANCHOR_RE.findall(line)
+
+
 def extract_task_id(line: str) -> Optional[str]:
     """Extract task ID from a line"""
-    match = re.search(r'\^(task-\d{8}-\d{3,})', line)
-    return match.group(1) if match else None
+    ids = task_ids_on_line(line)
+    return ids[0] if len(ids) == 1 else None
+
 
 def _is_indented_bullet(line: str) -> bool:
     """Return whether a line is an indented child bullet of a task."""
@@ -1102,7 +1111,17 @@ def update_task_status_everywhere(
             
             line_idx = instance['line_number'] - 1
             old_line = lines[line_idx]
-            
+            anchors = task_ids_on_line(old_line)
+            if len(anchors) != 1:
+                failed_files.append({
+                    'file': instance['file'],
+                    'error': (
+                        "This line has more than one task id, so Dex left it "
+                        "unchanged rather than ticking the wrong task."
+                    ),
+                })
+                continue
+
             # Update checkbox and normalize completion metadata around the anchor.
             if completed:
                 new_line = re.sub(
@@ -3641,24 +3660,13 @@ def complete_weekly_priority_in_file(priority_id: str) -> Dict[str, Any]:
 
 
 def _sync_weekly_priorities_for_task(task_id: str, completed: bool) -> None:
-    """When every task on a weekly priority is done, mark that priority done."""
-    if not completed:
-        return
-    priorities_file = get_week_priorities_file()
-    if not priorities_file.exists():
-        return
+    """No-op: completing a task must not mark the week's priority done.
 
-    for priority in parse_weekly_priorities(priorities_file):
-        priority_id = priority.get('priority_id')
-        if not priority_id or priority.get('completed'):
-            continue
-        linked = find_linked_tasks(priority_id)
-        if (
-            linked
-            and any(item.get('task_id') == task_id for item in linked)
-            and all(item.get('completed') for item in linked)
-        ):
-            mark_weekly_priority_complete(priority_id)
+    Users complete a weekly priority themselves. Auto-closing it when its
+    linked tasks finish was marking a whole priority done after a single
+    related task, and a wrongly ticked task could close the wrong priority.
+    """
+    del task_id, completed
 
 
 def _strip_priority_line_annotations(text: str) -> str:

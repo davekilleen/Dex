@@ -46,6 +46,18 @@ def test_extract_task_id_reads_four_digit_ids() -> None:
     assert work_server.extract_task_id(line) == "task-20260810-1000"
 
 
+def test_extract_task_id_requires_exactly_one_anchor() -> None:
+    dual = "- [ ] Due today: Alpha ^task-20260101-001, Beta ^task-20260101-002"
+    assert work_server.extract_task_id(dual) is None
+    assert work_server.task_ids_on_line(dual) == [
+        "task-20260101-001",
+        "task-20260101-002",
+    ]
+    assert work_server.extract_task_id("- [ ] Solo ^task-20260101-001") == (
+        "task-20260101-001"
+    )
+
+
 def test_find_task_by_id_never_matches_a_longer_id(vault: Path) -> None:
     _write_tasks(vault, ["task-20260810-100", "task-20260810-1000"])
 

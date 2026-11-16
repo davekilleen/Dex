@@ -200,6 +200,55 @@ def test_status_line_inside_user_text_cannot_close_the_entry(tmp_path: Path) -> 
     assert entries and entries[0].is_pending
 
 
+def test_api_request_blob_skill_body_is_not_a_user_correction(tmp_path: Path) -> None:
+    skill_body = (
+        "Base directory for this skill: /vault/.claude/skills/dex-update\n\n"
+        "If the proof is wrong, say so and stop. Try again."
+    )
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [
+            json.dumps(
+                {
+                    "type": "api-request-blob",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": skill_body}],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "api-request",
+                    "message": {"role": "user", "content": skill_body},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "origin": {"kind": "task-notification"},
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "This is an automated run of a scheduled task. Do not ask; stop if blocked.",
+                            }
+                        ],
+                    },
+                }
+            ),
+            _user_line("that's not what I asked"),
+        ],
+    )
+
+    candidates = extract.extract_candidates(transcript)
+
+    assert [c.kind for c in candidates] == ["Correction"]
+    assert "that's not what I asked" in candidates[0].text
+    assert all("Base directory for this skill" not in item.text for item in candidates)
+
+
 def test_harness_text_in_a_user_turn_is_not_the_users_words(tmp_path: Path) -> None:
     transcript = _transcript(
         tmp_path / "session.jsonl",

@@ -212,6 +212,9 @@ When the user expresses frustration or wishes during natural conversation, captu
 3. Briefly confirm: "Good idea — captured as [idea-XXX] in your backlog (score pending). Run `/dex-backlog` to see where it ranks."
 
 **Rules:**
+- Only read the current user message. Do not harvest ideas from earlier turns, the
+  rest of the chat, or session logs.
+- Never capture ideas while running `/daily-plan` (the morning plan).
 - Don't capture vague complaints — only actionable improvement ideas
 - If the user is in the middle of something urgent, capture silently and mention at the end
 - Don't ask for category — infer it from context

@@ -205,6 +205,20 @@ def _content_texts(content: object) -> list[str]:
     return texts
 
 
+_REQUEST_COPY_TYPES = frozenset(
+    {
+        "api-request-blob",
+        "api-request",
+        "api_request_blob",
+        "request",
+    }
+)
+_USER_TURN_TYPES = frozenset({"user", "human", "userpromptsubmit"})
+_SCHEDULED_ORIGIN_KINDS = frozenset(
+    {"task-notification", "scheduled-trigger", "scheduled_task"}
+)
+
+
 def user_texts_from_record(record: object) -> list[str]:
     """Pull user-authored text from one Claude Code / Cursor JSONL record."""
     if not isinstance(record, dict):
@@ -215,12 +229,18 @@ def user_texts_from_record(record: object) -> list[str]:
     if record.get("isMeta") or record.get("isSidechain") or record.get("isCompactSummary"):
         return []
     typ = str(record.get("type") or "").lower()
+    if typ in _REQUEST_COPY_TYPES:
+        return []
+    origin = record.get("origin")
+    if isinstance(origin, dict):
+        kind = str(origin.get("kind") or "").lower()
+        if kind in _SCHEDULED_ORIGIN_KINDS:
+            return []
     message = record.get("message")
-    role = ""
-    if isinstance(message, dict):
-        role = str(message.get("role") or "").lower()
     texts: list[str] = []
-    if typ in {"user", "human"} or role == "user":
+    # Only real user/human turns. A copy of the API request also carries
+    # role=user and used to be filed as a correction (issue #832).
+    if typ in _USER_TURN_TYPES:
         if isinstance(message, dict):
             texts.extend(_content_texts(message.get("content")))
         elif isinstance(message, str):
@@ -228,7 +248,7 @@ def user_texts_from_record(record: object) -> list[str]:
         texts.extend(_content_texts(record.get("content")))
     prompt = record.get("prompt")
     if isinstance(prompt, str) and prompt.strip():
-        if typ in {"", "user", "human", "userpromptsubmit"} or role == "user":
+        if typ in {"", "user", "human", "userpromptsubmit"}:
             texts.append(prompt)
     cleaned = (strip_machine_text(part) for part in texts if isinstance(part, str))
     return [part for part in cleaned if part]
