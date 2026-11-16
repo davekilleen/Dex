@@ -47,7 +47,16 @@ The checker inspects shell command fields and all recognized path fields:
 `destination_path`. It checks every patch Add/Update/Delete/Move target, including
 Codex's `tool_input.command` patch format. It checks symlink-resolved containment, including final-target symlinks, and
 preserves literal filename whitespace and dollar signs rather than applying
-shell expansion to file-tool paths.
+shell expansion to file-tool paths. Scratch files under the operating system's
+temp directory (`/tmp`, `/var/tmp`, the real macOS `/var/folders/.../T` or
+`/private/var/folders/.../T`, and `$TMPDIR` when that value is itself a safe
+temp root) are allowed so custom skills can use a working folder, and only when
+the caller named that temp location directly. A lookalike `var/folders/.../T`
+path under home or another prefix is not scratch. A relative path joined onto a vault that happens to live under `/tmp`
+is not scratch and still has to stay inside the selected vault. Home, system
+paths, and other locations outside the selected vault stay refused. A temp
+path that resolves through a symlink or `..` to a non-temp location is
+refused.
 Patch body text is file content, not an executable command.
 
 Intercepted calls require a recognized event name; missing, empty, null, typed,

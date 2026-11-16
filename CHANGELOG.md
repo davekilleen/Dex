@@ -9,6 +9,17 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+### Custom skills can use the computer's scratch folder again
+
+After the late-October update, a safety check treated the computer's scratch folder as off-limits — the same way it treats your home folder and system files. A custom skill that writes a working file there was blocked, even though it never touched your notes.
+
+**What this fixes for you:**
+
+* **A custom skill can use the scratch folder again.** Drafts and working files in the computer's temp location are allowed.
+* **Your notes and system files stay protected.** Writing into Dex still has to stay inside your Dex folder. Your home folder and system files stay blocked.
+
+Thanks to Michelle Wright for reporting this.
+
 ## [1.97.33] — One bad file can no longer stop your vault backup, and Dex tells you if backups stop (2026-10-29)
 
 A tester's automatic backup failed for two days because one file was already marked for deletion — and Dex said nothing. He had to notice the missing copies himself.
