@@ -1329,6 +1329,39 @@ def test_update_plan_compares_current_claude_against_composed_bytes(
     assert "CLAUDE.md" in plan.untouched
 
 
+def test_obsidian_app_json_update_plans_a_timestamped_backup(
+    split_release_fixture: dict[str, object],
+) -> None:
+    vault = split_release_fixture["vault"]
+    live = b'{"spellcheck": false, "userFlag": true}\n'
+    shipped = b'{"spellcheck": true, "alwaysUpdateLinks": true}\n'
+    _write(vault, ".obsidian/app.json", live)
+    _retarget_release(split_release_fixture, ".obsidian/app.json", shipped)
+
+    plan = apply_update.build_update_plan(vault, _verified(split_release_fixture))
+    relatives = [entry.relative for entry in plan.entries]
+    backups = [
+        entry
+        for entry in plan.entries
+        if entry.relative.startswith(".obsidian/app.json.bak-")
+    ]
+
+    assert ".obsidian/app.json" in relatives
+    assert len(backups) == 1
+    assert backups[0].expected_absent is True
+    assert backups[0].content == live
+    merged = json.loads(
+        next(
+            entry.content
+            for entry in plan.entries
+            if entry.relative == ".obsidian/app.json"
+        )
+    )
+    assert merged["userFlag"] is True
+    assert merged["spellcheck"] is False
+    assert merged["alwaysUpdateLinks"] is True
+
+
 @pytest.mark.parametrize("empty_custom_file", [False, True])
 def test_absent_or_empty_custom_instructions_use_release_template_as_is(
     split_release_fixture: dict[str, object],

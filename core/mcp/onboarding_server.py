@@ -3265,7 +3265,10 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
                 completion_message = (
                     "Onboarding complete! Created "
                     f"{len(summary['folders_created'])} folders, "
-                    f"{len(summary['files_created'])} files"
+                    f"{len(summary['files_created'])} files. "
+                    "Start a new chat now so Dex can load your tools — "
+                    "creating tasks, goals, or weekly priorities in this "
+                    "same chat will fail until you do."
                 )
                 replaced = summary.get('files_replaced', [])
                 if replaced:

@@ -96,6 +96,16 @@ def test_a_question_plus_a_typed_correction_keeps_the_correction() -> None:
     assert is_correction(text) is True
 
 
+def test_skill_body_preamble_is_not_a_correction() -> None:
+    text = (
+        "Base directory for this skill: /vault/.claude/skills/dex-update\n"
+        "If the proof is wrong, say so and stop. Try again."
+    )
+
+    assert user_words(text) == ""
+    assert is_correction(text) is False
+
+
 def test_hook_and_extractor_use_the_shared_check() -> None:
     hook = HOOK_PY.read_text(encoding="utf-8")
     extractor = EXTRACTOR.read_text(encoding="utf-8")

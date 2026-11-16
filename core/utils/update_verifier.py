@@ -72,11 +72,44 @@ _TLS_TRUST_MARKERS = (
     "certificate has expired",
     "schannel:",
 )
-TLS_UNTRUSTED_MESSAGE = (
+_PROXY_ENV_NAMES = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+)
+TLS_UNTRUSTED_PROXY_MESSAGE = (
     "Dex couldn't verify a secure connection to GitHub. This usually means a "
     "network proxy is inspecting traffic. Dex did not check for an update and "
     "did not relax certificate verification."
 )
+TLS_UNTRUSTED_LOCAL_MESSAGE = (
+    "Dex couldn't verify a secure connection to GitHub. This usually means this "
+    "computer's certificate store is missing or out of date, not that a network "
+    "is intercepting the connection. Dex did not check for an update and did "
+    "not relax certificate verification."
+)
+TLS_UNTRUSTED_MESSAGE = TLS_UNTRUSTED_PROXY_MESSAGE
+
+
+def proxy_is_configured(environ: object | None = None) -> bool:
+    """True when a proxy environment variable is set and non-empty."""
+    env = os.environ if environ is None else environ
+    getter = getattr(env, "get", None)
+    if getter is None:
+        return False
+    return any(str(getter(name) or "").strip() for name in _PROXY_ENV_NAMES)
+
+
+def tls_untrusted_message(*, proxy_configured: bool | None = None) -> str:
+    """User-facing TLS failure copy: local certificate vs network interception."""
+    if proxy_configured is None:
+        proxy_configured = proxy_is_configured()
+    if proxy_configured:
+        return TLS_UNTRUSTED_PROXY_MESSAGE
+    return TLS_UNTRUSTED_LOCAL_MESSAGE
 _TRANSIENT_HTTP_REJECTION_RE = re.compile(
     r"(?:\bHTTP(?:/[0-9.]+)?\s+429\b|\brequested URL returned error:\s*429\b)",
     re.IGNORECASE,
@@ -1147,7 +1180,7 @@ class UpdateVerifier:
                 return {
                     "status": STATUS_UNKNOWN,
                     "reason": reason,
-                    "message": TLS_UNTRUSTED_MESSAGE,
+                    "message": tls_untrusted_message(),
                 }
             return {"status": STATUS_UNKNOWN, "reason": reason}
         finally:
@@ -1449,7 +1482,7 @@ class UpdateVerifier:
             if not self._persist_failure(today=today, status=STATUS_UNKNOWN, reason=reason):
                 reason = "state-write-failed"
             if reason == "tls-untrusted":
-                return {**result, "reason": reason, "message": TLS_UNTRUSTED_MESSAGE}
+                return {**result, "reason": reason, "message": tls_untrusted_message()}
             return {**result, "reason": reason}
         finally:
             self._budget = None
