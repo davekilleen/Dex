@@ -247,6 +247,7 @@ def test_os_temp_scratch_is_allowed_for_custom_skills(tmp_path: Path, monkeypatc
         "/private/tmp/dex-custom-skill/out.md",
         "/var/tmp/dex-custom-skill/out.md",
         "/var/folders/zz/abcdefgh/T/dex-custom-skill/out.md",
+        "/private/var/folders/zz/abcdefgh/T/dex-custom-skill/out.md",
     ):
         shared = evaluate_safety_gate(path=candidate, vault=vault)
         assert shared.refused is False, candidate
@@ -281,6 +282,9 @@ def test_os_temp_allowance_does_not_open_home_or_system_paths(
         "/var/log/system.log",
         "/var/folders/zz/abcdefgh/Caches/secret",
         "/Users/dex-test-home/Documents/note.md",
+        "$HOME/var/folders/zz/abcdefgh/T/out.md",
+        "~/Documents/var/folders/zz/abcdefgh/T/note.md",
+        "/usr/local/var/folders/zz/abcdefgh/T/out.md",
     ]
     for path in blocked:
         shared = evaluate_safety_gate(path=path, vault=vault)

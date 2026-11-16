@@ -296,17 +296,23 @@ def _temp_root_is_safe(root: Path) -> bool:
 
 
 def _macos_user_temp_root(resolved: Path) -> Path | None:
-    """Return the /var/folders/.../T root for a resolved macOS user temp path."""
+    """Return the real /var/folders/.../T root, not a lookalike under home."""
     parts = resolved.parts
-    try:
-        index = parts.index("folders")
-    except ValueError:
-        return None
-    if index < 1 or parts[index - 1] != "var":
-        return None
-    if index + 3 >= len(parts) or parts[index + 3] != "T":
-        return None
-    return Path(*parts[: index + 4])
+    # Only the OS location: /var/folders/<id>/<id>/T or /private/var/folders/.../T.
+    # A planted .../var/folders/.../T under $HOME or /usr/local is not scratch.
+    if (
+        len(parts) >= 6
+        and parts[:3] == ("/", "var", "folders")
+        and parts[5] == "T"
+    ):
+        return Path(*parts[:6])
+    if (
+        len(parts) >= 7
+        and parts[:4] == ("/", "private", "var", "folders")
+        and parts[6] == "T"
+    ):
+        return Path(*parts[:7])
+    return None
 
 
 def _recognized_temp_roots() -> tuple[Path, ...]:
