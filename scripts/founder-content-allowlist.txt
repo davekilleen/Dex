@@ -34,6 +34,10 @@
 
 # --- Test fixtures with the maintainer's name (distignored from release; audit 2d) ---
 ^core/tests/.*:.*:(dave|killeen)$
+# Apple Developer ID Common Name used by the local helper signing script.
+# The certificate and notary password stay in the keychain; only the public
+# identity string is in git so the script can be run on that Mac.
+^core/macos/dex-helper/sign-and-notarize\.sh:.*:killeen$
 ^\.claude/hooks/tests/.*:.*:(dave|killeen)$
 
 # --- Pendo: a genuinely-shipped optional analytics integration + optional MCP ---

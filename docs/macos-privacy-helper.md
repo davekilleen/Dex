@@ -42,22 +42,41 @@ Dex updates an installed helper in place only when the Team ID and bundle id mat
 
 On Linux CI those commands skip cleanly. `build.sh` never calls `notarytool` or `stapler`, and never reads signing secrets.
 
-## Signing — later release step, needs explicit approval
+## Signing and notarizing on the Mac that holds the certificate
 
-Developer ID plus notarization is **not** part of this change. It needs a later, separately approved release step before a signed helper can be trusted on a new Mac.
+Developer ID plus notarization is a **local Mac script**, not CI, and it does not publish, tag, or create a GitHub release. Explicit approval is still required before a signed helper is shipped to other Macs.
 
-That later step needs:
+Do not add signing secrets to the repo, to CI, or to install scripts. The notary password lives in the keychain profile `dex-notary`.
 
-1. An explicit go-ahead from the founder
-2. An Apple Developer account and a Developer ID Application certificate
-3. A hardened-runtime signed copy of Dex Helper
-4. Notarization and stapling of that copy
-5. Secrets stored outside the repo — never in git, never in this helper's build script
-6. A published signed app for `/dex-update` to install, plus a way to check it is the signed one
+One-time on that Mac:
 
-Do not add signing secrets to the repo, to CI, or to install scripts.
+```
+xcrun notarytool store-credentials dex-notary
+```
 
-Until that happens, treat any built helper as a local ad-hoc copy. Gatekeeper may block first open; the fallback path still works.
+Then, from the Dex checkout root (replace `~/Dex` with the clone path):
+
+```
+cd ~/Dex
+bash core/macos/dex-helper/sign-and-notarize.sh
+```
+
+The same script can be run from `core/macos/dex-helper/`:
+
+```
+cd ~/Dex/core/macos/dex-helper
+bash sign-and-notarize.sh
+```
+
+That script:
+
+1. Builds the helper (`bash core/macos/dex-helper/build.sh`)
+2. Codesigns it with the hardened runtime (`--options runtime`), the Developer ID Application identity named in the script, and `DexHelper.entitlements` (Calendar, Reminders, and library validation off so EventKit can load)
+3. Zips it with `ditto` and notarises with `xcrun notarytool submit --keychain-profile dex-notary --wait`
+4. Staples the app
+5. Verifies with `codesign --verify --deep --strict --verbose=2` and `spctl --assess --type execute -vv`
+
+Until that script has been run on that Mac, treat any built helper as a local ad-hoc copy. Gatekeeper may block first open; the fallback path still works. A published signed app for `/dex-update` is still a later, separately approved release step.
 
 ## Fallback
 

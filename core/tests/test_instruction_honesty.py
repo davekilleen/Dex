@@ -726,15 +726,20 @@ def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> No
 def test_helper_signing_is_documented_as_a_later_approved_step() -> None:
     guide = _read("docs/macos-privacy-helper.md")
     build = _read("core/macos/dex-helper/build.sh")
+    sign = _read("core/macos/dex-helper/sign-and-notarize.sh")
     assert "ad-hoc" in guide.lower()
     assert "codesign -s -" in guide or "codesign --sign -" in guide
     assert "rebuilding resets" in guide.lower()
     assert "later" in guide.lower()
     assert "explicit" in guide.lower() and "approval" in guide.lower()
     assert "Do not add signing secrets" in guide
+    assert "sign-and-notarize.sh" in guide
+    assert "dex-notary" in guide
     assert "notarytool" not in build
     assert "stapler" not in build
     assert "codesign --force --sign -" in build or "codesign --force -s -" in build
+    assert "Developer ID Application: DAVID EDWARD KILLEEN (6WVLPMNTL5)" in sign
+    assert "--keychain-profile" in sign and "dex-notary" in sign
     for line in build.splitlines():
         command = line.split("#", 1)[0].strip()
         if command:

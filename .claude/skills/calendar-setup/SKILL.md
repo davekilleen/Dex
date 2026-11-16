@@ -24,7 +24,7 @@ description: "Grant Python calendar access for ~30x faster calendar queries. Use
      ```
    - Rebuilding that app resets the Calendar and Reminders grant. The person will need to allow Dex Helper again.
    - Dex updates the helper in place only when the Team ID and bundle id match. If they do not, say a re-grant is needed. Do not replace it silently.
-   - Developer ID signing and notarization are a later release step that needs explicit founder approval. Do not add signing secrets.
+   - Developer ID signing and notarization are a local Mac step: `bash core/macos/dex-helper/sign-and-notarize.sh`. That still needs explicit founder approval before a signed copy is published. Do not add signing secrets.
    - If `python3 -m core.utils.macos_privacy_helper status` says the helper is installed, Calendar and Reminders permission belong to **Dex Helper**. Ask the person to grant Calendar (Full) and Reminders to Dex Helper in System Settings if needed.
 
 1. **Check current permission status:**

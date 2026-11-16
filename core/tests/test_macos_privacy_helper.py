@@ -266,6 +266,28 @@ def test_build_script_ad_hoc_signs_and_never_notarizes():
             assert "--sign -" in command or "-s -" in command
 
 
+def test_sign_and_notarize_script_is_local_developer_id_path():
+    source = helper.helper_source_dir()
+    script = (source / "sign-and-notarize.sh").read_text(encoding="utf-8")
+    entitlements = (source / "DexHelper.entitlements").read_text(encoding="utf-8")
+    assert "Developer ID Application: DAVID EDWARD KILLEEN (6WVLPMNTL5)" in script
+    assert "--options runtime" in script
+    assert "--entitlements" in script
+    assert "DexHelper.entitlements" in script
+    assert "xcrun notarytool submit" in script
+    assert "--keychain-profile dex-notary" in script or '--keychain-profile "$NOTARY_PROFILE"' in script
+    assert "--wait" in script
+    assert "stapler staple" in script
+    assert "codesign --verify --deep --strict" in script
+    assert "spctl --assess --type execute" in script
+    assert "does not publish" in script.lower()
+    assert "APP_SPECIFIC_PASSWORD" not in script
+    assert "api-key" not in script.lower()
+    assert ".p8" not in script
+    assert "com.apple.security.personal-information.calendars" in entitlements
+    assert "com.apple.security.personal-information.reminders" in entitlements
+
+
 def test_install_sh_tries_helper_on_a_mac_and_keeps_going_if_it_skips():
     installer = Path(__file__).resolve().parents[2] / "install.sh"
     text = installer.read_text(encoding="utf-8")
