@@ -9,6 +9,8 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+## [1.97.34] — Custom skills can use the scratch folder again, Obsidian settings stay yours, and finishing a task no longer closes the week (2026-11-16)
+
 ### Custom skills can use the computer's scratch folder again
 
 After the late-October update, a safety check treated the computer's scratch folder as off-limits — the same way it treats your home folder and system files. A custom skill that writes a working file there was blocked, even though it never touched your notes.
@@ -17,8 +19,6 @@ After the late-October update, a safety check treated the computer's scratch fol
 
 * **A custom skill can use the scratch folder again.** Drafts and working files in the computer's temp location are allowed.
 * **Your notes and system files stay protected.** Writing into Dex still has to stay inside your Dex folder. Your home folder and system files stay blocked.
-
-Thanks to testers who reported these.
 
 Obsidian settings were being overwritten, a project-page list was eating the next heading, finishing one task could tick the wrong work and close the week's priority, the morning plan was stuffing the idea backlog, pasted skill text was saved as a "correction," moved meetings looked missed, setup never said to start a new chat, and a certificate error always sounded like a workplace network.
 
