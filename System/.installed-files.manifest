@@ -2230,6 +2230,7 @@ scripts/check-founder-content.py
 scripts/check-founder-content.sh
 scripts/check-hashed-python-requirements.sh
 scripts/check-instructed-tools.py
+scripts/check-intel-mac-cp314-wheels.sh
 scripts/check-path-consistency.sh
 scripts/check-path-contract-usage.sh
 scripts/check-pii.sh

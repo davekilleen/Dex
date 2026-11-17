@@ -388,3 +388,60 @@ def test_get_commitments_due_drops_single_character_garbage(planning_vault):
     assert "a" not in captured
     assert any("deck" in item for item in captured)
     assert any("signed contract" in item for item in captured)
+
+
+def test_get_commitments_due_reads_nested_dated_folders_and_flat_notes(
+    planning_vault, tmp_path, monkeypatch
+):
+    meetings = planning_vault["meetings"]
+    nested = meetings / "2026-10"
+    nested.mkdir()
+    (nested / "2026-10-01 - Nested call.md").write_text(
+        "# Nested call\n\nI'll send the nested deck by Friday.\n",
+        encoding="utf-8",
+    )
+    (meetings / "2026-10-01 - Flat call.md").write_text(
+        "# Flat call\n\nI'll send the flat summary by Friday.\n",
+        encoding="utf-8",
+    )
+    queue = nested / "queue"
+    queue.mkdir()
+    (queue / "2026-10-01 - Queued.md").write_text(
+        "# Queued\n\nI'll send the queued secret by Friday.\n",
+        encoding="utf-8",
+    )
+    (meetings / "README.md").write_text(
+        "# Meetings\n\nI'll send the readme secret by Friday.\n",
+        encoding="utf-8",
+    )
+    outside = tmp_path / "outside-meeting.md"
+    outside.write_text(
+        "# Outside\n\nI'll send the symlink secret by Friday.\n",
+        encoding="utf-8",
+    )
+    (nested / "linked.md").symlink_to(outside)
+    archived = planning_vault["root"] / "07-Archives" / "Meetings"
+    archived.mkdir(parents=True)
+    (archived / "2026-10-01 - Archived.md").write_text(
+        "# Archived\n\nI'll send the archived secret by Friday.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "get_archived_meetings_dir", lambda: archived)
+
+    result = _call("get_commitments_due", {"date_range": "all"})
+    commitments = (
+        result["commitments_due_today"]
+        + result["commitments_due_this_week"]
+        + result["commitments_no_date"]
+    )
+    captured = [item["commitment"] for item in commitments]
+    sources = " ".join(result["sources_scanned"])
+
+    assert any("nested deck" in item for item in captured)
+    assert any("flat summary" in item for item in captured)
+    assert not any("queued secret" in item for item in captured)
+    assert not any("readme secret" in item for item in captured)
+    assert not any("symlink secret" in item for item in captured)
+    assert not any("archived secret" in item for item in captured)
+    assert "2026-10/2026-10-01 - Nested call.md" in sources
+    assert "2026-10-01 - Flat call.md" in sources

@@ -7,7 +7,17 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## Unreleased
+## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
+
+After meetings were processed, "commitments due" could still come back empty when the notes sat in a dated folder instead of directly in the meetings folder. And a brand-new install on an Intel Mac with a very new Python could stop later with a raw error instead of a clear message.
+
+**What this fixes for you:**
+
+* **Commitments due sees meetings in dated folders.** Notes in folders like Meetings/2026-11 now show up the same way as notes sitting directly in the meetings folder.
+* **Setup on an Intel Mac gets the Python pieces it needs.** Dex uses a ready-made package on those machines instead of trying to build one from source, and prefers a Python that those packages support when a newer one is the only one on PATH.
+* **If those Python pieces cannot be installed, setup stops with one clear line.** You are not left with a later error about a missing helper.
+
+Thanks to Ben Freeman for reporting the empty commitments list.
 
 ## [1.97.34] — Custom skills can use the scratch folder again, Obsidian settings stay yours, and finishing a task no longer closes the week (2026-11-16)
 
