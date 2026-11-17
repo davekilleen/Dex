@@ -1,2 +1,0 @@
-# Regex lines ignored by scripts/security-gate.sh
-# Keep this file minimal and review exceptions regularly.
