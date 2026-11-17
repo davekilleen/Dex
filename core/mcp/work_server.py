@@ -4939,47 +4939,49 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
         'sources_scanned': []
     }
     
-    # Scan recent meeting notes
+    # Scan recent meeting notes, including dated subfolders of the live inbox.
+    # Archives stay out: this is "due now", not a historical sweep.
     meetings_dir = get_meetings_dir()
-    if meetings_dir.exists():
-        # Look at meetings from last 14 days
-        for meeting_file in meetings_dir.glob('*.md'):
+    for meeting_file in _iter_meeting_note_files(meetings_dir):
+        try:
             try:
-                # Extract date from filename (assuming YYYY-MM-DD prefix)
-                filename = meeting_file.stem
-                date_match = re.match(r'(\d{4}-\d{2}-\d{2})', filename)
-                if date_match:
-                    meeting_date_str = date_match.group(1)
-                    meeting_date = datetime.strptime(meeting_date_str, '%Y-%m-%d').date()
-                    
-                    # Only look at recent meetings
-                    if (today - meeting_date).days > 14:
-                        continue
-                
-                content = read_vault_text(meeting_file)
-                commitments = extract_commitments_from_text(
-                    content, 
-                    source=str(meeting_file.relative_to(BASE_DIR)),
-                    date_context=meeting_date_str if date_match else ''
-                )
-                
-                for c in commitments:
-                    if c['due_date']:
-                        due_lower = c['due_date'].lower()
-                        if due_lower in ['today', today.strftime('%A').lower()]:
-                            result['commitments_due_today'].append(c)
-                        elif due_lower in ['tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday']:
-                            result['commitments_due_this_week'].append(c)
-                        else:
-                            result['commitments_no_date'].append(c)
+                source = str(meeting_file.relative_to(BASE_DIR))
+            except ValueError:
+                source = meeting_file.name
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', source) or re.search(
+                r'(\d{4}-\d{2}-\d{2})', meeting_file.stem
+            )
+            meeting_date_str = ''
+            if date_match:
+                meeting_date_str = date_match.group(1)
+                meeting_date = datetime.strptime(meeting_date_str, '%Y-%m-%d').date()
+                if (today - meeting_date).days > 14:
+                    continue
+
+            content = read_vault_text(meeting_file)
+            commitments = extract_commitments_from_text(
+                content,
+                source=source,
+                date_context=meeting_date_str
+            )
+
+            for c in commitments:
+                if c['due_date']:
+                    due_lower = c['due_date'].lower()
+                    if due_lower in ['today', today.strftime('%A').lower()]:
+                        result['commitments_due_today'].append(c)
+                    elif due_lower in ['tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday']:
+                        result['commitments_due_this_week'].append(c)
                     else:
                         result['commitments_no_date'].append(c)
-                
-                result['sources_scanned'].append(str(meeting_file.name))
-                
-            except Exception as e:
-                logger.error(f"Error scanning {meeting_file}: {e}")
-                continue
+                else:
+                    result['commitments_no_date'].append(c)
+
+            result['sources_scanned'].append(source)
+
+        except Exception as e:
+            logger.error(f"Error scanning {meeting_file}: {e}")
+            continue
     
     # Scan person pages for "owe" or "follow up" mentions
     for subdir in ['External', 'Internal']:

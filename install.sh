@@ -112,6 +112,25 @@ dex_python_executable() {
     dex_to_posix_path "$resolved"
 }
 
+dex_machine() {
+    if [ -n "${DEX_TEST_MACHINE:-}" ]; then
+        printf '%s\n' "$DEX_TEST_MACHINE"
+        return 0
+    fi
+    uname -m 2>/dev/null || true
+}
+
+dex_intel_mac() {
+    case "${OSTYPE:-}" in
+        darwin*) ;;
+        *) return 1 ;;
+    esac
+    case "$(dex_machine)" in
+        x86_64|i386|i686) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 dex_accept_python() {
     local version resolved first="$1"
     shift
@@ -147,6 +166,20 @@ dex_resolve_python() {
         if dex_accept_python "$DEX_INSTALL_PYTHON"; then
             return 0
         fi
+    fi
+
+    # Intel Macs: newer packages often ship arm64-only wheels. Prefer a
+    # Python that still has ready-made Intel wheels (3.13/3.12/3.11) before
+    # accepting 3.14 from `python3`.
+    if dex_intel_mac; then
+        local intel_candidate
+        for intel_candidate in python3.13 python3.12 python3.11; do
+            if command -v "$intel_candidate" >/dev/null 2>&1; then
+                if dex_accept_python "$intel_candidate"; then
+                    return 0
+                fi
+            fi
+        done
     fi
 
     if command -v python3 >/dev/null 2>&1; then
@@ -1586,13 +1619,8 @@ if [ -n "$PYTHON_CMD" ]; then
     if [ ! -d ".venv" ]; then
         dex_user_progress "   Creating a private workspace..." "   Creating virtual environment..."
         if ! dex_run_logged "python -m venv" "$PYTHON_CMD" -m venv .venv; then
-            dex_show_logged_failure "Could not create virtual environment"
-            echo ""
-            echo "Try manually:"
-            echo "  \"$PYTHON_CMD\" -m venv .venv"
-            echo "  $VENV_PIP install --require-hashes -r core/mcp/requirements.hash.txt"
-            echo ""
-            dex_prompt_continue
+            echo "Dex could not create a private Python workspace, so setup stopped. See the install log for the exact error: $INSTALL_LOG"
+            exit 1
         fi
     fi
 
@@ -1614,16 +1642,8 @@ if [ -n "$PYTHON_CMD" ]; then
         if [ ! -f "$VENV_PIP" ]; then
             dex_log "venv pip missing at $VENV_PIP"
         fi
-        dex_show_logged_failure "Could not install Python dependencies"
-        echo ""
-        echo "Work MCP is critical - it syncs tasks across all your files."
-        echo "Without it, checking off a task in one place won't update others."
-        echo ""
-        echo "Try manually:"
-        echo "  \"$PYTHON_CMD\" -m venv .venv"
-        echo "  $VENV_PIP install --require-hashes -r $HASHED_REQUIREMENTS"
-        echo ""
-        dex_prompt_continue
+        echo "Dex could not install the Python pieces it needs, so setup stopped. See the install log for the exact error: $INSTALL_LOG"
+        exit 1
     fi
 fi
 
