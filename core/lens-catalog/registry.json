@@ -4318,10 +4318,10 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/calendar-setup/SKILL.md",
-        "sha256": "cce639f99a33ddb84c83b207a4073970d6374a3a9868947b39d348e7f225d41f",
-        "byte_size": 5256
+        "sha256": "fb663ffc8c31479be1863021c9a6a3fcb75c0c26c629c17531f8472d72530878",
+        "byte_size": 6069
       },
-      "value": "Grant Python calendar access for ~30x faster calendar queries.",
+      "value": "Install Dex Helper and grant Calendar access for ~30x faster calendar queries.",
       "jobs_served": [
         "start-each-day-focused"
       ],
@@ -4344,7 +4344,7 @@
         }
       ],
       "brief": {
-        "goal": "Grant Python calendar access for ~30x faster calendar queries.",
+        "goal": "Install Dex Helper and grant Calendar access for ~30x faster calendar queries.",
         "method_outline": [
           "Inspect the current local state and the person's request.",
           "Run the Calendar Setup workflow within its documented safety boundary.",
@@ -4940,8 +4940,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/dex-update/SKILL.md",
-        "sha256": "e9d42cb6d8cb50d89c79659c3c76ef3308fe05655cb904e303dda48a4cbb63b2",
-        "byte_size": 24252
+        "sha256": "35ebbe3b7c8dda64b282914779f09fc541256a90d5b9522cac842bb11ed0bc20",
+        "byte_size": 24905
       },
       "value": "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look \u2192 back up \u2192 apply \u2192 verify \u2192 rewindable).",
       "jobs_served": [
