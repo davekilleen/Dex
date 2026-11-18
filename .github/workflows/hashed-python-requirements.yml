@@ -40,6 +40,26 @@ jobs:
           chmod +x scripts/check-hashed-python-requirements.sh
           scripts/check-hashed-python-requirements.sh
 
+  intel-mac-cp314-wheels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download wheels for macOS x86_64 + CPython 3.14
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          chmod +x scripts/check-intel-mac-cp314-wheels.sh
+          scripts/check-intel-mac-cp314-wheels.sh
+
   hashed-pip-install:
     strategy:
       fail-fast: false

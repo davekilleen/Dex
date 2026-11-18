@@ -52,8 +52,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-plan/SKILL.md",
-        "sha256": "e3318c3b72225509c59ac10f3c9cd5c9a565a397f866b1fe31dac82a304607fd",
-        "byte_size": 36897
+        "sha256": "b8113b46ff22649b6ccb71c616a659cc449d0f0be436db449a7d345a15158ae2",
+        "byte_size": 37025
       },
       "value": "Helps a person choose a small, realistic focus list before the day scatters across meetings, tasks and loose commitments.",
       "jobs_served": [
@@ -483,8 +483,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/daily-review/SKILL.md",
-        "sha256": "971d32002d9868e8aaad51e064407e43eb9831096928306854a28d8c2772d152",
-        "byte_size": 20551
+        "sha256": "bae17f9f1bcdfbf78b67580b6c6b30c3072b4991722f444ab713b9b69264e501",
+        "byte_size": 20987
       },
       "value": "Closes the day the morning plan opened: what actually got done against what was intended, what a meeting left behind, and what tomorrow starts with \u2014 so the loop finishes instead of drifting.",
       "jobs_served": [

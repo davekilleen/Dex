@@ -184,7 +184,7 @@ def test_update_task_status_skips_non_user_markdown(planning_vault):
     assert "- [x]" in planning_vault["tasks"].read_text(encoding="utf-8")
 
 
-def test_update_task_status_marks_weekly_priority_when_linked_tasks_finish(
+def test_update_task_status_does_not_mark_weekly_priority_complete(
     planning_vault,
 ):
     priority_id = "week-2026-W40-p2"
@@ -208,12 +208,12 @@ def test_update_task_status_marks_weekly_priority_when_linked_tasks_finish(
 
     assert result["success"] is True
     week_text = planning_vault["priorities"].read_text(encoding="utf-8")
-    assert f"✅ 2026-10-02 ^{priority_id}" in week_text
+    assert f"✅ 2026-10-02 ^{priority_id}" not in week_text
+    assert f"^{priority_id}" in week_text
     assert f"- [x] Restore customer confidence ✅ 2026-10-02 09:15 ^{task_id}" in week_text
 
     progress = _call("get_week_progress")
     [priority] = progress["priorities"]
-    assert priority["status"] == "complete"
     assert priority["tasks_done"] == 1
     assert priority["tasks_total"] == 1
 
@@ -388,3 +388,60 @@ def test_get_commitments_due_drops_single_character_garbage(planning_vault):
     assert "a" not in captured
     assert any("deck" in item for item in captured)
     assert any("signed contract" in item for item in captured)
+
+
+def test_get_commitments_due_reads_nested_dated_folders_and_flat_notes(
+    planning_vault, tmp_path, monkeypatch
+):
+    meetings = planning_vault["meetings"]
+    nested = meetings / "2026-10"
+    nested.mkdir()
+    (nested / "2026-10-01 - Nested call.md").write_text(
+        "# Nested call\n\nI'll send the nested deck by Friday.\n",
+        encoding="utf-8",
+    )
+    (meetings / "2026-10-01 - Flat call.md").write_text(
+        "# Flat call\n\nI'll send the flat summary by Friday.\n",
+        encoding="utf-8",
+    )
+    queue = nested / "queue"
+    queue.mkdir()
+    (queue / "2026-10-01 - Queued.md").write_text(
+        "# Queued\n\nI'll send the queued secret by Friday.\n",
+        encoding="utf-8",
+    )
+    (meetings / "README.md").write_text(
+        "# Meetings\n\nI'll send the readme secret by Friday.\n",
+        encoding="utf-8",
+    )
+    outside = tmp_path / "outside-meeting.md"
+    outside.write_text(
+        "# Outside\n\nI'll send the symlink secret by Friday.\n",
+        encoding="utf-8",
+    )
+    (nested / "linked.md").symlink_to(outside)
+    archived = planning_vault["root"] / "07-Archives" / "Meetings"
+    archived.mkdir(parents=True)
+    (archived / "2026-10-01 - Archived.md").write_text(
+        "# Archived\n\nI'll send the archived secret by Friday.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(work_server, "get_archived_meetings_dir", lambda: archived)
+
+    result = _call("get_commitments_due", {"date_range": "all"})
+    commitments = (
+        result["commitments_due_today"]
+        + result["commitments_due_this_week"]
+        + result["commitments_no_date"]
+    )
+    captured = [item["commitment"] for item in commitments]
+    sources = " ".join(result["sources_scanned"])
+
+    assert any("nested deck" in item for item in captured)
+    assert any("flat summary" in item for item in captured)
+    assert not any("queued secret" in item for item in captured)
+    assert not any("readme secret" in item for item in captured)
+    assert not any("symlink secret" in item for item in captured)
+    assert not any("archived secret" in item for item in captured)
+    assert "2026-10/2026-10-01 - Nested call.md" in sources
+    assert "2026-10-01 - Flat call.md" in sources

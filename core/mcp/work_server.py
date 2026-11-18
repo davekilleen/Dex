@@ -676,10 +676,19 @@ def generate_task_id() -> str:
     next_num = max(existing_ids, default=0) + 1
     return f"task-{date_str}-{next_num:03d}"
 
+_TASK_ANCHOR_RE = re.compile(r'\^(task-\d{8}-\d{3,})')
+
+
+def task_ids_on_line(line: str) -> List[str]:
+    """Return every canonical task anchor on a checkbox line."""
+    return _TASK_ANCHOR_RE.findall(line)
+
+
 def extract_task_id(line: str) -> Optional[str]:
     """Extract task ID from a line"""
-    match = re.search(r'\^(task-\d{8}-\d{3,})', line)
-    return match.group(1) if match else None
+    ids = task_ids_on_line(line)
+    return ids[0] if len(ids) == 1 else None
+
 
 def _is_indented_bullet(line: str) -> bool:
     """Return whether a line is an indented child bullet of a task."""
@@ -1102,7 +1111,17 @@ def update_task_status_everywhere(
             
             line_idx = instance['line_number'] - 1
             old_line = lines[line_idx]
-            
+            anchors = task_ids_on_line(old_line)
+            if len(anchors) != 1:
+                failed_files.append({
+                    'file': instance['file'],
+                    'error': (
+                        "This line has more than one task id, so Dex left it "
+                        "unchanged rather than ticking the wrong task."
+                    ),
+                })
+                continue
+
             # Update checkbox and normalize completion metadata around the anchor.
             if completed:
                 new_line = re.sub(
@@ -3641,24 +3660,13 @@ def complete_weekly_priority_in_file(priority_id: str) -> Dict[str, Any]:
 
 
 def _sync_weekly_priorities_for_task(task_id: str, completed: bool) -> None:
-    """When every task on a weekly priority is done, mark that priority done."""
-    if not completed:
-        return
-    priorities_file = get_week_priorities_file()
-    if not priorities_file.exists():
-        return
+    """No-op: completing a task must not mark the week's priority done.
 
-    for priority in parse_weekly_priorities(priorities_file):
-        priority_id = priority.get('priority_id')
-        if not priority_id or priority.get('completed'):
-            continue
-        linked = find_linked_tasks(priority_id)
-        if (
-            linked
-            and any(item.get('task_id') == task_id for item in linked)
-            and all(item.get('completed') for item in linked)
-        ):
-            mark_weekly_priority_complete(priority_id)
+    Users complete a weekly priority themselves. Auto-closing it when its
+    linked tasks finish was marking a whole priority done after a single
+    related task, and a wrongly ticked task could close the wrong priority.
+    """
+    del task_id, completed
 
 
 def _strip_priority_line_annotations(text: str) -> str:
@@ -4931,47 +4939,49 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
         'sources_scanned': []
     }
     
-    # Scan recent meeting notes
+    # Scan recent meeting notes, including dated subfolders of the live inbox.
+    # Archives stay out: this is "due now", not a historical sweep.
     meetings_dir = get_meetings_dir()
-    if meetings_dir.exists():
-        # Look at meetings from last 14 days
-        for meeting_file in meetings_dir.glob('*.md'):
+    for meeting_file in _iter_meeting_note_files(meetings_dir):
+        try:
             try:
-                # Extract date from filename (assuming YYYY-MM-DD prefix)
-                filename = meeting_file.stem
-                date_match = re.match(r'(\d{4}-\d{2}-\d{2})', filename)
-                if date_match:
-                    meeting_date_str = date_match.group(1)
-                    meeting_date = datetime.strptime(meeting_date_str, '%Y-%m-%d').date()
-                    
-                    # Only look at recent meetings
-                    if (today - meeting_date).days > 14:
-                        continue
-                
-                content = read_vault_text(meeting_file)
-                commitments = extract_commitments_from_text(
-                    content, 
-                    source=str(meeting_file.relative_to(BASE_DIR)),
-                    date_context=meeting_date_str if date_match else ''
-                )
-                
-                for c in commitments:
-                    if c['due_date']:
-                        due_lower = c['due_date'].lower()
-                        if due_lower in ['today', today.strftime('%A').lower()]:
-                            result['commitments_due_today'].append(c)
-                        elif due_lower in ['tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday']:
-                            result['commitments_due_this_week'].append(c)
-                        else:
-                            result['commitments_no_date'].append(c)
+                source = str(meeting_file.relative_to(BASE_DIR))
+            except ValueError:
+                source = meeting_file.name
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2})', source) or re.search(
+                r'(\d{4}-\d{2}-\d{2})', meeting_file.stem
+            )
+            meeting_date_str = ''
+            if date_match:
+                meeting_date_str = date_match.group(1)
+                meeting_date = datetime.strptime(meeting_date_str, '%Y-%m-%d').date()
+                if (today - meeting_date).days > 14:
+                    continue
+
+            content = read_vault_text(meeting_file)
+            commitments = extract_commitments_from_text(
+                content,
+                source=source,
+                date_context=meeting_date_str
+            )
+
+            for c in commitments:
+                if c['due_date']:
+                    due_lower = c['due_date'].lower()
+                    if due_lower in ['today', today.strftime('%A').lower()]:
+                        result['commitments_due_today'].append(c)
+                    elif due_lower in ['tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday']:
+                        result['commitments_due_this_week'].append(c)
                     else:
                         result['commitments_no_date'].append(c)
-                
-                result['sources_scanned'].append(str(meeting_file.name))
-                
-            except Exception as e:
-                logger.error(f"Error scanning {meeting_file}: {e}")
-                continue
+                else:
+                    result['commitments_no_date'].append(c)
+
+            result['sources_scanned'].append(source)
+
+        except Exception as e:
+            logger.error(f"Error scanning {meeting_file}: {e}")
+            continue
     
     # Scan person pages for "owe" or "follow up" mentions
     for subdir in ['External', 'Internal']:

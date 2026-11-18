@@ -391,6 +391,100 @@ exit 0
     assert str(bin_dir / "py") in result.stdout
 
 
+def test_intel_mac_prefers_python312_over_python314(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_executable(
+        bin_dir / "python3",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.14.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    _write_executable(
+        bin_dir / "python3.12",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.8"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env.pop("DEX_INSTALL_PYTHON", None)
+    env.update(
+        {
+            "PATH": str(bin_dir),
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "OSTYPE": "darwin24",
+            "DEX_TEST_MACHINE": "x86_64",
+            "WINDIR": "",
+        }
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_resolve_python\nprintf "%s %s\\n" "$PYTHON_CMD" "$PYTHON_VERSION"',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip().endswith("3.12.8")
+    assert str(bin_dir / "python3.12") in result.stdout
+
+
+def test_arm_mac_keeps_path_python3_even_when_older_exists(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_executable(
+        bin_dir / "python3",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.14.0"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    _write_executable(
+        bin_dir / "python3.12",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then echo "Python 3.12.8"; exit 0; fi
+if [ "$1" = "-c" ]; then echo "$0"; exit 0; fi
+exit 0
+""",
+    )
+    env = os.environ.copy()
+    env.pop("DEX_INSTALL_PYTHON", None)
+    env.update(
+        {
+            "PATH": str(bin_dir),
+            "DEX_INSTALL_LIB_ONLY": "1",
+            "OSTYPE": "darwin24",
+            "DEX_TEST_MACHINE": "arm64",
+            "WINDIR": "",
+        }
+    )
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "-c",
+            f'set -e\n. "{INSTALL_SH}"\ndex_resolve_python\nprintf "%s %s\\n" "$PYTHON_CMD" "$PYTHON_VERSION"',
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.strip().endswith("3.14.0")
+    assert str(bin_dir / "python3") in result.stdout
+
+
 def test_python_fallback_skips_old_python3_and_uses_python(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -511,12 +605,38 @@ def test_venv_failure_writes_stderr_to_install_log_and_names_the_path(tmp_path: 
     log_path = Path(environment["DEX_INSTALL_LOG"])
     assert log_path.is_file(), result.stdout + result.stderr
     log_text = log_path.read_text(encoding="utf-8")
+    assert result.returncode != 0
     assert "simulated venv failure" in log_text
     assert "See the install log for the exact error:" in result.stdout
     assert str(log_path) in result.stdout
+    assert "Dex could not create a private Python workspace, so setup stopped." in result.stdout
     assert "2>/dev/null" not in (REPO_ROOT / "install.sh").read_text(encoding="utf-8").split(
         "Creating virtual environment"
     )[1].split("Work MCP dependencies")[0]
+
+
+def test_pip_failure_stops_setup_with_one_plain_message(tmp_path: Path) -> None:
+    root, environment = _windows_like_install_fixture(
+        tmp_path, venv_fails=False, pip_fails=True
+    )
+    result = subprocess.run(
+        ["/bin/bash", "install.sh"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    combined = result.stdout + result.stderr
+    log_path = Path(environment["DEX_INSTALL_LOG"])
+    node_log = Path(environment["DEX_TEST_NODE_LOG"])
+    assert result.returncode != 0, combined
+    assert combined.count("Dex could not install the Python pieces it needs, so setup stopped.") == 1
+    assert "See the install log for the exact error:" in combined
+    assert str(log_path) in combined
+    assert "ModuleNotFoundError" not in combined
+    if node_log.is_file():
+        assert "--adopt" not in node_log.read_text(encoding="utf-8")
 
 
 def test_spaces_in_install_log_path_are_quoted(tmp_path: Path) -> None:
@@ -609,6 +729,9 @@ def test_hashed_requirements_are_uv_universal_with_win_and_mac() -> None:
     assert "pyobjc-core==" in text
     assert "pyobjc-framework-eventkit==" in text
     assert "sys_platform == 'darwin'" in text
+    assert "cryptography==48.0.1" in text
+    assert "platform_machine == 'x86_64'" in text
+    assert "cryptography==50.0.1" in text
     assert "--hash=sha256:" in text
     assert "hand-copied" not in text
     assert "PyPI JSON API" not in text
@@ -623,9 +746,25 @@ def test_hashed_requirements_drift_check_compiles_into_an_empty_file() -> None:
     assert "UV_CUSTOM_COMPILE_COMMAND" in script
     assert "significant(committed)" in script
     assert "clean-empty-compile" in script
+    assert r"^([A-Za-z0-9_.-]+==[^\s;\\]+)(\s*;[^\\]+)?" in script
     assert "pypi.org/pypi" in script
     assert "--output-file=core/mcp/requirements.hash.txt" in script
     assert '--output-file="$OUTPUT"' in script
+
+
+def test_intel_mac_cp314_wheel_check_uses_binary_only_download() -> None:
+    script = (
+        REPO_ROOT / "scripts" / "check-intel-mac-cp314-wheels.sh"
+    ).read_text(encoding="utf-8")
+    assert "--only-binary :all:" in script
+    assert "--platform macosx_10_15_x86_64" in script
+    assert "--python-version 3.14" in script
+    assert "--abi abi3" in script
+    assert "cryptography-" in script
+    assert 'sys_platform": "darwin"' in script
+    assert 'platform_machine": "x86_64"' in script
+    assert "cryptography==48.0.1" in script
+    assert "Drop the marker" in script
 
 
 def test_hashed_requirements_workflow_is_separate_from_required_gates() -> None:
@@ -639,6 +778,7 @@ def test_hashed_requirements_workflow_is_separate_from_required_gates() -> None:
     assert "3.13t" not in workflow
     assert 'checksum: "23bf5552d220e0842b65c862097b2ebaeba0064b74eda5e565e77fd25969d8c8"' in workflow
     assert "pip install --require-hashes" in workflow
+    assert "check-intel-mac-cp314-wheels.sh" in workflow
     assert "windows-latest" in workflow
     assert "macos-latest" in workflow
     assert "jobs:\n  quality:" not in workflow
@@ -738,6 +878,7 @@ def _windows_like_install_fixture(
     tmp_path: Path,
     *,
     venv_fails: bool,
+    pip_fails: bool = False,
 ) -> tuple[Path, dict[str, str]]:
     real_node = shutil.which("node")
     if real_node is None:
@@ -759,6 +900,7 @@ def _windows_like_install_fixture(
     shim_dir = tmp_path / "bin"
     shim_dir.mkdir()
     venv_exit = "1" if venv_fails else "0"
+    pip_exit = "1" if pip_fails else "0"
     _write_executable(
         shim_dir / "git",
         """#!/bin/sh
@@ -790,7 +932,7 @@ if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
     exit 1
   fi
   mkdir -p "$3/Scripts"
-  printf '#!/bin/sh\\nexit 0\\n' > "$3/Scripts/pip.exe"
+  printf '#!/bin/sh\\nexit {pip_exit}\\n' > "$3/Scripts/pip.exe"
   printf '#!/bin/sh\\nif [ "$1" = "-c" ]; then echo win32; exit 0; fi\\nexit 0\\n' > "$3/Scripts/python.exe"
   chmod +x "$3/Scripts/pip.exe" "$3/Scripts/python.exe"
 fi

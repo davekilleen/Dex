@@ -39,9 +39,9 @@ from pathlib import Path
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
 pins: list[str] = []
 for line in source.splitlines():
-    match = re.match(r"^([A-Za-z0-9_.-]+==[^\s;\\]+)", line)
+    match = re.match(r"^([A-Za-z0-9_.-]+==[^\s;\\]+)(\s*;[^\\]+)?", line)
     if match:
-        pins.append(match.group(1))
+        pins.append((match.group(1) + (match.group(2) or "")).rstrip())
 if not pins:
     raise SystemExit("no version pins found in hash file")
 Path(sys.argv[2]).write_text("\n".join(pins) + "\n", encoding="utf-8")

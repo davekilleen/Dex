@@ -1,104 +1,113 @@
 #!/usr/bin/env python3
 """Generate Obsidian config optimized for Dex"""
-import json
 from pathlib import Path
+
+from core.obsidian.preserve_config import write_obsidian_json
 
 
 def generate_config(vault_path: Path):
-    """Generate .obsidian/ config files"""
+    """Generate .obsidian/ config files without wiping a user's settings."""
     obsidian_dir = vault_path / '.obsidian'
     obsidian_dir.mkdir(exist_ok=True)
-    
+    backups: list[str] = []
+
+    def write(name: str, payload: dict) -> None:
+        backup = write_obsidian_json(obsidian_dir / name, payload)
+        if backup is not None:
+            backups.append(backup.name)
+
     # App config
-    app_config = {
-        "alwaysUpdateLinks": True,
-        "newLinkFormat": "shortest",
-        "useMarkdownLinks": False,
-        "showFrontmatter": True,
-        "foldHeading": True,
-        "foldIndent": True,
-        "showLineNumber": False,
-        "spellcheck": True,
-        "strictLineBreaks": False,
-        "readableLineLength": True,
-        "defaultViewMode": "preview"
-    }
-    
-    (obsidian_dir / 'app.json').write_text(json.dumps(app_config, indent=2))
-    
-    # Appearance
-    appearance = {
-        "baseFontSize": 16,
-        "theme": "moonstone"
-    }
-    
-    (obsidian_dir / 'appearance.json').write_text(json.dumps(appearance, indent=2))
-    
-    # Hotkeys
-    hotkeys = {
-        "graph:open": [{"modifiers": ["Mod"], "key": "g"}],
-        "command-palette:open": [{"modifiers": ["Mod", "Shift"], "key": "p"}],
-        "switcher:open": [{"modifiers": ["Mod"], "key": "o"}],
-        "backlink:toggle-backlinks-in-document": [{"modifiers": ["Mod", "Shift"], "key": "b"}]
-    }
-    
-    (obsidian_dir / 'hotkeys.json').write_text(json.dumps(hotkeys, indent=2))
-    
-    # Workspace (default layout)
-    workspace = {
-        "main": {
-            "id": "dex-main",
-            "type": "split",
-            "children": [
-                {
-                    "id": "dex-editor",
-                    "type": "leaf",
-                    "state": {
-                        "type": "markdown",
+    write(
+        "app.json",
+        {
+            "alwaysUpdateLinks": True,
+            "newLinkFormat": "shortest",
+            "useMarkdownLinks": False,
+            "showFrontmatter": True,
+            "foldHeading": True,
+            "foldIndent": True,
+            "showLineNumber": False,
+            "spellcheck": True,
+            "strictLineBreaks": False,
+            "readableLineLength": True,
+            "defaultViewMode": "preview",
+        },
+    )
+
+    write(
+        "appearance.json",
+        {
+            "baseFontSize": 16,
+            "theme": "moonstone",
+        },
+    )
+
+    write(
+        "hotkeys.json",
+        {
+            "graph:open": [{"modifiers": ["Mod"], "key": "g"}],
+            "command-palette:open": [{"modifiers": ["Mod", "Shift"], "key": "p"}],
+            "switcher:open": [{"modifiers": ["Mod"], "key": "o"}],
+            "backlink:toggle-backlinks-in-document": [
+                {"modifiers": ["Mod", "Shift"], "key": "b"}
+            ],
+        },
+    )
+
+    write(
+        "workspace.json",
+        {
+            "main": {
+                "id": "dex-main",
+                "type": "split",
+                "children": [
+                    {
+                        "id": "dex-editor",
+                        "type": "leaf",
                         "state": {
-                            "file": "README.md",
-                            "mode": "preview"
-                        }
+                            "type": "markdown",
+                            "state": {
+                                "file": "README.md",
+                                "mode": "preview",
+                            },
+                        },
                     }
-                }
-            ]
+                ],
+            },
+            "left": {
+                "id": "dex-left",
+                "type": "split",
+                "children": [
+                    {
+                        "id": "file-explorer",
+                        "type": "leaf",
+                        "state": {"type": "file-explorer"},
+                    }
+                ],
+                "collapsed": False,
+            },
+            "right": {
+                "id": "dex-right",
+                "type": "split",
+                "children": [
+                    {
+                        "id": "backlinks",
+                        "type": "leaf",
+                        "state": {"type": "backlink"},
+                    }
+                ],
+                "collapsed": True,
+            },
         },
-        "left": {
-            "id": "dex-left",
-            "type": "split",
-            "children": [
-                {
-                    "id": "file-explorer",
-                    "type": "leaf",
-                    "state": {
-                        "type": "file-explorer"
-                    }
-                }
-            ],
-            "collapsed": False
-        },
-        "right": {
-            "id": "dex-right",
-            "type": "split",
-            "children": [
-                {
-                    "id": "backlinks",
-                    "type": "leaf",
-                    "state": {
-                        "type": "backlink"
-                    }
-                }
-            ],
-            "collapsed": True
-        }
-    }
-    
-    (obsidian_dir / 'workspace.json').write_text(json.dumps(workspace, indent=2))
-    
+    )
+
     print("✅ Obsidian config generated")
-    print("   - Optimized settings for Dex")
+    print("   - Existing settings kept or merged")
     print("   - Keyboard shortcuts configured")
     print("   - Default workspace layout")
+    if backups:
+        print("   - Backup saved: " + ", ".join(backups))
+
 
 if __name__ == '__main__':
     import os
