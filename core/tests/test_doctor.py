@@ -5148,23 +5148,23 @@ def test_apple_mail_search_is_a_deep_check_and_adapts_the_focused_probe(
 
 
 def test_calendar_permission_adapter_preserves_eventkit_status(monkeypatch, context):
+    from core.utils import macos_privacy_helper as helper_mod
+
     monkeypatch.setattr(doctor, "_is_macos", lambda: True)
     for raw_status, expected in (
-        ("0\n", "not_determined"),
-        ("1\n", "restricted"),
-        ("2\n", "denied"),
-        ("3\n", "authorized"),
-        ("4\n", "write_only"),
-        ("7\n", "unknown (7)"),
+        ("not_determined", "not_determined"),
+        ("restricted", "restricted"),
+        ("denied", "denied"),
+        ("granted", "authorized"),
+        ("write_only", "write_only"),
+        ("weird", "unknown (weird)"),
     ):
         monkeypatch.setattr(
-            doctor.subprocess,
-            "run",
-            lambda command, _raw=raw_status, **_kwargs: subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=_raw,
-                stderr="",
+            helper_mod,
+            "run_helper_op",
+            lambda *_args, _raw=raw_status, **_kwargs: (
+                True,
+                json.dumps({"calendar": _raw, "reminders": "granted"}),
             ),
         )
         assert doctor._calendar_permission_status(context) == expected
@@ -5182,28 +5182,72 @@ def test_calendar_write_only_requires_full_access_and_unknown_preserves_raw_stat
         lambda _context: pytest.fail("non-readable permission states must not query calendars"),
     )
 
-    def eventkit_status(raw_status):
+    from core.utils import macos_privacy_helper as helper_mod
+
+    def helper_status(calendar_status):
         monkeypatch.setattr(
-            doctor.subprocess,
-            "run",
-            lambda command, **_kwargs: subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=f"{raw_status}\n",
-                stderr="",
+            helper_mod,
+            "run_helper_op",
+            lambda *_args, **_kwargs: (
+                True,
+                json.dumps({"calendar": calendar_status, "reminders": "granted"}),
             ),
         )
 
-    eventkit_status(4)
+    helper_status("write_only")
     write_only = doctor._probe_calendar_access(context)
     assert write_only.verdict == "BROKEN"
     assert "write only" in write_only.detail.lower()
     assert "full calendar access" in write_only.heal.action.lower()
 
-    eventkit_status(7)
+    helper_status("weird")
     unknown = doctor._probe_calendar_access(context)
     assert unknown.verdict == "UNKNOWN"
-    assert "7" in unknown.detail
+    assert "weird" in unknown.detail
+
+
+def test_calendar_access_without_helper_on_mac_is_broken(monkeypatch, context):
+    from core.utils import macos_privacy_helper as helper_mod
+
+    _write_valid_configs(context, calendar="Team Calendar")
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(
+        helper_mod,
+        "run_helper_op",
+        lambda *_args, **_kwargs: (
+            False,
+            json.dumps({"error": helper_mod.HELPER_MISSING_MESSAGE, "code": "helper_unusable"}),
+        ),
+    )
+    monkeypatch.setattr(
+        doctor,
+        "_calendar_list_result",
+        lambda _context: pytest.fail("unusable helper must not query calendars"),
+    )
+    result = doctor._probe_calendar_access(context)
+    assert result.verdict == "BROKEN"
+    assert "Dex Helper" in result.detail
+    assert "Install Dex Helper" in result.heal.action
+
+
+def test_helper_privacy_missing_on_mac_is_broken(monkeypatch, context):
+    from core.utils import macos_privacy_helper as helper_mod
+
+    monkeypatch.setattr(doctor, "_is_macos", lambda: True)
+    monkeypatch.setattr(helper_mod, "doctor_status_line", lambda vault_root=None: "Dex Helper: not installed")
+    monkeypatch.setattr(helper_mod, "helper_app_bundle", lambda vault_root=None: None)
+    result = doctor._probe_helper_privacy(context)
+    assert result.verdict == "BROKEN"
+    assert result.detail == "Dex Helper: not installed"
+    assert "Install Dex Helper" in result.heal.action
+
+
+def test_helper_privacy_off_mac_is_off(monkeypatch, context):
+    monkeypatch.setattr(doctor, "_is_macos", lambda: False)
+    result = doctor._probe_helper_privacy(context)
+    assert result.verdict == "OFF"
+    assert result.detail == "Dex Helper: not installed"
+    assert result.heal is None
 
 
 def test_calendar_list_adapter_calls_the_real_mcp_helper(monkeypatch, context):

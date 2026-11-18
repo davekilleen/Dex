@@ -31,6 +31,9 @@ APP="$OUT/Dex Helper.app"
 ZIP="$OUT/DexHelper.zip"
 ENTITLEMENTS="$ROOT/DexHelper.entitlements"
 BUILD_SCRIPT="$ROOT/build.sh"
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+VERSIONED_ZIP="$OUT/DexHelper-v${VERSION}.zip"
+CHECKSUM="$OUT/DexHelper-v${VERSION}.zip.sha256"
 
 fail() {
   echo "error: $*" >&2
@@ -54,7 +57,7 @@ if ! security find-identity -v -p codesigning 2>/dev/null | grep -F -q "$IDENTIT
 fi
 
 echo "==> 1. Build Dex Helper"
-bash "$BUILD_SCRIPT"
+DEX_HELPER_REQUIRE_UNIVERSAL=1 bash "$BUILD_SCRIPT"
 [[ -d "$APP" ]] || fail "build did not produce $APP"
 
 echo "==> 2. codesign with hardened runtime and Calendar/Reminders entitlements"
@@ -68,7 +71,7 @@ codesign --force --options runtime --timestamp \
   "$APP"
 
 echo "==> 3. Zip and notarise (keychain profile: $NOTARY_PROFILE)"
-rm -f "$ZIP"
+rm -f "$ZIP" "$VERSIONED_ZIP" "$CHECKSUM"
 ditto -c -k --keepParent "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile dex-notary --wait
 
@@ -76,7 +79,12 @@ echo "==> 4. Staple"
 xcrun stapler staple "$APP"
 xcrun stapler validate "$APP"
 
-echo "==> 5. Verify"
+echo "==> 5. Zip the stapled app and write checksum"
+ditto -c -k --keepParent "$APP" "$ZIP"
+cp "$ZIP" "$VERSIONED_ZIP"
+shasum -a 256 "$VERSIONED_ZIP" | awk '{print $1 "  DexHelper-v'"$VERSION"'.zip"}' > "$CHECKSUM"
+
+echo "==> 6. Verify"
 codesign --verify --deep --strict --verbose=2 "$APP"
 spctl --assess --type execute -vv "$APP"
 
@@ -84,6 +92,8 @@ echo
 echo "Signed, notarised, stapled helper:"
 echo "  app: $APP"
 echo "  zip: $ZIP"
+echo "  versioned zip: $VERSIONED_ZIP"
+echo "  sha256: $(cut -d ' ' -f1 "$CHECKSUM") ($CHECKSUM)"
 echo "  identity: $IDENTITY"
 echo "  bundle id: ai.heydex.DexHelper"
 echo "This script does not publish, tag, or create a GitHub release."

@@ -6,16 +6,17 @@ import os
 from collections.abc import Mapping
 
 VSCODE_REMINDERS_UNAVAILABLE_MESSAGE = (
-    "Reminders can't be switched on from inside VS Code. "
+    "Reminders can't be switched on from inside VS Code without Dex Helper. "
     "The Mac never shows the permission ask in that app. "
-    "Use the Claude app or Terminal if you want Reminders. "
+    "Install Dex Helper (run /calendar-setup or /dex-update), then grant "
+    "Calendar (Full) and Reminders to Dex Helper. "
     "You can keep using Dex here without phone capture."
 )
 
 CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE = (
     "Reminders can't be switched on from inside the Claude app without Dex Helper. "
-    "Dex will open a small helper so macOS can ask. "
-    "Use Terminal if you want Reminders without the helper. "
+    "Install Dex Helper (run /calendar-setup or /dex-update), then grant "
+    "Calendar (Full) and Reminders to Dex Helper. "
     "You can keep using Dex here without phone capture."
 )
 

@@ -694,6 +694,11 @@ def test_calendar_setup_treats_editor_as_first_class_surface() -> None:
     assert "Do not send them to a standalone terminal as the only path" in skill
     assert "codesign -s -" in skill
     assert "rebuilding" in skill.lower() and "grant" in skill.lower()
+    assert "DEX_HELPER_DEV=1" in skill
+    assert "macos_privacy_helper install" in skill
+    assert "pip3 install" not in skill
+    assert "pyobjc-framework-EventKit" not in skill
+    assert "granting Terminal, Python, or python3 is enough" in skill
 
 
 def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> None:
@@ -704,8 +709,10 @@ def test_reminders_docs_and_skills_say_vscode_cannot_switch_reminders_on() -> No
         text = _read(relative)
         assert "Dex will open a small helper so macOS can ask" in text, relative
         assert "Reminders cannot be switched on from that app" in text, relative
-        assert "Claude app or Terminal" in text, relative
+        assert "Install Dex Helper" in text or "install Dex Helper" in text, relative
         assert "Dex Helper" in text, relative
+        assert "pip3 install" not in text, relative
+        assert "pyobjc-framework-EventKit" not in text, relative
         assert "Grant it for the same editor app if you use those features" not in text, relative
         assert "Claude Code" not in text, relative
 

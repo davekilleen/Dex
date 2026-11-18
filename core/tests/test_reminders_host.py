@@ -51,9 +51,11 @@ def test_is_vscode_host_does_not_read_os_environ_when_env_is_passed(monkeypatch)
 
 def test_unavailable_message_tells_the_user_what_to_do_instead():
     assert "can't be switched on from inside VS Code" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
-    assert "Claude app" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
-    assert "Terminal" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
+    assert "Dex Helper" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
+    assert "/calendar-setup" in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
     assert "home folder" not in VSCODE_REMINDERS_UNAVAILABLE_MESSAGE.lower()
+    assert "Claude app" in CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE
+    assert "Dex Helper" in CLAUDE_DESKTOP_REMINDERS_UNAVAILABLE_MESSAGE
 
 
 def test_claude_desktop_and_cursor_and_terminal_hosts():

@@ -8,34 +8,64 @@ so the helper is the responsible app. Never spawn the helper binary as a
 child of the MCP server for those calls. Titles and other event data stay
 in vault temp JSON files, not argv.
 
-The helper shares EventKit logic with the fallback scripts through
-``core.utils.eventkit_ops``. Dev builds ad-hoc sign with ``codesign --sign -``.
-Developer ID plus notarization is a later, separately approved release step.
+The helper is a compiled native app. Dex never writes inside a signed
+bundle after copying it. People using Dex install the signed copy pinned
+in ``release-manifest.json``. ``DEX_HELPER_DEV=1`` is the local ad-hoc
+build path for people building Dex.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import urllib.error
+import urllib.request
 import uuid
+import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-HELPER_VERSION = "1.0.0"
+HELPER_VERSION = "1.1.0"
+MIN_HELPER_VERSION = "1.1.0"
 HELPER_BUNDLE_ID = "ai.heydex.DexHelper"
 HELPER_APP_NAME = "Dex Helper.app"
 HELPER_EXECUTABLE_NAME = "DexHelper"
+HELPER_TEAM_ID = "6WVLPMNTL5"
 HELPER_TIMEOUT_SECONDS = 120
+HELPER_DOWNLOAD_LIMIT_BYTES = 20 * 1024 * 1024
 
 _SCRIPT_DOMAIN = {
     "calendar_eventkit.py": "calendar",
     "reminders_eventkit.py": "reminders",
 }
+
+HELPER_MISSING_MESSAGE = (
+    "Dex Helper is not installed. Run /calendar-setup, or run /dex-update if you already use Dex."
+)
+HELPER_SCRIPT_MESSAGE = (
+    "This Dex Helper is the old script copy and cannot ask for Calendar. "
+    "Install the signed Dex Helper from this Dex release."
+)
+HELPER_UNSIGNED_MESSAGE = (
+    "This Dex Helper is not the trusted signed copy. Install the one from the Dex release."
+)
+HELPER_TOO_OLD_MESSAGE = "Dex Helper is too old for this Dex. Run /dex-update."
+HELPER_NOT_IN_RELEASE_MESSAGE = "The signed Dex Helper is not in this Dex yet."
+HELPER_QUARANTINE_MESSAGE = (
+    "Right-click Dex Helper in Applications, choose Open, then grant Calendar and Reminders."
+)
+HELPER_GATEKEEPER_MESSAGE = HELPER_QUARANTINE_MESSAGE
+
+
+def helper_unusable_payload(message: str) -> str:
+    return json.dumps({"error": message, "code": "helper_unusable"})
 
 
 def helper_source_dir() -> Path:
@@ -51,6 +81,19 @@ def helper_source_version() -> str:
     return text or HELPER_VERSION
 
 
+def release_manifest_path() -> Path:
+    return helper_source_dir() / "release-manifest.json"
+
+
+def load_release_manifest(path: Path | None = None) -> dict[str, Any]:
+    manifest_file = path if path is not None else release_manifest_path()
+    try:
+        parsed = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def default_install_app_path() -> Path:
     return Path.home() / "Applications" / HELPER_APP_NAME
 
@@ -63,6 +106,21 @@ def vault_install_app_path(vault_root: Path | None = None) -> Path:
 def vault_tmp_dir(vault_root: Path | None = None) -> Path:
     root = Path(vault_root) if vault_root is not None else _vault_root()
     return root / "System" / ".dex" / "tmp"
+
+
+def helper_support_dir() -> Path:
+    return Path.home() / "Library" / "Application Support" / "Dex" / "helper"
+
+
+def resolve_support_dir(
+    vault_root: Path | None = None,
+    support_dir: Path | None = None,
+) -> Path:
+    if support_dir is not None:
+        return Path(support_dir)
+    if vault_root is not None:
+        return Path(vault_root) / "System" / ".dex" / "helper-support"
+    return helper_support_dir()
 
 
 def _vault_root() -> Path:
@@ -143,8 +201,87 @@ def _first_existing(paths: Sequence[Path]) -> Path | None:
     return None
 
 
+def executable_is_native(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            magic = handle.read(2)
+    except OSError:
+        return False
+    return magic != b"#!" and len(magic) >= 2
+
+
+def _adhoc_allowed(env: Mapping[str, str] | None = None) -> bool:
+    environment = os.environ if env is None else env
+    return environment.get("DEX_HELPER_DEV") == "1" or environment.get("DEX_HELPER_ALLOW_ADHOC") == "1"
+
+
+def app_is_quarantined(app_path: Path) -> bool:
+    if sys.platform != "darwin" or not shutil.which("xattr"):
+        return False
+    try:
+        result = subprocess.run(
+            ["xattr", "-p", "com.apple.quarantine", str(app_path)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def helper_usability(
+    app: Path,
+    env: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    """Return ``(kind, message)``. ``kind == "ok"`` means Dex can use this app."""
+    if not app.is_dir():
+        return "missing", HELPER_MISSING_MESSAGE
+    executable = helper_executable_from_app(app)
+    if not executable.is_file():
+        return "missing", HELPER_MISSING_MESSAGE
+    if not executable_is_native(executable):
+        return "script_executable", HELPER_SCRIPT_MESSAGE
+    version = read_installed_version(app) or "0"
+    if compare_versions(version, MIN_HELPER_VERSION) < 0:
+        return "too_old", HELPER_TOO_OLD_MESSAGE
+    identity = read_signing_identity(app)
+    kind = identity.get("kind") or "unsigned"
+    team = identity.get("team_id")
+    if kind in {"unsigned", "adhoc"} and not _adhoc_allowed(env):
+        return "unsigned", HELPER_UNSIGNED_MESSAGE
+    if kind == "developer_id" and team and team != HELPER_TEAM_ID:
+        return "wrong_team", (
+            "Dex Helper is already installed with a different identity "
+            f"(bundle {identity.get('bundle_id')}, Team ID {team}). "
+            "Replace it only after you are ready to grant Calendar and "
+            "Reminders again."
+        )
+    return "ok", ""
+
+
 def helper_is_available(env: Mapping[str, str] | None = None, vault_root: Path | None = None) -> bool:
-    return helper_app_bundle(env=env, vault_root=vault_root) is not None
+    app = helper_app_bundle(env=env, vault_root=vault_root)
+    if app is None:
+        return False
+    kind, _message = helper_usability(app, env=env)
+    return kind == "ok"
+
+
+def darwin_helper_failure(
+    env: Mapping[str, str] | None = None,
+    vault_root: Path | None = None,
+) -> tuple[bool, str] | None:
+    """On a Mac, return a structured failure when the helper cannot be used."""
+    if sys.platform != "darwin":
+        return None
+    app = helper_app_bundle(env=env, vault_root=vault_root)
+    if app is None:
+        return False, helper_unusable_payload(HELPER_MISSING_MESSAGE)
+    kind, message = helper_usability(app, env=env)
+    if kind == "ok":
+        return None
+    return False, helper_unusable_payload(message)
 
 
 def helper_op_for_script(script_name: str, args: Sequence[str]) -> tuple[str, dict[str, Any]] | None:
@@ -174,6 +311,27 @@ def open_helper_argv(app: Path, op: str, out_path: Path, in_path: Path | None = 
     return argv
 
 
+def _looks_like_gatekeeper(text: str) -> bool:
+    lowered = text.lower()
+    return "gatekeeper" in lowered or "quarantine" in lowered or "cannot be opened" in lowered
+
+
+def _result_from_helper_output(op: str, output: str) -> tuple[bool, str]:
+    stripped = (output or "").strip()
+    if not stripped:
+        return False, "Dex Helper produced no result"
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict) and parsed.get("error"):
+        return False, stripped
+    if op == "request-access" and isinstance(parsed, dict):
+        if parsed.get("calendar") != "granted" or parsed.get("reminders") != "granted":
+            return False, stripped
+    return True, stripped
+
+
 def run_helper_op(
     op: str,
     payload: Mapping[str, Any] | None = None,
@@ -181,10 +339,22 @@ def run_helper_op(
     timeout: int = HELPER_TIMEOUT_SECONDS,
     vault_root: Path | None = None,
 ) -> tuple[bool, str] | None:
-    """Launch the helper through LaunchServices. Returns None if it cannot start."""
+    """Launch the helper through LaunchServices.
+
+    Returns None only when the helper cannot start off a Mac, so callers can
+    skip. On a Mac a missing or unusable helper is a real failure, not a
+    fallback signal. Judge success from the out-file JSON, not from ``open``.
+    """
+    darwin_failure = darwin_helper_failure(vault_root=vault_root)
+    if darwin_failure is not None and helper_app_bundle(vault_root=vault_root) is None:
+        return darwin_failure
     app = helper_app_bundle(vault_root=vault_root)
     if app is None:
         return None
+    if sys.platform == "darwin":
+        kind, message = helper_usability(app)
+        if kind != "ok":
+            return False, helper_unusable_payload(message)
     tmp = vault_tmp_dir(vault_root)
     tmp.mkdir(parents=True, exist_ok=True)
     out_path = tmp / f"helper-out-{uuid.uuid4().hex}.json"
@@ -201,23 +371,23 @@ def run_helper_op(
                 timeout=timeout,
             )
         except FileNotFoundError:
+            if sys.platform == "darwin":
+                return False, helper_unusable_payload(HELPER_MISSING_MESSAGE)
             return None
         except subprocess.TimeoutExpired:
             return False, f"Dex Helper timed out after {timeout} seconds"
         except OSError:
+            if sys.platform == "darwin":
+                return False, helper_unusable_payload(HELPER_MISSING_MESSAGE)
             return None
+        combined = f"{result.stderr or ''} {result.stdout or ''}"
+        if _looks_like_gatekeeper(combined):
+            return False, helper_unusable_payload(HELPER_GATEKEEPER_MESSAGE)
         try:
             output = out_path.read_text(encoding="utf-8").strip()
         except OSError:
             output = ""
-        if result.returncode == 0:
-            return True, output
-        return False, (
-            output
-            or result.stderr.strip()
-            or result.stdout.strip()
-            or f"Exit code: {result.returncode}"
-        )
+        return _result_from_helper_output(op, output)
     finally:
         for path in (out_path, in_path):
             if path is None:
@@ -250,13 +420,18 @@ def run_mapped_helper(
 ) -> tuple[bool, str] | None:
     """Run the helper for a mapped script through LaunchServices.
 
-    Returns None when the helper is not installed so the caller can fall
-    back. A helper that starts and then reports a Calendar/Reminders error
-    is a real result — do not fall back after that.
+    On a Mac, a missing or unusable helper is a structured failure — never
+    ``None``. Off a Mac, ``None`` still means the caller can skip.
+    A helper that starts and then reports a Calendar/Reminders error is a
+    real result — do not fall back after that.
     """
     mapped = helper_op_for_script(script_name, args)
     if mapped is None:
         return None
+    if sys.platform == "darwin":
+        failure = darwin_helper_failure(vault_root=vault_root)
+        if failure is not None:
+            return failure
     op, payload = mapped
     return run_helper_op(op, payload, timeout=timeout, vault_root=vault_root)
 
@@ -390,9 +565,9 @@ def install_or_update_helper(
             "skipped": True,
             "reason": "source_missing",
             "message": (
-                "The Dex Helper app is not built yet. On a Mac, run "
-                "core/macos/dex-helper/build.sh (it ad-hoc signs). "
-                "Developer ID signing is a later, separately approved release step."
+                "The Dex Helper app is not built yet. On a Mac, people building "
+                "Dex can run core/macos/dex-helper/build.sh with DEX_HELPER_DEV=1. "
+                "Everyone else installs the signed copy from the Dex release."
             ),
         }
 
@@ -423,11 +598,7 @@ def install_or_update_helper(
             "path": str(destination),
         }
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination, symlinks=True)
-    _write_dex_root(destination, vault_root)
+    _replace_installed_app(source, destination, resolve_support_dir(vault_root))
 
     record = {
         "ok": True,
@@ -444,13 +615,17 @@ def install_or_update_helper(
     return record
 
 
-def _write_dex_root(app_path: Path, vault_root: Path | None) -> None:
-    marker = app_path / "Contents" / "Resources" / "dex-root.txt"
-    try:
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(str(_vault_root() if vault_root is None else Path(vault_root)) + "\n", encoding="utf-8")
-    except OSError:
-        return
+def _replace_installed_app(source: Path, destination: Path, support_dir: Path) -> None:
+    """Whole-tree replace. Never write files inside the new app after copy."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    previous_dir = support_dir / "previous"
+    previous_app = previous_dir / HELPER_APP_NAME
+    if destination.exists():
+        if previous_dir.exists():
+            shutil.rmtree(previous_dir)
+        previous_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(destination), str(previous_app))
+    shutil.copytree(source, destination, symlinks=True)
 
 
 def _write_install_record(record: Mapping[str, object], vault_root: Path | None) -> None:
@@ -478,13 +653,13 @@ def build_unsigned_helper(*, output_dir: Path | None = None) -> dict[str, object
     env = os.environ.copy()
     if output_dir is not None:
         env["DEX_HELPER_BUILD_DIR"] = str(output_dir)
-    env.setdefault("DEX_HELPER_CORE_ROOT", str(Path(__file__).resolve().parents[2]))
+    env.setdefault("DEX_HELPER_REQUIRE_UNIVERSAL", "0")
     try:
         result = subprocess.run(
             ["/bin/bash", str(script)],
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=300,
             env=env,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -516,11 +691,281 @@ def build_unsigned_helper(*, output_dir: Path | None = None) -> dict[str, object
     }
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _valid_sha256(value: str) -> bool:
+    return len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
+def _download_helper_zip(url: str, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = response.read(HELPER_DOWNLOAD_LIMIT_BYTES + 1)
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        raise RuntimeError(f"Could not download Dex Helper: {exc}") from exc
+    if len(data) > HELPER_DOWNLOAD_LIMIT_BYTES:
+        raise RuntimeError("Dex Helper download was larger than expected.")
+    dest.write_bytes(data)
+
+
+def _extract_helper_app(zip_path: Path, extract_dir: Path) -> Path:
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    if shutil.which("ditto"):
+        subprocess.run(
+            ["ditto", "-x", "-k", str(zip_path), str(extract_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    else:
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(extract_dir)
+    app = extract_dir / HELPER_APP_NAME
+    if app.is_dir():
+        return app
+    matches = [path for path in extract_dir.rglob(HELPER_APP_NAME) if path.is_dir()]
+    if matches:
+        return matches[0]
+    raise RuntimeError("The Dex Helper download did not contain Dex Helper.app.")
+
+
+def _verify_release_app(app: Path, manifest: Mapping[str, Any]) -> None:
+    executable = helper_executable_from_app(app)
+    if not executable.is_file() or not executable_is_native(executable):
+        raise RuntimeError(HELPER_SCRIPT_MESSAGE)
+    expected_bundle = str(manifest.get("bundle_id") or HELPER_BUNDLE_ID)
+    if read_bundle_id(app) != expected_bundle:
+        raise RuntimeError("The downloaded Dex Helper is not the Dex Helper app.")
+    expected_team = str(manifest.get("team_id") or HELPER_TEAM_ID)
+    if sys.platform == "darwin" and shutil.which("codesign"):
+        identity = read_signing_identity(app)
+        if identity.get("team_id") != expected_team:
+            raise RuntimeError(
+                "Dex Helper is already installed with a different identity "
+                f"(bundle {identity.get('bundle_id')}, Team ID {identity.get('team_id')}). "
+                "Replace it only after you are ready to grant Calendar and Reminders again."
+            )
+        verify = subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(app)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if verify.returncode != 0:
+            raise RuntimeError("The downloaded Dex Helper did not pass its signature check.")
+
+
+def helper_download_url(manifest: Mapping[str, Any]) -> str:
+    tag = str(manifest.get("download_tag") or "").strip()
+    asset = str(manifest.get("asset_name") or "").strip()
+    return f"https://github.com/davekilleen/Dex/releases/download/{tag}/{asset}"
+
+
+def install_or_update_helper_from_release(
+    vault_root: Path | None = None,
+    *,
+    manifest: Mapping[str, Any] | None = None,
+    zip_path: Path | None = None,
+    download_url: str | None = None,
+    destination_app: Path | None = None,
+    support_dir: Path | None = None,
+) -> dict[str, object]:
+    """Download the pinned signed helper, verify it, and replace the installed app."""
+    if sys.platform != "darwin" and zip_path is None:
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "not_macos",
+            "message": "The Calendar and Reminders helper is Mac-only.",
+        }
+    loaded = dict(manifest) if manifest is not None else load_release_manifest()
+    sha256 = str(loaded.get("sha256") or "").strip()
+    if not _valid_sha256(sha256):
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "not_in_release",
+            "message": HELPER_NOT_IN_RELEASE_MESSAGE,
+        }
+
+    destination = destination_app if destination_app is not None else default_install_app_path()
+    support = resolve_support_dir(vault_root, support_dir)
+    installed_version = read_installed_version(destination) if destination.is_dir() else None
+    pin_version = str(loaded.get("helper_version") or helper_source_version())
+    if (
+        destination.is_dir()
+        and installed_version
+        and compare_versions(installed_version, pin_version) >= 0
+        and helper_usability(destination)[0] == "ok"
+        and read_signing_identity(destination).get("team_id") == str(loaded.get("team_id") or HELPER_TEAM_ID)
+    ):
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "already_current",
+            "version": installed_version,
+            "path": str(destination),
+        }
+    if destination.is_dir():
+        expected_source = {
+            "kind": "developer_id",
+            "team_id": str(loaded.get("team_id") or HELPER_TEAM_ID),
+            "bundle_id": str(loaded.get("bundle_id") or HELPER_BUNDLE_ID),
+        }
+        dest_identity = read_signing_identity(destination)
+        if dest_identity.get("bundle_id") and (
+            dest_identity.get("bundle_id") != expected_source["bundle_id"]
+            or (
+                dest_identity.get("team_id")
+                and dest_identity.get("team_id") != expected_source["team_id"]
+                and dest_identity.get("kind") == "developer_id"
+            )
+        ):
+            return {
+                "ok": False,
+                "skipped": True,
+                "reason": "identity_mismatch",
+                "message": (
+                    "Dex Helper is already installed with a different identity "
+                    f"(bundle {dest_identity.get('bundle_id')}, "
+                    f"Team ID {dest_identity.get('team_id')}). "
+                    "Replace it only after you are ready to grant Calendar and "
+                    "Reminders again."
+                ),
+                "path": str(destination),
+            }
+
+    downloads = support / "downloads"
+    downloads.mkdir(parents=True, exist_ok=True)
+    asset_name = str(loaded.get("asset_name") or f"DexHelper-v{pin_version}.zip")
+    cached = zip_path if zip_path is not None else downloads / asset_name
+    if zip_path is None:
+        url = download_url or helper_download_url(loaded)
+        try:
+            _download_helper_zip(url, cached)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": "download_failed",
+                "message": str(exc) or HELPER_MISSING_MESSAGE,
+            }
+    digest = _sha256_file(cached)
+    if digest.lower() != sha256.lower():
+        try:
+            cached.unlink()
+        except OSError:
+            pass
+        return {
+            "ok": False,
+            "skipped": False,
+            "reason": "checksum_mismatch",
+            "message": "The Dex Helper download did not match the signed copy Dex expected.",
+        }
+
+    extract_root = Path(tempfile.mkdtemp(prefix="dex-helper-", dir=str(downloads)))
+    try:
+        try:
+            extracted = _extract_helper_app(cached, extract_root)
+            _verify_release_app(extracted, loaded)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": "verify_failed",
+                "message": str(exc),
+            }
+        _replace_installed_app(extracted, destination, support)
+    finally:
+        shutil.rmtree(extract_root, ignore_errors=True)
+
+    identity = read_signing_identity(destination)
+    record = {
+        "ok": True,
+        "skipped": False,
+        "reason": "installed" if installed_version is None else "updated",
+        "version": read_installed_version(destination) or pin_version,
+        "path": str(destination),
+        "signed": True,
+        "signing": identity.get("kind") or "developer_id",
+        "team_id": identity.get("team_id") or loaded.get("team_id"),
+        "bundle_id": HELPER_BUNDLE_ID,
+    }
+    _write_install_record(record, vault_root)
+    return record
+
+
+def rollback_helper(
+    *,
+    destination_app: Path | None = None,
+    support_dir: Path | None = None,
+    vault_root: Path | None = None,
+) -> dict[str, object]:
+    destination = destination_app if destination_app is not None else default_install_app_path()
+    support = resolve_support_dir(vault_root, support_dir)
+    previous = support / "previous" / HELPER_APP_NAME
+    if not previous.is_dir():
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "no_previous",
+            "message": "There is no previous Dex Helper to restore.",
+        }
+    if destination.is_dir() and not identities_match(previous, destination):
+        dest_identity = read_signing_identity(destination)
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "identity_mismatch",
+            "message": (
+                "Dex Helper is already installed with a different identity "
+                f"(bundle {dest_identity.get('bundle_id')}, "
+                f"Team ID {dest_identity.get('team_id')}). "
+                "Replace it only after you are ready to grant Calendar and "
+                "Reminders again."
+            ),
+            "path": str(destination),
+        }
+    staged = support / "rollback-current"
+    if staged.exists():
+        shutil.rmtree(staged)
+    if destination.exists():
+        shutil.move(str(destination), str(staged))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(previous), str(destination))
+    if staged.exists():
+        previous.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(staged), str(previous))
+    record = {
+        "ok": True,
+        "skipped": False,
+        "reason": "rolled_back",
+        "version": read_installed_version(destination),
+        "path": str(destination),
+        "signing": read_signing_identity(destination).get("kind"),
+        "team_id": read_signing_identity(destination).get("team_id"),
+        "bundle_id": HELPER_BUNDLE_ID,
+    }
+    _write_install_record(record, vault_root)
+    return record
+
+
 def doctor_status_line(vault_root: Path | None = None) -> str:
     """One Doctor line: installed or not, signing identity, auth status."""
     app = helper_app_bundle(vault_root=vault_root)
     if app is None:
         return "Dex Helper: not installed"
+    executable = helper_executable_from_app(app)
+    if executable.is_file() and not executable_is_native(executable):
+        return "Dex Helper: installed, unusable script copy"
     identity = read_signing_identity(app)
     kind_raw = identity.get("kind") or "unsigned"
     kind = {"developer_id": "Developer ID", "adhoc": "adhoc", "unsigned": "unsigned"}.get(
@@ -542,27 +987,41 @@ def doctor_status_line(vault_root: Path | None = None) -> str:
     )
 
 
+def _dev_install_requested(args: Sequence[str]) -> bool:
+    if "--dev" in args:
+        return True
+    return os.environ.get("DEX_HELPER_DEV") == "1"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     command = args[0] if args else "status"
     if command == "install":
-        built = build_unsigned_helper()
-        if built.get("skipped") and built.get("reason") == "not_macos":
-            print(built["message"])
-            return 0
-        if not built.get("ok"):
-            print(built.get("error") or built.get("message") or "Could not build Dex Helper.")
-            return 0 if built.get("skipped") else 1
-        if built.get("skipped"):
-            print(built.get("message") or "Dex Helper build skipped.")
-            return 0
-        result = install_or_update_helper(source_app=Path(str(built["path"])))
+        if _dev_install_requested(args):
+            built = build_unsigned_helper()
+            if built.get("skipped") and built.get("reason") == "not_macos":
+                print(built["message"])
+                return 0
+            if not built.get("ok"):
+                print(built.get("error") or built.get("message") or "Could not build Dex Helper.")
+                return 0 if built.get("skipped") else 1
+            if built.get("skipped"):
+                print(built.get("message") or "Dex Helper build skipped.")
+                return 0
+            result = install_or_update_helper(source_app=Path(str(built["path"])))
+            print(result.get("message") or result.get("reason"))
+            return 0 if result.get("ok") else 1
+        result = install_or_update_helper_from_release()
+        print(result.get("message") or result.get("reason"))
+        return 0 if result.get("ok") or result.get("skipped") else 1
+    if command == "rollback":
+        result = rollback_helper()
         print(result.get("message") or result.get("reason"))
         return 0 if result.get("ok") else 1
     if command == "status":
         print(doctor_status_line())
         return 0
-    print("Usage: python -m core.utils.macos_privacy_helper [status|install]")
+    print("Usage: python -m core.utils.macos_privacy_helper [status|install|rollback]")
     return 1
 
 

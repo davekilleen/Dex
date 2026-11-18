@@ -249,6 +249,25 @@ def test_vscode_host_uses_reminders_when_helper_is_available(monkeypatch, tool_n
     assert payload.get("user_message") != VSCODE_REMINDERS_UNAVAILABLE_MESSAGE
 
 
+def test_darwin_calendar_without_usable_helper_reports_broken(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "darwin")
+    monkeypatch.setattr(calendar_server, "run_mapped_helper", lambda *_args, **_kwargs: None)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("Calendar must not exec EventKit scripts on a Mac without Dex Helper")
+
+    monkeypatch.setattr(calendar_server.subprocess, "run", fail_if_called)
+
+    payload = _decode_tool_result(
+        asyncio.run(calendar_server._handle_call_tool_inner("calendar_list_calendars", {}))
+    )
+
+    assert payload["success"] is False
+    assert payload["feature_status"] == "broken"
+    assert payload["user_message"] == calendar_server.HELPER_MISSING_MESSAGE
+    assert payload["error"] == calendar_server.HELPER_MISSING_MESSAGE
+
+
 def test_vscode_host_does_not_block_calendar_tools(monkeypatch):
     monkeypatch.setattr(
         calendar_server,

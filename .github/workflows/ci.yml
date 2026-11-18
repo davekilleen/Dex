@@ -103,6 +103,65 @@ jobs:
             --vault "$GITHUB_WORKSPACE" \
             --home "$HOME"
 
+  dex-helper:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      VAULT_PATH: ${{ github.workspace }}
+      DEX_HELPER_REQUIRE_UNIVERSAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Build Dex Helper (unsigned)
+        run: |
+          mkdir -p "$RUNNER_TEMP/helper-build"
+          DEX_HELPER_BUILD_DIR="$RUNNER_TEMP/helper-build" \
+            DEX_HELPER_REQUIRE_UNIVERSAL=0 \
+            bash core/macos/dex-helper/build.sh
+      - name: Assert the helper is a compiled app
+        run: |
+          APP="$RUNNER_TEMP/helper-build/Dex Helper.app"
+          EXE="$APP/Contents/MacOS/DexHelper"
+          test -x "$EXE"
+          MAGIC="$(xxd -p -l 2 "$EXE")"
+          test "$MAGIC" != "2321"
+          file "$EXE"
+      - name: Swift helper tests
+        run: swift test --package-path core/macos/dex-helper
+      - name: Direct-invoke version and unknown op
+        run: |
+          APP="$RUNNER_TEMP/helper-build/Dex Helper.app"
+          EXE="$APP/Contents/MacOS/DexHelper"
+          TMP="$HOME/Library/Application Support/Dex/helper/tmp"
+          mkdir -p "$TMP"
+          export OUT="$TMP/ci-out.json"
+          "$EXE" version "$OUT"
+          python3 - <<'PY'
+          import json, pathlib, os
+          text = pathlib.Path(os.environ["OUT"]).read_text()
+          payload = json.loads(text)
+          version = pathlib.Path("core/macos/dex-helper/VERSION").read_text().strip()
+          assert payload == {"version": version}, payload
+          PY
+          "$EXE" unknown.thing "$OUT" || true
+          python3 - <<'PY'
+          import json, pathlib, os
+          payload = json.loads(pathlib.Path(os.environ["OUT"]).read_text())
+          assert payload.get("code") == "unknown_op", payload
+          assert "Unknown helper op: unknown.thing" in payload.get("error", "")
+          PY
+      - name: Python helper contract tests
+        run: |
+          python3 -m pip install -q pytest
+          python3 -m pytest core/tests/test_macos_privacy_helper.py core/tests/test_helper_json_contract.py core/tests/test_helper_release_install.py -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
   # Gates, JS suites, lint, and static checks. The Python test suite runs in the
   # sharded `tests` matrix below; its thresholds are enforced by `test-results`.
   quality:

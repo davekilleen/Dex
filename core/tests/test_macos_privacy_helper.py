@@ -286,6 +286,7 @@ def test_sign_and_notarize_script_is_local_developer_id_path():
     assert ".p8" not in script
     assert "com.apple.security.personal-information.calendars" in entitlements
     assert "com.apple.security.personal-information.reminders" in entitlements
+    assert "com.apple.security.cs.disable-library-validation" not in entitlements
 
 
 def test_install_sh_tries_helper_on_a_mac_and_keeps_going_if_it_skips():
@@ -293,7 +294,7 @@ def test_install_sh_tries_helper_on_a_mac_and_keeps_going_if_it_skips():
     text = installer.read_text(encoding="utf-8")
     assert "macos_privacy_helper install" in text
     assert "Never fail install" in text
-    assert "fallback path remains" in text
+    assert "stay unavailable until Dex Helper is installed" in text
 
 
 def test_helper_plist_declares_calendar_and_reminders_usage():
@@ -328,7 +329,7 @@ def test_doctor_status_line_when_helper_is_missing(monkeypatch):
 
 
 def test_doctor_status_line_when_helper_is_installed(tmp_path, monkeypatch):
-    app = _app_bundle(tmp_path)
+    app = _native_app_bundle(tmp_path)
     monkeypatch.setattr(helper, "helper_app_bundle", lambda vault_root=None: app)
     monkeypatch.setattr(
         helper,
@@ -352,5 +353,106 @@ def test_helper_builds_and_ad_hoc_signs_when_codesign_is_present(tmp_path):
         pytest.skip(str(result.get("message") or result.get("reason")))
     assert result["ok"] is True
     built = Path(str(result["path"]))
-    assert helper.helper_executable_from_app(built).is_file()
+    executable = helper.helper_executable_from_app(built)
+    assert executable.is_file()
     assert helper.read_bundle_id(built) == helper.HELPER_BUNDLE_ID
+    assert helper.executable_is_native(executable)
+    assert not (built / "Contents" / "Resources" / "dex-root.txt").exists()
+
+
+def _native_executable(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xcf\xfa\xed\xfe" + b"\0" * 24)
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    return path
+
+
+def _native_app_bundle(root: Path, version: str = "1.1.0") -> Path:
+    app = _app_bundle(root, version=version)
+    _native_executable(app / "Contents" / "MacOS" / "DexHelper")
+    return app
+
+
+def test_install_or_update_does_not_write_dex_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(helper.sys, "platform", "darwin")
+    source = _native_app_bundle(tmp_path / "src", "1.1.0")
+    dest = tmp_path / "Applications" / "Dex Helper.app"
+    result = helper.install_or_update_helper(
+        source_app=source,
+        destination_app=dest,
+        vault_root=tmp_path / "vault",
+    )
+    assert result["ok"] is True
+    assert not (dest / "Contents" / "Resources" / "dex-root.txt").exists()
+
+
+def test_run_helper_op_treats_error_json_as_failure_when_open_returns_zero(
+    tmp_path, monkeypatch
+):
+    app = _app_bundle(tmp_path / "install")
+    monkeypatch.setenv("DEX_HELPER_PATH", str(app))
+    monkeypatch.setattr(helper.sys, "platform", "linux")
+
+    def fake_run(command, **_kwargs):
+        Path(command[7]).write_text(
+            '{"error":"Calendar access denied.","code":"permission_denied"}\n',
+            encoding="utf-8",
+        )
+        return helper.subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(helper.subprocess, "run", fake_run)
+    result = helper.run_helper_op(
+        "calendar.list",
+        {"args": []},
+        vault_root=tmp_path / "vault",
+    )
+    assert result[0] is False
+    assert "permission_denied" in result[1]
+
+
+def test_script_executable_is_not_available(tmp_path, monkeypatch):
+    app = _app_bundle(tmp_path / "install", version="1.1.0")
+    monkeypatch.setenv("DEX_HELPER_PATH", str(app))
+    monkeypatch.setattr(helper.sys, "platform", "darwin")
+    assert helper.helper_is_available() is False
+    kind, message = helper.helper_usability(app)
+    assert kind == "script_executable"
+    assert "old script copy" in message
+
+
+def test_too_old_helper_is_not_available(tmp_path, monkeypatch):
+    app = _native_app_bundle(tmp_path / "install", version="1.0.0")
+    monkeypatch.setenv("DEX_HELPER_PATH", str(app))
+    monkeypatch.setattr(helper.sys, "platform", "darwin")
+    assert helper.helper_is_available() is False
+    kind, message = helper.helper_usability(app)
+    assert kind == "too_old"
+    assert "too old" in message
+
+
+def test_darwin_unusable_helper_does_not_return_none_for_mapped_ops(
+    tmp_path, monkeypatch
+):
+    app = _app_bundle(tmp_path / "install", version="1.1.0")
+    monkeypatch.setenv("DEX_HELPER_PATH", str(app))
+    monkeypatch.setattr(helper.sys, "platform", "darwin")
+    result = helper.run_mapped_helper(
+        "calendar_eventkit.py",
+        ("list",),
+        vault_root=tmp_path / "vault",
+    )
+    assert result is not None
+    assert result[0] is False
+    payload = json.loads(result[1])
+    assert payload["code"] == "helper_unusable"
+    assert "old script copy" in payload["error"]
+
+
+def test_empty_release_sha_refuses_to_download(monkeypatch):
+    monkeypatch.setattr(helper.sys, "platform", "darwin")
+    result = helper.install_or_update_helper_from_release(
+        manifest={"sha256": "", "helper_version": "1.1.0"}
+    )
+    assert result["ok"] is False
+    assert result["reason"] == "not_in_release"
+    assert "not in this Dex yet" in result["message"]

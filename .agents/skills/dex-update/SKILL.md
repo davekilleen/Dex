@@ -3,8 +3,6 @@ name: dex-update
 description: "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable). Use when the user says 'update Dex', 'install the new version', or a release notice appeared. Not for undoing an update; use `dex-rollback`. Not just seeing what changed; use `dex-whats-new`."
 ---
 
-<!-- Generated from `.claude/skills/dex-update/SKILL.md` by `scripts/generate-agents-skills.py`. Do not edit. -->
-
 # Dex Update
 
 Use this skill when someone wants the latest Dex capabilities or asks what an update would change. Keep the conversation plain and reassuring. The skill collects choices and renders lifecycle results; it never edits, copies, renames, deletes, or merges vault files itself.
@@ -42,6 +40,16 @@ Only a fresh explicit yes to that unchanged preview permits
 Render its lifecycle receipt. Then ask `read_lifecycle_state` — the applied
 version now appears in the same rewind list `/dex-rollback` uses. If delivery,
 preview, or execution refuses, stop; no vault-content change was made.
+
+**After a successful apply, install or update Dex Helper** on a Mac. From the
+vault root, run `python -m core.utils.macos_privacy_helper install` with the
+vault Python when it exists. This downloads the signed helper pinned in this
+Dex, checks it, and replaces `~/Applications/Dex Helper.app` as a whole app.
+Report the result. If it skips or fails, give the next step calmly
+(`/calendar-setup` or `/dex-update` later) and continue — do not rewind the
+Dex code update that already applied. Off a Mac this step skips. Restoring
+the previous helper is `python -m core.utils.macos_privacy_helper rollback`;
+`/dex-rollback` does not undo the helper app.
 
 **Immediately after a successful apply, run the post-update canary** — one
 read-only walk through the same doors every later command will use. From the
