@@ -687,6 +687,7 @@ DEEP_CHECKS = (
     CheckDefinition("config.claude_composition", "CLAUDE customisations live", "_probe_claude_composition"),
     CheckDefinition("update.post-canary", "Post-update canary", "_probe_post_update_canary"),
     CheckDefinition("calendar.access", "Calendar access", "_probe_calendar_access"),
+    CheckDefinition("helper.privacy", "Dex Helper", "_probe_helper_privacy"),
     CheckDefinition("mail.apple-search", "Apple Mail search", "_probe_apple_mail_search"),
     CheckDefinition("qmd.live", "Semantic search", "_probe_qmd_live"),
     CheckDefinition("integrations.enabled", "Enabled integrations", "_probe_integrations_enabled"),
@@ -5955,38 +5956,34 @@ def _probe_backup_freshness(context: DoctorContext) -> ProbeResult:
     return ProbeResult("OK", summary)
 
 
+_HELPER_INSTALL_ACTION = "Install Dex Helper (run /calendar-setup or /dex-update)"
+
+
 def _calendar_permission_status(_context: DoctorContext) -> str:
     if not _is_macos():
         return "unsupported"
-    code = (
-        "import EventKit; "
-        "print(EventKit.EKEventStore.authorizationStatusForEntityType_(EventKit.EKEntityTypeEvent))"
-    )
-    result = subprocess.run(
-        [sys.executable, "-c", code],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=10,
-        check=False,
-    )
-    combined = _one_line(f"{result.stdout} {result.stderr}")
-    if result.returncode != 0:
-        if _looks_like_sandbox_failure(combined):
-            raise PermissionError(combined)
-        raise RuntimeError(combined)
+    from core.utils.macos_privacy_helper import run_helper_op
+
+    status = run_helper_op("status", vault_root=_context.vault_root)
+    if status is None:
+        return "helper_unusable"
+    ok, output = status
     try:
-        status = int(result.stdout.strip())
-    except ValueError as error:
-        raise RuntimeError(f"EventKit returned an invalid authorization status: {combined}") from error
-    return {
-        0: "not_determined",
-        1: "restricted",
-        2: "denied",
-        3: "authorized",
-        4: "write_only",
-    }.get(status, f"unknown ({status})")
+        parsed = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"Dex Helper returned an invalid authorization status: {output}") from error
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"Dex Helper returned an invalid authorization status: {output}")
+    if parsed.get("code") == "helper_unusable" or (not ok and parsed.get("error")):
+        return "helper_unusable"
+    raw = str(parsed.get("calendar") or "unknown")
+    if raw == "granted":
+        return "authorized"
+    if raw in {"not_determined", "restricted", "denied", "write_only"}:
+        return raw
+    if raw == "unknown":
+        return "unknown"
+    return f"unknown ({raw})"
 
 
 def _calendar_list_result(context: DoctorContext) -> dict[str, Any]:
@@ -6183,6 +6180,12 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
     status = _calendar_permission_status(context)
     if status == "unsupported":
         return ProbeResult("UNKNOWN", "EventKit calendar access can only be checked on macOS")
+    if status == "helper_unusable":
+        return ProbeResult(
+            "BROKEN",
+            "Dex Helper is not installed, so Calendar cannot ask for permission in its own name",
+            Heal(tier=3, action=_HELPER_INSTALL_ACTION, applied=False),
+        )
     if status == "not_determined" and not configured:
         return ProbeResult("OFF", "Calendar access has never been requested and no work calendar is configured")
     if status == "write_only":
@@ -6238,6 +6241,37 @@ def _probe_calendar_access(context: DoctorContext) -> ProbeResult:
             ),
         )
     return ProbeResult("OK", f"Calendar access works and {len(calendars)} calendar names were returned")
+
+
+def _probe_helper_privacy(context: DoctorContext) -> ProbeResult:
+    from core.utils.macos_privacy_helper import (
+        doctor_status_line,
+        helper_app_bundle,
+        helper_usability,
+        run_helper_op,
+    )
+
+    if not _is_macos():
+        return ProbeResult("OFF", "Dex Helper: not installed")
+    line = doctor_status_line(vault_root=context.vault_root)
+    app = helper_app_bundle(vault_root=context.vault_root)
+    if app is None:
+        return ProbeResult(
+            "BROKEN",
+            line,
+            Heal(tier=3, action=_HELPER_INSTALL_ACTION, applied=False),
+        )
+    kind, message = helper_usability(app)
+    if kind != "ok":
+        return ProbeResult(
+            "BROKEN",
+            message or line,
+            Heal(tier=3, action=_HELPER_INSTALL_ACTION, applied=False),
+        )
+    status = run_helper_op("status", vault_root=context.vault_root)
+    if status is None or not status[0]:
+        return ProbeResult("UNKNOWN", line)
+    return ProbeResult("OK", line)
 
 
 def _apple_mail_cli_present() -> bool:

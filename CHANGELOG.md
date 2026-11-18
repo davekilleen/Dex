@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.36] — Calendar and Reminders can ask on your Mac even when you are in VS Code (2026-11-18)
+
+Inside VS Code or the Claude app, the Mac often never asked for Calendar or Reminders permission, so those features looked broken or simply vanished.
+
+**What this fixes for you:**
+
+* **A small Dex Helper app asks for Calendar and Reminders in its own name.** Dex opens that app so the Mac can show the permission ask even when you are in VS Code or the Claude app.
+* **If that app is not on your Mac yet, Dex says so and stops.** Calendar and Reminders stay unavailable until you install Dex Helper (run `/calendar-setup` or `/dex-update`). Dex does not try a hidden workaround, and granting the editor or Terminal is not enough.
+* **Rebuilding a local helper means you grant again.** People using Dex get the signed copy from a Dex update. Making and publishing that signed copy is a separate step on the Mac that holds it — this change does not send that copy out by itself.
+
+Thanks to Arthur Mandl and Michelle Wright for reporting this.
+
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
 After meetings were processed, "commitments due" could still come back empty when the notes sat in a dated folder instead of directly in the meetings folder. And a brand-new install on an Intel Mac with a very new Python could stop later with a raw error instead of a clear message.
