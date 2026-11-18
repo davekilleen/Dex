@@ -31,6 +31,8 @@ This command uses **Career MCP tools** for efficient data aggregation:
 - `parse_ladder()` - Extracts competency requirements from career ladder
 - `analyze_coverage()` - Maps evidence to competencies with coverage statistics
 - `timeline_analysis()` - Tracks evidence trends and growth velocity
+- `promotion_readiness_score()` - Sourced 0-100 score from real evidence. Never invent a skills score of 15.
+- `skills_gap_analysis()` - Required skills come from the structured `## Target Level` section, including `###` competency headings. Pass `target_level`.
 
 **How it works:** MCP tools provide structured data → LLM interprets and coaches. This makes assessments faster, more consistent, and enables trend tracking over time.
 
@@ -690,11 +692,13 @@ coverage.
 Before generating the assessment, use MCP tools to gather structured data:
 
 **Career MCP:**
-1. **Call `scan_evidence()`** - Get overview of all career evidence
-2. **Call `parse_ladder()`** - Get structured competency requirements
-3. **Call `analyze_coverage()`** - Get competency-to-evidence mapping
+1. **Call `scan_evidence()`** - Get overview of all career evidence, including files sitting in the Evidence folder itself
+2. **Call `parse_ladder(target_level=...)`** - Get structured competency requirements from the target-level section
+3. **Call `analyze_coverage(target_level=...)`** - Get competency-to-evidence mapping
 4. **Call `timeline_analysis()`** - Get evidence trends over time
 5. **Call `scan_work_for_evidence(date_range: "last-12-months", impact_level: "high")`** - Find uncaptured high-impact work
+6. **Call `promotion_readiness_score(target_level=...)`** - Use this sourced score. Do not invent `skills_coverage` of 15.
+7. **Call `skills_gap_analysis(target_level=...)`** - Read required skills from the structured target level. A `###` competency heading is still inside that level.
 
 **Work MCP:**
 1. **Call `get_quarterly_goals()`** for recent quarters - See what outcomes you've delivered
@@ -711,11 +715,13 @@ These tools provide consistent, structured data that you then interpret for coac
 **Example MCP workflow:**
 ```
 [Career MCP: scan_evidence() - returns [observed count] records for [selected period], with [coverage/unknowns]]
-[Career MCP: parse_ladder() - returns [observed count] sourced competencies]
-[Career MCP: analyze_coverage() - returns sourced evidence counts plus unknown mappings]
+[Career MCP: parse_ladder(target_level=...) - returns [observed count] sourced competencies]
+[Career MCP: analyze_coverage(target_level=...) - returns sourced evidence counts plus unknown mappings]
+[Career MCP: promotion_readiness_score(target_level=...) - returns the sourced score breakdown; never invent skills_coverage 15]
+[Career MCP: skills_gap_analysis(target_level=...) - required skills come from the structured target level]
 [Work MCP: get_quarterly_goals() - returns [observed count] goals and their source states]
 [Work MCP: scan_work_for_evidence() - returns [observed count] candidates requiring user validation]
-[Now interpret combined data and generate assessment below]
+[Now interpret the sourced score and gap. Do not invent a dummy 15.]
 ```
 
 Then generate:

@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from core.mcp import career_server
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CAREER_COACH = (
+    REPO_ROOT
+    / ".claude/skills/_available/capabilities/career/skills/career-coach/SKILL.md"
+)
 
 STRUCTURED_LADDER = """# Career Ladder
 
@@ -240,3 +249,97 @@ def test_skills_gap_and_parse_ladder_agree_on_heading_names(
     assert _required_skill_names(gap) == [
         item["category"] for item in parsed["competencies"]
     ]
+
+
+def test_skills_gap_reads_structured_target_level_even_when_metadata_differs(
+    tmp_path, monkeypatch
+):
+    vault = _enable_career_room(tmp_path, monkeypatch)
+    ladder = vault / "05-Areas" / "Career" / "Career_Ladder.md"
+    # Metadata names a different level than the structured section the caller asks for.
+    ladder.write_text(
+        STRUCTURED_LADDER.replace("**Target Level:** Senior PM", "**Target Level:** L5"),
+        encoding="utf-8",
+    )
+
+    payload = _skills_gap({"target_level": "Senior PM"})
+
+    assert payload["required_skills_count"] != 0
+    assert payload["required_skills_count"] == 3
+    assert payload["required_skills"] == COMPETENCY_HEADINGS
+    assert _required_skill_names(payload) == COMPETENCY_HEADINGS
+
+
+def test_career_coach_live_path_must_call_score_and_gap_tools() -> None:
+    text = CAREER_COACH.read_text(encoding="utf-8")
+
+    assert "promotion_readiness_score" in text
+    assert "skills_gap_analysis" in text
+    assert "never invent" in text.lower() or "do not invent" in text.lower()
+
+
+def test_download_path_vault_path_uses_real_evidence_not_dummy_15(tmp_path) -> None:
+    """The public folder install launches career_server with VAULT_PATH set.
+
+    Monkeypatching module globals is not that path. A fresh interpreter must
+    still count Evidence-folder files, refuse the dummy 15, and read a
+    structured target level.
+    """
+    vault = tmp_path / "vault"
+    career_dir = vault / "05-Areas" / "Career"
+    evidence_dir = career_dir / "Evidence"
+    profile = vault / "System" / "user-profile.yaml"
+    evidence_dir.mkdir(parents=True)
+    profile.parent.mkdir(parents=True)
+    profile.write_text("capabilities:\n  career:\n    enabled: true\n", encoding="utf-8")
+    (career_dir / "Career_Ladder.md").write_text(STRUCTURED_LADDER, encoding="utf-8")
+    for name, competency in (
+        ("2026-01-10 - Strategy memo.md", "Product Strategy"),
+        ("2026-02-11 - Design review.md", "Technical Depth"),
+        ("2026-03-12 - Exec review.md", "Stakeholder Leadership"),
+    ):
+        (evidence_dir / name).write_text(
+            f"# {name}\n\n"
+            "**Category:** Achievements\n\n"
+            "## Skills Demonstrated\n"
+            f"- {competency}\n\n"
+            "## Ladder Alignment\n\n"
+            f"**Maps to:** {competency}\n",
+            encoding="utf-8",
+        )
+    (evidence_dir / "README.md").write_text("# Career Evidence\n", encoding="utf-8")
+
+    script = r"""
+import asyncio, json, sys
+from core.mcp import career_server
+
+def decode(result):
+    return json.loads(result[0].text)
+
+score = decode(asyncio.run(career_server.handle_call_tool(
+    "promotion_readiness_score", {"time_in_role_months": 3, "target_level": "Senior PM"}
+)))
+gap = decode(asyncio.run(career_server.handle_call_tool(
+    "skills_gap_analysis", {"target_level": "Senior PM"}
+)))
+print(json.dumps({"score": score, "gap": gap}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        env={**os.environ, "VAULT_PATH": str(vault)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    skills = payload["score"]["score_breakdown"]["skills_coverage"]
+    evidence = payload["score"]["score_breakdown"]["evidence_coverage"]
+    gap = payload["gap"]
+
+    assert evidence["evidence_count"] == 3
+    assert skills["score"] != 15
+    assert skills["score"] == 8
+    assert gap["required_skills_count"] == 3
+    assert gap["required_skills"] == COMPETENCY_HEADINGS
