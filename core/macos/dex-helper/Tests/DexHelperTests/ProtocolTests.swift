@@ -24,10 +24,10 @@ final class ProtocolTests: XCTestCase {
     }
 
     func testAllowedJSONPaths() {
-        XCTAssertTrue(isAllowedJSONPath("/Users/demo/vault/System/.dex/tmp/out.json"))
+        XCTAssertTrue(isAllowedJSONPath("/Users/alice/vault/System/.dex/tmp/out.json"))
         XCTAssertTrue(isAllowedJSONPath(helperTmpDirectory().appendingPathComponent("out.json").path))
         XCTAssertFalse(isAllowedJSONPath("/tmp/out.json"))
-        XCTAssertFalse(isAllowedJSONPath("/Users/demo/Desktop/secrets.json"))
+        XCTAssertFalse(isAllowedJSONPath("/Users/alice/Desktop/secrets.json"))
     }
 
     func testJSONRoundTripWritesTrailingNewline() throws {

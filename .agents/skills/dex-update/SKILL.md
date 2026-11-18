@@ -3,6 +3,8 @@ name: dex-update
 description: "Preview and safely adopt a Dex update through the receipt-backed lifecycle (look → back up → apply → verify → rewindable). Use when the user says 'update Dex', 'install the new version', or a release notice appeared. Not for undoing an update; use `dex-rollback`. Not just seeing what changed; use `dex-whats-new`."
 ---
 
+<!-- Generated from `.claude/skills/dex-update/SKILL.md` by `scripts/generate-agents-skills.py`. Do not edit. -->
+
 # Dex Update
 
 Use this skill when someone wants the latest Dex capabilities or asks what an update would change. Keep the conversation plain and reassuring. The skill collects choices and renders lifecycle results; it never edits, copies, renames, deletes, or merges vault files itself.

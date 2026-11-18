@@ -3,6 +3,8 @@ name: calendar-setup
 description: "Install Dex Helper and grant Calendar access for ~30x faster calendar queries. Use when the user says 'connect my calendar', 'calendar is slow', 'set up calendar access'. Not for connecting Google Workspace as a whole; use `google-workspace-setup`."
 ---
 
+<!-- Generated from `.claude/skills/calendar-setup/SKILL.md` by `scripts/generate-agents-skills.py`. Do not edit. -->
+
 # Calendar Setup - Enable Fast Queries
 
 **Purpose:** Install Dex Helper and grant calendar access for 30x faster calendar queries (30s → <1s)
