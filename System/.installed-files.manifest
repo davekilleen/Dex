@@ -1544,6 +1544,7 @@ core/tests/test_harness_portability.py
 core/tests/test_harness_registry.py
 core/tests/test_harness_safety_gates.py
 core/tests/test_harness_safety_parity.py
+core/tests/test_harness_safety_shell_writes.py
 core/tests/test_harness_session_context.py
 core/tests/test_health_compatibility.py
 core/tests/test_health_doctor_ref.py
