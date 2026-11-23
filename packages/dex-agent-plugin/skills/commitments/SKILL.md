@@ -9,7 +9,7 @@ description: "Reconcile the promises you made and the asks you received across m
 
 Small interpersonal promises are where trust is won or lost — "I'll send that over," "can you review this?" — and they evaporate because they never become tracked commitments. This skill surfaces them from what you already captured, and turns the real ones into tasks **only when you say so**.
 
-Governing rule: **do not rebuild the data layer.** The Work MCP already ships the scanner — `get_commitments_due` reads recent meeting notes and person-page action items and returns them bucketed by due date. This skill is a thin **present → confirm → create** layer on top of it. It does not re-scan, add a store, or touch the extraction logic.
+Governing rule: **do not rebuild the data layer.** The Work MCP already ships the scanner — `get_commitments_due` reads open Action Items from recent meeting notes (and infers from prose only when a note has no Action Items section) plus person-page action items, and returns them bucketed by due date. This skill is a thin **present → confirm → create** layer on top of it. It does not re-scan, add a store, or touch the extraction logic.
 
 ---
 
@@ -19,7 +19,7 @@ Governing rule: **do not rebuild the data layer.** The Work MCP already ships th
 
 ## Step 1 — Scan (existing tool, don't reinvent)
 
-Call `get_commitments_due(date_range=$RANGE)`. It returns `commitments_due_today`, `commitments_due_this_week`, `commitments_no_date`, plus `owed_overdue`, `waiting_stale`, and `ambiguous_action_dates`. Each item carries `commitment`, `due_date`, `source` (the meeting file or person page), and, for person-page items, `to_person`.
+Call `get_commitments_due(date_range=$RANGE)`. It returns `commitments_due_today`, `commitments_due_this_week`, `commitments_no_date`, plus `owed_overdue`, `waiting_stale`, `ambiguous_action_dates`, and `waiting_on_others`. Each item carries `commitment`, `due_date`, `source` (the meeting file or person page), and `confidence` (`action_item` from a checkbox, `inferred` from prose). Person-page items and `waiting_on_others` also carry `to_person`.
 
 Person-page dates are split. Only `i_owe_date` can be overdue (`owed_overdue` / due today). `waiting_on_date` is a wait — list it under asks you received, never as overdue. A leftover `next_action_date` is `ambiguous_action_dates`: show it as undirected and do not mark it overdue. When writing a date on a person page, set `i_owe_date` or `waiting_on_date`, never `next_action_date`.
 
@@ -36,9 +36,9 @@ For each candidate, check it isn't already a task before showing it (Work MCP's 
 Show two short lists so the user sees both sides of the ledger:
 
 - **Promises you made** (outbound — you owe someone)
-- **Asks you received** (inbound — someone owes you, or asked you to do something)
+- **Asks you received** (inbound — someone owes you, or asked you to do something). Put `waiting_on_others` here.
 
-Direction is **inferred** from phrasing and `to_person`, not a field the scanner provides — so when a commitment's direction is genuinely unclear, put it under a third **Unclear** heading rather than guessing wrong. Each row shows: the commitment, the person (by name), the `source` (meeting or person page, by name), and the `due_date` (or "no date"). Refer to people and sources by name, never by id or file path noise.
+Direction is **inferred** from phrasing, `to_person`, and `waiting_on_others`. When a commitment's direction is genuinely unclear, put it under a third **Unclear** heading rather than guessing wrong. Each row shows: the commitment, the person (by name), the `source` (meeting or person page, by name), and the `due_date` (or "no date"). Refer to people and sources by name, never by id or file path noise.
 
 If nothing is found, say so plainly ("No open commitments surfaced from the last two weeks of meetings and your person pages") — do not pad the list.
 

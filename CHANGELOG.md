@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [Unreleased]
+## Unreleased
 
 ### You can make a new folder next to Dex, not only inside it
 
@@ -20,6 +20,20 @@ Claude would copy a file into a project folder outside Dex — iCloud, a shared 
 * **Dex still will not invent a brand-new folder at the top of your notes.** That rule did not change.
 
 Thanks to Jim McDermott for reporting this.
+
+### Commitments due shows the jobs you still owe
+
+After a stretch of meetings, "commitments due" was filling up with quoted lines, transcript scraps, three-word fragments, finished work, and the same promise listed twice. It almost never showed the actual open action items from those notes.
+
+**What this fixes for you:**
+
+* **You see the jobs you still owe.** Dex reads the Action Items section of recent meeting notes and lists only the ones you have not ticked off yet.
+* **Finished work stays off the list.** Ticked items and items already marked done are left out.
+* **Quoted lines and the transcript are not jobs.** A line that is just a quote, or something said in the transcript, no longer shows up as a commitment.
+* **The same promise is listed once.** If two notes repeat the same open item, you see it once.
+* **Work you asked someone else to do is listed separately.** Those items sit under waiting on others, with the person's name.
+
+Thanks to Ben Freeman for reporting this.
 
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
