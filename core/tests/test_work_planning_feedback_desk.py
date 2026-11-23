@@ -363,9 +363,9 @@ def test_get_commitments_due_drops_single_character_garbage(planning_vault):
         "# Follow up\n\n"
         "I'll send x.\n"
         "We will provide a.\n"
-        "I'll send the deck by Friday.\n"
+        "I'll send the revised budget to finance.\n"
         "Action items: x\n"
-        "Follow-up: send the signed contract\n",
+        "Follow-up: send the signed contract today\n",
         encoding="utf-8",
     )
 
@@ -386,7 +386,7 @@ def test_get_commitments_due_drops_single_character_garbage(planning_vault):
     captured = [item["commitment"] for item in commitments]
     assert "x" not in captured
     assert "a" not in captured
-    assert any("deck" in item for item in captured)
+    assert any("revised budget" in item for item in captured)
     assert any("signed contract" in item for item in captured)
 
 
@@ -397,11 +397,13 @@ def test_get_commitments_due_reads_nested_dated_folders_and_flat_notes(
     nested = meetings / "2026-10"
     nested.mkdir()
     (nested / "2026-10-01 - Nested call.md").write_text(
-        "# Nested call\n\nI'll send the nested deck by Friday.\n",
+        "# Nested call\n\n"
+        "## Action Items\n"
+        "- [ ] Send the nested deck - by Friday\n",
         encoding="utf-8",
     )
     (meetings / "2026-10-01 - Flat call.md").write_text(
-        "# Flat call\n\nI'll send the flat summary by Friday.\n",
+        "# Flat call\n\nI'll send the flat summary to the whole team by Friday.\n",
         encoding="utf-8",
     )
     queue = nested / "queue"

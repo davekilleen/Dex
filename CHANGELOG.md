@@ -9,6 +9,34 @@ All notable changes to Dex will be documented in this file.
 
 ## Unreleased
 
+### You can make a new folder next to Dex, not only inside it
+
+Claude would copy a file into a project folder outside Dex — iCloud, a shared drive, another working folder — but refused to create that folder, so you had to make it by hand.
+
+**What this fixes for you:**
+
+* **A new folder next to Dex is allowed.** If you keep a project outside your Dex folder, Claude can create the folder it needs instead of stopping with a safety message.
+* **System and private folders stay blocked.** Your home folder itself, system files, and private computer folders are still refused. Claude can only create a folder outside Dex with a straightforward mkdir and a simple path — not a roundabout command. Anything else is refused the same way it was before.
+* **Dex still will not invent a brand-new folder at the top of your notes.** That rule did not change.
+
+Thanks to Jim McDermott for reporting this.
+
+### Commitments due shows the jobs you still owe
+
+After a stretch of meetings, "commitments due" was filling up with quoted lines, transcript scraps, three-word fragments, finished work, and the same promise listed twice. It almost never showed the actual open action items from those notes.
+
+**What this fixes for you:**
+
+* **You see the jobs you still owe.** Dex reads the Action Items section of recent meeting notes and lists only the ones you have not ticked off yet.
+* **Finished work stays off the list.** Ticked items and items already marked done are left out.
+* **Quoted lines and the transcript are not jobs.** A line that is just a quote, or something said in the transcript, no longer shows up as a commitment.
+* **The same promise is listed once.** If two notes repeat the same open item, you see it once.
+* **Work you asked someone else to do is listed separately.** Those items sit under waiting on others, with the person's name.
+
+Thanks to Ben Freeman for reporting this.
+
+### Related tasks only go on real project pages
+
 Saying yes to the related-tasks list was adding an empty "Related Tasks" block to every note in a project folder — decision logs, walkthroughs, READMEs, interview notes — not just the actual project page. Turning the list off left those blocks behind.
 
 **What this fixes for you:**
@@ -19,6 +47,7 @@ Saying yes to the related-tasks list was adding an empty "Related Tasks" block t
 * **Turning the list off removes it.** The related-tasks blocks Dex added come off project pages, and leftover empty lists anywhere in the project folder come off too.
 
 Thanks to Don Mason, Michelle Wright, and Olivier Fontenelle for reporting this.
+
 
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
