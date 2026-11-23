@@ -12,6 +12,14 @@ APP="$OUT/Dex Helper.app"
 MACOS_DIR="$APP/Contents/MacOS"
 RESOURCES_DIR="$APP/Contents/Resources"
 REQUIRE_UNIVERSAL="${DEX_HELPER_REQUIRE_UNIVERSAL:-1}"
+ARM_BIN_COPY=""
+
+cleanup() {
+  if [[ -n "$ARM_BIN_COPY" && -e "$ARM_BIN_COPY" ]]; then
+    rm -f "$ARM_BIN_COPY"
+  fi
+}
+trap cleanup EXIT
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Skipping Dex Helper build (macOS only)."
@@ -26,31 +34,28 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 cd "$ROOT"
 swift build -c release --arch arm64 --product DexHelper
 
-ARM_BIN=""
-for candidate in \
-  "$ROOT/.build/arm64-apple-macosx/release/DexHelper" \
-  "$ROOT/.build/release/DexHelper"
-do
-  if [[ -x "$candidate" ]]; then
-    ARM_BIN="$candidate"
-    break
-  fi
-done
-[[ -n "$ARM_BIN" ]] || { echo "error: arm64 DexHelper binary was not built" >&2; exit 1; }
+ARM_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
+ARM_SRC="${ARM_DIR%/}/DexHelper"
+[[ -x "$ARM_SRC" ]] || {
+  echo "error: arm64 DexHelper binary was not built" >&2
+  exit 1
+}
+
+# Swift 6.4+ writes every --arch build into the same Products/Release
+# directory, so the x86_64 compile would overwrite the arm64 binary.
+# Keep a copy, then ask Swift for each arch's path instead of guessing.
+ARM_BIN_COPY="$(mktemp "${TMPDIR:-/tmp}/dex-helper-arm64.XXXXXX")"
+cp "$ARM_SRC" "$ARM_BIN_COPY"
+chmod 755 "$ARM_BIN_COPY"
+ARM_BIN="$ARM_BIN_COPY"
 
 X86_BIN=""
 if swift build -c release --arch x86_64 --product DexHelper; then
-  for candidate in \
-    "$ROOT/.build/x86_64-apple-macosx/release/DexHelper" \
-    "$ROOT/.build/release/DexHelper"
-  do
-    if [[ -x "$candidate" && "$candidate" != "$ARM_BIN" ]]; then
-      X86_BIN="$candidate"
-      break
+  if X86_DIR="$(swift build -c release --arch x86_64 --show-bin-path)"; then
+    X86_SRC="${X86_DIR%/}/DexHelper"
+    if [[ -x "$X86_SRC" && "$X86_SRC" != "$ARM_BIN" ]]; then
+      X86_BIN="$X86_SRC"
     fi
-  done
-  if [[ -z "$X86_BIN" && -x "$ROOT/.build/x86_64-apple-macosx/release/DexHelper" ]]; then
-    X86_BIN="$ROOT/.build/x86_64-apple-macosx/release/DexHelper"
   fi
 fi
 

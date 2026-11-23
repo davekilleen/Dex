@@ -108,7 +108,6 @@ jobs:
     timeout-minutes: 20
     env:
       VAULT_PATH: ${{ github.workspace }}
-      DEX_HELPER_REQUIRE_UNIVERSAL: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,11 +116,25 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
+      - name: Probe x86_64 cross-compile
+        id: x86
+        working-directory: core/macos/dex-helper
+        run: |
+          if swift build -c release --arch x86_64 --product DexHelper; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "This runner cannot compile DexHelper for x86_64; the helper job will keep an arm64-only build."
+          fi
       - name: Build Dex Helper (unsigned)
         run: |
           mkdir -p "$RUNNER_TEMP/helper-build"
+          if [[ "${{ steps.x86.outputs.ok }}" == "true" ]]; then
+            export DEX_HELPER_REQUIRE_UNIVERSAL=1
+          else
+            export DEX_HELPER_REQUIRE_UNIVERSAL=0
+          fi
           DEX_HELPER_BUILD_DIR="$RUNNER_TEMP/helper-build" \
-            DEX_HELPER_REQUIRE_UNIVERSAL=0 \
             bash core/macos/dex-helper/build.sh
       - name: Assert the helper is a compiled app
         run: |
@@ -131,6 +144,12 @@ jobs:
           MAGIC="$(xxd -p -l 2 "$EXE")"
           test "$MAGIC" != "2321"
           file "$EXE"
+          INFO="$(lipo -info "$EXE")"
+          echo "$INFO"
+          echo "$INFO" | grep -F arm64
+          if [[ "${{ steps.x86.outputs.ok }}" == "true" ]]; then
+            echo "$INFO" | grep -F x86_64
+          fi
       - name: Swift helper tests
         run: swift test --package-path core/macos/dex-helper
       - name: Direct-invoke version and unknown op
@@ -158,7 +177,7 @@ jobs:
       - name: Python helper contract tests
         run: |
           python3 -m pip install -q pytest
-          python3 -m pytest core/tests/test_macos_privacy_helper.py core/tests/test_helper_json_contract.py core/tests/test_helper_release_install.py -q
+          python3 -m pytest core/tests/test_macos_privacy_helper.py core/tests/test_helper_json_contract.py core/tests/test_helper_release_install.py core/tests/test_helper_universal_build.py -q
         env:
           PYTHONPATH: ${{ github.workspace }}
 
