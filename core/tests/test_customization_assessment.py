@@ -853,14 +853,14 @@ def test_dependency_tree_is_excluded_instead_of_becoming_customizations(
             "Leave it where it is; do not move it into a notes folder."
         ),
     }
-    assert assessment.completeness == "UNKNOWN"
+    assert assessment.completeness == "OK"
     assert assessment.records == ()
     assert assessment.edges == ()
     assert assessment.groups == ()
     assert assessment.identity.inventory_path_count > 0
     assert assessment.identity.customization_count == 0
     assert assessment.identity.edge_count == 0
-    assert assessment.to_dict()["partial"] is True
+    assert "partial" not in assessment.to_dict()
 
 
 def test_remapped_edge_target_uses_same_canonical_path_as_its_record(

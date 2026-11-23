@@ -193,7 +193,9 @@ def test_file_target_resolves_from_subdirectory_and_blocks_symlink_escape(vaults
     nested.mkdir()
     (nested / "outside").symlink_to(two, target_is_directory=True)
     env = {"DEX_VAULT_PATH": str(one)}
-    assert hook(nested, proposal(nested, file_path="../note.md"), env=env).returncode == 0
+    # Any path with a .. component is refused rather than resolved through a
+    # possible symlink parent.
+    assert hook(nested, proposal(nested, file_path="../note.md"), env=env).returncode == 2
     assert hook(nested, proposal(nested, file_path="outside/note.md"), env=env).returncode == 2
 
 

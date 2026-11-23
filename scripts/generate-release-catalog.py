@@ -358,6 +358,35 @@ def sync_schema(release_root: Path, *, contract_root: Path | None = None) -> Pat
     return destinations[-1]
 
 
+def _load_dev_only_patterns(
+    release_root: Path,
+    contract_root: Path,
+    patterns_file: Path | None,
+) -> tuple[str, ...] | None:
+    """Return sorted unique shippable .distignore patterns, or None.
+
+    ``.distignore`` is export-ignored, so a stripped release tree will not
+    contain it. Callers that still have the source file (or a copy) pass it
+    explicitly. A missing file is not an error: the catalog simply omits the
+    field and installed vaults keep today's unproved-file behaviour.
+
+    The removed-extension quarantine is dropped before the catalog is
+    written — repeating it in shipped JSON fails the identity scan.
+    """
+    from core.dev_only import load_distignore_patterns, shippable_dev_only_patterns
+
+    candidates: list[Path] = []
+    if patterns_file is not None:
+        candidates.append(patterns_file)
+    candidates.extend((release_root / ".distignore", contract_root / ".distignore"))
+    for candidate in candidates:
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        patterns = shippable_dev_only_patterns(load_distignore_patterns(candidate))
+        return tuple(sorted(set(patterns)))
+    return None
+
+
 def generate_catalog(
     release_root: Path,
     *,
@@ -365,6 +394,7 @@ def generate_catalog(
     source_commit: str | None = None,
     output: Path = CATALOG_PATH,
     contract_root: Path | None = None,
+    dev_only_patterns_file: Path | None = None,
 ) -> Path:
     release_root = release_root.resolve()
     contract_root = (contract_root or release_root).resolve()
@@ -423,24 +453,32 @@ def generate_catalog(
         )
         table_bytes = canonical_hash_table_bytes(table_document)
         _atomic_write(release_root / HASH_TABLE_PATH, table_bytes)
+        release_identity: dict[str, object] = {
+            "version": release_version,
+            "channel": channel,
+            "immutable_distribution_tag_pattern": (
+                f"dist/{channel}/v{release_version}-<release-commit-prefix>"
+            ),
+            "source_commit": commit,
+            "manifest": {
+                "path": MANIFEST_PATH.as_posix(),
+                "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            },
+            "hash_table": {
+                "path": hash_table_text,
+                "sha256": hashlib.sha256(table_bytes).hexdigest(),
+            },
+        }
+        patterns = _load_dev_only_patterns(
+            release_root,
+            contract_root,
+            dev_only_patterns_file,
+        )
+        if patterns is not None:
+            release_identity["dev_only_patterns"] = list(patterns)
         document: dict[str, object] = {
             "catalog_version": 2,
-            "release": {
-                "version": release_version,
-                "channel": channel,
-                "immutable_distribution_tag_pattern": (
-                    f"dist/{channel}/v{release_version}-<release-commit-prefix>"
-                ),
-                "source_commit": commit,
-                "manifest": {
-                    "path": MANIFEST_PATH.as_posix(),
-                    "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-                },
-                "hash_table": {
-                    "path": hash_table_text,
-                    "sha256": hashlib.sha256(table_bytes).hexdigest(),
-                },
-            },
+            "release": release_identity,
             "items": _source_items(release_root, portable_contract),
             "integrity": {"catalog_sha256": "0" * 64, "signatures": []},
         }
@@ -464,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-commit")
     parser.add_argument("--output", type=Path, default=CATALOG_PATH)
     parser.add_argument("--schema-only", action="store_true")
+    parser.add_argument("--dev-only-patterns-file", type=Path)
     args = parser.parse_args(argv)
 
     try:
@@ -479,6 +518,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_commit=args.source_commit,
                 output=args.output,
                 contract_root=args.contract_root,
+                dev_only_patterns_file=args.dev_only_patterns_file,
             )
     except (CatalogGenerationError, ValueError) as error:
         parser.exit(1, f"release catalog generation failed: {error}\n")

@@ -69,6 +69,10 @@ class ReleaseBaseline:
     alternate_hashes: Mapping[str, frozenset[str]] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    # Shipped .distignore patterns from the catalog, or None when the
+    # installed catalog predates the field. None means "classify leftovers
+    # as unproved", matching today's behaviour.
+    dev_only_patterns: tuple[str, ...] | None = None
 
     def expected_sha256(self, canonical_path: str) -> str | None:
         return self.expected_hashes.get(canonical_path)
@@ -314,6 +318,11 @@ def load_release_baseline(
     elif manifest_bytes is not None:
         identity_state = "MANIFEST_ONLY"
 
+    dev_only_patterns = (
+        selected_catalog.release.dev_only_patterns
+        if selected_catalog is not None
+        else None
+    )
     return ReleaseBaseline(
         identity_state,
         release_version,
@@ -323,6 +332,7 @@ def load_release_baseline(
         hash_table_state,
         anchor_state,
         alternate_hashes,
+        dev_only_patterns,
     )
 
 

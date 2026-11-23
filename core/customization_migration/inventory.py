@@ -23,6 +23,7 @@ from core.customization_migration.model import (
     LiveInfo,
     ReferenceConfidence,
     ReferenceEdge,
+    is_non_blocking_exclusion,
 )
 from core.customization_migration.references import (
     MAX_SOURCE_BYTES,
@@ -31,6 +32,7 @@ from core.customization_migration.references import (
     is_reference_read_restricted_path,
     read_settings_hook_edges,
 )
+from core.dev_only import internal_object_store_root, matches_dev_only_pattern
 from core.lifecycle.customizations import detect_customizations
 from core.lifecycle.filesystem import (
     STOCK_HASH_MAX_BYTES,
@@ -500,6 +502,9 @@ def discover(vault_root: Path) -> DiscoveryResult:
     if inventory.baseline.identity_state != "VERIFIED":
         return DiscoveryResult(inventory, (), (), (), (), False)
 
+    # Older catalogs and in-memory test baselines omit this field; missing
+    # means "classify leftovers as unproved", matching today's behaviour.
+    dev_only_patterns = getattr(inventory.baseline, "dev_only_patterns", None)
     entries_by_path = {entry.actual_path: entry for entry in inventory.entries}
     exclusions: dict[tuple[str, str], AssessmentExclusion] = {}
     embedded_repository_roots = frozenset(
@@ -550,11 +555,25 @@ def discover(vault_root: Path) -> DiscoveryResult:
         entry.actual_path
         for entry in inventory.entries
         if _is_behavior_addition(entry, inventory.baseline.manifest_paths)
+        and entry.release_state != "stock-unmodified"
     )
+    # Catalog-matched leftovers are never customizations. They stay
+    # unproved-or-leftover exclusions so a ``scripts/`` extra cannot freeze
+    # completeness as a behaviour addition.
+    leftover_paths = {
+        path
+        for path in candidate_paths
+        if (
+            dev_only_patterns is not None
+            and matches_dev_only_pattern(path, dev_only_patterns)
+        )
+    }
     candidate_paths = {
         path
         for path in candidate_paths
-        if _dependency_root(path) is None
+        if path not in leftover_paths
+        and _dependency_root(path) is None
+        and internal_object_store_root(path) is None
         and not any(
             _is_within(path, repository_root)
             for repository_root in embedded_repository_roots
@@ -566,7 +585,7 @@ def discover(vault_root: Path) -> DiscoveryResult:
     if registry is not None and registry.invalid_reason is None:
         for entry in registry.entries.values():
             trusted_hashes[entry.file] = entry.sha256
-            if entry.file in entries_by_path:
+            if entry.file in entries_by_path and entry.file not in leftover_paths:
                 candidate_paths.add(entry.file)
     elif registry is not None and registry.invalid_reason is not None:
         exclusion = AssessmentExclusion(
@@ -798,6 +817,11 @@ def discover(vault_root: Path) -> DiscoveryResult:
     # dominant cost of the whole assessment on a large vault.
     unproven_paths = frozenset(inventory.unproven_paths)
     for entry in inventory.entries:
+        store_root = internal_object_store_root(entry.actual_path)
+        if store_root is not None:
+            exclusion = AssessmentExclusion(store_root, "internal-object-store")
+            exclusions[(exclusion.path, exclusion.reason)] = exclusion
+            continue
         if (
             entry.kind in {"file", "symlink"}
             and entry.actual_path in unproven_paths
@@ -808,13 +832,21 @@ def discover(vault_root: Path) -> DiscoveryResult:
                 for repository_root in embedded_repository_roots
             )
         ):
+            reason = "release-identity-unproved"
+            if (
+                dev_only_patterns is not None
+                and matches_dev_only_pattern(entry.actual_path, dev_only_patterns)
+            ):
+                reason = "dev-only-leftover"
             exclusion = AssessmentExclusion(
                 entry.actual_path,
-                "release-identity-unproved",
+                reason,
             )
             exclusions[(exclusion.path, exclusion.reason)] = exclusion
     incomplete_exclusions = tuple(
-        item for item in exclusions.values() if item.reason != "embedded-secret"
+        item
+        for item in exclusions.values()
+        if not is_non_blocking_exclusion(item.path, item.reason)
     )
     complete = (
         inventory.complete

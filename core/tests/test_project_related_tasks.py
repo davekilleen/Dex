@@ -312,9 +312,11 @@ def test_daily_refresh_runs_once_per_day(vault: Path, monkeypatch: pytest.Monkey
     assert second["reason"] == "already_today"
 
 
-def test_new_project_page_puts_related_tasks_near_the_top() -> None:
+def test_new_project_page_does_not_write_an_empty_related_tasks_section() -> None:
     text = generate_project_page("Launch", description="Ship the launch.")
-    assert text.index("## Related Tasks") < text.index("## Status")
+    assert "## Related Tasks" not in text
+    assert "No linked tasks yet" not in text
+    assert text.index("# Launch") < text.index("## Status")
     assert "- [ ]" not in text
 
 
@@ -398,6 +400,15 @@ def test_refresh_keeps_the_blank_line_and_never_deletes_the_next_section(
         "- step\n"
     )
     project.write_text(original, encoding="utf-8")
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n"
+        + _task_line(
+            "Ship Alpha",
+            task_id="task-20261027-001",
+            project="04-Projects/Alpha.md",
+        ),
+        encoding="utf-8",
+    )
 
     first = project_related_tasks.sync_project_page(vault, "04-Projects/Alpha.md")
     second = project_related_tasks.sync_project_page(vault, "04-Projects/Alpha.md")
@@ -405,11 +416,10 @@ def test_refresh_keeps_the_blank_line_and_never_deletes_the_next_section(
     text = project.read_text(encoding="utf-8")
 
     assert first["success"] is True
+    assert first["changed"] is True
     assert second["changed"] is False
     assert third["changed"] is False
-    assert text == project_related_tasks._insert_near_top(
-        original, project_related_tasks.render_section([], [])
-    )
+    assert "Ship Alpha" in text
     for heading in ("## Background", "## Verdict", "## Next steps"):
         assert f"\n{heading}\n" in text
         assert not any(
@@ -453,3 +463,318 @@ def test_glued_heading_is_repaired_and_the_following_section_is_kept(
     assert "Keep this paragraph." in refreshed
     assert "Still here." in refreshed
     assert "*## Background" not in refreshed
+
+
+def _placeholder_block() -> str:
+    return (
+        f"## {project_related_tasks.SECTION_HEADING}\n\n"
+        f"{project_related_tasks.OPEN_FIRST_LINE}\n\n"
+        f"{project_related_tasks.PLACEHOLDER_LINE}\n\n"
+    )
+
+
+def _snapshot_project_markdown(vault: Path) -> dict[str, bytes]:
+    projects = vault / "04-Projects"
+    return {
+        path.relative_to(vault).as_posix(): path.read_bytes()
+        for path in projects.rglob("*.md")
+        if path.is_file() and not path.is_symlink()
+    }
+
+
+def _write_mixed_projects(vault: Path) -> dict[str, Path]:
+    projects = vault / "04-Projects"
+    files = {}
+    files["launch"] = projects / "Launch.md"
+    files["launch"].write_text(
+        "# Launch\n\nOverview of the launch.\n\n## Status\n\nPlanning.\n",
+        encoding="utf-8",
+    )
+    files["readme"] = projects / "README.md"
+    files["readme"].write_text("# Projects\n\nIndex of projects.\n", encoding="utf-8")
+    alpha = projects / "Alpha"
+    alpha.mkdir()
+    files["alpha"] = alpha / "Alpha.md"
+    files["alpha"].write_text("# Alpha\n\n## Status\n\nActive.\n", encoding="utf-8")
+    files["decision"] = alpha / "decision-log.md"
+    files["decision"].write_text("# Decision log\n\nA decision.\n", encoding="utf-8")
+    research = alpha / "research"
+    research.mkdir()
+    files["interview"] = research / "interview.md"
+    files["interview"].write_text("# Interview\n\nNotes.\n", encoding="utf-8")
+    beta = projects / "Beta"
+    beta.mkdir()
+    files["beta"] = beta / "README.md"
+    files["beta"].write_text("# Beta\n\nMain page.\n", encoding="utf-8")
+    gamma = projects / "Gamma"
+    gamma.mkdir()
+    files["gamma"] = gamma / "notes.md"
+    files["gamma"].write_text(
+        "---\ntype: project\n---\n# Gamma notes\n\n## Status\n\nDraft.\n",
+        encoding="utf-8",
+    )
+    delta = projects / "Delta"
+    delta.mkdir()
+    files["delta"] = delta / "brief.md"
+    files["delta"].write_text("# Delta brief\n\n## Status\n\nDraft.\n", encoding="utf-8")
+    return files
+
+
+def test_iter_project_pages_returns_only_real_project_pages(vault: Path) -> None:
+    _write_mixed_projects(vault)
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n"
+        + _task_line(
+            "Write the delta brief",
+            task_id="task-20261117-001",
+            project="04-Projects/Delta/brief.md",
+        ),
+        encoding="utf-8",
+    )
+
+    pages = {
+        path.split("/", 1)[1]
+        for path in project_related_tasks.iter_project_pages(vault)
+    }
+
+    assert pages == {
+        "Launch.md",
+        "Alpha/Alpha.md",
+        "Beta/README.md",
+        "Gamma/notes.md",
+        "Delta/brief.md",
+    }
+
+
+def test_opting_in_with_zero_linked_tasks_leaves_files_byte_identical(
+    vault: Path,
+) -> None:
+    _write_mixed_projects(vault)
+    before = _snapshot_project_markdown(vault)
+
+    result = project_related_tasks.set_preference(vault, True)
+
+    assert result["status"] == "on"
+    assert _snapshot_project_markdown(vault) == before
+
+
+def test_linked_tasks_change_only_that_project_page_and_keep_the_next_heading(
+    vault: Path,
+) -> None:
+    files = _write_mixed_projects(vault)
+    _write_profile(vault, True)
+    before = _snapshot_project_markdown(vault)
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n"
+        + _task_line(
+            "Call the sponsor",
+            task_id="task-20261117-001",
+            project="04-Projects/Launch.md",
+        )
+        + _task_line(
+            "Ship the checklist",
+            task_id="task-20261117-002",
+            project="04-Projects/Launch.md",
+        ),
+        encoding="utf-8",
+    )
+
+    project_related_tasks.refresh_all_project_pages(vault)
+    after = _snapshot_project_markdown(vault)
+    text = files["launch"].read_text(encoding="utf-8")
+
+    changed = {path for path, payload in after.items() if payload != before[path]}
+    assert changed == {"04-Projects/Launch.md"}
+    assert "Call the sponsor" in text
+    assert "Ship the checklist" in text
+    assert "\n## Status\n" in text
+    assert not any(
+        line.endswith("## Status") and not line.startswith("##")
+        for line in text.splitlines()
+    )
+
+
+def test_unlinking_tasks_removes_the_section_and_restores_original_bytes(
+    vault: Path,
+) -> None:
+    files = _write_mixed_projects(vault)
+    _write_profile(vault, True)
+    original = files["launch"].read_bytes()
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n"
+        + _task_line(
+            "Call the sponsor",
+            task_id="task-20261117-001",
+            project="04-Projects/Launch.md",
+        )
+        + _task_line(
+            "Ship the checklist",
+            task_id="task-20261117-002",
+            project="04-Projects/Launch.md",
+        ),
+        encoding="utf-8",
+    )
+    project_related_tasks.sync_project_page(vault, "04-Projects/Launch.md")
+    assert "## Related Tasks" in files["launch"].read_text(encoding="utf-8")
+
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n",
+        encoding="utf-8",
+    )
+    project_related_tasks.sync_project_page(vault, "04-Projects/Launch.md")
+
+    assert files["launch"].read_bytes() == original
+    assert "## Related Tasks" not in files["launch"].read_text(encoding="utf-8")
+
+
+def test_cleanup_restores_exact_placeholders_and_reports_user_edited_blocks(
+    vault: Path,
+) -> None:
+    files = _write_mixed_projects(vault)
+    original_decision = files["decision"].read_bytes()
+    original_readme = files["readme"].read_bytes()
+    files["decision"].write_text(
+        files["decision"].read_text(encoding="utf-8").rstrip()
+        + "\n\n"
+        + _placeholder_block(),
+        encoding="utf-8",
+    )
+    files["readme"].write_text(
+        files["readme"].read_text(encoding="utf-8").rstrip()
+        + "\n\n"
+        + _placeholder_block(),
+        encoding="utf-8",
+    )
+    interview_with_user_line = (
+        files["interview"].read_text(encoding="utf-8").rstrip()
+        + "\n\n"
+        + _placeholder_block().rstrip()
+        + "\n\nKeep this interview note.\n"
+    )
+    files["interview"].write_text(interview_with_user_line, encoding="utf-8")
+    interview_bytes = files["interview"].read_bytes()
+
+    first = project_related_tasks.cleanup_placeholder_sections(vault)
+    second = project_related_tasks.cleanup_placeholder_sections(vault)
+
+    assert files["decision"].read_bytes() == original_decision
+    assert files["readme"].read_bytes() == original_readme
+    assert files["interview"].read_bytes() == interview_bytes
+    assert "04-Projects/Alpha/decision-log.md" in first["cleaned"]
+    assert "04-Projects/README.md" in first["cleaned"]
+    assert "04-Projects/Alpha/research/interview.md" in first["reported"]
+    assert first["count"] == 2
+    assert first["backup_dir"]
+    backup = vault / first["backup_dir"]
+    manifest_path = backup / "manifest.json"
+    assert manifest_path.is_file()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    paths = {item["path"] for item in manifest["files"]}
+    assert paths == {
+        "04-Projects/Alpha/decision-log.md",
+        "04-Projects/README.md",
+    }
+    for item in manifest["files"]:
+        assert item["sha256_before"]
+        assert item["sha256_after"]
+        assert item["sha256_before"] != item["sha256_after"]
+        assert (backup / item["path"]).is_file()
+    stamp = vault / "System" / ".dex" / "project-related-tasks-cleanup.json"
+    assert stamp.is_file()
+    assert second["status"] == "already_done"
+    assert second["count"] == 0
+    assert files["decision"].read_bytes() == original_decision
+    assert files["readme"].read_bytes() == original_readme
+    assert files["interview"].read_bytes() == interview_bytes
+
+
+def test_refresh_of_a_non_project_file_is_skipped(vault: Path) -> None:
+    files = _write_mixed_projects(vault)
+    _write_profile(vault, True)
+    original = files["decision"].read_bytes()
+
+    result = project_related_tasks.sync_project_page(
+        vault, "04-Projects/Alpha/decision-log.md"
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "skipped"
+    assert result["reason"] == "not_a_project_page"
+    assert files["decision"].read_bytes() == original
+
+
+def test_turning_the_feature_off_removes_sections_and_writes_backups(
+    vault: Path,
+) -> None:
+    files = _write_mixed_projects(vault)
+    _write_profile(vault, True)
+    (vault / "03-Tasks" / "Tasks.md").write_text(
+        "# Tasks\n\n## Next Week\n"
+        + _task_line(
+            "Call the sponsor",
+            task_id="task-20261117-001",
+            project="04-Projects/Launch.md",
+        ),
+        encoding="utf-8",
+    )
+    project_related_tasks.sync_project_page(vault, "04-Projects/Launch.md")
+    assert "## Related Tasks" in files["launch"].read_text(encoding="utf-8")
+    files["readme"].write_text(
+        files["readme"].read_text(encoding="utf-8").rstrip()
+        + "\n\n"
+        + _placeholder_block(),
+        encoding="utf-8",
+    )
+
+    result = project_related_tasks.set_preference(vault, False)
+    removed = result["removed"]
+
+    assert result["status"] == "off"
+    assert "## Related Tasks" not in files["launch"].read_text(encoding="utf-8")
+    assert "## Related Tasks" not in files["readme"].read_text(encoding="utf-8")
+    assert "04-Projects/Launch.md" in removed["changed"]
+    assert "04-Projects/README.md" in removed["changed"]
+    assert removed["backup_dir"]
+    backup = vault / removed["backup_dir"]
+    assert (backup / "manifest.json").is_file()
+    assert (backup / "04-Projects" / "Launch.md").is_file()
+
+
+def test_glue_repair_leaves_a_reference_doc_without_a_section_alone(
+    vault: Path,
+) -> None:
+    files = _write_mixed_projects(vault)
+    original = "See foo## Bar in the research notes.\n"
+    files["interview"].write_text(original, encoding="utf-8")
+    before = files["interview"].read_bytes()
+
+    result = project_related_tasks.repair_glued_headings_in_vault(vault)
+
+    assert files["interview"].read_bytes() == before
+    assert "04-Projects/Alpha/research/interview.md" not in result.get("repaired", [])
+    assert original in files["interview"].read_text(encoding="utf-8")
+
+
+def test_empty_render_section_does_not_include_the_placeholder() -> None:
+    assert project_related_tasks.render_section([], []) == ""
+    assert "No linked tasks yet" not in project_related_tasks.render_section([], [])
+
+
+def test_daily_refresh_cleans_placeholders_even_when_the_feature_is_off(
+    vault: Path,
+) -> None:
+    files = _write_mixed_projects(vault)
+    _write_profile(vault, False)
+    original = files["readme"].read_bytes()
+    files["readme"].write_text(
+        files["readme"].read_text(encoding="utf-8").rstrip()
+        + "\n\n"
+        + _placeholder_block(),
+        encoding="utf-8",
+    )
+
+    result = project_related_tasks.maybe_daily_refresh(vault)
+
+    assert files["readme"].read_bytes() == original
+    assert result["cleanup"]["count"] == 1
+    assert "04-Projects/README.md" in result["cleanup"]["cleaned"]

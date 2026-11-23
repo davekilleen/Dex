@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import PurePosixPath
 
+from core.dev_only import (
+    DEX_KNOWN_RESTRICTED_PATHS,
+    REANCHOR_COMMAND,
+    TIDY_DEV_LEFTOVERS_DRY_RUN,
+)
 from core.lifecycle.customizations import RELEASE_STATES
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -31,11 +36,38 @@ EXCLUSION_REASONS = frozenset(
         "trust-hash-mismatch",
         "release-identity-unproved",
         "dependency-tree-excluded",
+        "dev-only-leftover",
+        "internal-object-store",
         "embedded-repository",
         "canonical-path-collision",
         "invalid-trust-registry",
         "reference-budget-exhausted",
     }
+)
+# Reasons that are listed in the report but never make completeness UNKNOWN.
+# Restricted is non-blocking only for Dex-known config paths; see
+# ``is_non_blocking_exclusion``.
+NON_BLOCKING_EXCLUSION_REASONS = frozenset(
+    {
+        "embedded-secret",
+        "dependency-tree-excluded",
+        "dev-only-leftover",
+        "internal-object-store",
+        "restricted",
+    }
+)
+# FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-277): static strings below are
+# tester-visible. The founder approves the verbatim wording before release.
+_UNPROVED_REANCHOR_GUIDANCE = (
+    "Dex can't prove these files came with your installed version of Dex. "
+    "Run the guided repair offered in /dex-doctor — it checks them "
+    f"against the official release record. Don't update until that's done. "
+    f"Open Terminal in your Dex folder and run: {REANCHOR_COMMAND}"
+)
+_UNPROVED_VERIFIED_GUIDANCE = (
+    "These files are not part of any Dex release. Tidy leftover developer "
+    "files, or keep them as your own — kept files count as customizations, "
+    f"not blockers. Preview: {TIDY_DEV_LEFTOVERS_DRY_RUN}"
 )
 EXCLUSION_GUIDANCE = {
     "restricted": "Review this path locally; Dex will not inspect or archive it.",
@@ -44,27 +76,54 @@ EXCLUSION_GUIDANCE = {
     "read-error": "Make the file readable and valid for its format, then reassess.",
     "embedded-secret": "Remove the credential or secret before including this file; Dex will not archive it.",
     "trust-hash-mismatch": "Re-authorize the current file through the trust flow, then reassess.",
-    # FOUNDER COPY - DRAFT PENDING APPROVAL (re-anchoring design ruling 5,
-    # second half): the post-flow wording, drafted now that the re-anchor flow
-    # exists (python3 -m core.update.reanchor_cli, offered through
-    # /dex-doctor). The founder approves the verbatim wording before release;
-    # the previously approved interim wording it replaces is preserved in the
-    # design doc.
-    "release-identity-unproved": (
-        "Dex can't prove these files came with your installed version of Dex. "
-        "Run the guided repair offered in /dex-doctor — it checks them "
-        "against the official release record. Don't update until that's "
-        "done."
-    ),
+    # Default is the verified-anchor wording so a static lookup can never
+    # say "Don't update until that's done" when re-anchor is not offerable.
+    "release-identity-unproved": _UNPROVED_VERIFIED_GUIDANCE,
     "dependency-tree-excluded": (
         "This path is intentionally excluded from customization capture. "
         "Leave it where it is; do not move it into a notes folder."
+    ),
+    "dev-only-leftover": (
+        "This is leftover developer material from an older combined checkout; "
+        "no Dex release ships it. Preview moving it aside with: "
+        f"{TIDY_DEV_LEFTOVERS_DRY_RUN}"
+    ),
+    "internal-object-store": (
+        "This is Dex's own local object store. Leave it where it is; it is "
+        "not a customization."
     ),
     "embedded-repository": "Keep the nested repository separate and record its dependency manually.",
     "canonical-path-collision": "Rename the colliding path so each canonical vault path is unique.",
     "invalid-trust-registry": "Repair or recreate the trust registry through its setup flow, then reassess.",
     "reference-budget-exhausted": "Reduce the assessed scope or split the dependency set, then reassess.",
 }
+
+
+def exclusion_guidance(reason: str, *, anchor_state: str | None = None) -> str:
+    """Return the user-facing exclusion sentence for the current repair state.
+
+    ``Don't update until that's done`` is only used when the re-anchor flow is
+    actually offerable (``absent`` or ``rejected``). A verified anchor with
+    leftover unproved files points at the tidy repair instead.
+    """
+    if reason not in EXCLUSION_REASONS:
+        raise ValueError("exclusion reason is not a closed authority value")
+    if reason != "release-identity-unproved":
+        return EXCLUSION_GUIDANCE[reason]
+    if anchor_state in {"absent", "rejected"}:
+        return _UNPROVED_REANCHOR_GUIDANCE
+    return _UNPROVED_VERIFIED_GUIDANCE
+
+
+def is_non_blocking_exclusion(path: str, reason: str) -> bool:
+    """True when this exclusion must still be listed but cannot block completeness."""
+    if reason not in NON_BLOCKING_EXCLUSION_REASONS:
+        return False
+    if reason == "restricted":
+        return path in DEX_KNOWN_RESTRICTED_PATHS
+    return True
+
+
 INCOMPLETE_REASONS = frozenset(
     {
         "assessment-exclusions",
@@ -415,7 +474,7 @@ class AssessmentExclusion:
         result: dict[str, object] = {
             "path": self.path,
             "reason": self.reason,
-            "guidance": EXCLUSION_GUIDANCE[self.reason],
+            "guidance": exclusion_guidance(self.reason),
         }
         if self.uninspected_count is not None:
             result["uninspected_count"] = self.uninspected_count
@@ -623,6 +682,9 @@ __all__ = [
     "EdgeKind",
     "EXCLUSION_GUIDANCE",
     "EXCLUSION_REASONS",
+    "NON_BLOCKING_EXCLUSION_REASONS",
+    "exclusion_guidance",
+    "is_non_blocking_exclusion",
     "LiveInfo",
     "ReferenceConfidence",
     "ReferenceEdge",

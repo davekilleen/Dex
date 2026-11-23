@@ -72,7 +72,7 @@ other gate still needs a host-specific equivalent before Dex can claim it.
 
 | File | Event | Why it is a gate |
 | --- | --- | --- |
-| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Calls the shared safety gate and blocks unsafe shell / MCP before the call runs |
+| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Calls the shared safety gate and blocks unsafe shell / MCP before the call runs. Shell `mkdir` in an ordinary folder outside the vault is allowed; system, home-root, and private folders stay blocked. In-vault new top-level folders stay blocked. |
 | `ensure-mcp-user-scope.cjs` | `PreToolUse` / Bash | Requires an explicit scope for `claude mcp add` |
 | `install-learnings.sh` | `Stop` | Blocks Stop once per day when unused learnings have piled up |
 | `soft-promise-detector.py` | `UserPromptSubmit` | Offers to capture a commitment in the message just sent |
