@@ -117,3 +117,51 @@ def test_hook_and_extractor_use_the_shared_check() -> None:
     assert "don'?t |" not in extractor
     assert "not what I\\b" in shared
     assert "pasted[_-]content" in shared
+    assert "project_claude_message" in shared
+    assert "project_claude_message" not in hook
+    assert "project_claude_message" not in extractor
+    assert "<cited" not in hook
+    assert "<cited" not in extractor
+
+
+PROJECT_RELAY_ORDINARY = (
+    '<project_claude_message><relay from="coordinator">'
+    "<note>Don't write files or send anything.</note>"
+    '<cited author="user">can you draft the reply</cited>'
+    "</relay></project_claude_message>"
+)
+PROJECT_RELAY_CORRECTION = (
+    '<project_claude_message><relay from="coordinator">'
+    "<note>context</note>"
+    '<cited author="user">no, that\'s wrong, use the March figures</cited>'
+    "</relay></project_claude_message>"
+)
+
+
+def test_project_relay_instruction_is_not_a_correction() -> None:
+    assert user_words(PROJECT_RELAY_ORDINARY) == "can you draft the reply"
+    assert is_correction(PROJECT_RELAY_ORDINARY) is False
+
+
+def test_project_relay_with_cited_user_correction_still_counts() -> None:
+    assert user_words(PROJECT_RELAY_CORRECTION) == (
+        "no, that's wrong, use the March figures"
+    )
+    assert is_correction(PROJECT_RELAY_CORRECTION) is True
+
+
+def test_hyphenated_harness_blocks_are_still_stripped() -> None:
+    closed = "<system-reminder>Do not do that. It is wrong. Stop.</system-reminder>"
+    unclosed = 'thanks\n<example-view-context>{"note":"wrong title, don\'t ship"}'
+
+    assert user_words(closed) == ""
+    assert user_words(unclosed) == "thanks"
+    assert is_correction(closed) is False
+    assert is_correction(unclosed) is False
+
+
+def test_plain_user_correction_with_no_wrappers_is_unchanged() -> None:
+    text = "no, that's not what I asked"
+
+    assert user_words(text) == text
+    assert is_correction(text) is True
