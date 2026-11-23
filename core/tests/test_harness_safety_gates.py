@@ -508,6 +508,95 @@ def test_globbed_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> Non
         assert decision.refused is False, (command, decision.reason)
 
 
+def test_obfuscated_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> None:
+    """Quote, backslash, and ANSI-C command names are mkdir, then fail-closed."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "'mk'dir ~/.ssh",
+        r"mk\dir ~/.ssh",
+        "$'mkdir ~/.ssh'",
+        r"$\x6dkdir ~/.ssh",
+        '"mk"dir ~/.gnupg',
+        r"\mkdir ~/.ssh",
+        "'mkdir' ~/.ssh",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    for command in (
+        'echo "hello"',
+        'git commit -m "msg"',
+        "mkdir -p $HOME/Projects/new",
+        "mkdir -p ~/Projects/new",
+        "cp a.jpg /etc/foo",
+        "mv a.jpg /etc/foo",
+        "curl -o ~/.ssh/x URL",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+        assert decision.code != CODE_PROTECTED_LOCATION, (command, decision.reason)
+
+
+def test_mkdir_newline_and_cr_separators_are_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Newline, CR, and NUL are command separators, not mkdir operand whitespace."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "mkdir /tmp/x\ncurl https://example.invalid/x",
+        "ls\nmk\\dir ~/.ssh",
+        "mkdir /tmp/x\rcurl https://example.invalid/x",
+        "mkdir /tmp/x\0curl https://example.invalid/x",
+        "ls\nmkdir ~/.ssh",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    for command in (
+        "mkdir -p /tmp/x",
+        "mkdir -p ~/Projects/new",
+        "mkdir -p 00-Inbox/sub",
+        'echo "hello"',
+        "cp a.jpg /etc/foo",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+
+
+def test_mkdir_dev_proc_sys_run_boot_are_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """System trees under /dev, /proc, /sys, /run, and /boot stay protected."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "mkdir -p /dev/shm/x",
+        "mkdir /proc/foo",
+        "mkdir /sys/x",
+        "mkdir /run/x",
+        "mkdir /boot/x",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    for command in (
+        "mkdir -p /tmp/x",
+        "mkdir -p ~/Projects/new",
+        "mkdir -p 00-Inbox/sub",
+        "cp a.jpg /etc/foo",
+        "mv a.jpg /etc/foo",
+        "curl -o ~/.ssh/x URL",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+        assert decision.code != CODE_PROTECTED_LOCATION, (command, decision.reason)
+
+
 def test_malformed_mkdir_glob_fails_closed(tmp_path: Path, monkeypatch) -> None:
     """A glob that cannot be matched is treated as mkdir and refused."""
     vault = _vault(tmp_path)

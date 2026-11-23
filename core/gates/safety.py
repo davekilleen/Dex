@@ -88,6 +88,8 @@ GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
 _MKDIR_GLOB_CHARS = frozenset("*?[")
+_MKDIR_NAME_OBFUSCATION = frozenset("'\"\\$")
+_MKDIR_COMMAND_SEPARATORS = frozenset("\n\r\0")
 _MKDIR_BANNED_WORD = re.compile(
     r"(?:^|\s)(?:cd|pushd|command|env|sudo|xargs|busybox|exec)(?:\s|$)",
     re.IGNORECASE,
@@ -104,6 +106,11 @@ _PROTECTED_SYSTEM_PREFIXES = (
     "/opt",
     "/root",
     "/Applications",
+    "/dev",
+    "/proc",
+    "/sys",
+    "/run",
+    "/boot",
 )
 _PROTECTED_VAR_PREFIXES = ("/var", "/private")
 # Named denylist plus the leading-dot rule in _protected_location_reason.
@@ -855,16 +862,21 @@ def _tilde_form_is_disallowed(command: str) -> bool:
 def _command_looks_like_mkdir(command: str) -> bool:
     """True when the command should be judged as mkdir, then fail closed.
 
-    A pathname glob such as ``/bin/mkdi*`` never contains the word ``mkdir``,
-    so detection refuses more spellings rather than parsing wrappers. The
+    Detection refuses more spellings rather than decoding wrappers. The
     letters ``mkdi`` (case-insensitive) cover ``mkdir``, ``mkdi*``, and
     ``/bin/mkdi*``. A whitespace token whose basename is a glob (not a lone
     ``*`` or ``?``) that matches ``mkdir`` covers ``mkd??``. A malformed glob
-    is treated as mkdir.
+    is treated as mkdir. Quote, backslash, or ``$`` in the first token is an
+    obfuscated command name. Newline, CR, and NUL are command separators.
+    Stripping quotes and backslashes from the first token still yields
+    ``mkdir`` for spellings such as ``'mk'dir``.
     """
+    if _MKDIR_COMMAND_SEPARATORS.intersection(command):
+        return True
     if "mkdi" in command.lower():
         return True
-    for token in command.split():
+    parts = command.split()
+    for token in parts:
         basename = os.path.basename(token)
         if not _MKDIR_GLOB_CHARS.intersection(basename):
             continue
@@ -876,7 +888,11 @@ def _command_looks_like_mkdir(command: str) -> bool:
             return True
         if matched:
             return True
-    return False
+    first = parts[0] if parts else ""
+    if first and _MKDIR_NAME_OBFUSCATION.intersection(first):
+        return True
+    plain = first.replace("'", "").replace('"', "").replace("\\", "").casefold()
+    return plain == "mkdir" or plain.endswith("/mkdir")
 
 
 def _is_bare_mkdir_prefix(command: str) -> bool:
@@ -889,6 +905,9 @@ def _is_bare_mkdir_prefix(command: str) -> bool:
 def _mkdir_syntax_fail_closed(command: str) -> bool:
     # Refuse shell syntax rather than parse it. Redirects (>, >>, >|, &>, <, <<)
     # must fail closed so an attached target is never treated as a mkdir operand.
+    # Newline, CR, and NUL are command separators, not operand whitespace.
+    if _MKDIR_COMMAND_SEPARATORS.intersection(command):
+        return True
     if re.search(r"[;&|`<>]", command) or "$(" in command or "$ (" in command:
         return True
     if "\\" in command or re.search(r"[*?[]", command):
@@ -956,9 +975,10 @@ def _evaluate_mkdir_command(
 ) -> GateDecision | None:
     """Refuse or allow a mkdir command. None means the command is not mkdir.
 
-    Any command that looks like mkdir — the letters ``mkdi``, or a glob that
-    matches mkdir — must be a simple bare mkdir. Wrapper, quoted, globbed,
-    and path-prefixed spellings are refused rather than parsed.
+    Any command that looks like mkdir — the letters ``mkdi``, a glob that
+    matches mkdir, an obfuscated first token, or a newline/CR/NUL separator —
+    must be a simple bare mkdir. Wrapper, quoted, globbed, concatenated, and
+    path-prefixed spellings are refused rather than parsed.
     """
     if not _command_looks_like_mkdir(command):
         return None
