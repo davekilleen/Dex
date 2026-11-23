@@ -86,14 +86,7 @@ SQL_DROP = re.compile(r"(DROP\s+TABLE|DROP\s+DATABASE)", re.IGNORECASE)
 GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
-_MKDIR_INVOCATION = re.compile(
-    r"(?:^|[;&|\n]|&&|\|\|)\s*"
-    r"(?:(?:command|env|sudo|xargs|busybox|exec)\s+|"
-    r"[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
-    r"(?:(?:\./|\.\./|/)(?:[^;\s|&]*/)?)?"
-    r"mkdir\b",
-    re.IGNORECASE,
-)
+_MKDIR_WORD = re.compile(r"\bmkdir\b", re.IGNORECASE)
 _MKDIR_BANNED_WORD = re.compile(
     r"(?:^|\s)(?:cd|pushd|command|env|sudo|xargs|busybox|exec)(?:\s|$)",
     re.IGNORECASE,
@@ -931,8 +924,13 @@ def _evaluate_mkdir_command(
     workdir: Path,
     allow_os_temp: bool,
 ) -> GateDecision | None:
-    """Refuse or allow a mkdir command. None means the command is not mkdir."""
-    if _MKDIR_INVOCATION.search(command) is None:
+    """Refuse or allow a mkdir command. None means the command is not mkdir.
+
+    Any command containing the word ``mkdir`` (including quoted or wrapped
+    forms) must be a simple bare mkdir. Wrapper, quoted, and path-prefixed
+    spellings are refused rather than parsed.
+    """
+    if _MKDIR_WORD.search(command) is None:
         return None
     operands = _simple_mkdir_operands(command)
     if operands is None:

@@ -126,7 +126,7 @@ def test_known_dex_folders_and_root_files_are_allowed(tmp_path: Path, path: str)
         "mkdir -p 00-Inbox/Meetings",
         "mkdir -p 07-Archives/Plans",
         "mkdir 06-Resources",
-        "echo mkdir Archives",
+        "echo Archives",
     ),
 )
 def test_legitimate_folder_creates_and_non_mkdir_text_are_allowed(

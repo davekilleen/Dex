@@ -427,6 +427,30 @@ def test_mkdir_fail_closed_refusals(tmp_path: Path, monkeypatch) -> None:
         assert decision.reason == REASON_PROTECTED_LOCATION, command
 
 
+def test_mkdir_wrappers_quotes_and_prefixes_are_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Any mkdir that is not a simple bare command is refused, not parsed."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    commands = (
+        "command -p mkdir -p ~/.ssh",
+        "sudo -n mkdir ~/.ssh",
+        "'mkdir' ~/.ssh",
+        "eval mkdir -p ~/.ssh",
+        "time mkdir ~/.ssh",
+        "nohup mkdir ~/.ssh",
+        "env -i mkdir ~/.ssh",
+        "/usr/bin/mkdir ~/.ssh",
+        "mkdir ~/.ssh",
+    )
+    for command in commands:
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+
+
 def test_mkdir_os_temp_and_tmpdir_stay_allowed(tmp_path: Path, monkeypatch) -> None:
     vault = _vault(tmp_path)
     scratch = _isolate_tempdir(monkeypatch, tmp_path / "scratch")
