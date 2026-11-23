@@ -1458,7 +1458,7 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
 
 def sync_task_refs_for_page(page_path: str) -> Dict[str, Any]:
     """Sync Related Tasks section for a page by reading 03-Tasks/Tasks.md"""
-    if project_related_tasks.is_project_page(page_path):
+    if project_related_tasks.is_under_projects_dir(page_path):
         return project_related_tasks.sync_project_page(BASE_DIR, page_path)
 
     tasks = find_tasks_for_page(page_path)
@@ -4889,6 +4889,29 @@ COMMITMENT_PATTERNS = [
     r"follow.?up:\s*([^\n]+)",
 ]
 
+_HEADING_RE = re.compile(r'^(#{1,6})\s+(.+?)\s*$')
+_ACTION_ITEMS_TITLE_RE = re.compile(r'^action\s+items$', re.IGNORECASE)
+_FOR_ME_TITLE_RE = re.compile(r'^for\s+me$', re.IGNORECASE)
+_FOR_OTHERS_TITLE_RE = re.compile(r'^for\s+others$', re.IGNORECASE)
+_TRANSCRIPT_TITLE_RE = re.compile(
+    r'^(?:(?:raw|full)\s+)?transcript$|^verbatim$',
+    re.IGNORECASE,
+)
+_OPEN_CHECKBOX_RE = re.compile(r'^[-*]\s+\[\s*\]\s+(.*)$')
+_ANY_CHECKBOX_RE = re.compile(r'^[-*]\s+\[([^\]]*)\]\s+(.*)$')
+_QUOTE_LINE_RE = re.compile(r'^(?:[-*]\s+)?>')
+_AT_PERSON_RE = re.compile(r'^@\[?([^\]:]+)\]?:\s*(.*)$')
+_TASK_ANCHOR_IN_TEXT_RE = re.compile(r'\s*\^task-[A-Za-z0-9-]+\b')
+_WIKILINK_RE = re.compile(r'\[\[([^\]|#/]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]')
+_BY_SUFFIX_RE = re.compile(r'\s+-\s+by\s+(\w+)\s*$', re.IGNORECASE)
+_BY_WORD_RE = re.compile(r'\s+by\s+(\w+)\s*$', re.IGNORECASE)
+_DONE_STAMP_RE = re.compile(r'✅\s*\d{4}-\d{2}-\d{2}')
+_CLOSED_CHECKBOX_MARKS = frozenset({'x', 'X', '-', '~'})
+_THIS_WEEK_DUE_WORDS = frozenset({
+    'tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday',
+})
+_FALLBACK_MIN_WORDS = 4
+
 
 def _usable_commitment_text(text: str) -> bool:
     """Reject single-character and punctuation-only commitment captures."""
@@ -4899,31 +4922,304 @@ def _usable_commitment_text(text: str) -> bool:
     return len(letters) >= 3
 
 
+def _commitment_word_count(text: str) -> int:
+    return len((text or '').split())
+
+
+def _is_quote_line(line: str) -> bool:
+    return bool(_QUOTE_LINE_RE.match(line.strip()))
+
+
+def _heading_parts(line: str) -> Optional[tuple]:
+    match = _HEADING_RE.match(line.rstrip())
+    if not match:
+        return None
+    return (len(match.group(1)), match.group(2).strip().rstrip(':').strip())
+
+
+def _iter_markdown_headings(lines: List[str]) -> List[tuple]:
+    """Return (index, level, title) for headings outside fenced code."""
+    headings = []
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        heading = _heading_parts(line)
+        if heading:
+            headings.append((index, heading[0], heading[1]))
+    return headings
+
+
+def _section_body(lines: List[str], title_re: re.Pattern, *, max_level: int = 6) -> Optional[str]:
+    """Return the body of the first matching heading, or None if absent."""
+    headings = _iter_markdown_headings(lines)
+    for offset, (index, level, title) in enumerate(headings):
+        if level > max_level or not title_re.match(title):
+            continue
+        end = len(lines)
+        for later_index, later_level, _later_title in headings[offset + 1:]:
+            if later_level <= level:
+                end = later_index
+                break
+        return '\n'.join(lines[index + 1:end])
+    return None
+
+
+def _quote_evidence(line: str) -> str:
+    text = line.strip()
+    text = re.sub(r'^[-*]\s+>\s*', '', text)
+    text = re.sub(r'^>\s*', '', text)
+    return text[:200]
+
+
+def _clean_action_item_text(raw: str) -> tuple:
+    """Strip checkbox leftovers, task anchors, wikilinks, and a trailing - by date."""
+    text = (raw or '').strip()
+    text = _TASK_ANCHOR_IN_TEXT_RE.sub('', text)
+    text = _WIKILINK_RE.sub(r'\1', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    due_date = None
+    due_match = _BY_SUFFIX_RE.search(text) or _BY_WORD_RE.search(text)
+    if due_match:
+        due_date = due_match.group(1)
+        text = text[:due_match.start()].strip()
+    return text, due_date
+
+
+def _normalize_commitment_key(text: str) -> str:
+    value = (text or '').casefold()
+    value = _BY_SUFFIX_RE.sub('', value)
+    value = _BY_WORD_RE.sub('', value)
+    value = re.sub(r'[^\w\s]', '', value, flags=re.UNICODE)
+    return re.sub(r'\s+', ' ', value).strip()
+
+
+def _fallback_scan_text(text: str) -> str:
+    """Drop transcript sections, quote lines, and fenced code before the old scan."""
+    lines = text.splitlines()
+    kept: List[str] = []
+    in_fence = False
+    skip_until_level = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        heading = _heading_parts(line)
+        if heading:
+            level, title = heading
+            if skip_until_level is not None and level <= skip_until_level:
+                skip_until_level = None
+            if skip_until_level is None and _TRANSCRIPT_TITLE_RE.match(title):
+                skip_until_level = level
+                continue
+        if skip_until_level is not None:
+            continue
+        if _is_quote_line(line):
+            continue
+        kept.append(line)
+    return '\n'.join(kept)
+
+
+def extract_action_items(text: str, source: str = '', date_context: str = '') -> List[Dict[str, Any]]:
+    """Parse open checkbox items from an Action Items section.
+
+    Returns an empty list when the heading is missing; callers should then
+    decide whether to fall back to prose extraction.
+    """
+    lines = text.splitlines()
+    body = _section_body(lines, _ACTION_ITEMS_TITLE_RE, max_level=3)
+    if body is None:
+        return []
+
+    items: List[Dict[str, Any]] = []
+    current: Optional[Dict[str, Any]] = None
+    bucket = 'me'
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            items.append(current)
+        current = None
+
+    for line in body.splitlines():
+        heading = _heading_parts(line)
+        if heading:
+            flush()
+            _level, title = heading
+            if _FOR_ME_TITLE_RE.match(title):
+                bucket = 'me'
+            elif _FOR_OTHERS_TITLE_RE.match(title):
+                bucket = 'others'
+            continue
+
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        indented = bool(re.match(r'^[ \t]', line))
+        if indented or _is_quote_line(line):
+            if current is not None and not current.get('evidence'):
+                current['evidence'] = _quote_evidence(line)
+            continue
+
+        checkbox = _ANY_CHECKBOX_RE.match(stripped)
+        if not checkbox:
+            continue
+
+        flush()
+        mark = checkbox.group(1)
+        raw_text = checkbox.group(2).strip()
+        if mark.strip() in _CLOSED_CHECKBOX_MARKS:
+            continue
+        if not _OPEN_CHECKBOX_RE.match(stripped):
+            continue
+        if _DONE_STAMP_RE.search(raw_text):
+            continue
+
+        commitment, due_date = _clean_action_item_text(raw_text)
+        if not _usable_commitment_text(commitment):
+            continue
+
+        to_person = None
+        at_match = _AT_PERSON_RE.match(commitment)
+        if at_match:
+            to_person = at_match.group(1).strip()
+            commitment = at_match.group(2).strip()
+            if not _usable_commitment_text(commitment):
+                continue
+
+        waiting = bucket == 'others' or to_person is not None
+        current = {
+            'commitment': commitment,
+            'due_date': due_date,
+            'source': source,
+            'date_context': date_context,
+            'confidence': 'action_item',
+        }
+        if waiting:
+            current['to_person'] = to_person
+            current['waiting_on_others'] = True
+        else:
+            current['owner'] = 'me'
+
+    flush()
+    return items
+
+
 def extract_commitments_from_text(text: str, source: str = '', date_context: str = '') -> List[Dict[str, Any]]:
-    """Extract commitment patterns from text"""
+    """Extract commitment patterns from prose. Used as a fallback only."""
     commitments = []
-    text_lower = text.lower()
-    
+
     for pattern in COMMITMENT_PATTERNS:
-        matches = re.finditer(pattern, text_lower)
+        matches = re.finditer(pattern, text, re.IGNORECASE)
         for match in matches:
             commitment_text = match.group(1).strip() if match.lastindex >= 1 else match.group(0)
             due_date = None
-            due_match = re.search(r'\s+by\s+(\w+)\s*$', commitment_text)
+            due_match = re.search(r'\s+by\s+(\w+)\s*$', commitment_text, re.IGNORECASE)
             if due_match:
                 due_date = due_match.group(1)
                 commitment_text = commitment_text[:due_match.start()].strip()
             if not _usable_commitment_text(commitment_text):
                 continue
-            
+
             commitments.append({
                 'commitment': commitment_text,
                 'due_date': due_date,
                 'source': source,
-                'date_context': date_context
+                'date_context': date_context,
+                'confidence': 'inferred',
+                'owner': 'me',
             })
-    
+
     return commitments
+
+
+def _meeting_note_sort_key(source: str, meeting_date_str: str) -> tuple:
+    return (meeting_date_str or '9999-99-99', source)
+
+
+def _dedupe_commitments(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep the earliest copy of each normalised title; later sources go in also_in."""
+    seen: Dict[tuple, int] = {}
+    out: List[Dict[str, Any]] = []
+    for item in items:
+        title_key = _normalize_commitment_key(item.get('commitment', ''))
+        if not title_key:
+            continue
+        if item.get('waiting_on_others'):
+            key = ('waiting', title_key, (item.get('to_person') or '').casefold())
+        else:
+            key = ('me', title_key)
+        existing_index = seen.get(key)
+        if existing_index is not None:
+            existing = out[existing_index]
+            later_source = item.get('source')
+            if later_source and later_source != existing.get('source'):
+                also_in = existing.setdefault('also_in', [])
+                if later_source not in also_in:
+                    also_in.append(later_source)
+            continue
+        seen[key] = len(out)
+        out.append(dict(item))
+    return out
+
+
+def _task_title_keys() -> set:
+    """Normalised titles from Tasks.md for already_task marking. Empty on failure."""
+    try:
+        tasks_file = get_tasks_file()
+        if not tasks_file or not Path(tasks_file).exists():
+            return set()
+        keys = set()
+        for task in parse_tasks_file(tasks_file):
+            key = _normalize_commitment_key(task.get('title') or '')
+            if key:
+                keys.add(key)
+        return keys
+    except Exception:
+        return set()
+
+
+def _append_due_bucket(item: Dict[str, Any], today: date, result: Dict[str, Any]) -> None:
+    due = item.get('due_date')
+    if due:
+        due_lower = str(due).lower()
+        if due_lower in ['today', today.strftime('%A').lower()]:
+            result['commitments_due_today'].append(item)
+        elif due_lower in _THIS_WEEK_DUE_WORDS:
+            result['commitments_due_this_week'].append(item)
+        else:
+            result['commitments_no_date'].append(item)
+    else:
+        result['commitments_no_date'].append(item)
+
+
+def _extract_meeting_commitments(
+    content: str, source: str, date_context: str
+) -> List[Dict[str, Any]]:
+    """Structured Action Items first; prose fallback only when that section is missing."""
+    if _section_body(content.splitlines(), _ACTION_ITEMS_TITLE_RE, max_level=3) is not None:
+        return extract_action_items(content, source=source, date_context=date_context)
+
+    fallback_items = extract_commitments_from_text(
+        _fallback_scan_text(content),
+        source=source,
+        date_context=date_context,
+    )
+    usable = []
+    for item in fallback_items:
+        if _commitment_word_count(item.get('commitment', '')) < _FALLBACK_MIN_WORDS:
+            continue
+        usable.append(item)
+    return usable
+
 
 def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
     """Scan meeting notes and person pages for commitments due"""
@@ -4936,12 +5232,14 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
         'owed_overdue': [],
         'waiting_stale': [],
         'ambiguous_action_dates': [],
+        'waiting_on_others': [],
         'sources_scanned': []
     }
     
     # Scan recent meeting notes, including dated subfolders of the live inbox.
     # Archives stay out: this is "due now", not a historical sweep.
     meetings_dir = get_meetings_dir()
+    meeting_notes = []
     for meeting_file in _iter_meeting_note_files(meetings_dir):
         try:
             try:
@@ -4957,28 +5255,25 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
                 meeting_date = datetime.strptime(meeting_date_str, '%Y-%m-%d').date()
                 if (today - meeting_date).days > 14:
                     continue
+            meeting_notes.append((meeting_file, source, meeting_date_str))
+        except Exception as e:
+            logger.error(f"Error scanning {meeting_file}: {e}")
+            continue
 
+    meeting_notes.sort(key=lambda row: _meeting_note_sort_key(row[1], row[2]))
+
+    collected: List[Dict[str, Any]] = []
+    for meeting_file, source, meeting_date_str in meeting_notes:
+        try:
             content = read_vault_text(meeting_file)
-            commitments = extract_commitments_from_text(
-                content,
-                source=source,
-                date_context=meeting_date_str
+            collected.extend(
+                _extract_meeting_commitments(
+                    content,
+                    source=source,
+                    date_context=meeting_date_str,
+                )
             )
-
-            for c in commitments:
-                if c['due_date']:
-                    due_lower = c['due_date'].lower()
-                    if due_lower in ['today', today.strftime('%A').lower()]:
-                        result['commitments_due_today'].append(c)
-                    elif due_lower in ['tomorrow', 'this week', 'friday', 'thursday', 'wednesday', 'tuesday', 'monday']:
-                        result['commitments_due_this_week'].append(c)
-                    else:
-                        result['commitments_no_date'].append(c)
-                else:
-                    result['commitments_no_date'].append(c)
-
             result['sources_scanned'].append(source)
-
         except Exception as e:
             logger.error(f"Error scanning {meeting_file}: {e}")
             continue
@@ -5042,15 +5337,27 @@ def get_commitments_due_data(date_range: str = 'today') -> Dict[str, Any]:
                             item_text = re.sub(r'-\s*\[\s*\]\s*', '', line).strip()
                             if not _usable_commitment_text(item_text):
                                 continue
-                            result['commitments_no_date'].append({
+                            collected.append({
                                 'commitment': item_text,
                                 'due_date': None,
                                 'source': source,
-                                'to_person': person_name
+                                'to_person': person_name,
+                                'confidence': 'action_item',
+                                'owner': 'me',
                             })
             except Exception:
                 continue
-    
+
+    task_keys = _task_title_keys()
+    for item in _dedupe_commitments(collected):
+        title_key = _normalize_commitment_key(item.get('commitment', ''))
+        if title_key and title_key in task_keys:
+            item['already_task'] = True
+        if item.pop('waiting_on_others', False):
+            result['waiting_on_others'].append(item)
+        else:
+            _append_due_bucket(item, today, result)
+
     return result
 
 
@@ -5540,7 +5847,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "enabled": {
                         "type": "boolean",
-                        "description": "True turns the list on and refreshes project pages. False leaves project pages untouched.",
+                        "description": "True turns the list on and refreshes project pages. False removes the list from project pages and leftover empty placeholders.",
                     }
                 },
                 "required": ["enabled"],
@@ -5785,7 +6092,7 @@ async def handle_list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_commitments_due",
-            description="Scan meeting notes and person pages for commitments and follow-ups that are due today or this week.",
+            description="Scan recent meeting notes for open Action Items (and person-page follow-ups) due today or this week. Infers promises from prose only when a note has no Action Items section.",
             inputSchema={
                 "type": "object",
                 "properties": {

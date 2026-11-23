@@ -804,8 +804,8 @@
       "source": {
         "kind": "active-skill",
         "path": ".claude/skills/commitments/SKILL.md",
-        "sha256": "365d32f45d8cb63a4af7693ff07d1452e1559365559eab993e64cd67b26be8ab",
-        "byte_size": 6541
+        "sha256": "a8e66084dcd8e4e601a0a0ef61548ba2ccd32ca6c4267f26913f2f5cb2585da0",
+        "byte_size": 6767
       },
       "value": "Pulls the small promises — “I’ll send that over”, “can you review this” — out of meetings and notes into one list of who owes what, and tracks only the ones the person confirms are real.",
       "jobs_served": [
