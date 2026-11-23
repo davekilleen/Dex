@@ -1072,8 +1072,9 @@ _GH_DATA_SUBCOMMANDS = frozenset({
     "pr", "issue", "release", "repo", "api", "run", "workflow", "search",
     "label", "status", "browse", "project", "gist", "cache", "ruleset", "variable",
 })
+# ``git mv`` is not data: it is parsed as a move (see _git_mv_targets).
 _GIT_DATA_SUBCOMMANDS = frozenset({
-    "mv", "add", "rm", "commit", "log", "show", "diff", "status", "restore",
+    "add", "rm", "commit", "log", "show", "diff", "status", "restore",
     "checkout", "switch", "branch", "tag", "stash", "blame", "reset",
 })
 _BREW_DATA_SUBCOMMANDS = frozenset({
@@ -1092,6 +1093,9 @@ _UNQUOTED_WORD_CHARS = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/~:=@%+,-*?[]"
 )
 _SHELL_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# A command word Dex understands: a plain name or path (``cp``, ``/usr/bin/curl``,
+# ``~/bin/tool``). zsh ``=name`` expansion and anything else is outside the grammar.
+_COMMAND_WORD_RE = re.compile(r"(?:~/)?[A-Za-z0-9_.+/-]*[A-Za-z0-9_]|\[\[?")
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
 _HEREDOC_SUBST_RE = re.compile(r"cat[ \t]*<<[ \t]*(?:'([A-Za-z_][A-Za-z0-9_]*)'|\"([A-Za-z_][A-Za-z0-9_]*)\")\n")
 
@@ -1545,6 +1549,8 @@ class _StrictLexer:
                 self.buf.append("~")
                 self.i += 1
                 continue
+            if ch == "=" and not self.in_word:
+                raise _Unparsed()  # zsh "=cmd" expands to a command's path
             if ch not in _UNQUOTED_WORD_CHARS:
                 # Backslash, backtick, (, ), {, }, #, !, non-ASCII and the rest.
                 raise _Unparsed()
@@ -1627,7 +1633,13 @@ def _is_data_segment(seg: _ShellSegment, name: str) -> bool:
     if name == "man":
         return not any(w.text.startswith("-") for w in words[1:])
     if name == "git":
-        return len(words) > 1 and not words[1].text.startswith("-") and words[1].text in _GIT_DATA_SUBCOMMANDS
+        return (
+            len(words) > 1
+            and not words[1].text.startswith("-")
+            and words[1].text in _GIT_DATA_SUBCOMMANDS
+            # diff/log/show --output=FILE writes a file: not a data form.
+            and not any(w.text.startswith("--output") for w in words[2:])
+        )
     if name == "brew":
         return len(words) > 1 and words[1].text in _BREW_DATA_SUBCOMMANDS
     return False
@@ -1642,16 +1654,25 @@ def _check_segment_grammar(seg: _ShellSegment) -> bool:
         return False
     if first.has_var or first.has_glob or first.has_subst:
         return False
+    if not _COMMAND_WORD_RE.fullmatch(first.text):
+        return False  # e.g. zsh "=cp" (equals expansion) or "a=b"
     name = _segment_name(seg)
     if name in _SHELL_WRAPPERS:
         return False
     rest = seg.words[1:]
     if name == "printf" and any(w.text.startswith("-v") for w in rest):
         return False  # printf -v assigns a shell variable
+    if name == "git" and any(w.text.startswith("--output") for w in rest):
+        return False  # git diff/log/show --output=FILE writes a file
     if name == "find" and any(w.text in _FIND_UNSAFE_ACTIONS for w in rest):
         return False
     if _is_data_segment(seg, name):
         return True
+    if name == "git" and len(seg.words) > 1 and seg.words[1].text == "mv":
+        # Parsed by _git_mv_targets; its operands are paths, not commands.
+        return not any(_command_name(w.text) in _SHELL_RUNNER_WORDS for w in seg.words[2:]) and not any(
+            _mentions_write_command(w.text) for w in seg.words[2:]
+        )
     for word in rest:
         if _mentions_write_command(word.text):
             return False
@@ -1889,6 +1910,32 @@ def _redirect_targets(seg: _ShellSegment) -> list[_WriteTarget]:
     return targets
 
 
+_GIT_MV_SHORT_FLAGS = frozenset("fknv")
+_GIT_MV_LONG_FLAGS = frozenset({"--force", "--dry-run", "--verbose"})
+
+
+def _git_mv_targets(seg: _ShellSegment) -> list[_WriteTarget] | None:
+    """``git mv [-f -k -n -v] SRC… DEST``: judged like mv (git follows dir symlinks)."""
+    args = seg.words[2:]
+    if not _argv_vars_ok(args):
+        return None
+    parsed = _parse_options(
+        args,
+        short_flags=_GIT_MV_SHORT_FLAGS,
+        short_value=frozenset(),
+        long_flags=_GIT_MV_LONG_FLAGS,
+        long_value=frozenset(),
+    )
+    if parsed is None:
+        return None
+    _valued, operands, _flags = parsed
+    if len(operands) < 2:
+        return None
+    targets = [_WriteTarget(operands[-1], "path")]
+    targets.extend(_WriteTarget(word, "move_source") for word in operands[:-1])
+    return targets
+
+
 def _segment_write_targets(seg: _ShellSegment) -> list[_WriteTarget] | None:
     if not _check_segment_grammar(seg):
         return None
@@ -1896,6 +1943,8 @@ def _segment_write_targets(seg: _ShellSegment) -> list[_WriteTarget] | None:
     targets: list[_WriteTarget] = []
     if name in {"cp", "mv"}:
         found = _cp_mv_targets(seg, name)
+    elif name == "git" and len(seg.words) > 1 and seg.words[1].text == "mv":
+        found = _git_mv_targets(seg)
     elif name == "curl":
         found = _curl_targets(seg)
     elif name == "tee":
@@ -2054,18 +2103,51 @@ def _judge_write_target(
     return None
 
 
+# Decision 3 (PowerShell keeps today's behaviour) applies only to commands that
+# are recognisably PowerShell: a drive-letter backslash path, ``$env:`` or a
+# Verb-Noun cmdlet. Git Bash forms on Windows are refused like everywhere else.
+_POWERSHELL_HINT_RE = re.compile(r"[A-Za-z]:\\|\$env:|(?<![\w-])[A-Z][a-z]+-[A-Z][A-Za-z]+(?![\w-])")
+_HOME_SPELLINGS_RE = re.compile(r"^(?:\$env:USERPROFILE|\$env:HOME|\$HOME|~)(?=$|[\\/])", re.IGNORECASE)
+
+
+def _unparsed_decision(command: str) -> GateDecision | None:
+    """Refuse an unparsed write-shaped command, except the PowerShell gap (Decision 3)."""
+    if not _r3_unparsed_falls_back() or not _POWERSHELL_HINT_RE.search(command):
+        return _unchecked_write()
+    tokens = [t.strip("'\"`") for t in re.split(r"[\s;|&(){}<>,]+", command) if t]
+    for token in tokens:
+        name = _command_name(token.replace("\\", "/"))
+        if name in _SHELL_WRAPPERS or name in _SHELL_RUNNER_WORDS:
+            return _unchecked_write()
+    for token in tokens:
+        homed = _HOME_SPELLINGS_RE.sub("~", token)
+        # PowerShell reads "\\" as a separator; Git Bash reads it as an escape.
+        for candidate in {homed.replace("\\", "/"), homed.replace("\\", "")}:
+            if not (candidate.startswith(("~", "/")) or re.match(r"^[A-Za-z]:/", candidate)):
+                continue
+            if _has_parent_dir_component(candidate):
+                return _protected_write()
+            if _WINDOWS_PROTECTED.match(candidate.replace("/", "\\")):
+                return _protected_write()
+            if re.match(r"^[A-Za-z]:/", candidate) and os.name != "nt":
+                continue  # a drive path only means something on Windows itself
+            if _protected_location_reason(candidate, None):
+                return _protected_write()
+    return None
+
+
 def _shell_write_decision(command: str, *, root: Path, workdir: Path) -> GateDecision | None:
     """Block a cp/mv/curl/tee/redirect write into a protected place, or one Dex can't read."""
     if not _is_write_shaped(command):
         return None
     segments = _parse_strict_shell(command)
     if segments is None:
-        return None if _r3_unparsed_falls_back() else _unchecked_write()
+        return _unparsed_decision(command)
     plan: list[tuple[_ShellSegment, list[_WriteTarget]]] = []
     for seg in segments:
         targets = _segment_write_targets(seg)
         if targets is None:
-            return None if _r3_unparsed_falls_back() else _unchecked_write()
+            return _unparsed_decision(command)
         plan.append((seg, targets))
     candidates: list[Path] | None = [workdir]
     for seg, targets in plan:

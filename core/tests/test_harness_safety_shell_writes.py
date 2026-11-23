@@ -379,12 +379,51 @@ def test_volume_mount_helper_rejects_plain_dirs_and_the_root_device(tmp_path):
     assert safety._volume_is_external_mount(Path("/"), None) is False
 
 
-# Decision 3: PowerShell hosts keep today's behaviour for unparsed forms.
-def test_windows_falls_back_only_for_unparsed_commands(env, monkeypatch):
+# Decision 3: PowerShell hosts keep today's behaviour, but only for commands
+# that are recognisably PowerShell; Git Bash forms are refused everywhere.
+def test_windows_falls_back_only_for_powershell_forms(env, monkeypatch):
     _home, vault = env
     monkeypatch.setattr(safety, "_r3_unparsed_falls_back", lambda: True)
-    assert _decide(vault, r"Copy-Item C:\a C:\Users\x > C:\b").refused is False
+    assert _decide(vault, r"Copy-Item C:\a D:\b > C:\b.log").refused is False
+    assert _decide(vault, r"Get-Content a | Out-File $env:TEMP\x").refused is False
     _check(vault, "cp a /etc/x", "protected")
+    # Git Bash forms Dex can't read stay refused on Windows.
+    for command in ("sudo cp a ~/.ssh/x", "bash -c 'cp a ~/.ssh/x'", "cp a ~/.ssh/authorized\\ keys"):
+        _check(vault, command, "unchecked")
+    # A PowerShell hint does not open a wrapper or a protected place.
+    _check(vault, r"Copy-Item C:\a C:\b; bash -c 'cp a b'", "unchecked")
+    _check(vault, r"cp a C:\x ~/.ssh/k", "protected")
+    _check(vault, r"cp a $env:USERPROFILE\.ssh\k", "protected")
+    _check(vault, r"cp a C:\x ~/Li\brary/x", "protected")
+    _check(vault, r"cp a C:\Windows\x", "protected")
+    # PowerShell cmdlets are not write-shaped at all: unchanged (Decision 3).
+    assert _decide(vault, r"Copy-Item a C:\Windows\x").refused is False
+
+
+def test_git_mv_is_judged_like_mv(env):
+    home, vault = env
+    (vault / "l").symlink_to(home / ".ssh")
+    _check(vault, "git mv a.md b.md", "allow")
+    _check(vault, "git mv -f a.md notes/", "allow")
+    _check(vault, "git mv a.md l/authorized_keys", "protected")
+    _check(vault, "git mv a.md ~/.ssh/authorized_keys", "protected")
+    _check(vault, "git mv --foo a.md b.md", "unchecked")
+    _check(vault, "git mv a.md $X", "unchecked")
+
+
+def test_git_output_option_is_not_a_data_form(env):
+    _home, vault = env
+    _check(vault, 'git diff --output=~/.ssh/x > log.txt', "unchecked")
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["=cp a ~/.ssh/k", "=mv a ~/.ssh/k", "=curl -o ~/.ssh/k URL", "echo k | =tee ~/.ssh/k",
+     "cp a =ssh", "a=b cp x y"],
+)
+def test_zsh_equals_expansion_and_odd_command_words_are_unparsed(env, command):
+    _home, vault = env
+    _check(vault, command, "unchecked")
 
 
 # §8.4 Trigger units and untouched commands.
