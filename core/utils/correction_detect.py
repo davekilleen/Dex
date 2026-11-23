@@ -14,13 +14,21 @@ from __future__ import annotations
 
 import re
 
-# Harness blocks are lowercase tags with at least one hyphen
-# (<system-reminder>, <task-notification>, ...). An unclosed one runs to
-# the end of the text. These are never the user's words.
+# Harness blocks are never the user's words. Hyphenated tags
+# (<system-reminder>), underscore tags (<project_claude_message>), and
+# known no-separator wrappers (<relay>, <note>) are stripped as a whole,
+# including attributes. An unclosed one runs to the end of the text.
+# Text inside <cited author="user"> is taken first, then these wrappers
+# and any other cited tags are removed.
 _MACHINE_BLOCK = re.compile(
-    r"<([a-z]+(?:-[a-z]+)+)\b[^>]*>.*?(?:</\1>|\Z)",
+    r"<([a-z]+(?:[-_][a-z]+)+|relay|note)\b[^>]*>.*?(?:</\1>|\Z)",
     re.DOTALL,
 )
+_CITED_BLOCK = re.compile(
+    r"<cited\b([^>]*)>(.*?)(?:</cited>|\Z)",
+    re.DOTALL,
+)
+_CITED_USER_ATTR = re.compile(r"""\bauthor\s*=\s*["']user["']""")
 
 # User-pasted or quoted wrappers. Claude uses <pasted_content> (underscore);
 # a hyphenated alias is included so a future wrapper does not re-open this.
@@ -87,23 +95,43 @@ def _strip_blockquotes(text: str) -> str:
     return "\n".join(lines)
 
 
+def _take_cited_user(text: str) -> tuple[list[str], str]:
+    """Keep inner text of <cited author="user">, drop every cited wrapper."""
+    cited: list[str] = []
+
+    def keep_user(match: re.Match[str]) -> str:
+        attrs, body = match.group(1), match.group(2)
+        if _CITED_USER_ATTR.search(attrs):
+            stripped = body.strip()
+            if stripped:
+                cited.append(stripped)
+        return ""
+
+    return cited, _CITED_BLOCK.sub(keep_user, text)
+
+
 def user_words(text: str) -> str:
     """Return only the user's own typed words, or '' if none remain.
 
-    Harness blocks, pasted wrappers, fenced code, and quoted lines are
-    removed first. Leftover machine preambles make the whole text empty so
+    Cited user text is kept first. Harness blocks, Project relay wrappers,
+    pasted wrappers, fenced code, and quoted lines are then removed.
+    Leftover machine preambles make the remaining wrapper text empty so
     they cannot be filed as a correction.
     """
     if not text:
         return ""
     remainder = text.translate(_QUOTE_TRANSLATE)
+    cited, remainder = _take_cited_user(remainder)
     remainder = _MACHINE_BLOCK.sub("", remainder)
     remainder = _PASTE_OR_QUOTE_TAG.sub("", remainder)
     remainder = _FENCED_CODE.sub("", remainder)
     remainder = _strip_blockquotes(remainder).strip()
     if any(phrase in remainder for phrase in _MACHINE_PHRASES):
-        return ""
-    return remainder
+        remainder = ""
+    parts = list(cited)
+    if remainder:
+        parts.append(remainder)
+    return "\n".join(parts).strip()
 
 
 def _is_plain_question(text: str) -> bool:

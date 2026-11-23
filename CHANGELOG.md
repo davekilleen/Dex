@@ -60,6 +60,16 @@ On every release, a customized Dex install could be told the checkup was incompl
 
 Thanks to Don Mason for reporting this.
 
+### Messages passed along by a Claude Project are not saved as corrections
+
+Asking Dex to draft a reply in a Claude Code Project chat was being saved as if you had told Dex it got something wrong. The chat's own "don't write files" note was being filed as a lesson.
+
+**What this fixes for you:**
+
+* **A Project chat instruction is not a correction.** Dex ignores the chat's own notes and only looks at the words you typed.
+* **A real correction in that chat is still saved.** If you said Dex got it wrong, that still goes in the day's learnings.
+
+Thanks to Jim McDermott for reporting this.
 
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
