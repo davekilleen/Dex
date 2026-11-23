@@ -288,6 +288,9 @@ def build_inventory(
     root = Path(vault_root)
     folder_map = load_folder_map(root)
     baseline = load_release_baseline(root, catalog=catalog, catalog_path=catalog_path)
+    # ``baseline.dev_only_patterns`` is the catalog-shipped .distignore list.
+    # Assessment classifies matching unproved brain files as leftovers. A
+    # missing list keeps today's unproved behaviour and must not raise.
     walked = walk_read_only(root, max_entries=max_entries)
     machine = probe_machine_state(root, max_entries=max_entries, walk=walked)
     entries: list[InventoryEntry] = []

@@ -1498,7 +1498,11 @@ def test_hanging_preparation_is_killed_within_the_journey_budget(monkeypatch, tm
     assert time.monotonic() - started < 30
     assert run.exit_code == 2
     assert run.harness_failed is True
-    assert "preparation timed out" in run.report["journeys"][0]["detail"]
+    # Same race as test_hanging_journey_is_killed_and_returns_exit_two: the
+    # deadline can fire in the preparation helper ("journey preparation timed
+    # out after Xs") or in the outer budget ("journey timed out during
+    # preparation"). Both are the same correct kill (UNKNOWN + exit 2).
+    assert "timed out" in run.report["journeys"][0]["detail"]
 
 
 def test_normal_journey_exit_cleans_up_same_group_descendants(monkeypatch, tmp_path: Path) -> None:

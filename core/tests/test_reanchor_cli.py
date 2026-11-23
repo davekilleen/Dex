@@ -547,18 +547,20 @@ def test_pty_journey_declined_write_leaves_nothing(anchored_vault: Path) -> None
 
 
 def test_unproved_guidance_points_at_the_reanchor_flow() -> None:
-    # The design's guidance correction (ruling 5, second half): once the flow
-    # exists, the release-identity-unproved guidance names the real remedy
-    # instead of the interim "a guided repair is coming" wording — and still
-    # never routes the user through the unprotected update.
-    from core.customization_migration.model import EXCLUSION_GUIDANCE
+    # Re-anchor is offerable only when the proof record is absent or rejected.
+    # A verified anchor with leftover files points at tidy, not a dead end.
+    from core.customization_migration.model import exclusion_guidance
 
-    guidance = EXCLUSION_GUIDANCE["release-identity-unproved"]
+    reanchor = exclusion_guidance("release-identity-unproved", anchor_state="absent")
+    verified = exclusion_guidance("release-identity-unproved", anchor_state="verified")
 
-    assert "guided repair" in guidance
-    assert "/dex-doctor" in guidance
-    assert "update until that's done" in guidance
-    assert "coming" not in guidance
+    assert "guided repair" in reanchor
+    assert "/dex-doctor" in reanchor
+    assert "python3 -m core.update.reanchor_cli" in reanchor
+    assert "update until that's done" in reanchor
+    assert "coming" not in reanchor
+    assert "Don't update until" not in verified
+    assert "python3 -m core.customization_migration.cli tidy-dev-leftovers --dry-run" in verified
 
 
 def test_update_and_lifecycle_paths_never_reference_anchor_generation() -> None:

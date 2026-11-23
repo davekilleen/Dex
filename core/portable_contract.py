@@ -698,6 +698,7 @@ def update_write_verdict(
         "release-anchor",
         "establish-baseline",
         "usage-log",
+        "dev-leftover-tidy",
     ):
         raise ValueError(f"unknown write operation: {operation}")
 
@@ -1022,6 +1023,53 @@ def update_write_verdict(
             outside_reason,
             resolution.ownership,
             resolution.rule_id,
+        )
+
+    if operation == "dev-leftover-tidy":
+        from core.dev_only import (
+            is_dev_leftover_archive_path,
+            is_tidable_leftover_source,
+        )
+
+        try:
+            denied = is_denied(path)
+            candidate = _normalize(path)
+        except ContractViolation:
+            return WriteVerdict(
+                str(path),
+                False,
+                "unclassified-never-write",
+                None,
+                None,
+            )
+        try:
+            resolution = resolve(candidate)
+        except ContractViolation:
+            resolution = None
+        if denied:
+            return WriteVerdict(
+                candidate,
+                False,
+                "deny",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        if is_dev_leftover_archive_path(candidate) or is_tidable_leftover_source(
+            candidate
+        ):
+            return WriteVerdict(
+                candidate,
+                True,
+                "write-dev-leftover-tidy",
+                resolution.ownership if resolution is not None else None,
+                resolution.rule_id if resolution is not None else None,
+            )
+        return WriteVerdict(
+            candidate,
+            False,
+            "outside-dev-leftover-tidy",
+            resolution.ownership if resolution is not None else None,
+            resolution.rule_id if resolution is not None else None,
         )
 
     if operation == "customization-migration":
