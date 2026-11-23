@@ -48,6 +48,14 @@ MKDIR_COMMAND = re.compile(
     r"(?:^|[;&|\n]|&&|\|\|)\s*mkdir\b(?P<args>[^;&|\n]*)",
     re.IGNORECASE,
 )
+CURL_COMMAND = re.compile(
+    r"(?:^|[;&|\n]|&&|\|\|)\s*curl\b(?P<args>[^;&|\n]*)",
+    re.IGNORECASE,
+)
+CP_MV_COMMAND = re.compile(
+    r"(?:^|[;&|\n]|&&|\|\|)\s*(?:cp|mv)\b(?P<args>[^;&|\n]*)",
+    re.IGNORECASE,
+)
 
 
 def locate_vault_folders(vault: Path) -> dict[str, Any]:
@@ -167,6 +175,22 @@ def mkdir_targets(command: str) -> list[str]:
     return targets
 
 
+def shell_write_targets(command: str) -> list[str]:
+    """Return easily parsed shell write destinations in *command*.
+
+    Covers ``curl -o/--output``, ``cp``/``mv`` destinations, and ``>``/``>>``
+    redirects. This is not a shell parser: quoted simple forms are read;
+    indirection, python one-liners, and unknown flags are skipped.
+    """
+    targets: list[str] = []
+    for match in CURL_COMMAND.finditer(command):
+        targets.extend(_curl_output_targets(match.group("args")))
+    for match in CP_MV_COMMAND.finditer(command):
+        targets.extend(_cp_mv_destinations(match.group("args")))
+    targets.extend(_redirect_targets(command))
+    return targets
+
+
 def _vault_relative_parts(vault: Path, candidate: str) -> tuple[str, ...] | None:
     if not candidate or not isinstance(candidate, str):
         return None
@@ -238,6 +262,107 @@ def _normalize_relative(value: str) -> str | None:
     if not collapsed or collapsed.startswith("/") or any(part in {"", ".", ".."} for part in collapsed.split("/")):
         return None
     return collapsed
+
+
+def _curl_output_targets(args: str) -> list[str]:
+    tokens = _tokenize(args)
+    targets: list[str] = []
+    skip_next = False
+    for index, token in enumerate(tokens):
+        if skip_next:
+            skip_next = False
+            continue
+        if token in {"-o", "--output"}:
+            if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
+                targets.append(tokens[index + 1])
+            skip_next = True
+            continue
+        if token.startswith("--output="):
+            value = token.split("=", 1)[1]
+            if value and value != "-":
+                targets.append(value)
+    return targets
+
+
+def _cp_mv_destinations(args: str) -> list[str]:
+    tokens = _tokenize(args)
+    destinations: list[str] = []
+    operands: list[str] = []
+    skip_next = False
+    take_destination = False
+    for token in tokens:
+        if skip_next:
+            if take_destination and token not in {"", "-"}:
+                destinations.append(token)
+            take_destination = False
+            skip_next = False
+            continue
+        if token in {"-t", "--target-directory"}:
+            skip_next = True
+            take_destination = True
+            continue
+        if token.startswith("--target-directory="):
+            value = token.split("=", 1)[1]
+            if value and value != "-":
+                destinations.append(value)
+            continue
+        if token == "--" or token.startswith("-"):
+            continue
+        operands.append(token)
+    if not destinations and len(operands) >= 2:
+        destinations.append(operands[-1])
+    return destinations
+
+
+def _redirect_targets(command: str) -> list[str]:
+    """Return operands of unquoted ``>`` / ``>>`` redirects."""
+    targets: list[str] = []
+    quote: str | None = None
+    index = 0
+    length = len(command)
+    while index < length:
+        char = command[index]
+        if quote is not None:
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            index += 1
+            continue
+        if char == "<":
+            index += 1
+            continue
+        if char != ">":
+            index += 1
+            continue
+        index += 1
+        if index < length and command[index] == ">":
+            index += 1
+        while index < length and command[index].isspace():
+            index += 1
+        if index >= length:
+            break
+        if command[index] in {'"', "'"}:
+            closer = command[index]
+            index += 1
+            start = index
+            while index < length and command[index] != closer:
+                index += 1
+            token = command[start:index]
+            if token:
+                targets.append(token)
+            if index < length:
+                index += 1
+            continue
+        start = index
+        while index < length and not command[index].isspace() and command[index] not in ";|&<>":
+            index += 1
+        token = command[start:index]
+        if token and token not in {"-", "&1", "&2"}:
+            targets.append(token)
+    return targets
 
 
 def _tokenize(text: str) -> list[str]:

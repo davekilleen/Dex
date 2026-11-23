@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from core.gates.safety import evaluate_safety_gate
+from core.gates.safety import (
+    CODE_PROTECTED_LOCATION,
+    REASON_PROTECTED_LOCATION,
+    REASON_UNSAFE_PATH,
+    evaluate_hook_payload,
+    evaluate_safety_gate,
+)
 from core.mcp import work_server
 
 
@@ -313,3 +319,132 @@ def test_temp_escape_via_parent_directory_stays_blocked(
     for candidate in ("/tmp/../etc/passwd", "$TMPDIR/../etc/passwd"):
         shared = evaluate_safety_gate(path=candidate, vault=vault)
         assert shared.refused and shared.code == "unsafe_path", candidate
+
+
+def test_mkdir_outside_vault_in_ordinary_folder_is_allowed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    home = _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "mkdir -p ~/CloudProj/new-sub",
+        "mkdir -p ~/CloudProj/a/b/c",
+        f"mkdir -p {home / 'CloudProj' / 'new-sub'}",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+
+
+def test_cp_and_curl_into_ordinary_outside_folder_match_mkdir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    folder = "~/CloudProj/new-sub"
+    mkdir = evaluate_safety_gate(command=f"mkdir -p {folder}", vault=vault)
+    copy = evaluate_safety_gate(command=f"cp a.jpg {folder}/", vault=vault)
+    curl = evaluate_safety_gate(
+        command=f"curl -o {folder}/x.jpg https://example.invalid/x.jpg", vault=vault
+    )
+    redirect = evaluate_safety_gate(command=f"cat a.jpg > {folder}/x.jpg", vault=vault)
+    assert mkdir.refused is False, mkdir.reason
+    assert copy.refused is mkdir.refused
+    assert curl.refused is mkdir.refused
+    assert redirect.refused is mkdir.refused
+    assert copy.code == mkdir.code
+    assert curl.code == mkdir.code
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "mkdir /",
+        "mkdir ~",
+        "mkdir $HOME",
+        "mkdir /Users/other",
+        "mkdir -p /etc/foo",
+        "mkdir -p /usr/local/x",
+        "mkdir -p ~/Library/x",
+        "mkdir -p ~/.ssh/x",
+        "mkdir -p ~/.claude/other",
+    ),
+)
+def test_mkdir_protected_locations_stay_blocked(
+    tmp_path: Path, monkeypatch, command: str
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    decision = evaluate_safety_gate(command=command, vault=vault)
+    assert decision.refused is True, command
+    assert decision.code == CODE_PROTECTED_LOCATION
+    assert decision.reason == REASON_PROTECTED_LOCATION
+    assert "outside the vault" not in decision.reason
+
+
+def test_parsed_writes_to_protected_locations_match_mkdir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    mkdir = evaluate_safety_gate(command="mkdir -p /etc/foo", vault=vault)
+    copy = evaluate_safety_gate(command="cp a.jpg /etc/foo/x.jpg", vault=vault)
+    curl = evaluate_safety_gate(
+        command="curl -o /etc/foo/x.jpg https://example.invalid/x.jpg", vault=vault
+    )
+    assert mkdir.refused and copy.refused and curl.refused
+    assert mkdir.reason == copy.reason == curl.reason == REASON_PROTECTED_LOCATION
+
+
+def test_mkdir_os_temp_and_tmpdir_stay_allowed(tmp_path: Path, monkeypatch) -> None:
+    vault = _vault(tmp_path)
+    scratch = _isolate_tempdir(monkeypatch, tmp_path / "scratch")
+    scratch.mkdir()
+    for command in (
+        "mkdir -p /private/tmp/claude-501/proj/scratchpad/sub",
+        "mkdir -p $TMPDIR/x",
+        f"mkdir -p {scratch / 'x'}",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+
+
+def test_write_tool_path_outside_the_vault_stays_blocked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """File tools stay vault-confined. Documented for Dave as a follow-up."""
+    vault = _vault(tmp_path)
+    home = _memory_home(tmp_path, monkeypatch)
+    outside = str(home / "CloudProj" / "x.jpg")
+    decision = evaluate_safety_gate(path=outside, vault=vault)
+    hook = evaluate_hook_payload(
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Write",
+            "tool_input": {"file_path": outside},
+            "cwd": str(vault),
+        },
+        vault=vault,
+    )
+    tilde = evaluate_safety_gate(path="~/CloudProj/x.jpg", vault=vault)
+    assert decision.refused and decision.code == "unsafe_path"
+    assert REASON_UNSAFE_PATH == decision.reason
+    assert "outside the vault" in decision.reason
+    assert hook.refused and hook.reason == decision.reason
+    assert tilde.refused and tilde.code == "unsafe_path"
+
+
+def test_safety_hook_allows_ordinary_outside_mkdir_and_blocks_etc(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    home = _memory_home(tmp_path, monkeypatch)
+    allowed = _hook(
+        vault,
+        command="mkdir -p ~/CloudProj/new-sub",
+        extra_env={"HOME": str(home)},
+    )
+    blocked = _hook(vault, command="mkdir -p /etc/foo")
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    assert blocked.returncode == 2
+    assert REASON_PROTECTED_LOCATION in blocked.stdout
+    assert "outside the vault" not in blocked.stdout

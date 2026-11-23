@@ -10,7 +10,12 @@ import pytest
 
 from core.gates.safety import CODE_NEW_TOP_LEVEL_FOLDER, evaluate_safety_gate
 from core.mcp import work_server
-from core.vault_folders import locate_vault_folders, mkdir_targets, planned_new_top_level
+from core.vault_folders import (
+    locate_vault_folders,
+    mkdir_targets,
+    planned_new_top_level,
+    shell_write_targets,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -172,3 +177,36 @@ def test_mkdir_targets_skips_flags_and_reads_quoted_names() -> None:
     assert mkdir_targets('mkdir -p -- "Old Notes"') == ["Old Notes"]
     assert mkdir_targets("echo mkdir Archives") == []
     assert planned_new_top_level(Path("."), "note.md") is None
+
+
+def test_mkdir_of_new_top_level_inside_vault_keeps_dex_116_message(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    blocked = evaluate_safety_gate(command="mkdir NewTopLevel", vault=vault)
+    allowed = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
+    assert blocked.refused is True
+    assert blocked.code == CODE_NEW_TOP_LEVEL_FOLDER
+    assert "new top-level folder named NewTopLevel" in blocked.reason
+    assert allowed.refused is False
+
+
+def test_mkdir_through_symlinked_parent_escaping_vault_is_blocked(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    inbox = vault / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "escape").symlink_to("/etc")
+    decision = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
+    assert decision.refused is True
+    assert decision.code == "unsafe_path"
+
+
+def test_shell_write_targets_reads_curl_cp_and_redirects() -> None:
+    assert shell_write_targets("curl -o ~/CloudProj/x.jpg https://example.invalid/x.jpg") == [
+        "~/CloudProj/x.jpg"
+    ]
+    assert shell_write_targets("curl --output=/tmp/out.bin https://example.invalid/x") == [
+        "/tmp/out.bin"
+    ]
+    assert shell_write_targets("cp a.jpg ~/CloudProj/") == ["~/CloudProj/"]
+    assert shell_write_targets("mv note.md 00-Inbox/note.md") == ["00-Inbox/note.md"]
+    assert shell_write_targets("cat a.jpg > ~/CloudProj/x.jpg") == ["~/CloudProj/x.jpg"]
+    assert shell_write_targets("echo mkdir Archives") == []

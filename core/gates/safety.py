@@ -23,7 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.path_safety import unsafe_existing_parent
-from core.vault_folders import mkdir_targets, new_top_level_folder_reason
+from core.vault_folders import mkdir_targets, new_top_level_folder_reason, shell_write_targets
 from core.vault_selection import VaultSelectionError, select_vault
 
 DECISION_BLOCK = "block"
@@ -38,6 +38,7 @@ CODE_FORCE_PUSH_MAIN = "force_push_main"
 CODE_SQL_DROP = "sql_drop"
 CODE_GITHUB_REPO_DELETE = "github_repo_delete"
 CODE_UNSAFE_PATH = "unsafe_path"
+CODE_PROTECTED_LOCATION = "protected_location"
 CODE_NEW_TOP_LEVEL_FOLDER = "new_top_level_folder"
 CODE_CHMOD_777 = "chmod_777"
 CODE_KILL_9 = "kill_9"
@@ -54,6 +55,7 @@ REASON_FORCE_PUSH = "Blocked: force push to main/master"
 REASON_SQL_DROP = "Blocked: SQL DROP command"
 REASON_GITHUB_DELETE = "Blocked: GitHub repo deletion"
 REASON_UNSAFE_PATH = "Blocked: unsafe path (root, home, or outside the vault)"
+REASON_PROTECTED_LOCATION = "Blocked: system or home-root folder"
 REASON_CHMOD_777 = (
     "WARNING: chmod 777 grants full permissions to all users. "
     "Consider more restrictive permissions."
@@ -85,6 +87,24 @@ GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
 CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "/Users"})
+_PROTECTED_SYSTEM_PREFIXES = (
+    "/etc",
+    "/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/Library",
+    "/opt",
+    "/root",
+    "/Applications",
+)
+_PROTECTED_VAR_PREFIXES = ("/var", "/private")
+_PROTECTED_HOME_CHILDREN = frozenset({"Library", ".ssh", ".gnupg", ".config", ".claude"})
+_FOREIGN_HOME_ROOTS = frozenset({"Users", "home"})
+_WINDOWS_PROTECTED = re.compile(
+    r"^[A-Za-z]:[\\/](?:Windows|Program Files)",
+    re.IGNORECASE,
+)
 MIGRATION_LOCK_RELATIVE = Path("System") / ".dex" / "mutation.lock"
 # Temp-root values that must never become an outside-vault allowance. Home
 # itself is checked separately so a Windows temp folder under the profile
@@ -217,8 +237,22 @@ def _migration_lock_is_live(vault: Path) -> bool:
 
 
 def _is_catastrophic_path(candidate: str) -> bool:
-    collapsed = candidate.rstrip("/") or "/"
-    return collapsed in CATASTROPHIC_BARE_PATHS or candidate.startswith(("~/", "$HOME/"))
+    collapsed = candidate.rstrip("/\\") or "/"
+    return collapsed in CATASTROPHIC_BARE_PATHS
+
+
+def _is_unjoined_shell_target(candidate: str) -> bool:
+    """True when the caller named an absolute, home, or temp path, not cwd-relative."""
+    if not candidate:
+        return False
+    if _is_catastrophic_path(candidate) or _is_temp_env_specifier(candidate):
+        return True
+    if candidate.startswith(("~/", "$HOME/", "~\\", "$HOME\\")):
+        return True
+    try:
+        return Path(candidate).is_absolute()
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def _claude_project_slugs(vault: Path) -> frozenset[str]:
@@ -243,9 +277,16 @@ def _claude_config_bases() -> list[Path]:
 
 def _absolute_home_or_literal(candidate: str) -> Path | None:
     """Expand only the home prefixes this gate already recognizes as shorthand."""
+    collapsed = candidate.rstrip("/\\") or candidate
+    if collapsed in {"~", "$HOME"}:
+        return Path.home()
     if candidate.startswith("~/"):
         return Path.home() / candidate[2:]
     if candidate.startswith("$HOME/"):
+        return Path.home() / candidate[6:]
+    if candidate.startswith("~\\"):
+        return Path.home() / candidate[2:]
+    if candidate.startswith("$HOME\\"):
         return Path.home() / candidate[6:]
     try:
         path = Path(candidate)
@@ -435,6 +476,139 @@ def _is_this_vault_claude_memory_path(candidate: str, vault: Path) -> bool:
     return False
 
 
+def _path_for_location_check(candidate: str) -> Path | None:
+    """Expand home/temp shorthand, or return an absolute or relative Path."""
+    expanded = _expand_temp_shorthand(candidate)
+    if expanded is not None:
+        return expanded
+    try:
+        return Path(candidate)
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _resolved_home() -> Path | None:
+    try:
+        return Path.home().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _is_inside_vault(candidate: str, vault: Path) -> bool:
+    """True when the named path sits under the vault before following symlinks.
+
+    A vault-relative mkdir whose parent is a symlink still uses the in-vault
+    checks (escape protection and DEX-116). Following the symlink first would
+    reclassify that target as an outside-vault write.
+    """
+    target = _path_for_location_check(candidate)
+    if target is None:
+        return False
+    if not target.is_absolute():
+        target = vault / target
+    lexical = Path(os.path.normpath(str(target)))
+    for root in (vault,):
+        try:
+            roots = {root, root.resolve()}
+        except (OSError, RuntimeError, TypeError, ValueError):
+            roots = {root}
+        for base in roots:
+            try:
+                lexical.relative_to(Path(os.path.normpath(str(base))))
+            except (OSError, ValueError):
+                continue
+            return True
+    return False
+
+
+def _is_direct_root_child(resolved: Path) -> bool:
+    return len(resolved.parts) == 2 and resolved.parts[0] == "/"
+
+
+def _is_foreign_user_tree(resolved: Path, home: Path | None) -> bool:
+    """True for /Users, /home, and another user's directory under them."""
+    parts = resolved.parts
+    if len(parts) < 2 or parts[0] != "/" or parts[1] not in _FOREIGN_HOME_ROOTS:
+        return False
+    if home is not None:
+        try:
+            resolved.relative_to(home)
+        except ValueError:
+            return True
+        else:
+            return False
+    return True
+
+
+def _is_under_system_prefix(resolved: Path, prefix: str) -> bool:
+    root = Path(prefix)
+    if _is_under_root(resolved, root) or resolved == root:
+        return True
+    try:
+        resolved_root = root.resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    collapsed = str(resolved_root).rstrip("/") or "/"
+    if collapsed in {"/", "/Users", "/home"}:
+        return False
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        home = None
+    if home is not None and resolved_root == home:
+        return False
+    return _is_under_root(resolved, resolved_root) or resolved == resolved_root
+
+
+def _is_windows_protected_path(candidate: str, resolved: Path) -> bool:
+    for raw in (candidate, str(resolved)):
+        normalized = raw.replace("/", "\\")
+        if _WINDOWS_PROTECTED.match(normalized):
+            return True
+    return False
+
+
+def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
+    """Refuse catastrophic, system, and private home locations; allow ordinary folders."""
+    candidate = _safe_string(path)
+    if not candidate:
+        return None
+    if vault is not None and _is_this_vault_claude_memory_path(candidate, vault):
+        return None
+    if _is_os_temp_path(candidate):
+        return None
+    if _is_catastrophic_path(candidate):
+        return REASON_PROTECTED_LOCATION
+    target = _path_for_location_check(candidate)
+    if target is None:
+        return REASON_PROTECTED_LOCATION
+    try:
+        resolved = target.expanduser().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return REASON_PROTECTED_LOCATION
+    home = _resolved_home()
+    if home is not None and resolved == home:
+        return REASON_PROTECTED_LOCATION
+    if _is_direct_root_child(resolved):
+        return REASON_PROTECTED_LOCATION
+    if _is_foreign_user_tree(resolved, home):
+        return REASON_PROTECTED_LOCATION
+    for prefix in _PROTECTED_SYSTEM_PREFIXES:
+        if _is_under_system_prefix(resolved, prefix):
+            return REASON_PROTECTED_LOCATION
+    for prefix in _PROTECTED_VAR_PREFIXES:
+        if _is_under_system_prefix(resolved, prefix):
+            return REASON_PROTECTED_LOCATION
+    if _is_windows_protected_path(candidate, resolved):
+        return REASON_PROTECTED_LOCATION
+    if home is not None:
+        for name in _PROTECTED_HOME_CHILDREN:
+            protected_root = home / name
+            if resolved == protected_root or _is_under_root(resolved, protected_root):
+                return REASON_PROTECTED_LOCATION
+    return None
+
+
 def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     # File tools use literal names. Trimming whitespace or expanding shell
     # variables can judge a different inode and hide an escaping symlink.
@@ -448,8 +622,9 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     if vault is None:
         return None
 
+    expanded = _absolute_home_or_literal(candidate)
     try:
-        expanded_path = Path(candidate)
+        expanded_path = expanded if expanded is not None else Path(candidate)
     except (OSError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     if expanded_path.is_absolute():
@@ -465,6 +640,50 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     except (OSError, RuntimeError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     return REASON_UNSAFE_PATH if reason else None
+
+
+def _resolve_shell_target(target: str, workdir: Path) -> str:
+    if _is_unjoined_shell_target(target):
+        return target
+    return str(workdir / target)
+
+
+def _shell_target_decision(
+    target: str,
+    *,
+    root: Path,
+    workdir: Path,
+    allow_os_temp: bool,
+    as_directory: bool,
+) -> GateDecision | None:
+    """Refuse one mkdir/write operand, or None when the shell target is allowed."""
+    resolved_target = _resolve_shell_target(target, workdir)
+    if _is_catastrophic_path(target) or _is_catastrophic_path(resolved_target):
+        return GateDecision(
+            DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
+        )
+    if allow_os_temp and _is_os_temp_path(target):
+        return None
+    if _is_temp_env_specifier(target):
+        return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
+    if _is_inside_vault(resolved_target, root):
+        if not as_directory:
+            return None
+        target_path_reason = _unsafe_path_reason(resolved_target, root)
+        if target_path_reason:
+            return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
+        target_folder_reason = new_top_level_folder_reason(
+            root, resolved_target, as_directory=True
+        )
+        if target_folder_reason:
+            return GateDecision(
+                DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
+            )
+        return None
+    protected = _protected_location_reason(resolved_target, root)
+    if protected:
+        return GateDecision(DECISION_BLOCK, protected, CODE_PROTECTED_LOCATION, 2)
+    return None
 
 
 def evaluate_safety_gate(
@@ -519,30 +738,25 @@ def evaluate_safety_gate(
             return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
     if command_text:
         for target in mkdir_targets(command_text):
-            if _is_catastrophic_path(target):
-                resolved_target = target
-            elif (
-                Path(target).is_absolute()
-                or target.startswith(("~/", "$HOME/"))
-                or _is_temp_env_specifier(target)
-            ):
-                resolved_target = target
-            else:
-                resolved_target = str(workdir / target)
-            if allow_os_temp and _is_os_temp_path(target):
-                continue
-            if _is_temp_env_specifier(target):
-                return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
-            target_path_reason = _unsafe_path_reason(resolved_target, root)
-            if target_path_reason:
-                return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
-            target_folder_reason = new_top_level_folder_reason(
-                root, resolved_target, as_directory=True
+            decision = _shell_target_decision(
+                target,
+                root=root,
+                workdir=workdir,
+                allow_os_temp=allow_os_temp,
+                as_directory=True,
             )
-            if target_folder_reason:
-                return GateDecision(
-                    DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
-                )
+            if decision is not None:
+                return decision
+        for target in shell_write_targets(command_text):
+            decision = _shell_target_decision(
+                target,
+                root=root,
+                workdir=workdir,
+                allow_os_temp=allow_os_temp,
+                as_directory=False,
+            )
+            if decision is not None:
+                return decision
         if CHMOD_777.search(command_text):
             return GateDecision(DECISION_ALLOW, REASON_CHMOD_777, CODE_CHMOD_777, 0)
         if KILL_9.search(command_text):
@@ -653,7 +867,7 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
         if _is_os_temp_path(path):
             target = path
             allow_os_temp = True
-        elif _is_catastrophic_path(path):
+        elif _is_unjoined_shell_target(path):
             target = path
             allow_os_temp = False
         else:
