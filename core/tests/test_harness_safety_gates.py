@@ -15,6 +15,7 @@ from core.gates.safety import (
     CODE_PROTECTED_LOCATION,
     REASON_PROTECTED_LOCATION,
     REASON_UNSAFE_PATH,
+    _parse_home_shorthand,
     evaluate_hook_payload,
     evaluate_safety_gate,
 )
@@ -555,3 +556,118 @@ def test_curl_output_spellings_to_protected_dest_are_refused(
         assert decision.refused is True, command
         assert decision.code == CODE_PROTECTED_LOCATION, command
         assert decision.reason == REASON_PROTECTED_LOCATION, command
+
+
+def test_bare_tilde_word_is_not_home_shorthand(tmp_path: Path, monkeypatch) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    assert _parse_home_shorthand("~literal") is None
+    assert _parse_home_shorthand("~") == ("", "")
+    assert _parse_home_shorthand("~/rest") == ("", "rest")
+    assert _parse_home_shorthand("~user/rest") == ("user", "rest")
+    decision = evaluate_safety_gate(path="~literal", vault=vault)
+    assert decision.refused is False, decision.reason
+
+
+def test_extra_slashes_after_home_still_protect_ssh(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    tilde = evaluate_safety_gate(command="mkdir -p ~/.ssh/x", vault=vault)
+    for command in (
+        "mkdir -p ~//.ssh/x",
+        "mkdir -p $HOME//.ssh/x",
+        "mkdir -p ${HOME}//.ssh/x",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == tilde.reason == REASON_PROTECTED_LOCATION
+
+
+def test_unparsed_braced_home_forms_fail_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    mkdir = evaluate_safety_gate(command="mkdir ${HOME:0}/.ssh/x", vault=vault)
+    copy = evaluate_safety_gate(command="cp a.jpg ${HOME:0:0}/etc/foo", vault=vault)
+    write = evaluate_safety_gate(path="${HOME:0}/.ssh/x", vault=vault)
+    ordinary = evaluate_safety_gate(
+        command="mkdir -p ${HOME}/CloudProj/new-sub", vault=vault
+    )
+    assert mkdir.refused is True
+    assert mkdir.code == CODE_PROTECTED_LOCATION
+    assert copy.refused is True
+    assert copy.code == CODE_PROTECTED_LOCATION
+    assert write.refused is True
+    assert write.code == "unsafe_path"
+    assert ordinary.refused is False, ordinary.reason
+
+
+def test_noclobber_redirects_to_protected_locations_are_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    ordinary = evaluate_safety_gate(
+        command="echo x > ~/.ssh/authorized_keys", vault=vault
+    )
+    for command in (
+        "echo x >| ~/.ssh/authorized_keys",
+        "echo x >| /etc/foo",
+        "echo x >! /etc/foo",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    assert ordinary.refused is True
+    assert ordinary.code == CODE_PROTECTED_LOCATION
+
+
+def test_curl_output_dir_to_protected_locations_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    ssh = evaluate_safety_gate(
+        command="curl --output-dir ~/.ssh -o authorized_keys https://example.invalid/x",
+        vault=vault,
+    )
+    etc = evaluate_safety_gate(
+        command="curl --output-dir=/etc -O https://example.invalid/x",
+        vault=vault,
+    )
+    ordinary = evaluate_safety_gate(
+        command="curl --output-dir ~/CloudProj -o x.jpg https://example.invalid/x",
+        vault=vault,
+    )
+    mkdir = evaluate_safety_gate(command="mkdir -p ~/CloudProj", vault=vault)
+    assert ssh.refused is True
+    assert ssh.code == CODE_PROTECTED_LOCATION
+    assert etc.refused is True
+    assert etc.code == CODE_PROTECTED_LOCATION
+    assert ordinary.refused is False, ordinary.reason
+    assert mkdir.refused is False, mkdir.reason
+
+
+def test_cp_attached_target_directory_matches_spaced_form(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    spaced = evaluate_safety_gate(command="cp -t /etc/foo a.jpg", vault=vault)
+    attached = evaluate_safety_gate(command="cp -t/etc/foo a.jpg", vault=vault)
+    moved = evaluate_safety_gate(command="mv -t/etc/foo a.jpg", vault=vault)
+    ordinary = evaluate_safety_gate(command="cp -t~/CloudProj a.jpg", vault=vault)
+    mkdir = evaluate_safety_gate(command="mkdir -p ~/CloudProj", vault=vault)
+    assert spaced.refused is True
+    assert spaced.code == CODE_PROTECTED_LOCATION
+    assert attached.refused is True
+    assert attached.code == CODE_PROTECTED_LOCATION
+    assert moved.refused is True
+    assert moved.code == CODE_PROTECTED_LOCATION
+    assert ordinary.refused is False, ordinary.reason
+    assert mkdir.refused is False, mkdir.reason

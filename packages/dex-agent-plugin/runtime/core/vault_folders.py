@@ -178,9 +178,10 @@ def mkdir_targets(command: str) -> list[str]:
 def shell_write_targets(command: str) -> list[str]:
     """Return easily parsed shell write destinations in *command*.
 
-    Covers ``curl -o/--output``, ``cp``/``mv`` destinations, and ``>``/``>>``
-    redirects. This is not a shell parser: quoted simple forms are read;
-    indirection, python one-liners, and unknown flags are skipped.
+    Covers ``curl -o/--output/--output-dir``, ``cp``/``mv`` destinations
+    (including ``-tDIR``), and ``>``/``>>``/``>|``/``>!`` redirects. This is
+    not a shell parser: quoted simple forms are read; indirection, python
+    one-liners, and unknown flags are skipped.
     """
     targets: list[str] = []
     for match in CURL_COMMAND.finditer(command):
@@ -284,13 +285,36 @@ def _short_cluster_output_path(token: str) -> str | None:
     return body[index + 1 :]
 
 
+def _curl_filename_is_relative(name: str) -> bool:
+    """True when a curl ``-o`` path is cwd-relative, not absolute or home/env."""
+    if not name or name.startswith(("/", "\\", "~", "$")):
+        return False
+    try:
+        return not Path(name).is_absolute()
+    except (OSError, TypeError, ValueError):
+        return True
+
+
 def _curl_output_targets(args: str) -> list[str]:
     tokens = _tokenize(args)
     targets: list[str] = []
+    output_dir: str | None = None
     skip_next = False
     for index, token in enumerate(tokens):
         if skip_next:
             skip_next = False
+            continue
+        if token == "--output-dir":
+            if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
+                output_dir = tokens[index + 1]
+            skip_next = True
+            continue
+        if token.startswith("--output-dir="):
+            value = token.split("=", 1)[1]
+            if value and value != "-":
+                output_dir = value
+            continue
+        if token in {"-O", "--remote-name", "--remote-name-all"}:
             continue
         if token in {"-o", "--output"}:
             if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
@@ -316,6 +340,14 @@ def _curl_output_targets(args: str) -> list[str]:
             if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
                 targets.append(tokens[index + 1])
             skip_next = True
+    if output_dir:
+        combined = [output_dir]
+        for target in targets:
+            if _curl_filename_is_relative(target):
+                combined.append(f"{output_dir.rstrip('/\\')}/{target}")
+            else:
+                combined.append(target)
+        return combined
     return targets
 
 
@@ -338,6 +370,11 @@ def _cp_mv_destinations(args: str) -> list[str]:
             continue
         if token.startswith("--target-directory="):
             value = token.split("=", 1)[1]
+            if value and value != "-":
+                destinations.append(value)
+            continue
+        if token.startswith("-t") and not token.startswith("--"):
+            value = token[2:]
             if value and value != "-":
                 destinations.append(value)
             continue
@@ -374,6 +411,8 @@ def _redirect_targets(command: str) -> list[str]:
             continue
         index += 1
         if index < length and command[index] == ">":
+            index += 1
+        if index < length and command[index] in {"|", "!"}:
             index += 1
         while index < length and command[index].isspace():
             index += 1

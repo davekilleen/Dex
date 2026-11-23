@@ -254,3 +254,36 @@ def test_curl_output_targets_reads_attached_and_combined_flags() -> None:
     assert shell_write_targets("curl -sSo${HOME}/.ssh/x https://example.invalid/x") == [
         "${HOME}/.ssh/x"
     ]
+    assert shell_write_targets(
+        "curl --output-dir ~/.ssh -o authorized_keys https://example.invalid/x"
+    ) == ["~/.ssh", "~/.ssh/authorized_keys"]
+    assert shell_write_targets(
+        "curl --output-dir=/etc -O https://example.invalid/x"
+    ) == ["/etc"]
+    assert shell_write_targets(
+        "curl --output-dir ~/CloudProj -o x.jpg https://example.invalid/x"
+    ) == ["~/CloudProj", "~/CloudProj/x.jpg"]
+    assert _curl_output_targets(
+        "--output-dir ~/.ssh -o authorized_keys https://example.invalid/x"
+    ) == ["~/.ssh", "~/.ssh/authorized_keys"]
+    assert _curl_output_targets("--output-dir=/etc -O https://example.invalid/x") == [
+        "/etc"
+    ]
+
+
+def test_shell_write_targets_reads_noclobber_redirects() -> None:
+    assert shell_write_targets("echo x >| ~/.ssh/authorized_keys") == [
+        "~/.ssh/authorized_keys"
+    ]
+    assert shell_write_targets("echo x >| /etc/foo") == ["/etc/foo"]
+    assert shell_write_targets("echo x >! /etc/foo") == ["/etc/foo"]
+    assert shell_write_targets("echo x > ~/.ssh/authorized_keys") == [
+        "~/.ssh/authorized_keys"
+    ]
+
+
+def test_shell_write_targets_reads_attached_cp_target_directory() -> None:
+    assert shell_write_targets("cp -t/etc/foo a.jpg") == ["/etc/foo"]
+    assert shell_write_targets("mv -t/etc/foo a.jpg") == ["/etc/foo"]
+    assert shell_write_targets("cp -t /etc/foo a.jpg") == ["/etc/foo"]
+    assert shell_write_targets("cp -t~/CloudProj a.jpg") == ["~/CloudProj"]

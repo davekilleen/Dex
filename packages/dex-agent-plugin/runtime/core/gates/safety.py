@@ -247,13 +247,31 @@ def _is_catastrophic_path(candidate: str) -> bool:
     return collapsed in CATASTROPHIC_BARE_PATHS
 
 
+def _is_recognized_braced_home(candidate: str) -> bool:
+    """True for exact ``${HOME}`` or ``${HOME}/rest`` (backslash too)."""
+    if not candidate.startswith("${HOME}"):
+        return False
+    rest = candidate[len("${HOME}") :]
+    return rest == "" or rest[:1] in {"/", "\\"}
+
+
+def _is_unparsed_braced_home(candidate: str) -> bool:
+    """True for ``${HOME…}`` spellings that are not exact ``${HOME}`` / ``${HOME}/rest``.
+
+    Bash parameter forms such as ``${HOME:0}`` are not evaluated. Callers fail
+    closed instead of treating them as cwd-relative names.
+    """
+    return candidate.startswith("${HOME") and not _is_recognized_braced_home(candidate)
+
+
 def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
     """Split a home spelling into (username, rest). Empty username is the current user.
 
     Recognizes ``~``, ``$HOME``, ``${HOME}``, ``~/rest``, ``$HOME/rest``,
-    ``${HOME}/rest``, ``~user``, and ``~user/rest`` (backslash separators too).
+    ``${HOME}/rest``, and ``~user/rest`` (backslash separators too).
     ``~/foo`` is the current user, not a user named empty: the username pattern
-    starts with a letter or underscore.
+    starts with a letter or underscore. Bare ``~word`` with no slash is a
+    cwd-relative filename, not ``~username``.
     """
     if not candidate:
         return None
@@ -262,11 +280,9 @@ def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
         if rest[:1] in {"/", "\\"}:
             rest = rest[1:]
         return ("", rest)
-    if candidate.startswith("${HOME}"):
+    if _is_recognized_braced_home(candidate):
         rest = candidate[len("${HOME}") :]
-        if rest == "" or rest[:1] in {"/", "\\"}:
-            return ("", rest[1:] if rest else "")
-        return None
+        return ("", rest[1:] if rest else "")
     if candidate.startswith("$HOME"):
         rest = candidate[len("$HOME") :]
         if rest == "" or rest[:1] in {"/", "\\"}:
@@ -275,15 +291,13 @@ def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
     if not candidate.startswith("~"):
         return None
     body = candidate[1:]
-    username_end = 0
-    while username_end < len(body) and body[username_end] not in {"/", "\\"}:
-        username_end += 1
-    username = body[:username_end]
+    separator_at = next((index for index, char in enumerate(body) if char in {"/", "\\"}), None)
+    if separator_at is None:
+        return None
+    username = body[:separator_at]
     if not username or _HOME_USERNAME.fullmatch(username) is None:
         return None
-    rest = body[username_end:]
-    if rest[:1] in {"/", "\\"}:
-        rest = rest[1:]
+    rest = body[separator_at + 1 :]
     return (username, rest)
 
 
@@ -318,6 +332,7 @@ def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
             home = Path.home()
         except (OSError, RuntimeError, TypeError, ValueError):
             return None
+    rest = rest.lstrip("/\\")
     return home / rest if rest else home
 
 
@@ -327,12 +342,22 @@ def _is_unjoined_shell_target(candidate: str) -> bool:
         return False
     if _is_catastrophic_path(candidate) or _is_temp_env_specifier(candidate):
         return True
+    if _is_unparsed_braced_home(candidate):
+        return True
     if _parse_home_shorthand(candidate) is not None:
         return True
     try:
         return Path(candidate).is_absolute()
     except (OSError, TypeError, ValueError):
         return False
+
+
+def _is_unjoined_file_path(candidate: str) -> bool:
+    """File tools use literal names; ``~word/rest`` is a filename, not ``~user``."""
+    parsed = _parse_home_shorthand(candidate)
+    if parsed is not None and parsed[0]:
+        return False
+    return _is_unjoined_shell_target(candidate)
 
 
 def _claude_project_slugs(vault: Path) -> frozenset[str]:
@@ -553,7 +578,10 @@ def _path_for_location_check(candidate: str) -> Path | None:
 
     Home shorthand that cannot be resolved (unknown ``~user``) returns None so
     callers fail closed instead of cwd-joining the tilde form as a relative path.
+    Unparsed ``${HOME…}`` forms fail closed the same way.
     """
+    if _is_unparsed_braced_home(candidate):
+        return None
     parsed = _parse_home_shorthand(candidate)
     if parsed is not None:
         return _expand_parsed_home(parsed)
@@ -704,6 +732,8 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     if vault is None:
         return None
 
+    if _is_unparsed_braced_home(candidate):
+        return REASON_UNSAFE_PATH
     parsed = _parse_home_shorthand(candidate)
     expanded = _absolute_home_or_literal(candidate)
     if parsed is not None and expanded is None:
@@ -952,7 +982,7 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
         if _is_os_temp_path(path):
             target = path
             allow_os_temp = True
-        elif _is_unjoined_shell_target(path):
+        elif _is_unjoined_file_path(path):
             target = path
             allow_os_temp = False
         else:
