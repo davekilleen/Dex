@@ -932,7 +932,7 @@ def _parse_quoted_mkdir_command(command: str) -> list[str] | None:
     """The strict mkdir form with quoted operands (spaces, ``@``), via the R3 lexer.
 
     Only ``mkdir [-p|--parents] PATH…`` as one segment with no redirects. Each
-    PATH may use quotes for spaces and ``@`` (``GoogleDrive-a@b.com/"My Drive"``);
+    PATH may use quotes for spaces and ``@`` (``GoogleDrive-a@example.com/"My Drive"``);
     it may start with an unquoted ``~/`` or a ``$HOME/`` / ``${HOME}/`` prefix and
     otherwise holds only ``[A-Za-z0-9._/~@ +,-]``. No other variable, glob,
     ``..``, ``~user`` or literal (quoted) leading ``~``.
@@ -1130,10 +1130,23 @@ _NAME_AS_DATA_COMMANDS = frozenset({"git", "echo", "printf", "which", "type", "m
 # Read-only commands whose quoted arguments (patterns, messages, bodies) are
 # data, never run. Their redirects are still judged.
 _PURE_DATA_COMMANDS = frozenset({"echo", "printf", "which", "type", "whatis", "grep", "egrep", "fgrep", "jq"})
-_GH_DATA_SUBCOMMANDS = frozenset({
-    "pr", "issue", "release", "repo", "api", "run", "workflow", "search",
-    "label", "status", "browse", "project", "gist", "cache", "ruleset", "variable",
-})
+# gh data forms: (command, subcommand) pairs that print or post, never write
+# local files. ``gh release download``, ``gh repo/gist clone``, ``gh run
+# download`` and the like are not here, so they fail closed.
+_GH_DATA_FORMS = {
+    "pr": frozenset({"view", "list", "create", "edit", "comment", "checks", "diff",
+                     "status", "merge", "ready", "review", "close", "reopen"}),
+    "issue": frozenset({"view", "list", "create", "edit", "comment", "close", "reopen", "status"}),
+    "release": frozenset({"view", "list", "create", "edit"}),
+    "repo": frozenset({"view", "list"}),
+    "run": frozenset({"view", "list", "watch", "rerun", "cancel"}),
+    "workflow": frozenset({"view", "list", "run"}),
+    "search": frozenset({"prs", "issues", "repos", "code", "commits"}),
+    "label": frozenset({"list", "create", "edit"}),
+}
+_GH_DATA_SINGLE = frozenset({"api", "status", "browse"})
+# Flags that make a gh data form write a local file.
+_GH_FILE_FLAGS = ("-D", "--dir", "-O", "--output", "--archive")
 # ``git mv`` is not data: it is parsed as a move (see _git_mv_targets).
 _GIT_DATA_SUBCOMMANDS = frozenset({
     "add", "rm", "commit", "log", "show", "diff", "status", "restore",
@@ -1692,6 +1705,24 @@ def _segment_name(seg: _ShellSegment) -> str:
     return _command_name(seg.words[0].text) if seg.words else ""
 
 
+def _is_gh_data_form(words: tuple[_ShellWord, ...] | list[_ShellWord]) -> bool:
+    if len(words) < 2 or any(w.quoted or w.has_var for w in words[1:3]):
+        return False
+    sub = words[1].text
+    if sub in _GH_DATA_SINGLE:
+        rest = words[2:]
+    elif sub in _GH_DATA_FORMS and len(words) > 2 and words[2].text in _GH_DATA_FORMS[sub]:
+        rest = words[3:]
+    else:
+        return False
+    return not any(
+        w.text == flag or w.text.startswith(flag + "=") or (flag == "-D" and w.text.startswith("-D"))
+        or (flag == "-O" and w.text.startswith("-O"))
+        for w in rest
+        for flag in _GH_FILE_FLAGS
+    )
+
+
 def _is_data_segment(seg: _ShellSegment, name: str) -> bool:
     """True when the command never runs its arguments (they are pure data)."""
     words = seg.words
@@ -1700,7 +1731,7 @@ def _is_data_segment(seg: _ShellSegment, name: str) -> bool:
     if name in _PURE_DATA_COMMANDS:
         return True
     if name == "gh":
-        return len(words) > 1 and words[1].text in _GH_DATA_SUBCOMMANDS
+        return _is_gh_data_form(words)
     if name in {"rg"}:
         return not any(w.text.startswith("--pre") for w in words[1:])
     if name == "man":
@@ -1748,6 +1779,11 @@ def _check_segment_grammar(seg: _ShellSegment) -> bool:
         return not any(_command_name(w.text) in _SHELL_RUNNER_WORDS for w in seg.words[2:]) and not any(
             _mentions_write_command(w.text) for w in seg.words[2:]
         )
+    if name in {"git", "gh"}:
+        # Only the data forms above and git mv are understood. Other forms
+        # (git clone/format-patch -o/archive, gh release download -D, gh gist
+        # clone …) can write to a path in their arguments: fail closed.
+        return False
     for word in rest:
         if _mentions_write_command(word.text):
             return False

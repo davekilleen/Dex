@@ -558,13 +558,13 @@ def test_windows_fallback_refuses_symlinked_destinations(env, monkeypatch):
 # Decision 2 (gtm-lab #741): quoted mkdir paths (spaces, @) for Google Drive.
 def test_quoted_google_drive_mkdir_is_allowed(env):
     home, vault = env
-    gdrive = home / "Library" / "CloudStorage" / "GoogleDrive-name@domain.com" / "My Drive"
+    gdrive = home / "Library" / "CloudStorage" / "GoogleDrive-name@example.com" / "My Drive"
     gdrive.mkdir(parents=True)
     for command in (
-        'mkdir -p ~/Library/CloudStorage/GoogleDrive-name@domain.com/"My Drive/New Folder"',
-        "mkdir -p ~/Library/CloudStorage/GoogleDrive-name@domain.com/'My Drive'/'New Folder'",
-        'mkdir -p "$HOME/Library/CloudStorage/GoogleDrive-name@domain.com/My Drive/New Folder"',
-        'mkdir "${HOME}/Library/CloudStorage/GoogleDrive-name@domain.com/My Drive/A, B + C"',
+        'mkdir -p ~/Library/CloudStorage/GoogleDrive-name@example.com/"My Drive/New Folder"',
+        "mkdir -p ~/Library/CloudStorage/GoogleDrive-name@example.com/'My Drive'/'New Folder'",
+        'mkdir -p "$HOME/Library/CloudStorage/GoogleDrive-name@example.com/My Drive/New Folder"',
+        'mkdir "${HOME}/Library/CloudStorage/GoogleDrive-name@example.com/My Drive/A, B + C"',
         'mkdir -p "$HOME/Documents/Client Work"',
         'mkdir -p "notes/New Folder"',
     ):
@@ -575,9 +575,9 @@ def test_quoted_google_drive_mkdir_is_allowed(env):
 @pytest.mark.parametrize(
     "command",
     [
-        'mkdir -p "~/Library/CloudStorage/GoogleDrive-a@b.com/My Drive/x"',  # literal ~
+        'mkdir -p "~/Library/CloudStorage/GoogleDrive-a@example.com/My Drive/x"',  # literal ~
         'mkdir -p ~root/"My Drive"',
-        'mkdir -p "$HOME/Library/CloudStorage/GoogleDrive-a@b.com/../../LaunchAgents"',
+        'mkdir -p "$HOME/Library/CloudStorage/GoogleDrive-a@example.com/../../LaunchAgents"',
         'mkdir -p "$HOME/My Drive/$(id)"',
         'mkdir -p "$HOME/My Drive/`id`"',
         'mkdir -p "$X/My Drive"',
@@ -608,7 +608,7 @@ def test_quoted_mkdir_rejects_injection_and_traversal(env, command):
         'mkdir -p ~/"Library"/"Mobile Documents"/"com~apple~Notes"/x',
         'mkdir -p "/etc/a b"',
         'mkdir -p "/Volumes/Not Mounted/x"',
-        "mkdir -p ~/Library/CloudStorage/'GoogleDrive-a@b.com'",
+        "mkdir -p ~/Library/CloudStorage/'GoogleDrive-a@example.com'",
         'mkdir -p "$HOME/LIBRARY/a b"',
     ],
 )
@@ -622,3 +622,42 @@ def test_quoted_mkdir_command_word_is_not_the_exception():
     # A quoted command word never gets the outside-vault mkdir exception.
     assert safety._parse_strict_mkdir_command('"mkdir" -p "$HOME/a b"') is None
     assert safety._parse_strict_mkdir_command("\\mkdir -p '$HOME/a b'") is None
+
+
+# Round 4 follow-up: only git/gh data forms are understood; argv writers fail closed.
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git format-patch -o ~/.ssh HEAD~1 > /dev/null",
+        "git clone https://x/r.git ~/.ssh/r > /dev/null",
+        "git archive -o ~/.ssh/a.tar HEAD > /dev/null",
+        "git -C ~/.ssh init > /dev/null",
+        "git bundle create ~/.ssh/b HEAD 2> /dev/null",
+        "gh release download v1 -D ~/.ssh > /dev/null",
+        "gh release download v1 --dir=/etc > /dev/null",
+        "gh gist clone abc ~/.ssh/g > /dev/null",
+        "gh repo clone o/r ~/.ssh/r > /dev/null",
+        "gh run download 1 -D ~/.ssh > /dev/null",
+        "gh pr view 1 --output ~/.ssh/x > /dev/null",
+        "gh api repos/o/r/tarball -O > /dev/null",
+    ],
+)
+def test_git_and_gh_argv_writers_fail_closed(env, command):
+    _home, vault = env
+    _check(vault, command, "unchecked")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status > /dev/null",
+        "git log --oneline > notes/log.txt",
+        "gh pr view 1 > notes/pr.md",
+        "gh pr create --title 'cp fix' --body 'mv a b' > /dev/null",
+        "gh api repos/o/r/pulls > notes/p.json",
+        "gh issue list | tee notes/i.txt",
+    ],
+)
+def test_git_and_gh_data_forms_stay_allowed(env, command):
+    _home, vault = env
+    _check(vault, command, "allow")
