@@ -396,6 +396,10 @@ def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> 
         "mkdir -p ~/.aws",
         "mkdir -p ~/.kube",
         "mkdir -p ~/.docker",
+        "mkdir -p /foo/bar",
+        "mkdir -p /mnt/data/x",
+        "mkdir -p /c/Windows/System32",
+        "mkdir -p /mnt/c/Windows/System32",
     )
     for command in allow_listed:
         assert _parse_strict_mkdir_command(command) is not None, command

@@ -662,6 +662,19 @@ def _is_direct_root_child(resolved: Path) -> bool:
     return len(resolved.parts) == 2 and resolved.parts[0] == "/"
 
 
+def _is_under_direct_root_child(resolved: Path) -> bool:
+    """True when *resolved* is ``/name`` or a nested path that mkdir -p would create under ``/name``."""
+    parts = resolved.parts
+    if len(parts) < 2 or parts[0] != "/":
+        return False
+    return _is_direct_root_child(Path("/") / parts[1])
+
+
+def _is_well_known_os_temp_path(resolved: Path) -> bool:
+    """True for well-known OS scratch trees, compared case-insensitively."""
+    return any(_path_has_prefix_ci(resolved, prefix) for prefix in _WELL_KNOWN_OS_TEMP_PREFIXES)
+
+
 def _is_foreign_user_tree(resolved: Path, home: Path | None) -> bool:
     """True for /Users, /home, and another user's directory under them."""
     parts = resolved.parts
@@ -707,10 +720,28 @@ def _is_under_system_prefix(resolved: Path, prefix: str) -> bool:
     return _is_under_root(resolved, resolved_root) or resolved == resolved_root
 
 
+_WINDOWS_POSIX_PROTECTED = re.compile(
+    r"^/(?:mnt/)?[A-Za-z]/(?:Windows|Program Files)",
+    re.IGNORECASE,
+)
+# Lexical OS-temp prefixes. _is_os_temp_path refuses a claimed temp root
+# that is an ancestor of $HOME, which happens in pytest (HOME lives under
+# /tmp). Nested mkdir under these prefixes is still ordinary scratch.
+_WELL_KNOWN_OS_TEMP_PREFIXES = (
+    "/tmp",
+    "/private/tmp",
+    "/var/tmp",
+    "/private/var/tmp",
+)
+
+
 def _is_windows_protected_path(candidate: str, resolved: Path) -> bool:
     for raw in (candidate, str(resolved)):
         normalized = raw.replace("/", "\\")
         if _WINDOWS_PROTECTED.match(normalized):
+            return True
+        posix = raw.replace("\\", "/")
+        if _WINDOWS_POSIX_PROTECTED.match(posix):
             return True
     return False
 
@@ -751,7 +782,9 @@ def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
             if first.casefold() in protected:
                 return REASON_PROTECTED_LOCATION
         return None
-    if _is_direct_root_child(resolved):
+    if _is_well_known_os_temp_path(resolved):
+        return None
+    if _is_direct_root_child(resolved) or _is_under_direct_root_child(resolved):
         return REASON_PROTECTED_LOCATION
     if _is_foreign_user_tree(resolved, home):
         return REASON_PROTECTED_LOCATION
