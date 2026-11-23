@@ -9,6 +9,7 @@ refusal. Claude's wrapper exits 2 after the same function returns a block.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -924,14 +925,75 @@ def _is_strict_mkdir_path(path: str) -> bool:
     return _STRICT_MKDIR_PATH_CHARS.fullmatch(rest) is not None
 
 
+_QUOTED_MKDIR_PATH_CHARS = re.compile(r"^[A-Za-z0-9._/~@ +,-]+$")
+
+
+def _parse_quoted_mkdir_command(command: str) -> list[str] | None:
+    """The strict mkdir form with quoted operands (spaces, ``@``), via the R3 lexer.
+
+    Only ``mkdir [-p|--parents] PATH…`` as one segment with no redirects. Each
+    PATH may use quotes for spaces and ``@`` (``GoogleDrive-a@b.com/"My Drive"``);
+    it may start with an unquoted ``~/`` or a ``$HOME/`` / ``${HOME}/`` prefix and
+    otherwise holds only ``[A-Za-z0-9._/~@ +,-]``. No other variable, glob,
+    ``..``, ``~user`` or literal (quoted) leading ``~``.
+    """
+    if not command or any(char in command for char in "\n\r\0"):
+        return None
+    lexed = _lex_strict_shell(command)
+    if lexed is None:
+        return None
+    segments, heredoc, _body = lexed
+    if heredoc is not None or len(segments) != 1:
+        return None
+    seg = segments[0]
+    if seg.redirects or not seg.words:
+        return None
+    first = seg.words[0]
+    if first.text != "mkdir" or first.quoted or first.has_var:
+        return None
+    words = list(seg.words[1:])
+    if words and words[0].text in _STRICT_MKDIR_FLAGS and not words[0].quoted:
+        words = words[1:]
+    if not words:
+        return None
+    paths: list[str] = []
+    for word in words:
+        text = word.text
+        if word.has_glob or word.has_subst or not text or text.startswith("-"):
+            return None
+        if any(part == ".." for part in text.split("/")):
+            return None
+        rest = text
+        if word.has_var:
+            prefix = next((p for p in ("${HOME}/", "$HOME/") if text.startswith(p)), None)
+            if prefix is None or "$" in text[len(prefix):]:
+                return None
+            rest = text[len(prefix):]
+            if word.unquoted_var:
+                value = os.environ.get("HOME", "")
+                if not value or any(ch in value for ch in " \t\n*?["):
+                    return None  # unquoted $HOME would be split or globbed
+        elif text.startswith("~"):
+            if not word.tilde_home or not (text == "~" or text.startswith("~/")):
+                return None  # "~user" or a quoted (literal) "~"
+            rest = text[2:]
+        if "$" in rest or (rest and not _QUOTED_MKDIR_PATH_CHARS.fullmatch(rest)):
+            return None
+        paths.append(text)
+    return paths
+
+
 def _parse_strict_mkdir_command(command: str) -> list[str] | None:
     """Return operands when *command* fully matches the outside-vault allow-list.
 
     The only matching form is ``mkdir`` with optional `` -p`` or `` --parents``,
-    then one or more space-separated paths. Anything else is not this exception.
+    then one or more space-separated paths, or the same with quoted operands
+    (``_parse_quoted_mkdir_command``). Anything else is not this exception.
     """
     if not command or any(char in command for char in "\n\r\0"):
         return None
+    if any(ch in command for ch in "'\"@"):
+        return _parse_quoted_mkdir_command(command)
     parts = command.split(" ")
     if not parts or parts[0] != "mkdir":
         return None
@@ -1099,12 +1161,14 @@ _COMMAND_WORD_RE = re.compile(r"(?:~/)?[A-Za-z0-9_.+/-]*[A-Za-z0-9_]|\[\[?")
 _ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
 _HEREDOC_SUBST_RE = re.compile(r"cat[ \t]*<<[ \t]*(?:'([A-Za-z_][A-Za-z0-9_]*)'|\"([A-Za-z_][A-Za-z0-9_]*)\")\n")
 
-_CP_SHORT_FLAGS = frozenset("afinprRvLPHlsuxcT")
+# -l / -s (hard and symbolic link copies) are left out: a link into a
+# protected file would let a later in-vault write change that file.
+_CP_SHORT_FLAGS = frozenset("afinprRvLPHuxcT")
 _CP_SHORT_VALUE = frozenset("t")
 _CP_LONG_FLAGS = frozenset({
     "--archive", "--force", "--interactive", "--no-clobber", "--recursive",
-    "--verbose", "--update", "--dereference", "--no-dereference", "--link",
-    "--symbolic-link", "--one-file-system", "--no-target-directory", "--preserve",
+    "--verbose", "--update", "--dereference", "--no-dereference",
+    "--one-file-system", "--no-target-directory", "--preserve",
 })
 _CP_LONG_FLAGS_WITH_OPTIONAL_VALUE = frozenset({"--preserve"})
 _CP_LONG_VALUE = frozenset({"--target-directory"})
@@ -1114,14 +1178,15 @@ _MV_LONG_FLAGS = frozenset({
     "--force", "--interactive", "--no-clobber", "--verbose", "--update", "--no-target-directory",
 })
 _MV_LONG_VALUE = frozenset({"--target-directory"})
-# -J / --remote-header-name are left out on purpose: the server picks the name.
-_CURL_SHORT_FLAGS = frozenset("sSLfkviI#OgGN46qZ")
+# -O / -J / --remote-name* are left out on purpose: the URL or server picks
+# the file name, so Dex can't judge the file curl writes.
+_CURL_SHORT_FLAGS = frozenset("sSLfkviI#gGN46qZ")
 _CURL_SHORT_VALUE = frozenset("HXdFuAemrxbTzw")
 _CURL_SHORT_WRITE = frozenset("oDc")
 _CURL_LONG_FLAGS = frozenset({
     "--silent", "--show-error", "--location", "--fail", "--fail-with-body",
     "--insecure", "--verbose", "--include", "--head", "--compressed",
-    "--progress-bar", "--remote-name", "--remote-name-all",
+    "--progress-bar",
     "--create-dirs", "--globoff", "--get", "--no-buffer",
     "--http1.1", "--http2", "--ipv4", "--ipv6", "--no-progress-meter", "--parallel",
 })
@@ -1137,8 +1202,6 @@ _CURL_LONG_WRITE = frozenset({
     "--output", "--output-dir", "--dump-header", "--cookie-jar", "--trace",
     "--trace-ascii", "--stderr", "--etag-save", "--libcurl", "--hsts", "--alt-svc",
 })
-_CURL_REMOTE_NAME_SHORT = frozenset("O")
-_CURL_REMOTE_NAME_LONG = frozenset({"--remote-name", "--remote-name-all"})
 _TEE_SHORT_FLAGS = frozenset("aip")
 _TEE_LONG_FLAGS = frozenset({"--append", "--ignore-interrupts"})
 
@@ -1170,6 +1233,10 @@ class _ShellSegment:
 class _WriteTarget:
     word: _ShellWord
     kind: str           # "path" | "dir" | "move_source" | "create_dir"
+    # cp/mv destinations: the sources, so DEST/basename(SRC) is judged too.
+    sources: tuple[_ShellWord, ...] = ()
+    recursive: bool = False
+    contents_of_slash_source: bool = False
 
 
 class _Unparsed(Exception):
@@ -1605,6 +1672,11 @@ def _parse_strict_shell(command: str) -> list[_ShellSegment] | None:
         return None
     if not quoted and any(ch in body for ch in "$`\\"):
         return None
+    if ">" in body or _WRITE_NAME_RE.search(_normalise_for_trigger(body)):
+        # A body that looks like a write is data only for a lone cat or tee.
+        # Fed to python/node/perl/ruby (or piped on), Dex can't read it.
+        if len(segments) != 1 or _segment_name(segments[0]) not in {"cat", "tee"}:
+            return None
     return segments
 
 
@@ -1812,19 +1884,22 @@ def _cp_mv_targets(seg: _ShellSegment, name: str) -> list[_WriteTarget] | None:
         )
     if parsed is None:
         return None
-    valued, operands, _flags = parsed
+    valued, operands, flags = parsed
     dirs = [word for _opt, word in valued]
+    recursive = name == "cp" and bool(flags & {"-r", "-R", "-a", "--recursive", "--archive"})
     targets: list[_WriteTarget] = []
     if dirs:
         if not operands:
             return None
-        targets.extend(_WriteTarget(word, "dir") for word in dirs)
         sources = operands
+        targets.extend(
+            _WriteTarget(word, "dir", tuple(sources), recursive, name == "cp") for word in dirs
+        )
     else:
         if len(operands) < 2:
             return None
-        targets.append(_WriteTarget(operands[-1], "path"))
         sources = operands[:-1]
+        targets.append(_WriteTarget(operands[-1], "path", tuple(sources), recursive, name == "cp"))
     if name == "mv":
         targets.extend(_WriteTarget(word, "move_source") for word in sources)
     return targets
@@ -1880,9 +1955,6 @@ def _curl_targets(seg: _ShellSegment) -> list[_WriteTarget] | None:
         if relative:
             # curl writes relative -o files under --output-dir.
             targets.extend(_WriteTarget(_join_words(base, word), "path") for base in output_dirs)
-    remote_name = bool(flags & ({"-" + letter for letter in _CURL_REMOTE_NAME_SHORT} | _CURL_REMOTE_NAME_LONG))
-    if remote_name and not output_dirs:
-        targets.append(_WriteTarget(_ShellWord(".", False, False, False), dir_kind))
     return targets
 
 
@@ -1936,7 +2008,7 @@ def _git_mv_targets(seg: _ShellSegment) -> list[_WriteTarget] | None:
     _valued, operands, _flags = parsed
     if len(operands) < 2:
         return None
-    targets = [_WriteTarget(operands[-1], "path")]
+    targets = [_WriteTarget(operands[-1], "path", tuple(operands[:-1]))]
     targets.extend(_WriteTarget(word, "move_source") for word in operands[:-1])
     return targets
 
@@ -2105,6 +2177,97 @@ def _judge_write_target(
         )
         if decision is not None:
             return decision
+        if target.sources:
+            decision = _judge_into_dir(real, target, text, root=root, cwd=cwd)
+            if decision is not None:
+                return decision
+    return None
+
+
+_INTO_DIR_SCAN_LIMIT = 5000
+
+
+def _judge_existing_entry(
+    entry: str, *, recursive: bool, root: Path, cwd: Path, budget: list[int]
+) -> GateDecision | None:
+    """Judge an existing DEST/name (following links); for -r, every link below it."""
+    if not os.path.lexists(entry):
+        return None
+    decision = _shell_target_decision(
+        os.path.realpath(entry), root=root, workdir=cwd, allow_os_temp=True, as_directory=False
+    )
+    if decision is not None:
+        return decision
+    if not recursive or os.path.islink(entry) or not os.path.isdir(entry):
+        return None
+    for dirpath, dirnames, filenames in os.walk(entry, followlinks=False):
+        for name in dirnames + filenames:
+            budget[0] -= 1
+            if budget[0] < 0:
+                return _unchecked_write()
+            child = os.path.join(dirpath, name)
+            if os.path.islink(child):
+                decision = _shell_target_decision(
+                    os.path.realpath(child), root=root, workdir=cwd,
+                    allow_os_temp=True, as_directory=False,
+                )
+                if decision is not None:
+                    return decision
+    return None
+
+
+def _judge_into_dir(
+    real: Path, target: _WriteTarget, text: str, *, root: Path, cwd: Path
+) -> GateDecision | None:
+    """cp/mv into a folder writes DEST/basename(SRC): judge those entries too.
+
+    An existing entry is judged on its realpath, so a link inside an allowed
+    folder can't carry the copy into a protected place.
+    """
+    into_dir = target.kind == "dir" or text.endswith("/") or len(target.sources) > 1
+    if not into_dir and not os.path.isdir(real):
+        return None  # DEST is a file path; already judged
+    if not os.path.isdir(real):
+        return None  # a folder cp/mv will create: everything inside is new
+    budget = [_INTO_DIR_SCAN_LIMIT]
+    for src in target.sources:
+        src_text = src.text
+        stripped = src_text.rstrip("/") or "/"
+        base = os.path.basename(stripped)
+        list_contents = base in {"", ".", "/"} or (
+            target.contents_of_slash_source and target.recursive and src_text.endswith("/")
+        )
+        if list_contents:
+            # BSD cp -R SRC/ (and cp -r .) copies SRC's entries into DEST.
+            if src.has_glob:
+                return _unchecked_write()
+            src_abs = _absolute_target(src_text, src, cwd)
+            if src_abs is None:
+                return _unchecked_write()
+            try:
+                names = os.listdir(src_abs)
+            except OSError:
+                return _unchecked_write()
+            if len(names) > _INTO_DIR_SCAN_LIMIT:
+                return _unchecked_write()
+        elif src.has_glob:
+            if any(ch in os.path.dirname(stripped) for ch in "*?[]"):
+                return _unchecked_write()
+            try:
+                entries = os.listdir(real)
+            except OSError:
+                return _unchecked_write()
+            pattern = _nfc_fold(base)
+            names = [n for n in entries if fnmatch.fnmatchcase(_nfc_fold(n), pattern)]
+        else:
+            names = [base]
+        for name in names:
+            decision = _judge_existing_entry(
+                os.path.join(str(real), name),
+                recursive=target.recursive, root=root, cwd=cwd, budget=budget,
+            )
+            if decision is not None:
+                return decision
     return None
 
 
@@ -2115,7 +2278,35 @@ _POWERSHELL_HINT_RE = re.compile(r"[A-Za-z]:\\|\$env:|(?<![\w-])[A-Z][a-z]+-[A-Z
 _HOME_SPELLINGS_RE = re.compile(r"^(?:\$env:USERPROFILE|\$env:HOME|\$HOME|~)(?=$|[\\/])", re.IGNORECASE)
 
 
-def _unparsed_decision(command: str) -> GateDecision | None:
+def _path_crosses_symlink(candidate: str, workdir: Path) -> bool:
+    """True when any component of *candidate* (joined to *workdir*) is a link."""
+    if candidate.startswith("~"):
+        home = _resolved_home()
+        if home is None:
+            return True
+        joined = os.path.join(str(home), candidate[1:].lstrip("/"))
+    elif re.match(r"^[A-Za-z]:/", candidate):
+        if os.name != "nt":
+            return False  # a drive path only means something on Windows
+        joined = candidate
+    elif candidate.startswith("/"):
+        joined = candidate
+    else:
+        try:
+            base = os.path.realpath(str(workdir))
+        except OSError:
+            return True
+        joined = os.path.join(base, candidate)
+    if _has_parent_dir_component(joined):
+        return True
+    normal = os.path.normpath(joined)
+    try:
+        return os.path.realpath(normal) != normal
+    except OSError:
+        return True
+
+
+def _unparsed_decision(command: str, workdir: Path | None = None) -> GateDecision | None:
     """Refuse an unparsed write-shaped command, except the PowerShell gap (Decision 3)."""
     if not _r3_unparsed_falls_back() or not _POWERSHELL_HINT_RE.search(command):
         return _unchecked_write()
@@ -2128,6 +2319,8 @@ def _unparsed_decision(command: str) -> GateDecision | None:
         homed = _HOME_SPELLINGS_RE.sub("~", token)
         # PowerShell reads "\\" as a separator; Git Bash reads it as an escape.
         for candidate in {homed.replace("\\", "/"), homed.replace("\\", "")}:
+            if candidate and workdir is not None and _path_crosses_symlink(candidate, workdir):
+                return _unchecked_write()  # a link destination Dex won't follow here
             if not (candidate.startswith(("~", "/")) or re.match(r"^[A-Za-z]:/", candidate)):
                 continue
             if _has_parent_dir_component(candidate):
@@ -2147,12 +2340,12 @@ def _shell_write_decision(command: str, *, root: Path, workdir: Path) -> GateDec
         return None
     segments = _parse_strict_shell(command)
     if segments is None:
-        return _unparsed_decision(command)
+        return _unparsed_decision(command, workdir)
     plan: list[tuple[_ShellSegment, list[_WriteTarget]]] = []
     for seg in segments:
         targets = _segment_write_targets(seg)
         if targets is None:
-            return _unparsed_decision(command)
+            return _unparsed_decision(command, workdir)
         plan.append((seg, targets))
     candidates: list[Path] | None = [workdir]
     for seg, targets in plan:

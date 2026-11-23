@@ -82,7 +82,7 @@ ALLOWED = [
     "curl -sSL -o ~/Documents/a.pdf https://x/a.pdf",
     "curl -fsSLo out.json https://x",
     "curl --output=~/CloudProj/a.png https://x",
-    "curl -O --output-dir ~/Downloads https://x/a.zip",
+    "curl -o ~/Downloads/a.zip --output-dir ~/Downloads https://x/a.zip",
     "curl https://x | jq .",
     "echo hi > notes.txt",
     "echo hi >> 00-Inbox/log.md",
@@ -149,8 +149,8 @@ PROTECTED = [
     "mv ~/.s* /tmp/",
     "curl -o ~/.ssh/x URL",
     "curl --output /etc/x URL",
-    "curl -O --output-dir ~/.ssh URL",
-    "curl --output-dir=/etc URL -O",
+    "curl -o k --output-dir ~/.ssh URL",
+    "curl --output-dir=/etc URL -o x",
     "curl -D ~/.ssh/k URL",
     "curl --dump-header ~/.ssh/k URL",
     "curl -c ~/.config/x URL",
@@ -292,6 +292,24 @@ UNCHECKED = [
     "curl -J -O URL",
     "curl -OJ URL",
     "curl --remote-header-name -O URL",
+    # Round 4: the URL picks curl -O's file name.
+    "curl -O --output-dir ~/Downloads https://x/a.zip",
+    "curl -O --output-dir ~/.ssh URL",
+    "curl --remote-name URL",
+    "curl --remote-name-all URL",
+    # Round 4: hard and symbolic link copies.
+    "cp -l ~/.ssh/authorized_keys notes/k",
+    "cp --link ~/.ssh/authorized_keys notes/k",
+    "cp -s ~/.ssh/authorized_keys notes/k",
+    "cp --symbolic-link ~/.ssh notes/l",
+    "cp -al ~/.ssh notes/",
+    # Round 4: a script that looks like a write, fed to a program.
+    "python <<'EOF'\nimport os; os.system('cp a ~/.ssh/k')\nEOF",
+    "python3 - <<'EOF'\nopen('x','w').write('a') > 0\nEOF",
+    "node <<'EOF'\nrequire('child_process').execSync('tee ~/.ssh/k')\nEOF",
+    "perl <<'EOF'\nsystem('mv a ~/.ssh/k')\nEOF",
+    "ruby <<'EOF'\n`curl -o ~/.ssh/k URL`\nEOF",
+    "cat <<'EOF' | python3\nimport os; os.system('cp a ~/.ssh/k')\nEOF",
 ]
 
 
@@ -483,3 +501,124 @@ def test_hook_and_mcp_agree_on_r3(env, monkeypatch):
         assert shared.refused is refused, command
         assert mcp["refused"] is refused, (command, mcp)
         assert mcp["code"] == shared.code
+
+
+# Round 4: heredoc bodies that are plain data stay allowed.
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat > notes/a.md <<'EOF'\nrun cp a b > c\nEOF",
+        "tee notes/a.md <<'EOF'\ncurl -o x URL\nEOF",
+        "python3 - <<'EOF'\nprint('hello')\nEOF",
+    ],
+)
+def test_heredoc_data_bodies_stay_allowed(env, command):
+    _home, vault = env
+    _check(vault, command, "allow")
+
+
+# Round 4: copying into a folder judges FOLDER/basename(SRC), following links.
+def test_copy_into_folder_follows_existing_entry_links(env):
+    home, vault = env
+    (vault / "notes" / "authorized_keys").symlink_to(home / ".ssh" / "authorized_keys")
+    _check(vault, "cp authorized_keys notes/", "protected")
+    _check(vault, "cp payload/authorized_keys notes", "protected")
+    _check(vault, "cp -t notes authorized_keys", "protected")
+    _check(vault, "mv authorized_keys notes/", "protected")
+    _check(vault, "git mv authorized_keys notes/", "protected")
+    _check(vault, "cp *_keys notes/", "protected")
+    _check(vault, "cp a.md b.md notes/", "allow")
+    _check(vault, "cp other.md notes/", "allow")
+
+
+def test_recursive_copy_checks_links_inside_existing_destination(env):
+    home, vault = env
+    (vault / "notes" / "proj" / "sub").mkdir(parents=True)
+    (vault / "notes" / "proj" / "sub" / "keys").symlink_to(home / ".ssh")
+    _check(vault, "cp -r proj notes/", "protected")
+    _check(vault, "cp -r other notes/", "allow")
+    # BSD cp -R SRC/ copies SRC's entries into DEST.
+    (vault / "src").mkdir()
+    (vault / "src" / "authorized_keys").write_text("x")
+    (vault / "dest").mkdir()
+    (vault / "dest" / "authorized_keys").symlink_to(home / ".ssh" / "authorized_keys")
+    _check(vault, "cp -R src/ dest", "protected")
+    _check(vault, "cp -R src/ notes", "allow")
+
+
+def test_windows_fallback_refuses_symlinked_destinations(env, monkeypatch):
+    home, vault = env
+    monkeypatch.setattr(safety, "_r3_unparsed_falls_back", lambda: True)
+    (vault / "l").symlink_to(home / ".ssh")
+    _check(vault, r"cp a l/k\ x Get-Date", "unchecked")
+    _check(vault, r"Copy-Item a l\k > out.txt", "unchecked")
+    assert _decide(vault, r"Copy-Item a notes\k > out.txt").refused is False
+
+
+# Decision 2 (gtm-lab #741): quoted mkdir paths (spaces, @) for Google Drive.
+def test_quoted_google_drive_mkdir_is_allowed(env):
+    home, vault = env
+    gdrive = home / "Library" / "CloudStorage" / "GoogleDrive-name@domain.com" / "My Drive"
+    gdrive.mkdir(parents=True)
+    for command in (
+        'mkdir -p ~/Library/CloudStorage/GoogleDrive-name@domain.com/"My Drive/New Folder"',
+        "mkdir -p ~/Library/CloudStorage/GoogleDrive-name@domain.com/'My Drive'/'New Folder'",
+        'mkdir -p "$HOME/Library/CloudStorage/GoogleDrive-name@domain.com/My Drive/New Folder"',
+        'mkdir "${HOME}/Library/CloudStorage/GoogleDrive-name@domain.com/My Drive/A, B + C"',
+        'mkdir -p "$HOME/Documents/Client Work"',
+        'mkdir -p "notes/New Folder"',
+    ):
+        assert safety._parse_strict_mkdir_command(command) is not None, command
+        _check(vault, command, "allow")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'mkdir -p "~/Library/CloudStorage/GoogleDrive-a@b.com/My Drive/x"',  # literal ~
+        'mkdir -p ~root/"My Drive"',
+        'mkdir -p "$HOME/Library/CloudStorage/GoogleDrive-a@b.com/../../LaunchAgents"',
+        'mkdir -p "$HOME/My Drive/$(id)"',
+        'mkdir -p "$HOME/My Drive/`id`"',
+        'mkdir -p "$X/My Drive"',
+        'mkdir -p "$HOME/a" > "$HOME/.ssh/x"',
+        'mkdir -p "$HOME/a"; cp a ~/.ssh/k',
+        'mkdir -p "$HOME/a" && echo x',
+        'mkdir -p "$HOME/a\nb"',
+        'mkdir -p "$HOME/My*Drive"',
+        'mkdir -p "$HOME/a;b"',
+        'mkdir -p "$HOME/a|b"',
+        'mkdir -p "$HOME/a\'b"',
+        'mkdir -p -- "$HOME/a b"',
+        'sudo mkdir -p "$HOME/a b"',
+        'mkdir -m 777 "$HOME/a b"',
+    ],
+)
+def test_quoted_mkdir_rejects_injection_and_traversal(env, command):
+    _home, vault = env
+    assert safety._parse_strict_mkdir_command(command) is None, command
+    assert _decide(vault, command).refused is True, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'mkdir -p "$HOME/.ssh/My Keys"',
+        'mkdir -p "$HOME/Library/Application Support/x"',
+        'mkdir -p ~/"Library"/"Mobile Documents"/"com~apple~Notes"/x',
+        'mkdir -p "/etc/a b"',
+        'mkdir -p "/Volumes/Not Mounted/x"',
+        "mkdir -p ~/Library/CloudStorage/'GoogleDrive-a@b.com'",
+        'mkdir -p "$HOME/LIBRARY/a b"',
+    ],
+)
+def test_quoted_mkdir_still_protects_private_folders(env, command):
+    _home, vault = env
+    assert safety._parse_strict_mkdir_command(command) is not None, command
+    _check(vault, command, "protected")
+
+
+def test_quoted_mkdir_command_word_is_not_the_exception():
+    # A quoted command word never gets the outside-vault mkdir exception.
+    assert safety._parse_strict_mkdir_command('"mkdir" -p "$HOME/a b"') is None
+    assert safety._parse_strict_mkdir_command("\\mkdir -p '$HOME/a b'") is None
