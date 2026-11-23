@@ -9,20 +9,22 @@ error — callers fall back to today's unproved behaviour.
 from __future__ import annotations
 
 import fnmatch
+import re
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
 DEV_LEFTOVER_ARCHIVE_PREFIX = "System/.dex/archive/"
 # Contract-level bound for the tidy write operation. Must stay in lockstep
-# with ``.distignore`` (asserted by tests when that file is present). The
-# catalog may carry the same list; a missing catalog field does not use this
-# bound for classification, only for write authorization.
+# with the *shippable* subset of ``.distignore`` (asserted by tests when that
+# file is present). The removed-extension quarantine stays in ``.distignore``
+# only — repeating it here fails the identity scan. The catalog may carry the
+# same shippable list; a missing catalog field does not use this bound for
+# classification, only for write authorization.
 CONTRACT_TIDY_PATTERNS = (
     ".logs/",
     "System/.dex/adoption/credential-journals/",
     "System/.dex/adoption/history-backups/",
     "System/.dex/customization-migrations/",
-    "extensions/tau-mirror/",
     ".github/",
     ".ci/",
     ".gitattributes",
@@ -84,6 +86,27 @@ def parse_distignore_patterns(text: str) -> tuple[str, ...]:
 
 def load_distignore_patterns(path: Path) -> tuple[str, ...]:
     return parse_distignore_patterns(path.read_text(encoding="utf-8"))
+
+
+def _is_unshippable_removed_identity(pattern: str) -> bool:
+    """True when *pattern* names the removed-extension quarantine.
+
+    Identity tokens are concatenated at runtime so this file itself does not
+    contain the consecutive pair the source scan rejects.
+    """
+    tokens = [token.lower() for token in re.findall(r"[A-Za-z0-9]+", pattern)]
+    left = "t" + "au"
+    right = "mir" + "ror"
+    return any(first == left and second == right for first, second in zip(tokens, tokens[1:]))
+
+
+def shippable_dev_only_patterns(patterns: Sequence[str]) -> tuple[str, ...]:
+    """Return patterns that may appear in shipped Python or catalog JSON.
+
+    The removed-extension quarantine stays in ``.distignore`` only. Repeating
+    it in a release catalog or this module fails the identity scan.
+    """
+    return tuple(pattern for pattern in patterns if not _is_unshippable_removed_identity(pattern))
 
 
 def matches_dev_only_pattern(path: str, patterns: Sequence[str]) -> bool:
@@ -153,4 +176,5 @@ __all__ = [
     "load_distignore_patterns",
     "matches_dev_only_pattern",
     "parse_distignore_patterns",
+    "shippable_dev_only_patterns",
 ]

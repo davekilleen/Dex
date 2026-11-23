@@ -363,14 +363,17 @@ def _load_dev_only_patterns(
     contract_root: Path,
     patterns_file: Path | None,
 ) -> tuple[str, ...] | None:
-    """Return sorted unique .distignore patterns, or None when none are available.
+    """Return sorted unique shippable .distignore patterns, or None.
 
     ``.distignore`` is export-ignored, so a stripped release tree will not
     contain it. Callers that still have the source file (or a copy) pass it
     explicitly. A missing file is not an error: the catalog simply omits the
     field and installed vaults keep today's unproved-file behaviour.
+
+    The removed-extension quarantine is dropped before the catalog is
+    written — repeating it in shipped JSON fails the identity scan.
     """
-    from core.dev_only import load_distignore_patterns
+    from core.dev_only import load_distignore_patterns, shippable_dev_only_patterns
 
     candidates: list[Path] = []
     if patterns_file is not None:
@@ -379,7 +382,7 @@ def _load_dev_only_patterns(
     for candidate in candidates:
         if candidate.is_symlink() or not candidate.is_file():
             continue
-        patterns = load_distignore_patterns(candidate)
+        patterns = shippable_dev_only_patterns(load_distignore_patterns(candidate))
         return tuple(sorted(set(patterns)))
     return None
 

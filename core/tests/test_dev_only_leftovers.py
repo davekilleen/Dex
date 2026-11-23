@@ -23,6 +23,7 @@ from core.dev_only import (
     CONTRACT_TIDY_PATTERNS,
     TIDY_DEV_LEFTOVERS_DRY_RUN,
     parse_distignore_patterns,
+    shippable_dev_only_patterns,
 )
 from core.lifecycle.catalog import canonical_catalog_bytes, with_catalog_identity
 from core.tests.lifecycle_test_helpers import SOURCE_COMMIT, write_file, write_manifest
@@ -255,9 +256,15 @@ def test_contract_tidy_patterns_match_distignore_when_present() -> None:
     distignore = REPO_ROOT / ".distignore"
     if not distignore.is_file():
         return
-    assert parse_distignore_patterns(distignore.read_text(encoding="utf-8")) == (
-        CONTRACT_TIDY_PATTERNS
-    )
+    parsed = parse_distignore_patterns(distignore.read_text(encoding="utf-8"))
+    assert "extensions/tau-mirror/" in parsed
+    assert shippable_dev_only_patterns(parsed) == CONTRACT_TIDY_PATTERNS
+    assert "extensions/tau-mirror/" not in CONTRACT_TIDY_PATTERNS
+
+
+def test_shippable_dev_only_patterns_drop_removed_extension_quarantine() -> None:
+    kept = (".github/", "core/tests/", "scripts/")
+    assert shippable_dev_only_patterns((*kept, "extensions/tau-mirror/")) == kept
 
 
 def test_tidy_operation_allows_only_leftover_and_archive_paths() -> None:
