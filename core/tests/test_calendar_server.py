@@ -124,7 +124,54 @@ def test_calendar_delete_event_timeout_is_not_a_broken_calendar(monkeypatch):
     assert "broken" not in payload.get("error", "").lower()
 
 
+def test_run_shell_script_prefers_helper_when_it_answers(monkeypatch):
+    monkeypatch.setattr(
+        calendar_server,
+        "run_mapped_helper",
+        lambda script_name, args, **_kwargs: (True, "from-helper"),
+    )
+    captured = _capture_subprocess_command(monkeypatch)
+
+    success, output = calendar_server.run_shell_script("calendar_eventkit.py", "list")
+
+    assert success
+    assert output == "from-helper"
+    assert "command" not in captured
+
+
+def test_run_shell_script_does_not_exec_eventkit_when_helper_is_unusable(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        calendar_server,
+        "run_mapped_helper",
+        lambda script_name, args, **_kwargs: (
+            False,
+            calendar_server.helper_unusable_payload(calendar_server.HELPER_MISSING_MESSAGE),
+        ),
+    )
+    captured = _capture_subprocess_command(monkeypatch)
+
+    success, output = calendar_server.run_shell_script("calendar_eventkit.py", "list")
+
+    assert success is False
+    assert "helper_unusable" in output
+    assert "command" not in captured
+
+
+def test_run_shell_script_does_not_fallback_when_mapped_helper_is_missing_on_mac(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "darwin")
+    monkeypatch.setattr(calendar_server, "run_mapped_helper", lambda *_args, **_kwargs: None)
+    captured = _capture_subprocess_command(monkeypatch)
+
+    success, output = calendar_server.run_shell_script("reminders_eventkit.py", "list_lists")
+
+    assert success is False
+    assert json.loads(output)["code"] == "helper_unusable"
+    assert "command" not in captured
+
+
 def test_run_shell_script_dispatches_sh_scripts_to_bash(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "linux")
     captured = _capture_subprocess_command(monkeypatch)
 
     success, output = calendar_server.run_shell_script(
@@ -139,6 +186,7 @@ def test_run_shell_script_dispatches_sh_scripts_to_bash(monkeypatch):
 
 
 def test_run_shell_script_dispatches_py_scripts_to_python(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "linux")
     captured = _capture_subprocess_command(monkeypatch)
 
     success, output = calendar_server.run_shell_script(
@@ -155,6 +203,7 @@ def test_run_shell_script_failure_surfaces_stdout_when_stderr_is_empty(monkeypat
     """Helper scripts print actionable errors (e.g. calendar-access-denied
     guidance) as JSON on stdout and exit 1 with an empty stderr. Users used
     to see a bare "Exit code: 1" instead of the guidance (#377)."""
+    monkeypatch.setattr(calendar_server.sys, "platform", "linux")
     denial = json.dumps({"error": "Calendar access denied. Enable in System Settings."})
 
     def fake_run(command, **kwargs):
@@ -169,6 +218,8 @@ def test_run_shell_script_failure_surfaces_stdout_when_stderr_is_empty(monkeypat
 
 
 def test_run_shell_script_failure_still_prefers_stderr(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "linux")
+
     def fake_run(command, **kwargs):
         return subprocess.CompletedProcess(
             command, 1, stdout="partial output\n", stderr="Traceback: boom\n"
@@ -183,6 +234,8 @@ def test_run_shell_script_failure_still_prefers_stderr(monkeypatch):
 
 
 def test_run_shell_script_failure_without_any_output_reports_exit_code(monkeypatch):
+    monkeypatch.setattr(calendar_server.sys, "platform", "linux")
+
     def fake_run(command, **kwargs):
         return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
 

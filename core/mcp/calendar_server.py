@@ -52,9 +52,14 @@ from core.mcp.calendar_attendees import attendee_is_non_responder, attendee_is_o
 from core.paths import PEOPLE_DIR
 from core.paths import VAULT_ROOT as VAULT_PATH
 from core.utils.feature_status import feature_status
+from core.utils.macos_privacy_helper import (
+    HELPER_MISSING_MESSAGE,
+    helper_is_available,
+    helper_unusable_payload,
+    run_mapped_helper,
+)
 from core.utils.reminders_host import (
-    VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
-    is_vscode_host,
+    reminders_blocked_without_helper,
 )
 
 # Health system — error queue and health reporting
@@ -153,6 +158,17 @@ def run_shell_script(script_name: str, *args) -> tuple[bool, str]:
     if script_name not in ALLOWED_SCRIPTS:
         return False, f"Script not allowed: {script_name}"
 
+    mapped = run_mapped_helper(script_name, args)
+    if mapped is not None:
+        return mapped
+
+    if sys.platform == "darwin" and script_name in {
+        "calendar_eventkit.py",
+        "reminders_eventkit.py",
+        "calendar_create_event.sh",
+    }:
+        return False, helper_unusable_payload(HELPER_MISSING_MESSAGE)
+
     script_path = (SCRIPTS_DIR / script_name).resolve()
     if not script_path.is_relative_to(SCRIPTS_DIR.resolve()):
         return False, "Invalid script path"
@@ -206,9 +222,20 @@ def _script_timed_out(output: str) -> bool:
     return "timed out after" in output
 
 
+def _human_script_error(error: str) -> str:
+    try:
+        parsed = json.loads(error)
+    except json.JSONDecodeError:
+        return error
+    if isinstance(parsed, dict) and parsed.get("error"):
+        return str(parsed["error"])
+    return error
+
+
 def _broken_feature_payload(feature: str, error: str) -> dict:
     """Preserve a legacy Calendar/Reminders error while adding status fields."""
-    return feature_status(feature, "broken", error, error=error)
+    message = _human_script_error(error)
+    return feature_status(feature, "broken", message, error=message)
 
 
 def _get_calendar_list_result() -> dict:
@@ -711,11 +738,12 @@ async def _handle_call_tool_inner(
 
     arguments = arguments or {}
 
-    if name.startswith("reminders_") and is_vscode_host():
+    blocked = reminders_blocked_without_helper()
+    if name.startswith("reminders_") and blocked and not helper_is_available():
         result = feature_status(
             REMINDERS_FEATURE,
             "off",
-            VSCODE_REMINDERS_UNAVAILABLE_MESSAGE,
+            blocked,
         )
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 

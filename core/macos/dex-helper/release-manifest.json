@@ -1,0 +1,10 @@
+{
+  "helper_version": "1.1.0",
+  "min_macos": "14.0",
+  "bundle_id": "ai.heydex.DexHelper",
+  "team_id": "6WVLPMNTL5",
+  "asset_name": "DexHelper-v1.1.0.zip",
+  "checksum_name": "DexHelper-v1.1.0.zip.sha256",
+  "sha256": "2d96d0ff79f69b7af1a88386176ceb5da30269f3841c270cbb2ddf922f6bf154",
+  "download_tag": "dex-helper-v1.1.0"
+}
