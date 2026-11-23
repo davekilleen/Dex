@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## Unreleased
+## [1.97.38] — Claude can't copy, download or write into your private or system folders, and Google Drive folder names with spaces work (2026-11-23)
 
 ### Claude can't copy, download or write into your private or system folders
 
