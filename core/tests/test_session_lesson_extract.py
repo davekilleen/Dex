@@ -50,6 +50,24 @@ def test_classifies_corrections_and_preferences_and_ignores_ordinary_work() -> N
     assert extract.classify("see below\n<pasted_content>That is not what I asked for</pasted_content>") is None
     assert extract.classify("don't do that") == "Correction"
     assert extract.classify("that's not what I asked") == "Correction"
+    assert (
+        extract.classify(
+            '<project_claude_message><relay from="coordinator">'
+            "<note>Don't write files or send anything.</note>"
+            '<cited author="user">can you draft the reply</cited>'
+            "</relay></project_claude_message>"
+        )
+        is None
+    )
+    assert (
+        extract.classify(
+            '<project_claude_message><relay from="coordinator">'
+            "<note>context</note>"
+            '<cited author="user">no, that\'s wrong, use the March figures</cited>'
+            "</relay></project_claude_message>"
+        )
+        == "Correction"
+    )
 
 
 def test_skips_secret_looking_messages_entirely() -> None:
@@ -263,6 +281,41 @@ def test_harness_text_in_a_user_turn_is_not_the_users_words(tmp_path: Path) -> N
     )
 
     assert extract.extract_candidates(transcript) == []
+
+
+def test_project_relay_instruction_is_not_a_session_lesson(tmp_path: Path) -> None:
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [
+            _user_line(
+                '<project_claude_message><relay from="coordinator">'
+                "<note>Don't write files or send anything.</note>"
+                '<cited author="user">can you draft the reply</cited>'
+                "</relay></project_claude_message>"
+            )
+        ],
+    )
+
+    assert extract.extract_candidates(transcript) == []
+
+
+def test_project_relay_with_cited_correction_is_a_session_lesson(tmp_path: Path) -> None:
+    transcript = _transcript(
+        tmp_path / "session.jsonl",
+        [
+            _user_line(
+                '<project_claude_message><relay from="coordinator">'
+                "<note>context</note>"
+                '<cited author="user">no, that\'s wrong, use the March figures</cited>'
+                "</relay></project_claude_message>"
+            )
+        ],
+    )
+
+    candidates = extract.extract_candidates(transcript)
+
+    assert [c.kind for c in candidates] == ["Correction"]
+    assert candidates[0].text == "no, that's wrong, use the March figures"
 
 
 def test_real_correction_sent_with_harness_text_keeps_only_the_user_words(tmp_path: Path) -> None:

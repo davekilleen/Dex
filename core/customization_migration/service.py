@@ -17,7 +17,11 @@ from core.customization_migration.capsule_model import (
     EVIDENCE_SECTIONS_V0,
 )
 from core.customization_migration.inventory import discover
-from core.customization_migration.model import Assessment, AssessmentIdentity
+from core.customization_migration.model import (
+    Assessment,
+    AssessmentIdentity,
+    is_non_blocking_exclusion,
+)
 from core.lifecycle import service as lifecycle_service
 
 if TYPE_CHECKING:
@@ -91,7 +95,7 @@ def assess(vault_root: Path) -> Assessment:
     if walk_truncated:
         reasons.add("walk-truncated")
     if any(
-        exclusion.reason != "embedded-secret"
+        not is_non_blocking_exclusion(exclusion.path, exclusion.reason)
         for exclusion in discovery.exclusions
     ):
         reasons.add("assessment-exclusions")

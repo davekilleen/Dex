@@ -253,8 +253,15 @@ Always close this section with the exact line:
 
 The assessment's `release_baseline` object carries `anchor_state`:
 
-- `verified` — say the release anchor proves the vault's release-owned files;
-  nothing to offer.
+- `verified` — say the release anchor proves the vault's release-owned files.
+  Never leave them with no repair while a blocking warning is shown.
+  If `dev-only-leftover` exclusions are present, offer "Tidy dev-only leftovers":
+  preview the full list with
+  `python3 -m core.customization_migration.cli tidy-dev-leftovers --dry-run`,
+  then apply only after an explicit yes using that preview's `--confirm-token`.
+  Remaining `release-identity-unproved` files are not part of any Dex release:
+  list them and offer to keep them as the user's own files (they then count as
+  customizations, not blockers). Do not tell them to wait before updating.
 - `rejected` because the record still names the previous version — this is
   the expected leftover after an update, not a broken record. Surface the
   probe's "needs refreshing" wording verbatim, including the one command.

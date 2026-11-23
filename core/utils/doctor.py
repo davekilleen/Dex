@@ -2185,6 +2185,44 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     # it, and the human-readable detail carries a verified/rejected note.
     baseline_detail = load_release_baseline(context.vault_root).to_dict()
     authority["release_baseline"] = baseline_detail
+    from core.customization_migration.model import exclusion_guidance
+    from core.dev_only import TIDY_DEV_LEFTOVERS_DRY_RUN
+
+    anchor_state = baseline_detail.get("anchor_state")
+    leftover_paths = [
+        exclusion.path
+        for exclusion in assessment.exclusions
+        if exclusion.reason == "dev-only-leftover"
+    ]
+    authority["dev_only_leftovers"] = {
+        "count": len(leftover_paths),
+        "repair_command": TIDY_DEV_LEFTOVERS_DRY_RUN,
+    }
+    exclusions = authority.get("exclusions")
+    if isinstance(exclusions, list):
+        rewritten = []
+        for item in exclusions:
+            if not isinstance(item, dict):
+                rewritten.append(item)
+                continue
+            reason = item.get("reason")
+            if reason == "release-identity-unproved":
+                updated = dict(item)
+                updated["guidance"] = exclusion_guidance(
+                    "release-identity-unproved",
+                    anchor_state=str(anchor_state) if anchor_state else None,
+                )
+                rewritten.append(updated)
+            else:
+                rewritten.append(item)
+        authority["exclusions"] = rewritten
+    leftover_note = ""
+    if leftover_paths:
+        # FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-277).
+        leftover_note = (
+            " Tidy leftover developer files with: "
+            f"{TIDY_DEV_LEFTOVERS_DRY_RUN}"
+        )
     anchor_note = _release_anchor_note(baseline_detail)
     catalog_path = _release_catalog_path(context)
     if os.path.lexists(catalog_path):
@@ -2214,7 +2252,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
             "UNKNOWN",
             f"I found {observed} {noun}, but couldn't prove the inventory is complete "
             f"({', '.join(assessment.incomplete_reasons)}). Review the listed exclusions "
-            "before creating a Capsule." + anchor_note,
+            "before creating a Capsule." + leftover_note + anchor_note,
             structured_detail=authority,
         )
     count = assessment.identity.customization_count
@@ -2224,6 +2262,7 @@ def _probe_customization_assessment(context: DoctorContext) -> ProbeResult:
     return ProbeResult(
         "OK",
         f"Customization assessment completed: {count} {noun}{blocked_suffix}"
+        + leftover_note
         + anchor_note,
         structured_detail=authority,
     )

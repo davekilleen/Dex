@@ -194,6 +194,31 @@ test('ignores an unclosed harness block, which runs to the end of the text', (t)
   assert.equal(captured(vault), '');
 });
 
+test('ignores a Project relay whose cited user text is not a correction', (t) => {
+  const vault = sandbox(t);
+
+  submit(
+    vault,
+    '<project_claude_message><relay from="coordinator"><note>Don\'t write files or send anything.</note><cited author="user">can you draft the reply</cited></relay></project_claude_message>',
+  );
+
+  assert.equal(captured(vault), '', 'a coordinator note is not a correction from the user');
+});
+
+test('keeps a Project relay whose cited user text is a real correction', (t) => {
+  const vault = sandbox(t);
+
+  submit(
+    vault,
+    '<project_claude_message><relay from="coordinator"><note>context</note><cited author="user">no, that\'s wrong, use the March figures</cited></relay></project_claude_message>',
+  );
+  const text = captured(vault);
+
+  assert.ok(text.includes("no, that's wrong, use the March figures"));
+  assert.ok(!text.includes('context'), 'the relay note must not be recorded as the user words');
+  assert.ok(!text.includes('project_claude_message'));
+});
+
 test('keeps a real correction that arrives with a harness block, and records only the user words', (t) => {
   const vault = sandbox(t);
 

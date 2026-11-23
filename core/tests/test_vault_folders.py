@@ -8,9 +8,17 @@ from pathlib import Path
 
 import pytest
 
-from core.gates.safety import CODE_NEW_TOP_LEVEL_FOLDER, evaluate_safety_gate
+from core.gates.safety import (
+    CODE_NEW_TOP_LEVEL_FOLDER,
+    REASON_UNSAFE_PATH,
+    evaluate_safety_gate,
+)
 from core.mcp import work_server
-from core.vault_folders import locate_vault_folders, mkdir_targets, planned_new_top_level
+from core.vault_folders import (
+    locate_vault_folders,
+    mkdir_targets,
+    planned_new_top_level,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -116,7 +124,7 @@ def test_known_dex_folders_and_root_files_are_allowed(tmp_path: Path, path: str)
         "mkdir -p 00-Inbox/Meetings",
         "mkdir -p 07-Archives/Plans",
         "mkdir 06-Resources",
-        "echo mkdir Archives",
+        "echo Archives",
     ),
 )
 def test_legitimate_folder_creates_and_non_mkdir_text_are_allowed(
@@ -172,3 +180,49 @@ def test_mkdir_targets_skips_flags_and_reads_quoted_names() -> None:
     assert mkdir_targets('mkdir -p -- "Old Notes"') == ["Old Notes"]
     assert mkdir_targets("echo mkdir Archives") == []
     assert planned_new_top_level(Path("."), "note.md") is None
+
+
+def test_mkdir_of_new_top_level_inside_vault_keeps_dex_116_message(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    blocked = evaluate_safety_gate(command="mkdir NewTopLevel", vault=vault)
+    allowed = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
+    assert blocked.refused is True
+    assert blocked.code == CODE_NEW_TOP_LEVEL_FOLDER
+    assert "new top-level folder named NewTopLevel" in blocked.reason
+    assert allowed.refused is False
+
+
+def test_mkdir_through_symlinked_parent_escaping_vault_is_blocked(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    inbox = vault / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "escape").symlink_to("/etc")
+    decision = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
+    assert decision.refused is True
+    assert decision.code in {"unsafe_path", "protected_location"}
+
+
+def test_parent_dir_through_vault_symlink_is_refused(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    inbox = vault / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "escape").symlink_to("/etc")
+    mkdir_dotdot = evaluate_safety_gate(
+        command="mkdir -p 00-Inbox/escape/../outside", vault=vault
+    )
+    write_dotdot = evaluate_safety_gate(
+        path="00-Inbox/escape/../secret", vault=vault
+    )
+    direct = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
+    ordinary = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
+    assert mkdir_dotdot.refused is True
+    assert mkdir_dotdot.code == "unsafe_path"
+    assert mkdir_dotdot.reason == REASON_UNSAFE_PATH
+    assert write_dotdot.refused is True
+    assert write_dotdot.code == "unsafe_path"
+    assert write_dotdot.reason == REASON_UNSAFE_PATH
+    assert direct.refused is True
+    assert direct.code in {"unsafe_path", "protected_location"}
+    assert ordinary.refused is False, ordinary.reason
+
+

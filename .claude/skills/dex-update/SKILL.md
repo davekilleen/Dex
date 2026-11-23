@@ -130,10 +130,20 @@ verify which version is installed (`baseline-not-verified`, or Doctor's
 starting-version repair — the person runs
 `python3 -m core.update.reanchor_cli --dry-run` in their own terminal —
 and do not continue this update until that repair has set a starting
-version. Do not run the repair yourself. When Doctor returns `partial: true`, show the observed
+version. Do not run the repair yourself.
+FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-277).
+If completeness is `UNKNOWN` only because of by-design exclusions
+(`dependency-tree-excluded`, Dex-known `restricted` config, `embedded-secret`)
+or `dev-only-leftover` files, offer
+`python3 -m core.customization_migration.cli tidy-dev-leftovers --dry-run`
+for the leftovers, reassess, and continue. If the Capsule path is still
+unavailable after that, explicitly offer the normal update path with its
+existing backup and snapshot. Never end with "don't update" and no next step.
+When Doctor returns `partial: true`, show the observed
 records and every exclusion path, reason, and guidance as a partial inventory. Do not
 run the Capsule preview or ask for Capsule approval until reassessment returns
-completeness `OK`.
+completeness `OK`. If that Capsule path stays closed, offer the normal update
+path rather than leaving the person with no way forward.
 
 ### Detect and explain
 
