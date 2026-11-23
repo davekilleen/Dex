@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## Unreleased
+## [1.97.36] — Make folders next to Dex, commitments show your open action items, Related tasks stays on project pages, updates no longer dead-end, and Project chat notes are not corrections (2026-11-23)
 
 ### You can make a new folder next to Dex, not only inside it
 
