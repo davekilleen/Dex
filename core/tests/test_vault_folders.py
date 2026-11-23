@@ -10,8 +10,6 @@ import pytest
 
 from core.gates.safety import (
     CODE_NEW_TOP_LEVEL_FOLDER,
-    CODE_PROTECTED_LOCATION,
-    REASON_PROTECTED_LOCATION,
     REASON_UNSAFE_PATH,
     evaluate_safety_gate,
 )
@@ -218,8 +216,8 @@ def test_parent_dir_through_vault_symlink_is_refused(tmp_path: Path) -> None:
     direct = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
     ordinary = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
     assert mkdir_dotdot.refused is True
-    assert mkdir_dotdot.code == CODE_PROTECTED_LOCATION
-    assert mkdir_dotdot.reason == REASON_PROTECTED_LOCATION
+    assert mkdir_dotdot.code == "unsafe_path"
+    assert mkdir_dotdot.reason == REASON_UNSAFE_PATH
     assert write_dotdot.refused is True
     assert write_dotdot.code == "unsafe_path"
     assert write_dotdot.reason == REASON_UNSAFE_PATH

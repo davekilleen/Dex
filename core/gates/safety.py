@@ -9,7 +9,6 @@ refusal. Claude's wrapper exits 2 after the same function returns a block.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
 import re
@@ -24,7 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.path_safety import unsafe_existing_parent
-from core.vault_folders import _tokenize, new_top_level_folder_reason
+from core.vault_folders import mkdir_targets, new_top_level_folder_reason
 from core.vault_selection import VaultSelectionError, select_vault
 
 DECISION_BLOCK = "block"
@@ -87,15 +86,9 @@ SQL_DROP = re.compile(r"(DROP\s+TABLE|DROP\s+DATABASE)", re.IGNORECASE)
 GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
-_MKDIR_GLOB_CHARS = frozenset("*?[")
-_MKDIR_NAME_OBFUSCATION = frozenset("'\"\\$")
-_MKDIR_COMMAND_SEPARATORS = frozenset("\n\r\0")
-_MKDIR_BANNED_WORD = re.compile(
-    r"(?:^|\s)(?:cd|pushd|command|env|sudo|xargs|busybox|exec)(?:\s|$)",
-    re.IGNORECASE,
-)
-_MKDIR_OK_SHORT = frozenset("pv")
 CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "${HOME}", "/Users"})
+_STRICT_MKDIR_FLAGS = frozenset({"-p", "--parents"})
+_STRICT_MKDIR_PATH_CHARS = re.compile(r"^[A-Za-z0-9._/~-]+$")
 _PROTECTED_SYSTEM_PREFIXES = (
     "/etc",
     "/System",
@@ -819,175 +812,61 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     return REASON_UNSAFE_PATH if reason else None
 
 
-def _dollar_form_is_disallowed(command: str) -> bool:
-    """True when *command* has a ``$`` that is not a recognized home or temp form."""
-    allowed = ("${HOME}", "$HOME", "$TMPDIR", "$TEMP", "$TMP")
-    index = 0
-    length = len(command)
-    while index < length:
-        pos = command.find("$", index)
-        if pos < 0:
-            return False
-        rest = command[pos:]
-        matched = False
-        for prefix in allowed:
-            if not rest.startswith(prefix):
-                continue
-            if len(rest) == len(prefix) or rest[len(prefix)] in "/\\ \t":
-                index = pos + len(prefix)
-                matched = True
-                break
-        if matched:
-            continue
-        return True
-    return False
+def _is_strict_mkdir_path(path: str) -> bool:
+    """True for one allow-listed mkdir operand.
 
-
-def _tilde_form_is_disallowed(command: str) -> bool:
-    """True when *command* has a ``~`` that is not exact ``~`` or ``~/...``."""
-    index = 0
-    length = len(command)
-    while index < length:
-        pos = command.find("~", index)
-        if pos < 0:
-            return False
-        rest = command[pos:]
-        if len(rest) == 1 or rest[1] in "/\\ \t":
-            index = pos + 1
-            continue
-        return True
-    return False
-
-
-def _command_looks_like_mkdir(command: str) -> bool:
-    """True when the command should be judged as mkdir, then fail closed.
-
-    Detection refuses more spellings rather than decoding wrappers. The
-    letters ``mkdi`` (case-insensitive) cover ``mkdir``, ``mkdi*``, and
-    ``/bin/mkdi*``. A whitespace token whose basename is a glob (not a lone
-    ``*`` or ``?``) that matches ``mkdir`` covers ``mkd??``. A malformed glob
-    is treated as mkdir. Quote, backslash, or ``$`` in the first token is an
-    obfuscated command name. Newline, CR, and NUL are command separators.
-    Stripping quotes and backslashes from the first token still yields
-    ``mkdir`` for spellings such as ``'mk'dir``.
+    Optional leading ``~/``, ``$HOME/``, or ``${HOME}/``. The rest is only
+    ``[A-Za-z0-9._/~-]``. No ``..`` segment and no ``~user``.
     """
-    if _MKDIR_COMMAND_SEPARATORS.intersection(command):
-        return True
-    if "mkdi" in command.lower():
-        return True
-    parts = command.split()
-    for token in parts:
-        basename = os.path.basename(token)
-        if not _MKDIR_GLOB_CHARS.intersection(basename):
-            continue
-        if basename in {"*", "?"}:
-            continue
-        try:
-            matched = fnmatch.fnmatch("mkdir", basename)
-        except Exception:
-            return True
-        if matched:
-            return True
-    first = parts[0] if parts else ""
-    if first and _MKDIR_NAME_OBFUSCATION.intersection(first):
-        return True
-    plain = first.replace("'", "").replace('"', "").replace("\\", "").casefold()
-    return plain == "mkdir" or plain.endswith("/mkdir")
-
-
-def _is_bare_mkdir_prefix(command: str) -> bool:
-    stripped = command.lstrip()
-    if len(stripped) < 5 or stripped[:5].lower() != "mkdir":
+    if not path:
         return False
-    return len(stripped) == 5 or stripped[5].isspace()
+    if any(part == ".." for part in path.split("/")):
+        return False
+    rest = path
+    if path.startswith("~/"):
+        rest = path[2:]
+    elif path.startswith("$HOME/"):
+        rest = path[6:]
+    elif path.startswith("${HOME}/"):
+        rest = path[8:]
+    elif path.startswith("~") or path.startswith("$"):
+        return False
+    if rest == "":
+        return True
+    return _STRICT_MKDIR_PATH_CHARS.fullmatch(rest) is not None
 
 
-def _mkdir_syntax_fail_closed(command: str) -> bool:
-    # Refuse shell syntax rather than parse it. Redirects (>, >>, >|, &>, <, <<)
-    # must fail closed so an attached target is never treated as a mkdir operand.
-    # Newline, CR, and NUL are command separators, not operand whitespace.
-    if _MKDIR_COMMAND_SEPARATORS.intersection(command):
-        return True
-    if re.search(r"[;&|`<>]", command) or "$(" in command or "$ (" in command:
-        return True
-    if "\\" in command or re.search(r"[*?[]", command):
-        return True
-    if _MKDIR_BANNED_WORD.search(command):
-        return True
-    if _dollar_form_is_disallowed(command) or _tilde_form_is_disallowed(command):
-        return True
-    # ${HOME} is the only allowed brace form; leftover { } is expansion or unknown syntax.
-    leftover = command.replace("${HOME}", "")
-    if "{" in leftover or "}" in leftover:
-        return True
-    return False
+def _parse_strict_mkdir_command(command: str) -> list[str] | None:
+    """Return operands when *command* fully matches the outside-vault allow-list.
 
-
-def _simple_mkdir_operands(command: str) -> list[str] | None:
-    """Return mkdir operands, or None when the command is not a simple mkdir."""
-    if not _is_bare_mkdir_prefix(command):
+    The only matching form is ``mkdir`` with optional `` -p`` or `` --parents``,
+    then one or more space-separated paths. Anything else is not this exception.
+    """
+    if not command or any(char in command for char in "\n\r\0"):
         return None
-    if _mkdir_syntax_fail_closed(command):
+    parts = command.split(" ")
+    if not parts or parts[0] != "mkdir":
         return None
-    stripped = command.lstrip()
-    tokens = _tokenize(stripped[5:])
-    operands: list[str] = []
-    skip_next = False
-    end_opts = False
-    for token in tokens:
-        if skip_next:
-            if not token:
-                return None
-            skip_next = False
-            continue
-        if not end_opts:
-            if token == "--":
-                end_opts = True
-                continue
-            if token in {"-p", "-v", "--parents"}:
-                continue
-            if token in {"-m", "--mode"}:
-                skip_next = True
-                continue
-            if token.startswith("--mode="):
-                if token == "--mode=":
-                    return None
-                continue
-            if token.startswith("--"):
-                return None
-            if token.startswith("-"):
-                body = token[1:]
-                if body and all(char in _MKDIR_OK_SHORT for char in body):
-                    continue
-                return None
-        operands.append(token)
-    if skip_next:
+    index = 1
+    if index < len(parts) and parts[index] in _STRICT_MKDIR_FLAGS:
+        index += 1
+    paths = parts[index:]
+    if not paths or any(part == "" for part in paths):
         return None
-    return operands
+    if any(not _is_strict_mkdir_path(part) for part in paths):
+        return None
+    return paths
 
 
-def _evaluate_mkdir_command(
-    command: str,
+def _evaluate_allowed_mkdir_paths(
+    paths: list[str],
     *,
     root: Path,
     workdir: Path,
     allow_os_temp: bool,
 ) -> GateDecision | None:
-    """Refuse or allow a mkdir command. None means the command is not mkdir.
-
-    Any command that looks like mkdir — the letters ``mkdi``, a glob that
-    matches mkdir, an obfuscated first token, or a newline/CR/NUL separator —
-    must be a simple bare mkdir. Wrapper, quoted, globbed, concatenated, and
-    path-prefixed spellings are refused rather than parsed.
-    """
-    if not _command_looks_like_mkdir(command):
-        return None
-    operands = _simple_mkdir_operands(command)
-    if operands is None:
-        return GateDecision(
-            DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
-        )
-    for target in operands:
+    """Refuse one allow-listed mkdir operand, or None when every path is allowed."""
+    for target in paths:
         decision = _shell_target_decision(
             target,
             root=root,
@@ -997,7 +876,7 @@ def _evaluate_mkdir_command(
         )
         if decision is not None:
             return decision
-    return ALLOW
+    return None
 
 
 def _resolve_shell_target(target: str, workdir: Path) -> str:
@@ -1101,14 +980,34 @@ def evaluate_safety_gate(
         if folder_reason:
             return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
     if command_text:
-        mkdir_decision = _evaluate_mkdir_command(
-            command_text,
-            root=root,
-            workdir=workdir,
-            allow_os_temp=allow_os_temp,
-        )
-        if mkdir_decision is not None:
-            return mkdir_decision
+        allowed_paths = _parse_strict_mkdir_command(command_text)
+        if allowed_paths is not None:
+            mkdir_decision = _evaluate_allowed_mkdir_paths(
+                allowed_paths,
+                root=root,
+                workdir=workdir,
+                allow_os_temp=allow_os_temp,
+            )
+            return ALLOW if mkdir_decision is None else mkdir_decision
+        for target in mkdir_targets(command_text):
+            if _is_catastrophic_path(target) or _is_unjoined_shell_target(target):
+                resolved_target = target
+            else:
+                resolved_target = str(workdir / target)
+            if allow_os_temp and _is_os_temp_path(target):
+                continue
+            if _is_temp_env_specifier(target):
+                return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
+            target_path_reason = _unsafe_path_reason(resolved_target, root)
+            if target_path_reason:
+                return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
+            target_folder_reason = new_top_level_folder_reason(
+                root, resolved_target, as_directory=True
+            )
+            if target_folder_reason:
+                return GateDecision(
+                    DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
+                )
         if CHMOD_777.search(command_text):
             return GateDecision(DECISION_ALLOW, REASON_CHMOD_777, CODE_CHMOD_777, 0)
         if KILL_9.search(command_text):

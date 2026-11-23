@@ -254,8 +254,7 @@ def _tokenize(text: str) -> list[str]:
         if char in {'"', "'"}:
             quote = char
             continue
-        # Newline, CR, and NUL are command separators, not operand whitespace.
-        if char.isspace() and char not in "\n\r\x00":
+        if char.isspace():
             if current:
                 tokens.append("".join(current))
                 current = []

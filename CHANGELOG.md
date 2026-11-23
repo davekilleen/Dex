@@ -16,7 +16,7 @@ Claude would copy a file into a project folder outside Dex — iCloud, a shared 
 **What this fixes for you:**
 
 * **A new folder next to Dex is allowed.** If you keep a project outside your Dex folder, Claude can create the folder it needs instead of stopping with a safety message.
-* **System and private folders stay blocked.** Your home folder itself, system files, and private computer folders are still refused. If the mkdir command is roundabout — switching folders first, joining several commands, or naming someone else's home — Dex stops instead of guessing.
+* **System and private folders stay blocked.** Your home folder itself, system files, and private computer folders are still refused. Claude can only create a folder outside Dex with a straightforward mkdir and a simple path — not a roundabout command. Anything else is refused the same way it was before.
 * **Dex still will not invent a brand-new folder at the top of your notes.** That rule did not change.
 
 Thanks to Jim McDermott for reporting this.

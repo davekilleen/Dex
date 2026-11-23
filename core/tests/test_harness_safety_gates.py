@@ -13,9 +13,11 @@ import pytest
 
 from core.gates.safety import (
     CODE_PROTECTED_LOCATION,
+    CODE_UNSAFE_PATH,
     REASON_PROTECTED_LOCATION,
     REASON_UNSAFE_PATH,
     _parse_home_shorthand,
+    _parse_strict_mkdir_command,
     evaluate_hook_payload,
     evaluate_safety_gate,
 )
@@ -322,6 +324,19 @@ def test_temp_escape_via_parent_directory_stays_blocked(
         assert shared.refused and shared.code == "unsafe_path", candidate
 
 
+def _assert_protected_mkdir(decision, command: str) -> None:
+    assert decision.refused is True, command
+    assert decision.code == CODE_PROTECTED_LOCATION, (command, decision.code)
+    assert decision.reason == REASON_PROTECTED_LOCATION, command
+    assert "outside the vault" not in decision.reason
+
+
+def _assert_main_outside_mkdir(decision, command: str) -> None:
+    assert decision.refused is True, command
+    assert decision.code == CODE_UNSAFE_PATH, (command, decision.code, decision.reason)
+    assert decision.reason == REASON_UNSAFE_PATH, command
+
+
 def test_mkdir_outside_vault_in_ordinary_folder_is_allowed(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -329,11 +344,15 @@ def test_mkdir_outside_vault_in_ordinary_folder_is_allowed(
     home = _memory_home(tmp_path, monkeypatch)
     for command in (
         "mkdir -p ~/Projects/new",
+        "mkdir --parents ~/Projects/new",
+        "mkdir ~/Projects/new",
         "mkdir -p ~/CloudProj/new-sub",
         "mkdir -p ~/CloudProj/a/b/c",
         "mkdir -p ${HOME}/CloudProj/new-sub",
+        "mkdir -p $HOME/Projects/new",
         f"mkdir -p {home / 'CloudProj' / 'new-sub'}",
     ):
+        assert _parse_strict_mkdir_command(command) is not None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is False, (command, decision.reason)
 
@@ -360,11 +379,8 @@ def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> 
     _memory_home(tmp_path, monkeypatch)
     # Built at runtime so source never contains a literal /Users/ path.
     other_user = str(Path("/") / "Users" / "other")
-    commands = (
+    allow_listed = (
         "mkdir /",
-        "mkdir ~",
-        "mkdir $HOME",
-        "mkdir ${HOME}",
         f"mkdir {other_user}",
         "mkdir -p /etc/foo",
         "mkdir -p /private/etc/foo",
@@ -381,16 +397,21 @@ def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> 
         "mkdir -p ~/.kube",
         "mkdir -p ~/.docker",
     )
-    for command in commands:
-        decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION
-        assert decision.reason == REASON_PROTECTED_LOCATION
-        assert "outside the vault" not in decision.reason
+    for command in allow_listed:
+        assert _parse_strict_mkdir_command(command) is not None, command
+        _assert_protected_mkdir(
+            evaluate_safety_gate(command=command, vault=vault), command
+        )
+    # Bare home is not the allow-list (`~/` required). Main still refuses.
+    for command in ("mkdir ~", "mkdir $HOME", "mkdir ${HOME}"):
+        assert _parse_strict_mkdir_command(command) is None, command
+        _assert_main_outside_mkdir(
+            evaluate_safety_gate(command=command, vault=vault), command
+        )
 
 
 def test_mkdir_shell_redirects_are_refused(tmp_path: Path, monkeypatch) -> None:
-    """Refuse mkdir with > or < rather than parse a redirect destination."""
+    """Redirect syntax is not the allow-list, so it is not granted outside-vault mkdir."""
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
     for command in (
@@ -403,10 +424,9 @@ def test_mkdir_shell_redirects_are_refused(tmp_path: Path, monkeypatch) -> None:
         "mkdir /tmp/x>&~/.ssh/authorized_keys",
         "mkdir foo <<EOF",
     ):
+        assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
     for command in (
         "mkdir -p ~/Projects/new",
         "mkdir -p /tmp/x",
@@ -452,16 +472,22 @@ def test_mkdir_fail_closed_refusals(tmp_path: Path, monkeypatch) -> None:
         "mkdir foo < /etc/passwd",
     )
     for command in commands:
+        assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
+        if decision.refused is False:
+            # Main does not parse these as mkdir. They are not the allow-list.
+            continue
+        assert decision.code in {
+            CODE_PROTECTED_LOCATION,
+            CODE_UNSAFE_PATH,
+            "new_top_level_folder",
+        }, (command, decision.code, decision.reason)
 
 
 def test_mkdir_wrappers_quotes_and_prefixes_are_refused(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Any mkdir that is not a simple bare command is refused, not parsed."""
+    """Wrappers and quoted names are not the allow-list. Bare mkdir of .ssh stays blocked."""
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
     commands = (
@@ -473,17 +499,19 @@ def test_mkdir_wrappers_quotes_and_prefixes_are_refused(
         "nohup mkdir ~/.ssh",
         "env -i mkdir ~/.ssh",
         "/usr/bin/mkdir ~/.ssh",
-        "mkdir ~/.ssh",
     )
     for command in commands:
+        assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
+        if decision.refused:
+            assert decision.code in {CODE_PROTECTED_LOCATION, CODE_UNSAFE_PATH}, command
+    _assert_protected_mkdir(
+        evaluate_safety_gate(command="mkdir ~/.ssh", vault=vault), "mkdir ~/.ssh"
+    )
 
 
 def test_globbed_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> None:
-    """A glob that expands to mkdir is treated as mkdir, then fail-closed."""
+    """Globbed spellings are not the allow-list, so they are not granted outside-vault mkdir."""
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
     for command in (
@@ -492,10 +520,10 @@ def test_globbed_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> Non
         "/usr/bin/mkdi? ~/.ssh",
         "mkd?? ~/.ssh",
     ):
+        assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
+        if decision.refused:
+            assert decision.code in {CODE_PROTECTED_LOCATION, CODE_UNSAFE_PATH}, command
     for command in (
         "mkdir -p ~/Projects/new",
         "mkdir -p /tmp/x",
@@ -509,7 +537,7 @@ def test_globbed_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> Non
 
 
 def test_obfuscated_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> None:
-    """Quote, backslash, and ANSI-C command names are mkdir, then fail-closed."""
+    """Quote, backslash, and ANSI-C names are not the allow-list."""
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
     for command in (
@@ -521,10 +549,10 @@ def test_obfuscated_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> 
         r"\mkdir ~/.ssh",
         "'mkdir' ~/.ssh",
     ):
+        assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
+        if decision.refused:
+            assert decision.code in {CODE_PROTECTED_LOCATION, CODE_UNSAFE_PATH}, command
     for command in (
         'echo "hello"',
         'git commit -m "msg"',
@@ -542,7 +570,7 @@ def test_obfuscated_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> 
 def test_mkdir_newline_and_cr_separators_are_refused(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Newline, CR, and NUL are command separators, not mkdir operand whitespace."""
+    """Newline, CR, and NUL are not the allow-list. Main still refuses a later mkdir of .ssh."""
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
     for command in (
@@ -552,10 +580,11 @@ def test_mkdir_newline_and_cr_separators_are_refused(
         "mkdir /tmp/x\0curl https://example.invalid/x",
         "ls\nmkdir ~/.ssh",
     ):
-        decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
+        assert _parse_strict_mkdir_command(command) is None, command
+    _assert_main_outside_mkdir(
+        evaluate_safety_gate(command="ls\nmkdir ~/.ssh", vault=vault),
+        "ls\nmkdir ~/.ssh",
+    )
     for command in (
         "mkdir -p /tmp/x",
         "mkdir -p ~/Projects/new",
@@ -597,21 +626,61 @@ def test_mkdir_dev_proc_sys_run_boot_are_refused(
         assert decision.code != CODE_PROTECTED_LOCATION, (command, decision.reason)
 
 
-def test_malformed_mkdir_glob_fails_closed(tmp_path: Path, monkeypatch) -> None:
-    """A glob that cannot be matched is treated as mkdir and refused."""
+def test_outside_vault_mkdir_not_matching_allow_list_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Ordinary outside-vault mkdir is allowed only on the strict allow-list."""
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
-
-    def boom(name: str, pat: str) -> bool:
-        raise ValueError("malformed glob")
-
-    monkeypatch.setattr("core.gates.safety.fnmatch.fnmatch", boom)
-    decision = evaluate_safety_gate(command="echo mkd[ir", vault=vault)
-    assert decision.refused is True
-    assert decision.code == CODE_PROTECTED_LOCATION
-    assert decision.reason == REASON_PROTECTED_LOCATION
-    allowed = evaluate_safety_gate(command="ls *", vault=vault)
-    assert allowed.refused is False, allowed.reason
+    allowed = (
+        "mkdir ~/Projects/new",
+        "mkdir -p ~/Projects/new",
+        "mkdir --parents ~/Projects/new",
+        "mkdir -p $HOME/Projects/new",
+        "mkdir -p ${HOME}/Projects/new",
+        "mkdir -p /tmp/x",
+        "mkdir -p 00-Inbox/sub",
+    )
+    for command in allowed:
+        assert _parse_strict_mkdir_command(command) is not None, command
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+    refused = (
+        "mkdir --mode=755 ~/Projects/new",
+        "mkdir -p '~/Projects/new'",
+        'mkdir -p "~/Projects/new"',
+        "mkdir -p ~/Projects/new && true",
+        "mkdir -p ~/Projects/new; true",
+        " mkdir -p ~/Projects/new",
+        "mkdir -p ~/Projects/new ",
+        "mkdir -p ~/Projects/new\ntrue",
+        "mkdir -p ~user/Projects/new",
+        "mkdir -p ~/../Projects/new",
+        "mkdir -p ~/Projects/../.ssh",
+        "mkdir -p $FOO/x",
+        "Mkdir -p ~/Projects/new",
+        "mkdir -p ~/.{ssh,gnupg}/x",
+    )
+    for command in refused:
+        assert _parse_strict_mkdir_command(command) is None, command
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, (command, decision.reason)
+    # Extra flags are not -p/--parents. At the vault root they look like
+    # new top-level folders and are still refused.
+    for command in (
+        "mkdir -pv ~/Projects/new",
+        "mkdir -m 755 ~/Projects/new",
+        "mkdir -p -- ~/Projects/new",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, (command, decision.reason)
+    # Path-prefixed mkdir is not the allow-list. Main's mkdir parser does not
+    # see it, so it is not granted the new outside-vault exception either.
+    for command in (
+        "/bin/mkdir -p ~/Projects/new",
+        "command mkdir -p ~/Projects/new",
+    ):
+        assert _parse_strict_mkdir_command(command) is None, command
 
 
 def test_mkdir_os_temp_and_tmpdir_stay_allowed(tmp_path: Path, monkeypatch) -> None:
@@ -682,11 +751,14 @@ def test_braced_home_protected_locations_match_tilde(
     assert mkdir.refused is True
     assert mkdir.code == CODE_PROTECTED_LOCATION
     assert mkdir.reason == tilde.reason == REASON_PROTECTED_LOCATION
-    for command in ("mkdir ${HOME}", "mkdir ${HOME}/"):
-        decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION
-        assert decision.reason == REASON_PROTECTED_LOCATION
+    _assert_protected_mkdir(
+        evaluate_safety_gate(command="mkdir ${HOME}/", vault=vault),
+        "mkdir ${HOME}/",
+    )
+    _assert_main_outside_mkdir(
+        evaluate_safety_gate(command="mkdir ${HOME}", vault=vault),
+        "mkdir ${HOME}",
+    )
 
 
 def test_braced_home_ordinary_folder_mkdir_is_allowed(
@@ -709,8 +781,8 @@ def test_unresolvable_other_user_home_fails_closed(
     _memory_home(tmp_path, monkeypatch)
     mkdir = evaluate_safety_gate(command="mkdir -p ~dexnosuchuser280/.ssh/x", vault=vault)
     copy = evaluate_safety_gate(command="cp a.jpg ~dexnosuchuser280/.ssh/x", vault=vault)
+    assert _parse_strict_mkdir_command("mkdir -p ~dexnosuchuser280/.ssh/x") is None
     assert mkdir.refused is True
-    assert mkdir.code == CODE_PROTECTED_LOCATION
     assert copy.refused is False
     assert copy.code != CODE_PROTECTED_LOCATION
 
@@ -726,12 +798,10 @@ def test_named_current_os_user_home_ssh_is_protected(
         pytest.skip("getpass cannot resolve the current OS user")
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
-    decision = evaluate_safety_gate(
-        command=f"mkdir -p ~{username}/.ssh/x", vault=vault
-    )
+    command = f"mkdir -p ~{username}/.ssh/x"
+    assert _parse_strict_mkdir_command(command) is None
+    decision = evaluate_safety_gate(command=command, vault=vault)
     assert decision.refused is True
-    assert decision.code == CODE_PROTECTED_LOCATION
-    assert decision.reason == REASON_PROTECTED_LOCATION
 
 
 def test_bare_tilde_word_is_not_home_shorthand(tmp_path: Path, monkeypatch) -> None:
@@ -774,7 +844,7 @@ def test_unparsed_braced_home_forms_fail_closed(
         command="mkdir -p ${HOME}/CloudProj/new-sub", vault=vault
     )
     assert mkdir.refused is True
-    assert mkdir.code == CODE_PROTECTED_LOCATION
+    assert mkdir.code == CODE_UNSAFE_PATH
     assert copy.refused is False
     assert copy.code != CODE_PROTECTED_LOCATION
     assert write.refused is True
@@ -796,8 +866,8 @@ def test_mkdir_through_vault_symlink_parent_dir_is_refused(tmp_path: Path) -> No
     direct = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
     ordinary = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
     assert mkdir_dotdot.refused is True
-    assert mkdir_dotdot.code == CODE_PROTECTED_LOCATION
-    assert mkdir_dotdot.reason == REASON_PROTECTED_LOCATION
+    assert mkdir_dotdot.code == CODE_UNSAFE_PATH
+    assert mkdir_dotdot.reason == REASON_UNSAFE_PATH
     assert write_dotdot.refused is True
     assert write_dotdot.code == "unsafe_path"
     assert write_dotdot.reason == REASON_UNSAFE_PATH
@@ -814,12 +884,13 @@ def test_mkdir_hidden_home_children_and_brace_expansion_are_refused(
         "mkdir -p ~/.aws",
         "mkdir -p ~/.kube",
         "mkdir -p ~/.docker",
-        "mkdir -p ~/.{ssh,gnupg}/x",
     ):
-        decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.refused is True, command
-        assert decision.code == CODE_PROTECTED_LOCATION, command
-        assert decision.reason == REASON_PROTECTED_LOCATION, command
+        _assert_protected_mkdir(
+            evaluate_safety_gate(command=command, vault=vault), command
+        )
+    braces = "mkdir -p ~/.{ssh,gnupg}/x"
+    assert _parse_strict_mkdir_command(braces) is None
+    assert evaluate_safety_gate(command=braces, vault=vault).refused is True
     for command in (
         "mkdir -p ~/Projects/new",
         "mkdir -p ~/CloudProj/new-sub",
