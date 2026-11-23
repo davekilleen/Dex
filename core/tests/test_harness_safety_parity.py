@@ -355,3 +355,31 @@ def test_native_safety_decides_without_optional_context_dependencies(vaults, tar
     )
     assert result.returncode == expected, result.stdout + result.stderr
     assert not (root / "safe.md").exists()
+
+
+def _refused_in_protocol(result, protocol):
+    if protocol in {"cursor", "gemini"} and not result.stdout.strip():
+        return False
+    if protocol == "cursor":
+        return result.returncode == 0 and json.loads(result.stdout)["permission"] == "deny"
+    if protocol == "gemini":
+        return result.returncode == 0 and json.loads(result.stdout)["decision"] == "deny"
+    return result.returncode == 2
+
+
+@pytest.mark.parametrize("protocol", ["native", "claude", "codex", "cursor", "gemini"])
+def test_r3_shell_writes_agree_across_hooks(vaults, tmp_path, protocol):
+    """R3 (gtm-lab #741): ordinary cp allowed, protected redirect refused, on every hook."""
+    root = vaults[0]
+    home = tmp_path / "home"
+    (home / "Documents").mkdir(parents=True)
+    env = {"HOME": str(home), "DEX_VAULT_PATH": str(root)}
+    native = protocol == "native"
+    host = "claude" if native else protocol
+    allowed = hook(root, proposal(root, "Bash", command="cp a.jpg ~/Documents/x"),
+                   native=native, protocol=host, env=env)
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    assert not _refused_in_protocol(allowed, "claude" if native else protocol)
+    refused = hook(root, proposal(root, "Bash", command="echo k >> ~/.ssh/authorized_keys"),
+                   native=native, protocol=host, env=env)
+    assert _refused_in_protocol(refused, "claude" if native else protocol), refused.stdout + refused.stderr
