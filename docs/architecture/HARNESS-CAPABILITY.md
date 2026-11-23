@@ -93,7 +93,7 @@ OS timer cannot substitute without changing the product.
 | --- | --- | --- |
 | `person-context-injector.cjs` | `PreToolUse` / Read | Injects the matching person page **before that file is read** |
 | `company-context-injector.cjs` | `PreToolUse` / Read | Same for company pages |
-| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Blocks unsafe shell / MCP **before the call runs**. Outside the vault, shell `mkdir` in an ordinary folder is allowed; system and private folders stay blocked. File tools stay vault-confined. |
+| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Blocks unsafe shell / MCP **before the call runs**. Outside the vault, shell `mkdir` in an ordinary folder is allowed; system and private folders stay blocked. Shell `cp`/`mv`/`curl`/`tee` and redirect writes into those folders are refused too, as are write commands Dex can't fully read. File tools stay vault-confined. |
 | `ensure-mcp-user-scope.cjs` | `PreToolUse` / Bash | Requires an explicit scope for `claude mcp add` |
 | `soft-promise-detector.py` | `UserPromptSubmit` | Offers to capture a commitment **in the message just sent** |
 | `health-pulse.sh` | `UserPromptSubmit` | Mid-session stale-health nudge; must interrupt *this* conversation |
@@ -145,7 +145,7 @@ functions — no behaviour fork.
 | --- | --- | --- | --- |
 | Session boot (pillars, quarter goals, week priorities, urgent tasks) | `core/context/session_boot.py` | `boot_today` | `session-start.sh` |
 | Person inject-on-read | `core/context/person_context.py` | `get_person_context` | `person-context-injector.cjs` |
-| Destructive command / unsafe path decision | `core/gates/safety.py` | `check_safety_gate` | `dex-safety-guard.sh` (enforcing wrapper). Shell `mkdir` outside the vault is allowed in ordinary folders and blocked only for system/home-root locations; a new top-level folder inside the vault is still refused. |
+| Destructive command / unsafe path decision | `core/gates/safety.py` | `check_safety_gate` | `dex-safety-guard.sh` (enforcing wrapper). Shell `mkdir` outside the vault is allowed in ordinary folders and blocked only for system/home-root locations; a new top-level folder inside the vault is still refused. Shell `cp`/`mv`/`curl`/`tee` and redirect writes get the same protected-folder check, and write commands the strict grammar can't read are refused (`unchecked_shell_write`). |
 | Archives and Resources folder location | `core/vault_folders.py` | `locate_vault_folders` | Same safety gate refuses a new top-level folder |
 
 The generated `packages/dex-agent-plugin/` package vendors those exact source

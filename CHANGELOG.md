@@ -7,6 +7,21 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Claude can't copy, download or write into your private or system folders
+
+Claude could already be stopped from making folders in places like your SSH keys or system files, but a copy, move, download or `>` into those same places wasn't checked.
+
+**What this fixes for you:**
+
+* **Private and system folders are protected from every simple write.** Copying, moving, downloading or writing into places like your SSH keys, cloud passwords, settings files or system folders is refused, the same way making a folder there already was.
+* **Ordinary folders still work.** Copying a file to Documents, a project folder next to Dex, or the scratch folder works as before.
+* **Cloud folders and external drives work.** Writing into your Google Drive, Dropbox, OneDrive or iCloud Drive folder, or onto a USB or external drive, is allowed. The rest of your Mac's Library and system areas stay blocked.
+* **Commands Dex can't read are stopped, not guessed.** If a command writes somewhere Dex can't work out (a loop, a variable, a wrapped command such as `sudo`, or an installer piped into a shell), Claude is asked to use a plain command instead.
+
+---
+
 ## [1.97.36] — Make folders next to Dex, commitments show your open action items, Related tasks stays on project pages, updates no longer dead-end, and Project chat notes are not corrections (2026-11-23)
 
 ### You can make a new folder next to Dex, not only inside it

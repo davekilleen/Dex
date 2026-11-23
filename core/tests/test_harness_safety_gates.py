@@ -13,6 +13,7 @@ import pytest
 
 from core.gates.safety import (
     CODE_PROTECTED_LOCATION,
+    CODE_UNCHECKED_SHELL_WRITE,
     CODE_UNSAFE_PATH,
     REASON_PROTECTED_LOCATION,
     REASON_UNSAFE_PATH,
@@ -357,23 +358,6 @@ def test_mkdir_outside_vault_in_ordinary_folder_is_allowed(
         assert decision.refused is False, (command, decision.reason)
 
 
-def test_cp_mv_curl_redirect_match_main(tmp_path: Path, monkeypatch) -> None:
-    """cp/mv/curl/redirect stay as on main: not refused as protected_location."""
-    vault = _vault(tmp_path)
-    _memory_home(tmp_path, monkeypatch)
-    commands = (
-        "cp a.jpg /etc/foo",
-        "mv a.jpg /etc/foo",
-        "curl -o ~/.ssh/x URL",
-        "echo x > ~/.ssh/authorized_keys",
-        "cp a.jpg ~/CloudProj/",
-    )
-    for command in commands:
-        decision = evaluate_safety_gate(command=command, vault=vault)
-        assert decision.code != CODE_PROTECTED_LOCATION, (command, decision.reason)
-        assert decision.refused is False, (command, decision.reason)
-
-
 def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> None:
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
@@ -508,7 +492,11 @@ def test_mkdir_wrappers_quotes_and_prefixes_are_refused(
         assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
         if decision.refused:
-            assert decision.code in {CODE_PROTECTED_LOCATION, CODE_UNSAFE_PATH}, command
+            assert decision.code in {
+                CODE_PROTECTED_LOCATION,
+                CODE_UNSAFE_PATH,
+                CODE_UNCHECKED_SHELL_WRITE,
+            }, command
     _assert_protected_mkdir(
         evaluate_safety_gate(command="mkdir ~/.ssh", vault=vault), "mkdir ~/.ssh"
     )
@@ -527,14 +515,18 @@ def test_globbed_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> Non
         assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
         if decision.refused:
-            assert decision.code in {CODE_PROTECTED_LOCATION, CODE_UNSAFE_PATH}, command
+            assert decision.code in {
+                CODE_PROTECTED_LOCATION,
+                CODE_UNSAFE_PATH,
+                CODE_UNCHECKED_SHELL_WRITE,
+            }, command
     for command in (
         "mkdir -p ~/Projects/new",
         "mkdir -p /tmp/x",
         "mkdir -p 00-Inbox/sub",
         "ls *",
         "echo *.md",
-        "cp a.jpg /etc/foo",
+        "cp a.jpg ~/Documents/foo",
     ):
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is False, (command, decision.reason)
@@ -556,15 +548,19 @@ def test_obfuscated_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> 
         assert _parse_strict_mkdir_command(command) is None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
         if decision.refused:
-            assert decision.code in {CODE_PROTECTED_LOCATION, CODE_UNSAFE_PATH}, command
+            assert decision.code in {
+                CODE_PROTECTED_LOCATION,
+                CODE_UNSAFE_PATH,
+                CODE_UNCHECKED_SHELL_WRITE,
+            }, command
     for command in (
         'echo "hello"',
         'git commit -m "msg"',
         "mkdir -p $HOME/Projects/new",
         "mkdir -p ~/Projects/new",
-        "cp a.jpg /etc/foo",
-        "mv a.jpg /etc/foo",
-        "curl -o ~/.ssh/x URL",
+        "cp a.jpg ~/Documents/foo",
+        "mv a.jpg ~/Documents/foo",
+        "curl -o ~/Documents/x URL",
     ):
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is False, (command, decision.reason)
@@ -594,7 +590,7 @@ def test_mkdir_newline_and_cr_separators_are_refused(
         "mkdir -p ~/Projects/new",
         "mkdir -p 00-Inbox/sub",
         'echo "hello"',
-        "cp a.jpg /etc/foo",
+        "cp a.jpg ~/Documents/foo",
     ):
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is False, (command, decision.reason)
@@ -621,9 +617,9 @@ def test_mkdir_dev_proc_sys_run_boot_are_refused(
         "mkdir -p /tmp/x",
         "mkdir -p ~/Projects/new",
         "mkdir -p 00-Inbox/sub",
-        "cp a.jpg /etc/foo",
-        "mv a.jpg /etc/foo",
-        "curl -o ~/.ssh/x URL",
+        "cp a.jpg ~/Documents/foo",
+        "mv a.jpg ~/Documents/foo",
+        "curl -o ~/Documents/x URL",
     ):
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is False, (command, decision.reason)
@@ -790,8 +786,9 @@ def test_unresolvable_other_user_home_fails_closed(
     copy = evaluate_safety_gate(command="cp a.jpg ~dexnosuchuser280/.ssh/x", vault=vault)
     assert _parse_strict_mkdir_command("mkdir -p ~dexnosuchuser280/.ssh/x") is None
     assert mkdir.refused is True
-    assert copy.refused is False
-    assert copy.code != CODE_PROTECTED_LOCATION
+    # R3: an unexpanded ~user target is a write Dex can't read.
+    assert copy.refused is True
+    assert copy.code == CODE_UNCHECKED_SHELL_WRITE
 
 
 def test_named_current_os_user_home_ssh_is_protected(
@@ -852,8 +849,9 @@ def test_unparsed_braced_home_forms_fail_closed(
     )
     assert mkdir.refused is True
     assert mkdir.code == CODE_UNSAFE_PATH
-    assert copy.refused is False
-    assert copy.code != CODE_PROTECTED_LOCATION
+    # R3: an unparsed ${HOME…} form in a cp target fails closed.
+    assert copy.refused is True
+    assert copy.code == CODE_UNCHECKED_SHELL_WRITE
     assert write.refused is True
     assert write.code == "unsafe_path"
     assert ordinary.refused is False, ordinary.reason
