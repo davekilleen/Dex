@@ -1212,6 +1212,26 @@ core/lifecycle/schemas/release-catalog-v2.schema.json
 core/lifecycle/secrets.py
 core/lifecycle/service.py
 core/lifecycle/sqlite_snapshot.py
+core/macos/dex-helper/DexHelper.entitlements
+core/macos/dex-helper/Info.plist
+core/macos/dex-helper/Package.swift
+core/macos/dex-helper/README.md
+core/macos/dex-helper/Sources/DexHelper/Authorization.swift
+core/macos/dex-helper/Sources/DexHelper/CalendarOps.swift
+core/macos/dex-helper/Sources/DexHelper/Dispatch.swift
+core/macos/dex-helper/Sources/DexHelper/Errors.swift
+core/macos/dex-helper/Sources/DexHelper/EventFormat.swift
+core/macos/dex-helper/Sources/DexHelper/ReminderFormat.swift
+core/macos/dex-helper/Sources/DexHelper/RemindersOps.swift
+core/macos/dex-helper/Sources/DexHelper/Support.swift
+core/macos/dex-helper/Sources/DexHelperApp/main.swift
+core/macos/dex-helper/Tests/DexHelperTests/AuthorizationMappingTests.swift
+core/macos/dex-helper/Tests/DexHelperTests/FormatTests.swift
+core/macos/dex-helper/Tests/DexHelperTests/ProtocolTests.swift
+core/macos/dex-helper/VERSION
+core/macos/dex-helper/build.sh
+core/macos/dex-helper/release-manifest.json
+core/macos/dex-helper/sign-and-notarize.sh
 core/mcp/CAREER_MCP_README.md
 core/mcp/analytics_helper.py
 core/mcp/analytics_receipts.py
@@ -1497,6 +1517,7 @@ core/tests/test_entity_engine_writers.py
 core/tests/test_entity_index.py
 core/tests/test_entity_pages.py
 core/tests/test_error_queue_lifecycle.py
+core/tests/test_eventkit_ops.py
 core/tests/test_feature_status.py
 core/tests/test_feedback_client_script.py
 core/tests/test_feedback_sweep.py
@@ -1534,6 +1555,9 @@ core/tests/test_health_snapshot.py
 core/tests/test_health_telemetry.py
 core/tests/test_health_telemetry_consent_ux.py
 core/tests/test_health_telemetry_privacy.py
+core/tests/test_helper_json_contract.py
+core/tests/test_helper_release_install.py
+core/tests/test_helper_universal_build.py
 core/tests/test_historic_fleet_darwin_workflow.py
 core/tests/test_history_hygiene.py
 core/tests/test_hooks_gitignore.py
@@ -1575,6 +1599,7 @@ core/tests/test_lifecycle_relocated_vault.py
 core/tests/test_lifecycle_service_contract.py
 core/tests/test_lifecycle_topology_migration.py
 core/tests/test_local_git.py
+core/tests/test_macos_privacy_helper.py
 core/tests/test_manifest_lifecycle_paths.py
 core/tests/test_manual_note_match.py
 core/tests/test_mcp_lifecycle_forward.py
@@ -1745,6 +1770,7 @@ core/utils/credential_workflow.py
 core/utils/dex_logger.py
 core/utils/doctor.py
 core/utils/entity_pages.py
+core/utils/eventkit_ops.py
 core/utils/feature_status.py
 core/utils/feedback_sweep.py
 core/utils/file_lock.py
@@ -1758,6 +1784,7 @@ core/utils/learning_routing.py
 core/utils/learning_title.py
 core/utils/learning_title_backfill.py
 core/utils/local_git.py
+core/utils/macos_privacy_helper.py
 core/utils/manifest.py
 core/utils/mcp_handshake.py
 core/utils/mcp_session_lifecycle.py
@@ -1826,6 +1853,7 @@ docs/feedback-loop-contract.md
 docs/gate-omission-audit-2026-08-11.md
 docs/harness-safety-vault-contract.md
 docs/health-telemetry.md
+docs/macos-privacy-helper.md
 docs/meeting-sources.md
 docs/merge-gates.md
 docs/plans/2026-07-23-brain-vault-existing-user-readiness.md
