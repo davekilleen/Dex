@@ -60,6 +60,50 @@ def test_doctor_report_is_normalized_across_the_complete_registry():
     assert all("user_message" not in result.to_dict() for result in envelope.results)
 
 
+def test_verbose_doctor_detail_is_bounded_instead_of_rejecting_the_snapshot():
+    # Doctor writes long-form detail for the person reading the checkup. A
+    # healthy semantic-search probe routinely runs past 2,000 characters; the
+    # adapter must summarise it, not hand it on and lose the whole snapshot.
+    report = _complete_doctor_report()
+    report["checks"][0]["detail"] = "Long healthy evidence.\n" * 200
+
+    normalized = from_doctor_report(report, refresh_id="refresh-001")
+
+    assert normalized.accepted is True
+    assert normalized.errors == ()
+    first = normalized.report.results[0]
+    assert first.verdict == "OK"
+    assert len(first.detail) <= reporter.MAX_DETAIL_LENGTH
+    assert first.detail.startswith("Long healthy evidence. Long healthy evidence.")
+    assert first.detail.endswith("\u2026")
+
+
+def test_reporter_contract_still_rejects_oversized_detail_from_other_reporters():
+    report = _complete_doctor_report()
+    envelope = {
+        "contract": reporter.CONTRACT,
+        "reporter": DOCTOR_REPORTER_IDENTITY.to_dict(),
+        "refresh_id": "refresh-001",
+        "generated_at": NOW.isoformat(),
+        "results": [
+            {
+                "id": f"{DOCTOR_REPORTER_IDENTITY.namespace}/{check['id']}",
+                "check_version": "1.0.0",
+                "verdict": check["verdict"],
+                "detail": (
+                    "x" * (reporter.MAX_DETAIL_LENGTH + 1) if index == 0 else check["detail"]
+                ),
+            }
+            for index, check in enumerate(report["checks"])
+        ],
+    }
+
+    normalized = reporter.normalize_report(envelope, spec=DOCTOR_REPORTER_SPEC, now=NOW)
+
+    assert normalized.accepted is False
+    assert "oversized-detail-0: maximum length is 512" in normalized.errors
+
+
 def test_canonical_reporter_bytes_are_stable_and_only_contain_contract_fields():
     normalized = from_doctor_report(_complete_doctor_report(), refresh_id="refresh-001")
     raw = reporter.canonical_reporter_bytes(normalized.report)

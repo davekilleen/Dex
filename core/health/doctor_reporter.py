@@ -10,9 +10,11 @@ from core.utils import doctor
 from .reporter import (
     CONTRACT,
     DEFAULT_CHECK_VERSION,
+    MAX_DETAIL_LENGTH,
     NormalizationResult,
     ReporterIdentity,
     ReporterSpec,
+    _bounded_text,
     normalize_report,
 )
 
@@ -53,11 +55,17 @@ def from_doctor_report(
             if not isinstance(check, Mapping):
                 raw_results.append(check)
                 continue
+            detail = check.get("detail")
+            if isinstance(detail, str):
+                # Doctor's detail is long-form evidence for the person reading
+                # the checkup; the snapshot carries a bounded summary. Without
+                # this, one verbose but healthy check rejects the whole snapshot.
+                detail = _bounded_text(detail, MAX_DETAIL_LENGTH)
             projected: dict[str, object] = {
                 "id": f"{DOCTOR_REPORTER_IDENTITY.namespace}/{check.get('id', '')}",
                 "check_version": DEFAULT_CHECK_VERSION,
                 "verdict": check.get("verdict"),
-                "detail": check.get("detail"),
+                "detail": detail,
                 "feature": check.get("feature"),
             }
             if "feature_status" in check:
