@@ -377,6 +377,9 @@ def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> 
         "mkdir -p $HOME//.ssh/x",
         "mkdir -p ${HOME}/.ssh",
         "mkdir -p ~/.claude/other",
+        "mkdir -p ~/.aws",
+        "mkdir -p ~/.kube",
+        "mkdir -p ~/.docker",
     )
     for command in commands:
         decision = evaluate_safety_gate(command=command, vault=vault)
@@ -415,6 +418,7 @@ def test_mkdir_fail_closed_refusals(tmp_path: Path, monkeypatch) -> None:
         "mkdir ~user/Projects",
         "/bin/mkdir foo",
         "DEST=x mkdir foo",
+        "mkdir -p ~/.{ssh,gnupg}/x",
     )
     for command in commands:
         decision = evaluate_safety_gate(command=command, vault=vault)
@@ -589,3 +593,50 @@ def test_unparsed_braced_home_forms_fail_closed(
     assert write.refused is True
     assert write.code == "unsafe_path"
     assert ordinary.refused is False, ordinary.reason
+
+
+def test_mkdir_through_vault_symlink_parent_dir_is_refused(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    inbox = vault / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "escape").symlink_to("/etc")
+    mkdir_dotdot = evaluate_safety_gate(
+        command="mkdir -p 00-Inbox/escape/../outside", vault=vault
+    )
+    write_dotdot = evaluate_safety_gate(
+        path="00-Inbox/escape/../secret", vault=vault
+    )
+    direct = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
+    ordinary = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
+    assert mkdir_dotdot.refused is True
+    assert mkdir_dotdot.code == CODE_PROTECTED_LOCATION
+    assert mkdir_dotdot.reason == REASON_PROTECTED_LOCATION
+    assert write_dotdot.refused is True
+    assert write_dotdot.code == "unsafe_path"
+    assert write_dotdot.reason == REASON_UNSAFE_PATH
+    assert direct.refused is True
+    assert ordinary.refused is False, ordinary.reason
+
+
+def test_mkdir_hidden_home_children_and_brace_expansion_are_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "mkdir -p ~/.aws",
+        "mkdir -p ~/.kube",
+        "mkdir -p ~/.docker",
+        "mkdir -p ~/.{ssh,gnupg}/x",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    for command in (
+        "mkdir -p ~/Projects/new",
+        "mkdir -p ~/CloudProj/new-sub",
+        "mkdir -p /tmp/x",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)

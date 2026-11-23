@@ -112,6 +112,7 @@ _PROTECTED_SYSTEM_PREFIXES = (
     "/Applications",
 )
 _PROTECTED_VAR_PREFIXES = ("/var", "/private")
+# Named denylist plus the leading-dot rule in _protected_location_reason.
 _PROTECTED_HOME_CHILDREN = frozenset({"Library", ".ssh", ".gnupg", ".config", ".claude"})
 _FOREIGN_HOME_ROOTS = frozenset({"Users", "home"})
 _WINDOWS_PROTECTED = re.compile(
@@ -305,9 +306,37 @@ def _join_under(base: Path, rest: str) -> Path:
     return Path(os.path.join(base_s, trimmed))
 
 
-def _normalize_write_path(path: Path) -> Path:
-    """Collapse separators and ``..``, then realpath the deepest existing parent."""
-    raw = os.path.normpath(str(path))
+def _has_parent_dir_component(path: str) -> bool:
+    """True when any ``/`` or ``\\``-separated component is exactly ``..``."""
+    return any(part == ".." for part in re.split(r"[/\\]", path))
+
+
+def _collapse_slashes_and_dot_components(raw: str) -> str:
+    """Collapse extra slashes and ``.`` components; leave ``..`` in place."""
+    if raw == "":
+        return raw
+    unified = raw.replace("\\", "/")
+    drive = ""
+    if len(unified) >= 2 and unified[1] == ":" and unified[0].isalpha():
+        drive = unified[:2]
+        unified = unified[2:]
+    is_abs = unified.startswith("/")
+    parts = [part for part in unified.split("/") if part and part != "."]
+    body = "/".join(parts)
+    if is_abs:
+        body = "/" + body if body else "/"
+    return drive + body
+
+
+def _normalize_write_path(path: Path) -> Path | None:
+    """Collapse extra slashes and ``.``, then realpath the deepest existing parent.
+
+    Does not lexically collapse ``..``. A remaining ``..`` component is
+    unresolved: return None so callers refuse.
+    """
+    raw = _collapse_slashes_and_dot_components(str(path))
+    if _has_parent_dir_component(raw):
+        return None
     suffix: list[str] = []
     cursor = raw
     while cursor and not os.path.lexists(cursor):
@@ -326,7 +355,10 @@ def _normalize_write_path(path: Path) -> Path:
     rebuilt = cursor
     for name in reversed(suffix):
         rebuilt = os.path.join(rebuilt, name)
-    return Path(os.path.normpath(rebuilt))
+    collapsed = _collapse_slashes_and_dot_components(rebuilt)
+    if _has_parent_dir_component(collapsed):
+        return None
+    return Path(collapsed)
 
 
 def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
@@ -595,7 +627,10 @@ def _path_for_location_check(candidate: str) -> Path | None:
         return None
     if path.is_absolute():
         return _normalize_write_path(path)
-    return Path(os.path.normpath(str(path)))
+    collapsed = _collapse_slashes_and_dot_components(str(path))
+    if _has_parent_dir_component(collapsed):
+        return None
+    return Path(collapsed)
 
 
 def _resolved_home() -> Path | None:
@@ -613,6 +648,8 @@ def _is_inside_vault(candidate: str, vault: Path) -> bool:
     if not target.is_absolute():
         target = _join_under(vault, str(target))
     target = _normalize_write_path(target)
+    if target is None:
+        return False
     lexical = Path(os.path.normpath(str(target)))
     try:
         roots = {vault, vault.resolve()}
@@ -713,8 +750,11 @@ def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
         except ValueError:
             return None
         if relative.parts:
+            first = relative.parts[0]
+            if first.startswith(".") or first.casefold() == "library":
+                return REASON_PROTECTED_LOCATION
             protected = {name.casefold() for name in _PROTECTED_HOME_CHILDREN}
-            if relative.parts[0].casefold() in protected:
+            if first.casefold() in protected:
                 return REASON_PROTECTED_LOCATION
         return None
     if _is_direct_root_child(resolved):
@@ -738,6 +778,8 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     candidate = _safe_string(path)
     if not candidate:
         return None
+    if _has_parent_dir_component(candidate):
+        return REASON_UNSAFE_PATH
     if vault is not None and _is_this_vault_claude_memory_path(candidate, vault):
         return None
     if _is_catastrophic_path(candidate):
@@ -760,6 +802,8 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
         return REASON_UNSAFE_PATH
     if expanded_path.is_absolute():
         expanded_path = _normalize_write_path(expanded_path)
+        if expanded_path is None:
+            return REASON_UNSAFE_PATH
         try:
             expanded_path.resolve().relative_to(vault.resolve())
         except (OSError, ValueError):
@@ -829,6 +873,10 @@ def _mkdir_syntax_fail_closed(command: str) -> bool:
     if _MKDIR_BANNED_WORD.search(command):
         return True
     if _dollar_form_is_disallowed(command) or _tilde_form_is_disallowed(command):
+        return True
+    # ${HOME} is the only allowed brace form; leftover { } is expansion or unknown syntax.
+    leftover = command.replace("${HOME}", "")
+    if "{" in leftover or "}" in leftover:
         return True
     return False
 
@@ -920,6 +968,10 @@ def _shell_target_decision(
 ) -> GateDecision | None:
     """Refuse one mkdir/write operand, or None when the shell target is allowed."""
     resolved_target = _resolve_shell_target(target, workdir)
+    if _has_parent_dir_component(target) or _has_parent_dir_component(resolved_target):
+        return GateDecision(
+            DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
+        )
     if _is_catastrophic_path(target) or _is_catastrophic_path(resolved_target):
         return GateDecision(
             DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
@@ -987,6 +1039,8 @@ def evaluate_safety_gate(
         if GITHUB_REPO_DELETE.search(command_text):
             return GateDecision(DECISION_BLOCK, REASON_GITHUB_DELETE, CODE_GITHUB_REPO_DELETE, 2)
 
+    if path_text and _has_parent_dir_component(path_text):
+        return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
     path_is_os_temp = allow_os_temp and _is_os_temp_path(path_text)
     if _is_temp_env_specifier(path_text) and not path_is_os_temp:
         return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)

@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from core.gates.safety import CODE_NEW_TOP_LEVEL_FOLDER, evaluate_safety_gate
+from core.gates.safety import (
+    CODE_NEW_TOP_LEVEL_FOLDER,
+    CODE_PROTECTED_LOCATION,
+    REASON_PROTECTED_LOCATION,
+    REASON_UNSAFE_PATH,
+    evaluate_safety_gate,
+)
 from core.mcp import work_server
 from core.vault_folders import (
     locate_vault_folders,
@@ -196,5 +202,29 @@ def test_mkdir_through_symlinked_parent_escaping_vault_is_blocked(tmp_path: Path
     decision = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
     assert decision.refused is True
     assert decision.code in {"unsafe_path", "protected_location"}
+
+
+def test_parent_dir_through_vault_symlink_is_refused(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    inbox = vault / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "escape").symlink_to("/etc")
+    mkdir_dotdot = evaluate_safety_gate(
+        command="mkdir -p 00-Inbox/escape/../outside", vault=vault
+    )
+    write_dotdot = evaluate_safety_gate(
+        path="00-Inbox/escape/../secret", vault=vault
+    )
+    direct = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
+    ordinary = evaluate_safety_gate(command="mkdir -p 00-Inbox/sub", vault=vault)
+    assert mkdir_dotdot.refused is True
+    assert mkdir_dotdot.code == CODE_PROTECTED_LOCATION
+    assert mkdir_dotdot.reason == REASON_PROTECTED_LOCATION
+    assert write_dotdot.refused is True
+    assert write_dotdot.code == "unsafe_path"
+    assert write_dotdot.reason == REASON_UNSAFE_PATH
+    assert direct.refused is True
+    assert direct.code in {"unsafe_path", "protected_location"}
+    assert ordinary.refused is False, ordinary.reason
 
 
