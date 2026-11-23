@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [Unreleased] — Doctor no longer tells you not to update with no way forward
+
+On every release, a customized Dex install could be told the checkup was incomplete — hundreds of leftover developer files, plus folders Dex never meant to capture — and to wait until a repair that Doctor did not actually offer. The official proof record already checked out, so there was nowhere to go.
+
+**What this fixes for you:**
+
+* **A complete checkup is possible again.** Folders Dex is supposed to ignore, and Dex-known settings files it will not read, still show up as "not captured, by design." They no longer freeze the update.
+* **Leftover developer files get a real tidy.** Files that no release ever ships can be moved aside into a dated archive, with a list to approve first and a way to put them back. Nothing is deleted.
+* **You are never told to wait with no next step.** If the protected custom-setup path is not available, Doctor offers that tidy — or the ordinary update with its usual backup.
+
+Thanks to Don Mason for reporting this.
+
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
 After meetings were processed, "commitments due" could still come back empty when the notes sat in a dated folder instead of directly in the meetings folder. And a brand-new install on an Intel Mac with a very new Python could stop later with a raw error instead of a clear message.

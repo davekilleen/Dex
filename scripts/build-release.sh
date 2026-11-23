@@ -282,7 +282,8 @@ fi
 python3 "$CATALOG_GENERATOR" \
     --release-root "$REPO_ROOT" \
     --channel "$CATALOG_CHANNEL" \
-    --source-commit "$SOURCE_SHA"
+    --source-commit "$SOURCE_SHA" \
+    --dev-only-patterns-file "$DISTIGNORE"
 python3 "$CATALOG_COVERAGE_CHECKER" --release-root "$REPO_ROOT"
 git add -f -- "$MANIFEST" "$CATALOG" "$HASH_TABLE" "$BRIDGE_RELEASE" \
     packages/dex-contracts/dist/release-catalog-v1.schema.json \

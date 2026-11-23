@@ -219,6 +219,10 @@ def _parser() -> argparse.ArgumentParser:
     activation_status.add_argument("capsule_id")
     recover = commands.add_parser("recover")
     recover.add_argument("--confirm-token")
+    tidy = commands.add_parser("tidy-dev-leftovers")
+    tidy.add_argument("--dry-run", action="store_true")
+    tidy.add_argument("--confirm-token")
+    tidy.add_argument("--restore")
     return parser
 
 
@@ -291,7 +295,17 @@ def run(arguments: list[str] | None = None) -> int:
                 )
             return 0
         if options.command == "preview":
-            print("\n".join(_preview_lines(migration_service.preview_to_dict(root))))
+            preview = migration_service.preview_to_dict(root)
+            print("\n".join(_preview_lines(preview)))
+            assessment = preview.get("assessment")
+            if isinstance(assessment, dict):
+                exclusions = assessment.get("exclusions")
+                if isinstance(exclusions, list) and exclusions:
+                    # FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-277).
+                    print(
+                        f"Not captured, by design: {len(exclusions)} paths "
+                        "(not in this snapshot)."
+                    )
             return 0
         if options.command == "create":
             preview = migration_service.preview_to_dict(root)
@@ -501,6 +515,41 @@ def run(arguments: list[str] | None = None) -> int:
                     "Restored file count: "
                     f"{recovered['restored_file_count']}"
                 )
+            return 0
+        if options.command == "tidy-dev-leftovers":
+            from core.customization_migration import tidy as leftover_tidy
+
+            # FOUNDER COPY - DRAFT PENDING APPROVAL (DEX-277).
+            if options.restore:
+                result = leftover_tidy.restore_dev_leftovers(root, options.restore)
+                print(
+                    f"Restored {result['restored']} leftover files from "
+                    f"{result['archive_dir']}."
+                )
+                return 0
+            preview = leftover_tidy.preview_tidy_dev_leftovers(root)
+            print("\n".join(leftover_tidy.preview_to_lines(preview)))
+            if options.dry_run or options.confirm_token is None:
+                if options.confirm_token is None and not options.dry_run:
+                    print(
+                        "Nothing was moved. Run this command again with "
+                        f"--confirm-token {preview['preview_sha256']}"
+                    )
+                    return 2
+                return 0
+            if options.confirm_token != preview["preview_sha256"]:
+                print(
+                    "Nothing was moved. Run this command again with "
+                    f"--confirm-token {preview['preview_sha256']}"
+                )
+                return 2
+            result = leftover_tidy.apply_tidy_dev_leftovers(
+                root,
+                options.confirm_token,
+            )
+            print(
+                f"Moved {result['moved']} leftover files to {result['archive_dir']}."
+            )
             return 0
     except migration_service.MigrationServiceError as error:
         print(error.message)

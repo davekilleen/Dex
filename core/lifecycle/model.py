@@ -85,6 +85,17 @@ def _version(value: object, context: str) -> str:
     return candidate
 
 
+def _dev_only_patterns(raw: object) -> tuple[str, ...] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, list) or any(not isinstance(item, str) or not item for item in raw):
+        raise _unknown("release dev_only_patterns must be an array of non-empty strings")
+    ordered = tuple(raw)
+    if ordered != tuple(sorted(set(ordered))):
+        raise _unknown("release dev_only_patterns must be sorted and unique")
+    return ordered
+
+
 def _relative_path(value: object, context: str) -> str:
     candidate = _string(value, context)
     if "\\" in candidate or candidate.startswith("/") or any(ord(char) < 32 for char in candidate):
@@ -310,6 +321,7 @@ class ReleaseIdentity:
     immutable_distribution_tag: str | None = None
     immutable_distribution_tag_pattern: str | None = None
     hash_table: HashTableBinding | None = None
+    dev_only_patterns: tuple[str, ...] | None = None
 
     @classmethod
     def from_dict(cls, raw: object, *, catalog_version: int) -> "ReleaseIdentity":
@@ -319,9 +331,13 @@ class ReleaseIdentity:
             if catalog_version == 1
             else "immutable_distribution_tag_pattern"
         )
-        # The whole-tree hash-table binding is optional and v2-only; the
-        # public v1 shape stays byte-frozen.
-        optional_fields = {"hash_table"} if catalog_version >= 2 else frozenset()
+        # The whole-tree hash-table binding and the shipped .distignore
+        # pattern list are optional and v2-only; the public v1 shape stays
+        # byte-frozen. An older catalog without the list keeps today's
+        # unproved-file behaviour.
+        optional_fields = (
+            {"hash_table", "dev_only_patterns"} if catalog_version >= 2 else frozenset()
+        )
         _closed_fields(
             value,
             required={
@@ -339,6 +355,7 @@ class ReleaseIdentity:
             if "hash_table" in value
             else None
         )
+        dev_only_patterns = _dev_only_patterns(value.get("dev_only_patterns"))
         version = _version(value["version"], "release version")
         channel = _string(value["channel"], "release channel")
         if channel not in ("release", "release-beta"):
@@ -356,7 +373,13 @@ class ReleaseIdentity:
                 raise _unknown("immutable distribution tag disagrees with release channel or version")
             if not commit.startswith(match.group("short")):
                 raise _unknown("immutable distribution tag disagrees with the source commit")
-            return cls(version, channel, commit, manifest, immutable_distribution_tag=tag)
+            return cls(
+                version,
+                channel,
+                commit,
+                manifest,
+                immutable_distribution_tag=tag,
+            )
         tag_pattern = _string(value[identity_field], "immutable distribution tag pattern")
         expected_pattern = f"dist/{channel}/v{version}-<release-commit-prefix>"
         if tag_pattern != expected_pattern:
@@ -370,6 +393,7 @@ class ReleaseIdentity:
             manifest,
             immutable_distribution_tag_pattern=tag_pattern,
             hash_table=hash_table,
+            dev_only_patterns=dev_only_patterns,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -387,6 +411,8 @@ class ReleaseIdentity:
             raise _unknown("release identity has no immutable distribution tag contract")
         if self.hash_table is not None:
             result["hash_table"] = self.hash_table.to_dict()
+        if self.dev_only_patterns is not None:
+            result["dev_only_patterns"] = list(self.dev_only_patterns)
         return result
 
 
