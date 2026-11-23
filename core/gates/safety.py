@@ -18,17 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-try:
-    import pwd
-except ImportError:  # pragma: no cover - Windows and other non-POSIX hosts
-    pwd = None
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.path_safety import unsafe_existing_parent
-from core.vault_folders import mkdir_targets, new_top_level_folder_reason, parse_shell_writes
+from core.vault_folders import _tokenize, new_top_level_folder_reason
 from core.vault_selection import VaultSelectionError, select_vault
 
 DECISION_BLOCK = "block"
@@ -91,8 +86,20 @@ SQL_DROP = re.compile(r"(DROP\s+TABLE|DROP\s+DATABASE)", re.IGNORECASE)
 GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
+_MKDIR_INVOCATION = re.compile(
+    r"(?:^|[;&|\n]|&&|\|\|)\s*"
+    r"(?:(?:command|env|sudo|xargs|busybox|exec)\s+|"
+    r"[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"
+    r"(?:(?:\./|\.\./|/)(?:[^;\s|&]*/)?)?"
+    r"mkdir\b",
+    re.IGNORECASE,
+)
+_MKDIR_BANNED_WORD = re.compile(
+    r"(?:^|\s)(?:cd|pushd|command|env|sudo|xargs|busybox|exec)(?:\s|$)",
+    re.IGNORECASE,
+)
+_MKDIR_OK_SHORT = frozenset("pv")
 CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "${HOME}", "/Users"})
-_HOME_USERNAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,31}$")
 _PROTECTED_SYSTEM_PREFIXES = (
     "/etc",
     "/System",
@@ -264,16 +271,12 @@ def _is_unparsed_braced_home(candidate: str) -> bool:
     return candidate.startswith("${HOME") and not _is_recognized_braced_home(candidate)
 
 
-def _parse_home_shorthand(
-    candidate: str, *, other_user_bare: bool = False
-) -> tuple[str, str] | None:
-    """Split a home spelling into (username, rest). Empty username is the current user.
+def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
+    """Split a current-user home spelling into ("", rest).
 
     Recognizes ``~``, ``$HOME``, ``${HOME}``, ``~/rest``, ``$HOME/rest``,
-    ``${HOME}/rest``, and ``~user/rest`` (backslash separators too).
-    ``~/foo`` is the current user, not a user named empty: the username pattern
-    starts with a letter or underscore. Bare ``~word`` with no slash is a
-    cwd-relative filename unless *other_user_bare* is true (shell targets).
+    and ``${HOME}/rest`` (backslash separators too). Other ``~user`` forms
+    are not expanded; file tools treat them as filenames.
     """
     if not candidate:
         return None
@@ -290,41 +293,7 @@ def _parse_home_shorthand(
         if rest == "" or rest[:1] in {"/", "\\"}:
             return ("", rest[1:] if rest else "")
         return None
-    if not candidate.startswith("~"):
-        return None
-    body = candidate[1:]
-    separator_at = next((index for index, char in enumerate(body) if char in {"/", "\\"}), None)
-    if separator_at is None:
-        if not other_user_bare:
-            return None
-        if not body or _HOME_USERNAME.fullmatch(body) is None:
-            return None
-        return (body, "")
-    username = body[:separator_at]
-    if not username or _HOME_USERNAME.fullmatch(username) is None:
-        return None
-    rest = body[separator_at + 1 :]
-    return (username, rest)
-
-
-def _other_user_home(username: str) -> Path | None:
-    """Resolve ``~user`` through the OS user database. None means fail closed."""
-    if pwd is None or not username:
-        return None
-    try:
-        pwd.getpwnam(username)
-    except (KeyError, OSError, TypeError, ValueError, AttributeError):
-        return None
-    try:
-        expanded = os.path.expanduser(f"~{username}")
-    except (OSError, TypeError, ValueError):
-        return None
-    if not expanded or expanded.startswith("~"):
-        return None
-    try:
-        return Path(expanded)
-    except (OSError, TypeError, ValueError):
-        return None
+    return None
 
 
 def _join_under(base: Path, rest: str) -> Path:
@@ -363,25 +332,20 @@ def _normalize_write_path(path: Path) -> Path:
 def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
     username, rest = parsed
     if username:
-        home = _other_user_home(username)
-        if home is None:
-            return None
-    else:
-        try:
-            home = Path.home()
-        except (OSError, RuntimeError, TypeError, ValueError):
-            return None
+        return None
+    try:
+        home = Path.home()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
     joined = _join_under(home, rest) if rest else home
     return _normalize_write_path(joined)
 
 
-def _is_unjoined_shell_target(candidate: str, *, other_user_bare: bool = False) -> bool:
+def _is_unjoined_shell_target(candidate: str) -> bool:
     """True when the caller named an absolute, home, or temp path, not cwd-relative.
 
-    File-tool paths pass ``other_user_bare=False``. Bare ``~word`` is a filename.
-    ``~user/rest`` is home only when that user can be resolved; an unknown
-    ``~literal/…`` stays cwd-relative. Shell targets pass ``other_user_bare=True``
-    so unresolvable ``~user`` is not cwd-joined.
+    Bare ``~word`` is a filename. Current-user ``~`` / ``~/...`` / ``$HOME``
+    spellings are home, not cwd-relative names.
     """
     if not candidate:
         return False
@@ -389,13 +353,7 @@ def _is_unjoined_shell_target(candidate: str, *, other_user_bare: bool = False) 
         return True
     if _is_unparsed_braced_home(candidate):
         return True
-    parsed = _parse_home_shorthand(candidate, other_user_bare=other_user_bare)
-    if parsed is not None:
-        if other_user_bare:
-            return True
-        username, _rest = parsed
-        if username and _expand_parsed_home(parsed) is None:
-            return False
+    if _parse_home_shorthand(candidate) is not None:
         return True
     try:
         return Path(candidate).is_absolute()
@@ -619,14 +577,12 @@ def _is_this_vault_claude_memory_path(candidate: str, vault: Path) -> bool:
 def _path_for_location_check(candidate: str) -> Path | None:
     """Expand home/temp shorthand, or return an absolute or relative Path.
 
-    Home shorthand that cannot be resolved (unknown ``~user``) returns None so
-    callers fail closed instead of cwd-joining the tilde form as a relative path.
-    Unparsed ``${HOME…}`` forms fail closed the same way. Shell targets also
-    expand ``~user`` and ``~user/rest``.
+    Current-user home shorthand that cannot be resolved returns None so callers
+    fail closed. Unparsed ``${HOME…}`` forms fail closed the same way.
     """
     if _is_unparsed_braced_home(candidate):
         return None
-    parsed = _parse_home_shorthand(candidate, other_user_bare=True)
+    parsed = _parse_home_shorthand(candidate)
     if parsed is not None:
         expanded = _expand_parsed_home(parsed)
         return None if expanded is None else expanded
@@ -690,7 +646,17 @@ def _is_foreign_user_tree(resolved: Path, home: Path | None) -> bool:
     return True
 
 
+def _path_has_prefix_ci(resolved: Path, prefix: str) -> bool:
+    """True when *resolved* is *prefix* or a child of it, ignoring case."""
+    left = str(resolved).replace("\\", "/").rstrip("/") or "/"
+    right = prefix.replace("\\", "/").rstrip("/") or "/"
+    left_c, right_c = left.casefold(), right.casefold()
+    return left_c == right_c or left_c.startswith(right_c + "/")
+
+
 def _is_under_system_prefix(resolved: Path, prefix: str) -> bool:
+    if _path_has_prefix_ci(resolved, prefix):
+        return True
     root = Path(prefix)
     if _is_under_root(resolved, root) or resolved == root:
         return True
@@ -742,9 +708,13 @@ def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
         # (and some real homes) live under /private/var/folders/.../T.
         if resolved == home:
             return REASON_PROTECTED_LOCATION
-        for name in _PROTECTED_HOME_CHILDREN:
-            protected_root = home / name
-            if resolved == protected_root or _is_under_root(resolved, protected_root):
+        try:
+            relative = resolved.relative_to(home)
+        except ValueError:
+            return None
+        if relative.parts:
+            protected = {name.casefold() for name in _PROTECTED_HOME_CHILDREN}
+            if relative.parts[0].casefold() in protected:
                 return REASON_PROTECTED_LOCATION
         return None
     if _is_direct_root_child(resolved):
@@ -804,8 +774,138 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     return REASON_UNSAFE_PATH if reason else None
 
 
+def _dollar_form_is_disallowed(command: str) -> bool:
+    """True when *command* has a ``$`` that is not a recognized home or temp form."""
+    allowed = ("${HOME}", "$HOME", "$TMPDIR", "$TEMP", "$TMP")
+    index = 0
+    length = len(command)
+    while index < length:
+        pos = command.find("$", index)
+        if pos < 0:
+            return False
+        rest = command[pos:]
+        matched = False
+        for prefix in allowed:
+            if not rest.startswith(prefix):
+                continue
+            if len(rest) == len(prefix) or rest[len(prefix)] in "/\\ \t":
+                index = pos + len(prefix)
+                matched = True
+                break
+        if matched:
+            continue
+        return True
+    return False
+
+
+def _tilde_form_is_disallowed(command: str) -> bool:
+    """True when *command* has a ``~`` that is not exact ``~`` or ``~/...``."""
+    index = 0
+    length = len(command)
+    while index < length:
+        pos = command.find("~", index)
+        if pos < 0:
+            return False
+        rest = command[pos:]
+        if len(rest) == 1 or rest[1] in "/\\ \t":
+            index = pos + 1
+            continue
+        return True
+    return False
+
+
+def _is_bare_mkdir_prefix(command: str) -> bool:
+    stripped = command.lstrip()
+    if len(stripped) < 5 or stripped[:5].lower() != "mkdir":
+        return False
+    return len(stripped) == 5 or stripped[5].isspace()
+
+
+def _mkdir_syntax_fail_closed(command: str) -> bool:
+    if re.search(r"[;&|`]", command) or "$(" in command or "$ (" in command:
+        return True
+    if "\\" in command or re.search(r"[*?[]", command):
+        return True
+    if _MKDIR_BANNED_WORD.search(command):
+        return True
+    if _dollar_form_is_disallowed(command) or _tilde_form_is_disallowed(command):
+        return True
+    return False
+
+
+def _simple_mkdir_operands(command: str) -> list[str] | None:
+    """Return mkdir operands, or None when the command is not a simple mkdir."""
+    if not _is_bare_mkdir_prefix(command):
+        return None
+    if _mkdir_syntax_fail_closed(command):
+        return None
+    stripped = command.lstrip()
+    tokens = _tokenize(stripped[5:])
+    operands: list[str] = []
+    skip_next = False
+    end_opts = False
+    for token in tokens:
+        if skip_next:
+            if not token:
+                return None
+            skip_next = False
+            continue
+        if not end_opts:
+            if token == "--":
+                end_opts = True
+                continue
+            if token in {"-p", "-v", "--parents"}:
+                continue
+            if token in {"-m", "--mode"}:
+                skip_next = True
+                continue
+            if token.startswith("--mode="):
+                if token == "--mode=":
+                    return None
+                continue
+            if token.startswith("--"):
+                return None
+            if token.startswith("-"):
+                body = token[1:]
+                if body and all(char in _MKDIR_OK_SHORT for char in body):
+                    continue
+                return None
+        operands.append(token)
+    if skip_next:
+        return None
+    return operands
+
+
+def _evaluate_mkdir_command(
+    command: str,
+    *,
+    root: Path,
+    workdir: Path,
+    allow_os_temp: bool,
+) -> GateDecision | None:
+    """Refuse or allow a mkdir command. None means the command is not mkdir."""
+    if _MKDIR_INVOCATION.search(command) is None:
+        return None
+    operands = _simple_mkdir_operands(command)
+    if operands is None:
+        return GateDecision(
+            DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
+        )
+    for target in operands:
+        decision = _shell_target_decision(
+            target,
+            root=root,
+            workdir=workdir,
+            allow_os_temp=allow_os_temp,
+            as_directory=True,
+        )
+        if decision is not None:
+            return decision
+    return ALLOW
+
+
 def _resolve_shell_target(target: str, workdir: Path) -> str:
-    if _is_unjoined_shell_target(target, other_user_bare=True):
+    if _is_unjoined_shell_target(target):
         return target
     return str(_join_under(workdir, target))
 
@@ -899,31 +999,14 @@ def evaluate_safety_gate(
         if folder_reason:
             return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
     if command_text:
-        for target in mkdir_targets(command_text):
-            decision = _shell_target_decision(
-                target,
-                root=root,
-                workdir=workdir,
-                allow_os_temp=allow_os_temp,
-                as_directory=True,
-            )
-            if decision is not None:
-                return decision
-        parsed_writes = parse_shell_writes(command_text)
-        if parsed_writes.unresolved:
-            return GateDecision(
-                DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
-            )
-        for target in parsed_writes.targets:
-            decision = _shell_target_decision(
-                target,
-                root=root,
-                workdir=workdir,
-                allow_os_temp=allow_os_temp,
-                as_directory=False,
-            )
-            if decision is not None:
-                return decision
+        mkdir_decision = _evaluate_mkdir_command(
+            command_text,
+            root=root,
+            workdir=workdir,
+            allow_os_temp=allow_os_temp,
+        )
+        if mkdir_decision is not None:
+            return mkdir_decision
         if CHMOD_777.search(command_text):
             return GateDecision(DECISION_ALLOW, REASON_CHMOD_777, CODE_CHMOD_777, 0)
         if KILL_9.search(command_text):

@@ -93,7 +93,7 @@ OS timer cannot substitute without changing the product.
 | --- | --- | --- |
 | `person-context-injector.cjs` | `PreToolUse` / Read | Injects the matching person page **before that file is read** |
 | `company-context-injector.cjs` | `PreToolUse` / Read | Same for company pages |
-| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Blocks unsafe shell / MCP **before the call runs**. Outside the vault, shell `mkdir` follows the same protected-location rule as other shell writes; file tools stay vault-confined. |
+| `dex-safety-guard.sh` | `PreToolUse` / Bash and MCP | Blocks unsafe shell / MCP **before the call runs**. Outside the vault, shell `mkdir` in an ordinary folder is allowed; system and private folders stay blocked. File tools stay vault-confined. |
 | `ensure-mcp-user-scope.cjs` | `PreToolUse` / Bash | Requires an explicit scope for `claude mcp add` |
 | `soft-promise-detector.py` | `UserPromptSubmit` | Offers to capture a commitment **in the message just sent** |
 | `health-pulse.sh` | `UserPromptSubmit` | Mid-session stale-health nudge; must interrupt *this* conversation |
