@@ -28,7 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.path_safety import unsafe_existing_parent
-from core.vault_folders import mkdir_targets, new_top_level_folder_reason, shell_write_targets
+from core.vault_folders import mkdir_targets, new_top_level_folder_reason, parse_shell_writes
 from core.vault_selection import VaultSelectionError, select_vault
 
 DECISION_BLOCK = "block"
@@ -264,14 +264,16 @@ def _is_unparsed_braced_home(candidate: str) -> bool:
     return candidate.startswith("${HOME") and not _is_recognized_braced_home(candidate)
 
 
-def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
+def _parse_home_shorthand(
+    candidate: str, *, other_user_bare: bool = False
+) -> tuple[str, str] | None:
     """Split a home spelling into (username, rest). Empty username is the current user.
 
     Recognizes ``~``, ``$HOME``, ``${HOME}``, ``~/rest``, ``$HOME/rest``,
     ``${HOME}/rest``, and ``~user/rest`` (backslash separators too).
     ``~/foo`` is the current user, not a user named empty: the username pattern
     starts with a letter or underscore. Bare ``~word`` with no slash is a
-    cwd-relative filename, not ``~username``.
+    cwd-relative filename unless *other_user_bare* is true (shell targets).
     """
     if not candidate:
         return None
@@ -293,7 +295,11 @@ def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
     body = candidate[1:]
     separator_at = next((index for index, char in enumerate(body) if char in {"/", "\\"}), None)
     if separator_at is None:
-        return None
+        if not other_user_bare:
+            return None
+        if not body or _HOME_USERNAME.fullmatch(body) is None:
+            return None
+        return (body, "")
     username = body[:separator_at]
     if not username or _HOME_USERNAME.fullmatch(username) is None:
         return None
@@ -321,6 +327,39 @@ def _other_user_home(username: str) -> Path | None:
         return None
 
 
+def _join_under(base: Path, rest: str) -> Path:
+    """Join *rest* onto *base* without discarding *base* when *rest* looks absolute."""
+    base_s = str(base)
+    trimmed = rest.lstrip("/\\")
+    if not trimmed:
+        return Path(base_s)
+    return Path(os.path.join(base_s, trimmed))
+
+
+def _normalize_write_path(path: Path) -> Path:
+    """Collapse separators and ``..``, then realpath the deepest existing parent."""
+    raw = os.path.normpath(str(path))
+    suffix: list[str] = []
+    cursor = raw
+    while cursor and not os.path.lexists(cursor):
+        parent = os.path.dirname(cursor)
+        name = os.path.basename(cursor)
+        if parent == cursor:
+            break
+        if name:
+            suffix.append(name)
+        cursor = parent
+    if cursor and os.path.lexists(cursor):
+        try:
+            cursor = os.path.realpath(cursor)
+        except OSError:
+            pass
+    rebuilt = cursor
+    for name in reversed(suffix):
+        rebuilt = os.path.join(rebuilt, name)
+    return Path(os.path.normpath(rebuilt))
+
+
 def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
     username, rest = parsed
     if username:
@@ -332,32 +371,36 @@ def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
             home = Path.home()
         except (OSError, RuntimeError, TypeError, ValueError):
             return None
-    rest = rest.lstrip("/\\")
-    return home / rest if rest else home
+    joined = _join_under(home, rest) if rest else home
+    return _normalize_write_path(joined)
 
 
-def _is_unjoined_shell_target(candidate: str) -> bool:
-    """True when the caller named an absolute, home, or temp path, not cwd-relative."""
+def _is_unjoined_shell_target(candidate: str, *, other_user_bare: bool = False) -> bool:
+    """True when the caller named an absolute, home, or temp path, not cwd-relative.
+
+    File-tool paths pass ``other_user_bare=False``. Bare ``~word`` is a filename.
+    ``~user/rest`` is home only when that user can be resolved; an unknown
+    ``~literal/…`` stays cwd-relative. Shell targets pass ``other_user_bare=True``
+    so unresolvable ``~user`` is not cwd-joined.
+    """
     if not candidate:
         return False
     if _is_catastrophic_path(candidate) or _is_temp_env_specifier(candidate):
         return True
     if _is_unparsed_braced_home(candidate):
         return True
-    if _parse_home_shorthand(candidate) is not None:
+    parsed = _parse_home_shorthand(candidate, other_user_bare=other_user_bare)
+    if parsed is not None:
+        if other_user_bare:
+            return True
+        username, _rest = parsed
+        if username and _expand_parsed_home(parsed) is None:
+            return False
         return True
     try:
         return Path(candidate).is_absolute()
     except (OSError, TypeError, ValueError):
         return False
-
-
-def _is_unjoined_file_path(candidate: str) -> bool:
-    """File tools use literal names; ``~word/rest`` is a filename, not ``~user``."""
-    parsed = _parse_home_shorthand(candidate)
-    if parsed is not None and parsed[0]:
-        return False
-    return _is_unjoined_shell_target(candidate)
 
 
 def _claude_project_slugs(vault: Path) -> frozenset[str]:
@@ -405,7 +448,7 @@ def _expand_temp_shorthand(candidate: str) -> Path | None:
             raw = os.environ.get(env_name, "").strip()
             if not raw:
                 return None
-            return Path(raw) / candidate[len(prefix) :]
+            return _join_under(Path(raw), candidate[len(prefix) :])
     return None
 
 
@@ -578,20 +621,25 @@ def _path_for_location_check(candidate: str) -> Path | None:
 
     Home shorthand that cannot be resolved (unknown ``~user``) returns None so
     callers fail closed instead of cwd-joining the tilde form as a relative path.
-    Unparsed ``${HOME…}`` forms fail closed the same way.
+    Unparsed ``${HOME…}`` forms fail closed the same way. Shell targets also
+    expand ``~user`` and ``~user/rest``.
     """
     if _is_unparsed_braced_home(candidate):
         return None
-    parsed = _parse_home_shorthand(candidate)
+    parsed = _parse_home_shorthand(candidate, other_user_bare=True)
     if parsed is not None:
-        return _expand_parsed_home(parsed)
+        expanded = _expand_parsed_home(parsed)
+        return None if expanded is None else expanded
     expanded = _expand_temp_shorthand(candidate)
     if expanded is not None:
-        return expanded
+        return _normalize_write_path(expanded) if expanded.is_absolute() else expanded
     try:
-        return Path(candidate)
+        path = Path(candidate)
     except (OSError, TypeError, ValueError):
         return None
+    if path.is_absolute():
+        return _normalize_write_path(path)
+    return Path(os.path.normpath(str(path)))
 
 
 def _resolved_home() -> Path | None:
@@ -602,29 +650,24 @@ def _resolved_home() -> Path | None:
 
 
 def _is_inside_vault(candidate: str, vault: Path) -> bool:
-    """True when the named path sits under the vault before following symlinks.
-
-    A vault-relative mkdir whose parent is a symlink still uses the in-vault
-    checks (escape protection and DEX-116). Following the symlink first would
-    reclassify that target as an outside-vault write.
-    """
+    """True when the named path sits under the vault after home/symlink normalisation."""
     target = _path_for_location_check(candidate)
     if target is None:
         return False
     if not target.is_absolute():
-        target = vault / target
+        target = _join_under(vault, str(target))
+    target = _normalize_write_path(target)
     lexical = Path(os.path.normpath(str(target)))
-    for root in (vault,):
+    try:
+        roots = {vault, vault.resolve()}
+    except (OSError, RuntimeError, TypeError, ValueError):
+        roots = {vault}
+    for base in roots:
         try:
-            roots = {root, root.resolve()}
-        except (OSError, RuntimeError, TypeError, ValueError):
-            roots = {root}
-        for base in roots:
-            try:
-                lexical.relative_to(Path(os.path.normpath(str(base))))
-            except (OSError, ValueError):
-                continue
-            return True
+            lexical.relative_to(Path(os.path.normpath(str(base))))
+        except (OSError, ValueError):
+            continue
+        return True
     return False
 
 
@@ -735,14 +778,18 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     if _is_unparsed_braced_home(candidate):
         return REASON_UNSAFE_PATH
     parsed = _parse_home_shorthand(candidate)
-    expanded = _absolute_home_or_literal(candidate)
-    if parsed is not None and expanded is None:
-        return REASON_UNSAFE_PATH
+    expanded: Path | None = None
+    if parsed is not None:
+        expanded = _expand_parsed_home(parsed)
+        if expanded is None and not parsed[0]:
+            return REASON_UNSAFE_PATH
+        # Unknown ``~user/rest`` is a cwd-relative filename for file tools.
     try:
         expanded_path = expanded if expanded is not None else Path(candidate)
     except (OSError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     if expanded_path.is_absolute():
+        expanded_path = _normalize_write_path(expanded_path)
         try:
             expanded_path.resolve().relative_to(vault.resolve())
         except (OSError, ValueError):
@@ -758,9 +805,9 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
 
 
 def _resolve_shell_target(target: str, workdir: Path) -> str:
-    if _is_unjoined_shell_target(target):
+    if _is_unjoined_shell_target(target, other_user_bare=True):
         return target
-    return str(workdir / target)
+    return str(_join_under(workdir, target))
 
 
 def _shell_target_decision(
@@ -817,8 +864,8 @@ def evaluate_safety_gate(
         root = resolve_vault(vault)
     except VaultSelectionError as exc:
         return refusal(str(exc), exc.code)
-    command_text = _safe_string(command)
-    path_text = _safe_string(path)
+    command_text = command if isinstance(command, str) else ""
+    path_text = path if isinstance(path, str) else ""
     try:
         workdir = Path(cwd).expanduser().resolve() if cwd is not None else root
     except (OSError, RuntimeError, TypeError, ValueError):
@@ -862,7 +909,12 @@ def evaluate_safety_gate(
             )
             if decision is not None:
                 return decision
-        for target in shell_write_targets(command_text):
+        parsed_writes = parse_shell_writes(command_text)
+        if parsed_writes.unresolved:
+            return GateDecision(
+                DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
+            )
+        for target in parsed_writes.targets:
             decision = _shell_target_decision(
                 target,
                 root=root,
@@ -982,7 +1034,7 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
         if _is_os_temp_path(path):
             target = path
             allow_os_temp = True
-        elif _is_unjoined_file_path(path):
+        elif _is_unjoined_shell_target(path):
             target = path
             allow_os_temp = False
         else:

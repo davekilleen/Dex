@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -175,21 +176,44 @@ def mkdir_targets(command: str) -> list[str]:
     return targets
 
 
+@dataclass(frozen=True)
+class ShellWriteParse:
+    """Write destinations the parser could name, plus whether anything was unknown.
+
+    ``unresolved`` means the command used an option, redirect, or form that is
+    not on the positive allowlist. Callers must refuse the whole command.
+    """
+
+    targets: tuple[str, ...]
+    unresolved: bool
+
+
+def parse_shell_writes(command: str) -> ShellWriteParse:
+    """Parse curl/cp/mv/redirect write destinations, failing closed on unknowns."""
+    targets: list[str] = []
+    unresolved = False
+    for match in CURL_COMMAND.finditer(command):
+        parsed = _parse_curl_output(match.group("args"))
+        targets.extend(parsed.targets)
+        unresolved = unresolved or parsed.unresolved
+    for match in CP_MV_COMMAND.finditer(command):
+        parsed = _parse_cp_mv_destinations(match.group("args"))
+        targets.extend(parsed.targets)
+        unresolved = unresolved or parsed.unresolved
+    parsed = _parse_redirects(command)
+    targets.extend(parsed.targets)
+    unresolved = unresolved or parsed.unresolved
+    return ShellWriteParse(tuple(targets), unresolved)
+
+
 def shell_write_targets(command: str) -> list[str]:
     """Return easily parsed shell write destinations in *command*.
 
-    Covers ``curl -o/--output/--output-dir``, ``cp``/``mv`` destinations
-    (including ``-tDIR``), and ``>``/``>>``/``>|``/``>!`` redirects. This is
-    not a shell parser: quoted simple forms are read; indirection, python
-    one-liners, and unknown flags are skipped.
+    Covers understood ``curl -o/--output``, ``cp``/``mv`` destinations, and
+    ``>``/``>>`` redirects. Unknown flags and operators are not guessed;
+    ``parse_shell_writes`` reports those as ``unresolved``.
     """
-    targets: list[str] = []
-    for match in CURL_COMMAND.finditer(command):
-        targets.extend(_curl_output_targets(match.group("args")))
-    for match in CP_MV_COMMAND.finditer(command):
-        targets.extend(_cp_mv_destinations(match.group("args")))
-    targets.extend(_redirect_targets(command))
-    return targets
+    return list(parse_shell_writes(command).targets)
 
 
 def _vault_relative_parts(vault: Path, candidate: str) -> tuple[str, ...] | None:
@@ -266,103 +290,139 @@ def _normalize_relative(value: str) -> str | None:
 
 
 _CURL_NOARG_SHORT = frozenset("sSiIkLvqn#gGjf")
+_CURL_NOARG_LONG = frozenset(
+    {
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--location",
+        "--compressed",
+        "--head",
+        "--get",
+    }
+)
+_CP_NOARG_SHORT = frozenset("afinprvR")
 
 
-def _short_cluster_output_path(token: str) -> str | None:
-    """Return the attached PATH for ``-o`` / ``-sSo`` clusters, or None.
+def _classify_curl_short(token: str) -> tuple[str, str] | None:
+    """Return ``('none', '')`` or ``('out', attached)`` for a known short cluster.
 
-    Scans short-option letters left to right. No-arg letters may precede a
-    terminating ``o``. ``-socks5`` is not an output cluster (see the caller).
+    Attached is empty when the path is the next token. Unknown letters, ``-O``,
+    and a single no-arg letter plus ``o`` plus remainder (``-socks5``) are None.
     """
-    if not token.startswith("-") or token.startswith("--"):
+    if not token.startswith("-") or token.startswith("--") or len(token) < 2:
         return None
     body = token[1:]
+    if body[0] == "o":
+        return ("out", body[1:])
     index = 0
     while index < len(body) and body[index] in _CURL_NOARG_SHORT:
         index += 1
-    if index >= len(body) or body[index] != "o":
+    if index == len(body):
+        return ("none", "")
+    if body[index] != "o":
         return None
-    return body[index + 1 :]
+    attached = body[index + 1 :]
+    if attached == "":
+        return ("out", "")
+    # Combined attached path is the documented ``-sSoPATH`` form: two or more
+    # no-arg letters, then ``o``, then the path. One letter plus ``o`` plus
+    # remainder is not a unique parse against unknown options.
+    if index >= 2:
+        return ("out", attached)
+    return None
 
 
-def _curl_filename_is_relative(name: str) -> bool:
-    """True when a curl ``-o`` path is cwd-relative, not absolute or home/env."""
-    if not name or name.startswith(("/", "\\", "~", "$")):
-        return False
-    try:
-        return not Path(name).is_absolute()
-    except (OSError, TypeError, ValueError):
-        return True
+def _take_output_path(tokens: list[str], index: int) -> tuple[str | None, bool, bool]:
+    """Return (path, skip_next, unresolved) for a flag that takes an output path."""
+    if index + 1 >= len(tokens):
+        return (None, False, True)
+    value = tokens[index + 1]
+    if value == "-":
+        return (None, True, False)
+    if not value:
+        return (None, True, True)
+    return (value, True, False)
 
 
-def _curl_output_targets(args: str) -> list[str]:
+def _parse_curl_output(args: str) -> ShellWriteParse:
     tokens = _tokenize(args)
     targets: list[str] = []
-    output_dir: str | None = None
+    unresolved = False
     skip_next = False
+    end_of_options = False
     for index, token in enumerate(tokens):
         if skip_next:
             skip_next = False
             continue
-        if token == "--output-dir":
-            if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
-                output_dir = tokens[index + 1]
-            skip_next = True
+        if end_of_options or not token.startswith("-") or token == "-":
             continue
-        if token.startswith("--output-dir="):
-            value = token.split("=", 1)[1]
-            if value and value != "-":
-                output_dir = value
-            continue
-        if token in {"-O", "--remote-name", "--remote-name-all"}:
+        if token == "--":
+            end_of_options = True
             continue
         if token in {"-o", "--output"}:
-            if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
-                targets.append(tokens[index + 1])
-            skip_next = True
+            path, skip_next, missing = _take_output_path(tokens, index)
+            if path:
+                targets.append(path)
+            unresolved = unresolved or missing
             continue
         if token.startswith("--output="):
             value = token.split("=", 1)[1]
             if value and value != "-":
                 targets.append(value)
+            elif value != "-":
+                unresolved = True
+            continue
+        if token in _CURL_NOARG_LONG:
             continue
         if token.startswith("--"):
+            unresolved = True
             continue
-        if token.startswith("-socks"):
+        classified = _classify_curl_short(token)
+        if classified is None:
+            unresolved = True
             continue
-        attached = _short_cluster_output_path(token)
-        if attached is None:
+        kind, attached = classified
+        if kind == "none":
             continue
-        if attached and attached != "-":
-            targets.append(attached)
+        if attached:
+            if attached != "-":
+                targets.append(attached)
             continue
-        if attached == "":
-            if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
-                targets.append(tokens[index + 1])
-            skip_next = True
-    if output_dir:
-        combined = [output_dir]
-        for target in targets:
-            if _curl_filename_is_relative(target):
-                combined.append(f"{output_dir.rstrip('/\\')}/{target}")
-            else:
-                combined.append(target)
-        return combined
-    return targets
+        path, skip_next, missing = _take_output_path(tokens, index)
+        if path:
+            targets.append(path)
+        unresolved = unresolved or missing
+    return ShellWriteParse(tuple(targets), unresolved)
 
 
-def _cp_mv_destinations(args: str) -> list[str]:
+def _curl_output_targets(args: str) -> list[str]:
+    return list(_parse_curl_output(args).targets)
+
+
+def _parse_cp_mv_destinations(args: str) -> ShellWriteParse:
     tokens = _tokenize(args)
     destinations: list[str] = []
     operands: list[str] = []
+    unresolved = False
     skip_next = False
     take_destination = False
+    end_of_options = False
     for token in tokens:
         if skip_next:
-            if take_destination and token not in {"", "-"}:
-                destinations.append(token)
+            if take_destination:
+                if token and token != "-":
+                    destinations.append(token)
+                else:
+                    unresolved = True
             take_destination = False
             skip_next = False
+            continue
+        if end_of_options:
+            operands.append(token)
+            continue
+        if token == "--":
+            end_of_options = True
             continue
         if token in {"-t", "--target-directory"}:
             skip_next = True
@@ -372,23 +432,77 @@ def _cp_mv_destinations(args: str) -> list[str]:
             value = token.split("=", 1)[1]
             if value and value != "-":
                 destinations.append(value)
+            else:
+                unresolved = True
             continue
-        if token.startswith("-t") and not token.startswith("--"):
-            value = token[2:]
-            if value and value != "-":
-                destinations.append(value)
+        if token.startswith("--"):
+            unresolved = True
             continue
-        if token == "--" or token.startswith("-"):
+        if token.startswith("-t"):
+            unresolved = True
+            continue
+        if token.startswith("-"):
+            body = token[1:]
+            if body and all(char in _CP_NOARG_SHORT for char in body):
+                continue
+            unresolved = True
             continue
         operands.append(token)
+    if take_destination:
+        unresolved = True
     if not destinations and len(operands) >= 2:
         destinations.append(operands[-1])
-    return destinations
+    return ShellWriteParse(tuple(destinations), unresolved)
 
 
-def _redirect_targets(command: str) -> list[str]:
-    """Return operands of unquoted ``>`` / ``>>`` redirects."""
+def _skip_redirect_destination(command: str, index: int) -> int:
+    length = len(command)
+    while index < length and command[index].isspace():
+        index += 1
+    if index >= length:
+        return index
+    if command[index] in {'"', "'"}:
+        closer = command[index]
+        index += 1
+        while index < length and command[index] != closer:
+            index += 1
+        if index < length:
+            index += 1
+        return index
+    while index < length and not command[index].isspace() and command[index] not in ";|&<>":
+        index += 1
+    return index
+
+
+def _read_redirect_destination(command: str, index: int) -> tuple[int, str | None]:
+    length = len(command)
+    while index < length and command[index].isspace():
+        index += 1
+    if index >= length:
+        return (index, None)
+    if command[index] in {'"', "'"}:
+        closer = command[index]
+        index += 1
+        start = index
+        while index < length and command[index] != closer:
+            index += 1
+        token = command[start:index]
+        if index < length:
+            index += 1
+        return (index, token or None)
+    start = index
+    while index < length and not command[index].isspace() and command[index] not in ";|&<>":
+        index += 1
+    token = command[start:index]
+    if token and token not in {"-", "&1", "&2"}:
+        return (index, token)
+    return (index, None)
+
+
+def _parse_redirects(command: str) -> ShellWriteParse:
+    """Parse unquoted ``>`` / ``>>`` destinations; unknown redirect forms fail closed."""
     targets: list[str] = []
+    unresolved = False
     quote: str | None = None
     index = 0
     length = len(command)
@@ -409,34 +523,39 @@ def _redirect_targets(command: str) -> list[str]:
         if char != ">":
             index += 1
             continue
+        prev = command[index - 1] if index > 0 else ""
+        if prev == "&" or prev.isdigit():
+            unresolved = True
+            index += 1
+            if index < length and command[index] == ">":
+                index += 1
+            if index < length and command[index] in {"|", "!"}:
+                index += 1
+            index = _skip_redirect_destination(command, index)
+            continue
         index += 1
         if index < length and command[index] == ">":
             index += 1
         if index < length and command[index] in {"|", "!"}:
+            unresolved = True
             index += 1
-        while index < length and command[index].isspace():
-            index += 1
-        if index >= length:
-            break
-        if command[index] in {'"', "'"}:
-            closer = command[index]
-            index += 1
-            start = index
-            while index < length and command[index] != closer:
-                index += 1
-            token = command[start:index]
-            if token:
-                targets.append(token)
-            if index < length:
-                index += 1
+            index = _skip_redirect_destination(command, index)
             continue
-        start = index
-        while index < length and not command[index].isspace() and command[index] not in ";|&<>":
-            index += 1
-        token = command[start:index]
-        if token and token not in {"-", "&1", "&2"}:
+        index, token = _read_redirect_destination(command, index)
+        if token:
             targets.append(token)
-    return targets
+        else:
+            unresolved = True
+    return ShellWriteParse(tuple(targets), unresolved)
+
+
+def _cp_mv_destinations(args: str) -> list[str]:
+    return list(_parse_cp_mv_destinations(args).targets)
+
+
+def _redirect_targets(command: str) -> list[str]:
+    """Return operands of unquoted ``>`` / ``>>`` redirects."""
+    return list(_parse_redirects(command).targets)
 
 
 def _tokenize(text: str) -> list[str]:

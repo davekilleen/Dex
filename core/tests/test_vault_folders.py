@@ -14,6 +14,7 @@ from core.vault_folders import (
     _curl_output_targets,
     locate_vault_folders,
     mkdir_targets,
+    parse_shell_writes,
     planned_new_top_level,
     shell_write_targets,
 )
@@ -197,7 +198,7 @@ def test_mkdir_through_symlinked_parent_escaping_vault_is_blocked(tmp_path: Path
     (inbox / "escape").symlink_to("/etc")
     decision = evaluate_safety_gate(command="mkdir 00-Inbox/escape/foo", vault=vault)
     assert decision.refused is True
-    assert decision.code == "unsafe_path"
+    assert decision.code in {"unsafe_path", "protected_location"}
 
 
 def test_parsed_write_through_vault_symlink_to_protected_location_is_blocked(
@@ -214,11 +215,11 @@ def test_parsed_write_through_vault_symlink_to_protected_location_is_blocked(
         vault=vault,
     )
     assert copy.refused is True
-    assert copy.code == "unsafe_path"
+    assert copy.code in {"unsafe_path", "protected_location"}
     assert redirect.refused is True
-    assert redirect.code == "unsafe_path"
+    assert redirect.code in {"unsafe_path", "protected_location"}
     assert curl.refused is True
-    assert curl.code == "unsafe_path"
+    assert curl.code in {"unsafe_path", "protected_location"}
 
 
 def test_shell_write_targets_reads_curl_cp_and_redirects() -> None:
@@ -240,50 +241,61 @@ def test_curl_output_targets_reads_attached_and_combined_flags() -> None:
     assert _curl_output_targets("--output=PATH https://example.invalid/x") == ["PATH"]
     assert _curl_output_targets("-sSo PATH https://example.invalid/x") == ["PATH"]
     assert _curl_output_targets("-sSoPATH https://example.invalid/x") == ["PATH"]
-    assert _curl_output_targets("-socks5 127.0.0.1:1080 https://example.invalid/x") == []
+    socks = parse_shell_writes("curl -socks5 127.0.0.1:1080 https://example.invalid/x")
+    assert socks.unresolved is True
+    socks_long = parse_shell_writes(
+        "curl --socks5 127.0.0.1:1080 https://example.invalid/x"
+    )
+    assert socks_long.unresolved is True
     assert shell_write_targets("curl -oPATH https://example.invalid/x") == ["PATH"]
     assert shell_write_targets("curl --output PATH https://example.invalid/x") == ["PATH"]
     assert shell_write_targets("curl --output=PATH https://example.invalid/x") == ["PATH"]
     assert shell_write_targets("curl -sSo PATH https://example.invalid/x") == ["PATH"]
     assert shell_write_targets("curl -sSoPATH https://example.invalid/x") == ["PATH"]
-    assert shell_write_targets("curl -socks5 127.0.0.1:1080 https://example.invalid/x") == []
-    assert shell_write_targets("curl --socks5 127.0.0.1:1080 https://example.invalid/x") == []
     assert shell_write_targets("curl -o${HOME}/.ssh/x https://example.invalid/x") == [
         "${HOME}/.ssh/x"
     ]
     assert shell_write_targets("curl -sSo${HOME}/.ssh/x https://example.invalid/x") == [
         "${HOME}/.ssh/x"
     ]
-    assert shell_write_targets(
+    output_dir = parse_shell_writes(
         "curl --output-dir ~/.ssh -o authorized_keys https://example.invalid/x"
-    ) == ["~/.ssh", "~/.ssh/authorized_keys"]
-    assert shell_write_targets(
+    )
+    assert output_dir.unresolved is True
+    output_dir_eq = parse_shell_writes(
         "curl --output-dir=/etc -O https://example.invalid/x"
-    ) == ["/etc"]
-    assert shell_write_targets(
+    )
+    assert output_dir_eq.unresolved is True
+    output_dir_ok = parse_shell_writes(
         "curl --output-dir ~/CloudProj -o x.jpg https://example.invalid/x"
-    ) == ["~/CloudProj", "~/CloudProj/x.jpg"]
-    assert _curl_output_targets(
-        "--output-dir ~/.ssh -o authorized_keys https://example.invalid/x"
-    ) == ["~/.ssh", "~/.ssh/authorized_keys"]
-    assert _curl_output_targets("--output-dir=/etc -O https://example.invalid/x") == [
-        "/etc"
-    ]
+    )
+    assert output_dir_ok.unresolved is True
 
 
 def test_shell_write_targets_reads_noclobber_redirects() -> None:
-    assert shell_write_targets("echo x >| ~/.ssh/authorized_keys") == [
-        "~/.ssh/authorized_keys"
-    ]
-    assert shell_write_targets("echo x >| /etc/foo") == ["/etc/foo"]
-    assert shell_write_targets("echo x >! /etc/foo") == ["/etc/foo"]
+    noclobber = parse_shell_writes("echo x >| ~/.ssh/authorized_keys")
+    assert noclobber.unresolved is True
+    etc = parse_shell_writes("echo x >| /etc/foo")
+    assert etc.unresolved is True
+    bang = parse_shell_writes("echo x >! /etc/foo")
+    assert bang.unresolved is True
+    amp = parse_shell_writes("echo x &>| ~/.ssh/x")
+    assert amp.unresolved is True
     assert shell_write_targets("echo x > ~/.ssh/authorized_keys") == [
         "~/.ssh/authorized_keys"
     ]
+    understood = parse_shell_writes("echo x > ~/.ssh/authorized_keys")
+    assert understood.unresolved is False
 
 
 def test_shell_write_targets_reads_attached_cp_target_directory() -> None:
-    assert shell_write_targets("cp -t/etc/foo a.jpg") == ["/etc/foo"]
-    assert shell_write_targets("mv -t/etc/foo a.jpg") == ["/etc/foo"]
+    attached = parse_shell_writes("cp -t/etc/foo a.jpg")
+    assert attached.unresolved is True
+    moved = parse_shell_writes("mv -t/etc/foo a.jpg")
+    assert moved.unresolved is True
+    spaced = parse_shell_writes("cp -t /etc/foo a.jpg")
+    assert spaced.unresolved is False
+    assert spaced.targets == ("/etc/foo",)
     assert shell_write_targets("cp -t /etc/foo a.jpg") == ["/etc/foo"]
-    assert shell_write_targets("cp -t~/CloudProj a.jpg") == ["~/CloudProj"]
+    attached_home = parse_shell_writes("cp -t~/CloudProj a.jpg")
+    assert attached_home.unresolved is True

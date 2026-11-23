@@ -16,7 +16,7 @@ Claude would copy a file into a project folder outside Dex — iCloud, a shared 
 **What this fixes for you:**
 
 * **A new folder next to Dex is allowed.** If you keep a project outside your Dex folder, Claude can create the folder it needs instead of stopping with a safety message.
-* **System and private folders stay blocked.** Your home folder itself, system files, and private computer folders are still refused — including when home is spelled `${HOME}` or as another user's `~name`, and when a download sticks the file name onto the flag (`-oPATH` or `-sSo`). Extra slashes after home, unusual `${HOME…}` spellings, a download's folder option, and `>|` redirects into those places are refused the same way.
+* **System and private folders stay blocked.** Your home folder itself, system files, and private computer folders are still refused — including when home is spelled `${HOME}` or as another user's `~name`, and when a download sticks the file name onto the flag (`-oPATH` or `-sSo`). Extra slashes after home still count as home. A copy, download, or redirect is refused unless Dex can clearly see the destination.
 * **Dex still will not invent a brand-new folder at the top of your notes.** That rule did not change.
 
 Thanks to Jim McDermott for reporting this.
