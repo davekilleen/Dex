@@ -752,7 +752,7 @@ def _nfc_fold(text: str) -> str:
     return unicodedata.normalize("NFC", text).casefold()
 
 
-# Decision 2 (Dave, 23 Nov 2026): writes and mkdir are allowed *inside* a
+# Decision 2 (gtm-lab #741): writes and mkdir are allowed *inside* a
 # cloud-sync provider folder or an external drive, judged on the realpath.
 # The containers themselves, the rest of ~/Library and the boot volume stay
 # protected.
