@@ -446,3 +446,112 @@ def test_safety_hook_allows_ordinary_outside_mkdir_and_blocks_etc(
     assert blocked.returncode == 2
     assert REASON_PROTECTED_LOCATION in blocked.stdout
     assert "outside the vault" not in blocked.stdout
+
+
+def test_braced_home_protected_locations_match_tilde(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    # Python string so the test runner does not expand ${HOME}.
+    ssh = "${HOME}/.ssh/x"
+    mkdir = evaluate_safety_gate(command=f"mkdir -p {ssh}", vault=vault)
+    copy = evaluate_safety_gate(command=f"cp a.jpg {ssh}", vault=vault)
+    curl = evaluate_safety_gate(
+        command=f"curl -o {ssh} https://example.invalid/x", vault=vault
+    )
+    redirect = evaluate_safety_gate(command=f"cat a.jpg > {ssh}", vault=vault)
+    tilde = evaluate_safety_gate(command="mkdir -p ~/.ssh/x", vault=vault)
+    assert mkdir.refused and copy.refused and curl.refused and redirect.refused
+    assert mkdir.code == copy.code == curl.code == redirect.code == CODE_PROTECTED_LOCATION
+    assert mkdir.reason == tilde.reason == REASON_PROTECTED_LOCATION
+    for command in ("mkdir ${HOME}", "mkdir ${HOME}/"):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION
+        assert decision.reason == REASON_PROTECTED_LOCATION
+
+
+def test_braced_home_ordinary_folder_mkdir_is_allowed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    tilde = evaluate_safety_gate(command="mkdir -p ~/CloudProj/new-sub", vault=vault)
+    braced = evaluate_safety_gate(
+        command="mkdir -p ${HOME}/CloudProj/new-sub", vault=vault
+    )
+    assert tilde.refused is False, tilde.reason
+    assert braced.refused is False, braced.reason
+
+
+def test_unresolvable_other_user_home_fails_closed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    missing = "dexnosuchuser280"
+    try:
+        import pwd
+
+        pwd.getpwnam(missing)
+    except KeyError:
+        pass
+    except ImportError:
+        pass
+    else:
+        pytest.skip(f"unexpectedly found OS user {missing}")
+    target = f"~{missing}/.ssh/x"
+    mkdir = evaluate_safety_gate(command=f"mkdir -p {target}", vault=vault)
+    copy = evaluate_safety_gate(command=f"cp a.jpg {target}", vault=vault)
+    assert mkdir.refused is True
+    assert mkdir.code == CODE_PROTECTED_LOCATION
+    assert copy.refused is True
+    assert copy.code == CODE_PROTECTED_LOCATION
+
+
+def test_named_current_os_user_home_ssh_is_protected(
+    tmp_path: Path, monkeypatch
+) -> None:
+    try:
+        import getpass
+        import pwd
+
+        username = getpass.getuser()
+        pwd.getpwnam(username)
+    except Exception:
+        pytest.skip("pwd/getpass cannot resolve the current OS user")
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    decision = evaluate_safety_gate(
+        command=f"mkdir -p ~{username}/.ssh/x", vault=vault
+    )
+    assert decision.refused is True
+    assert decision.code == CODE_PROTECTED_LOCATION
+    assert decision.reason == REASON_PROTECTED_LOCATION
+
+
+def test_curl_output_spellings_to_protected_dest_are_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    home_dest = "${HOME}/.ssh/x"
+    etc_dest = "/etc/foo/x.jpg"
+    commands = (
+        f"curl -o{home_dest} https://example.invalid/x",
+        f"curl --output {home_dest} https://example.invalid/x",
+        f"curl --output={home_dest} https://example.invalid/x",
+        f"curl -sSo {home_dest} https://example.invalid/x",
+        f"curl -sSo{home_dest} https://example.invalid/x",
+        f"curl -o{etc_dest} https://example.invalid/x",
+        f"curl --output {etc_dest} https://example.invalid/x",
+        f"curl --output={etc_dest} https://example.invalid/x",
+        f"curl -sSo {etc_dest} https://example.invalid/x",
+        f"curl -sSo{etc_dest} https://example.invalid/x",
+    )
+    for command in commands:
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command

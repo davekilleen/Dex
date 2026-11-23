@@ -18,6 +18,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+try:
+    import pwd
+except ImportError:  # pragma: no cover - Windows and other non-POSIX hosts
+    pwd = None
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -86,7 +91,8 @@ SQL_DROP = re.compile(r"(DROP\s+TABLE|DROP\s+DATABASE)", re.IGNORECASE)
 GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
-CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "/Users"})
+CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "${HOME}", "/Users"})
+_HOME_USERNAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,31}$")
 _PROTECTED_SYSTEM_PREFIXES = (
     "/etc",
     "/System",
@@ -241,13 +247,87 @@ def _is_catastrophic_path(candidate: str) -> bool:
     return collapsed in CATASTROPHIC_BARE_PATHS
 
 
+def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
+    """Split a home spelling into (username, rest). Empty username is the current user.
+
+    Recognizes ``~``, ``$HOME``, ``${HOME}``, ``~/rest``, ``$HOME/rest``,
+    ``${HOME}/rest``, ``~user``, and ``~user/rest`` (backslash separators too).
+    ``~/foo`` is the current user, not a user named empty: the username pattern
+    starts with a letter or underscore.
+    """
+    if not candidate:
+        return None
+    if candidate == "~" or candidate.startswith("~/") or candidate.startswith("~\\"):
+        rest = candidate[1:]
+        if rest[:1] in {"/", "\\"}:
+            rest = rest[1:]
+        return ("", rest)
+    if candidate.startswith("${HOME}"):
+        rest = candidate[len("${HOME}") :]
+        if rest == "" or rest[:1] in {"/", "\\"}:
+            return ("", rest[1:] if rest else "")
+        return None
+    if candidate.startswith("$HOME"):
+        rest = candidate[len("$HOME") :]
+        if rest == "" or rest[:1] in {"/", "\\"}:
+            return ("", rest[1:] if rest else "")
+        return None
+    if not candidate.startswith("~"):
+        return None
+    body = candidate[1:]
+    username_end = 0
+    while username_end < len(body) and body[username_end] not in {"/", "\\"}:
+        username_end += 1
+    username = body[:username_end]
+    if not username or _HOME_USERNAME.fullmatch(username) is None:
+        return None
+    rest = body[username_end:]
+    if rest[:1] in {"/", "\\"}:
+        rest = rest[1:]
+    return (username, rest)
+
+
+def _other_user_home(username: str) -> Path | None:
+    """Resolve ``~user`` through the OS user database. None means fail closed."""
+    if pwd is None or not username:
+        return None
+    try:
+        pwd.getpwnam(username)
+    except (KeyError, OSError, TypeError, ValueError, AttributeError):
+        return None
+    try:
+        expanded = os.path.expanduser(f"~{username}")
+    except (OSError, TypeError, ValueError):
+        return None
+    if not expanded or expanded.startswith("~"):
+        return None
+    try:
+        return Path(expanded)
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
+    username, rest = parsed
+    if username:
+        home = _other_user_home(username)
+        if home is None:
+            return None
+    else:
+        try:
+            home = Path.home()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return None
+    return home / rest if rest else home
+
+
 def _is_unjoined_shell_target(candidate: str) -> bool:
     """True when the caller named an absolute, home, or temp path, not cwd-relative."""
     if not candidate:
         return False
     if _is_catastrophic_path(candidate) or _is_temp_env_specifier(candidate):
         return True
-    if candidate.startswith(("~/", "$HOME/", "~\\", "$HOME\\")):
+    if _parse_home_shorthand(candidate) is not None:
         return True
     try:
         return Path(candidate).is_absolute()
@@ -276,18 +356,10 @@ def _claude_config_bases() -> list[Path]:
 
 
 def _absolute_home_or_literal(candidate: str) -> Path | None:
-    """Expand only the home prefixes this gate already recognizes as shorthand."""
-    collapsed = candidate.rstrip("/\\") or candidate
-    if collapsed in {"~", "$HOME"}:
-        return Path.home()
-    if candidate.startswith("~/"):
-        return Path.home() / candidate[2:]
-    if candidate.startswith("$HOME/"):
-        return Path.home() / candidate[6:]
-    if candidate.startswith("~\\"):
-        return Path.home() / candidate[2:]
-    if candidate.startswith("$HOME\\"):
-        return Path.home() / candidate[6:]
+    """Expand recognized home shorthand, or return an absolute literal path."""
+    parsed = _parse_home_shorthand(candidate)
+    if parsed is not None:
+        return _expand_parsed_home(parsed)
     try:
         path = Path(candidate)
     except (OSError, TypeError, ValueError):
@@ -477,7 +549,14 @@ def _is_this_vault_claude_memory_path(candidate: str, vault: Path) -> bool:
 
 
 def _path_for_location_check(candidate: str) -> Path | None:
-    """Expand home/temp shorthand, or return an absolute or relative Path."""
+    """Expand home/temp shorthand, or return an absolute or relative Path.
+
+    Home shorthand that cannot be resolved (unknown ``~user``) returns None so
+    callers fail closed instead of cwd-joining the tilde form as a relative path.
+    """
+    parsed = _parse_home_shorthand(candidate)
+    if parsed is not None:
+        return _expand_parsed_home(parsed)
     expanded = _expand_temp_shorthand(candidate)
     if expanded is not None:
         return expanded
@@ -625,7 +704,10 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     if vault is None:
         return None
 
+    parsed = _parse_home_shorthand(candidate)
     expanded = _absolute_home_or_literal(candidate)
+    if parsed is not None and expanded is None:
+        return REASON_UNSAFE_PATH
     try:
         expanded_path = expanded if expanded is not None else Path(candidate)
     except (OSError, TypeError, ValueError):

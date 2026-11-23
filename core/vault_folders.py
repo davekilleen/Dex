@@ -264,6 +264,26 @@ def _normalize_relative(value: str) -> str | None:
     return collapsed
 
 
+_CURL_NOARG_SHORT = frozenset("sSiIkLvqn#gGjf")
+
+
+def _short_cluster_output_path(token: str) -> str | None:
+    """Return the attached PATH for ``-o`` / ``-sSo`` clusters, or None.
+
+    Scans short-option letters left to right. No-arg letters may precede a
+    terminating ``o``. ``-socks5`` is not an output cluster (see the caller).
+    """
+    if not token.startswith("-") or token.startswith("--"):
+        return None
+    body = token[1:]
+    index = 0
+    while index < len(body) and body[index] in _CURL_NOARG_SHORT:
+        index += 1
+    if index >= len(body) or body[index] != "o":
+        return None
+    return body[index + 1 :]
+
+
 def _curl_output_targets(args: str) -> list[str]:
     tokens = _tokenize(args)
     targets: list[str] = []
@@ -281,6 +301,21 @@ def _curl_output_targets(args: str) -> list[str]:
             value = token.split("=", 1)[1]
             if value and value != "-":
                 targets.append(value)
+            continue
+        if token.startswith("--"):
+            continue
+        if token.startswith("-socks"):
+            continue
+        attached = _short_cluster_output_path(token)
+        if attached is None:
+            continue
+        if attached and attached != "-":
+            targets.append(attached)
+            continue
+        if attached == "":
+            if index + 1 < len(tokens) and tokens[index + 1] not in {"", "-"}:
+                targets.append(tokens[index + 1])
+            skip_next = True
     return targets
 
 
