@@ -7,6 +7,22 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Commitments due lists only the open action items from your meetings
+
+After a stretch of meetings, "commitments due" was filling up with quoted lines, transcript scraps, three-word fragments, finished work, and the same promise listed twice. It almost never showed the actual open action items from those notes.
+
+**What this fixes for you:**
+
+* **You see the jobs you still owe.** Dex reads the Action Items section of recent meeting notes and lists only the ones you have not ticked off yet.
+* **Finished work stays off the list.** Ticked items and items already marked done are left out.
+* **Quoted lines and the transcript are not jobs.** A line that is just a quote, or something said in the transcript, no longer shows up as a commitment.
+* **The same promise is listed once.** If two notes repeat the same open item, you see it once.
+* **Work you asked someone else to do is listed separately.** Those items sit under waiting on others, with the person's name.
+
+Thanks to Ben Freeman for reporting this.
+
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
 After meetings were processed, "commitments due" could still come back empty when the notes sat in a dated folder instead of directly in the meetings folder. And a brand-new install on an Intel Mac with a very new Python could stop later with a raw error instead of a clear message.
