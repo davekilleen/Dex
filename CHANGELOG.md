@@ -35,6 +35,20 @@ After a stretch of meetings, "commitments due" was filling up with quoted lines,
 
 Thanks to Ben Freeman for reporting this.
 
+### Related tasks only go on real project pages
+
+Saying yes to the related-tasks list was adding an empty "Related Tasks" block to every note in a project folder — decision logs, walkthroughs, READMEs, interview notes — not just the actual project page. Turning the list off left those blocks behind.
+
+**What this fixes for you:**
+
+* **Only real project pages get a related-tasks list.** Notes, decision logs, and drafts sitting in a project folder are left alone.
+* **An empty list is not written.** If a project has no linked tasks, the page stays as you wrote it.
+* **Pages that already got the empty block are cleaned up once.** Dex takes a dated copy first, then removes only the untouched empty list. If you added your own text under that heading, that file is left as-is.
+* **Turning the list off removes it.** The related-tasks blocks Dex added come off project pages, and leftover empty lists anywhere in the project folder come off too.
+
+Thanks to Don Mason, Michelle Wright, and Olivier Fontenelle for reporting this.
+
+
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
 After meetings were processed, "commitments due" could still come back empty when the notes sat in a dated folder instead of directly in the meetings folder. And a brand-new install on an Intel Mac with a very new Python could stop later with a raw error instead of a clear message.

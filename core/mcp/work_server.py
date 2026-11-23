@@ -1458,7 +1458,7 @@ def update_related_tasks_section(page_path: str, tasks: List[Dict[str, Any]]) ->
 
 def sync_task_refs_for_page(page_path: str) -> Dict[str, Any]:
     """Sync Related Tasks section for a page by reading 03-Tasks/Tasks.md"""
-    if project_related_tasks.is_project_page(page_path):
+    if project_related_tasks.is_under_projects_dir(page_path):
         return project_related_tasks.sync_project_page(BASE_DIR, page_path)
 
     tasks = find_tasks_for_page(page_path)
@@ -5847,7 +5847,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "enabled": {
                         "type": "boolean",
-                        "description": "True turns the list on and refreshes project pages. False leaves project pages untouched.",
+                        "description": "True turns the list on and refreshes project pages. False removes the list from project pages and leftover empty placeholders.",
                     }
                 },
                 "required": ["enabled"],
