@@ -112,7 +112,6 @@ ALLOWED = [
     "gh pr create --title x --body \"$(cat <<'EOF'\n> quoted line\nEOF\n)\"",
     'git commit -m "fix: cp helper -> safer"',
     "[ -f notes.txt ] && echo yes > out.txt",
-    "cat src/cp.py > copy.txt",
 ]
 
 
@@ -280,6 +279,19 @@ UNCHECKED = [
     "read HOME <<< /etc; cp a ~/x",
     "gh myalias 'x; echo k > ~/.ssh/k'",
     '"$CMD" a b > log.txt',
+    # Security review round 2.
+    "./tee.bin ~/.ssh/authorized_keys",
+    "./curl.bin -o ~/.ssh/authorized_keys URL",
+    "cp.py a ~/.ssh/k",
+    "uv run ./tee.bin ~/.ssh/k",
+    "cat src/cp.py > copy.txt",
+    "curl -w @- URL",
+    "curl -w @fmt.txt URL",
+    "curl --write-out @- URL",
+    "curl -w '%OUTPUT{/etc/x}' URL",
+    "curl -J -O URL",
+    "curl -OJ URL",
+    "curl --remote-header-name -O URL",
 ]
 
 

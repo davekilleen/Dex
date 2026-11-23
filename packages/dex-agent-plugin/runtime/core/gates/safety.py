@@ -1086,9 +1086,9 @@ _FIND_UNSAFE_ACTIONS = frozenset({"-exec", "-execdir", "-ok", "-okdir", "-fprint
 _RECOGNISED_TARGET_VARS = ("HOME", "TMPDIR", "TEMP", "TMP")
 
 _WRITE_NAME_RE = re.compile(r"(?<![a-z0-9_.-])(?:cp|mv|curl|tee)(?:\.exe)?(?![a-z0-9_-])")
-# Mention test for words of other commands: like the trigger, but a file
-# extension (``cp.py``, ``tee.md``) is a different name.
-_WRITE_MENTION_RE = re.compile(r"(?<![a-z0-9_.-])(?:cp|mv|curl|tee)(?:\.exe)?(?!\.?[a-z0-9_-])")
+# Mention test for words of other commands: the same as the trigger, so a
+# suffixed name (``tee.bin``, ``cp.py``) counts too and fails closed.
+_WRITE_MENTION_RE = _WRITE_NAME_RE
 _UNQUOTED_WORD_CHARS = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/~:=@%+,-*?[]"
 )
@@ -1114,14 +1114,15 @@ _MV_LONG_FLAGS = frozenset({
     "--force", "--interactive", "--no-clobber", "--verbose", "--update", "--no-target-directory",
 })
 _MV_LONG_VALUE = frozenset({"--target-directory"})
-_CURL_SHORT_FLAGS = frozenset("sSLfkviI#OJgGN46qZ")
+# -J / --remote-header-name are left out on purpose: the server picks the name.
+_CURL_SHORT_FLAGS = frozenset("sSLfkviI#OgGN46qZ")
 _CURL_SHORT_VALUE = frozenset("HXdFuAemrxbTzw")
 _CURL_SHORT_WRITE = frozenset("oDc")
 _CURL_LONG_FLAGS = frozenset({
     "--silent", "--show-error", "--location", "--fail", "--fail-with-body",
     "--insecure", "--verbose", "--include", "--head", "--compressed",
     "--progress-bar", "--remote-name", "--remote-name-all",
-    "--remote-header-name", "--create-dirs", "--globoff", "--get", "--no-buffer",
+    "--create-dirs", "--globoff", "--get", "--no-buffer",
     "--http1.1", "--http2", "--ipv4", "--ipv6", "--no-progress-meter", "--parallel",
 })
 _CURL_LONG_VALUE = frozenset({
@@ -1136,7 +1137,7 @@ _CURL_LONG_WRITE = frozenset({
     "--output", "--output-dir", "--dump-header", "--cookie-jar", "--trace",
     "--trace-ascii", "--stderr", "--etag-save", "--libcurl", "--hsts", "--alt-svc",
 })
-_CURL_REMOTE_NAME_SHORT = frozenset("OJ")
+_CURL_REMOTE_NAME_SHORT = frozenset("O")
 _CURL_REMOTE_NAME_LONG = frozenset({"--remote-name", "--remote-name-all"})
 _TEE_SHORT_FLAGS = frozenset("aip")
 _TEE_LONG_FLAGS = frozenset({"--append", "--ignore-interrupts"})
@@ -1657,6 +1658,8 @@ def _check_segment_grammar(seg: _ShellSegment) -> bool:
     if not _COMMAND_WORD_RE.fullmatch(first.text):
         return False  # e.g. zsh "=cp" (equals expansion) or "a=b"
     name = _segment_name(seg)
+    if name not in _SHELL_WRITE_COMMANDS and _mentions_write_command(first.text):
+        return False  # a look-alike program (tee.bin, ./curl.sh) Dex can't read
     if name in _SHELL_WRAPPERS:
         return False
     rest = seg.words[1:]
@@ -1857,8 +1860,10 @@ def _curl_targets(seg: _ShellSegment) -> list[_WriteTarget] | None:
     output_dirs: list[_ShellWord] = []
     files: list[_ShellWord] = []
     for option, word in valued:
-        if option in {"-w", "--write-out"} and "%output{" in word.text:
-            return None
+        if option in {"-w", "--write-out"} and (
+            word.text.startswith("@") or "%output" in word.text.casefold()
+        ):
+            return None  # format read from a file/stdin, or one that writes files
         if option in write_short or option in _CURL_LONG_WRITE:
             if re.search(r"#[0-9]", word.text):
                 return None
