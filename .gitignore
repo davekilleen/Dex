@@ -145,6 +145,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.build/
+core/macos/dex-helper/.build/
 eggs/
 .eggs/
 lib/

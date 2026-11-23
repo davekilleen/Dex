@@ -7,6 +7,18 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [1.97.37] — Calendar and Reminders can ask on your Mac even when you are in VS Code (2026-11-23)
+
+Inside VS Code or the Claude app, the Mac often never asked for Calendar or Reminders permission, so those features looked broken or simply vanished.
+
+**What this fixes for you:**
+
+* **A small Dex Helper app asks for Calendar and Reminders in its own name.** Dex opens that app so the Mac can show the permission ask even when you are in VS Code or the Claude app.
+* **If that app is not on your Mac yet, Dex says so and stops.** Calendar and Reminders stay unavailable until you install Dex Helper (run `/calendar-setup` or `/dex-update`). Dex does not try a hidden workaround, and granting the editor or Terminal is not enough.
+* **Rebuilding a local helper means you grant again.** People using Dex get the signed copy from a Dex update. Making and publishing that signed copy is a separate step on the Mac that holds it — this change does not send that copy out by itself.
+
+Thanks to Arthur Mandl and Michelle Wright for reporting this.
+
 ## [1.97.36] — Make folders next to Dex, commitments show your open action items, Related tasks stays on project pages, updates no longer dead-end, and Project chat notes are not corrections (2026-11-23)
 
 ### You can make a new folder next to Dex, not only inside it

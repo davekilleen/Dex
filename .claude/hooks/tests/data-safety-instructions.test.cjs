@@ -105,6 +105,14 @@ const UPDATE_SERVICE_OPERATIONS = new Set([
   // deliberately kept (e.g. CLAUDE.md carrying direct edits). The skill
   // teaches how to explain and rescue that outcome, so it may name it.
   'kept_reasons',
+  // After a successful apply, the skill names
+  // `python -m core.utils.macos_privacy_helper install` so a Mac can
+  // replace Dex Helper from the signed pin. That writes only
+  // ~/Applications/Dex Helper.app (and a previous copy under Application
+  // Support). It never mutates vault files. A skip or failure there does
+  // not rewind the Dex code update. `/dex-rollback` does not undo the
+  // helper; the skill names the same module's rollback subcommand for that.
+  'macos_privacy_helper',
 ]);
 
 function assertInOrder(document, needles, label) {
