@@ -7,7 +7,7 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
-## [Unreleased] — Doctor no longer tells you not to update with no way forward
+## Unreleased
 
 On every release, a customized Dex install could be told the checkup was incomplete — hundreds of leftover developer files, plus folders Dex never meant to capture — and to wait until a repair that Doctor did not actually offer. The official proof record already checked out, so there was nowhere to go.
 
