@@ -859,7 +859,9 @@ def _is_bare_mkdir_prefix(command: str) -> bool:
 
 
 def _mkdir_syntax_fail_closed(command: str) -> bool:
-    if re.search(r"[;&|`]", command) or "$(" in command or "$ (" in command:
+    # Refuse shell syntax rather than parse it. Redirects (>, >>, >|, &>, <, <<)
+    # must fail closed so an attached target is never treated as a mkdir operand.
+    if re.search(r"[;&|`<>]", command) or "$(" in command or "$ (" in command:
         return True
     if "\\" in command or re.search(r"[*?[]", command):
         return True

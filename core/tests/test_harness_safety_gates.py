@@ -389,6 +389,33 @@ def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> 
         assert "outside the vault" not in decision.reason
 
 
+def test_mkdir_shell_redirects_are_refused(tmp_path: Path, monkeypatch) -> None:
+    """Refuse mkdir with > or < rather than parse a redirect destination."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "mkdir /tmp/x>~/.ssh/authorized_keys",
+        "mkdir /tmp/x>>~/.ssh/authorized_keys",
+        "mkdir /tmp/x>~/.gnupg/x",
+        "mkdir foo < /etc/passwd",
+        "mkdir /tmp/x>|~/.ssh/authorized_keys",
+        "mkdir /tmp/x&>~/.ssh/authorized_keys",
+        "mkdir /tmp/x>&~/.ssh/authorized_keys",
+        "mkdir foo <<EOF",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    for command in (
+        "mkdir -p ~/Projects/new",
+        "mkdir -p /tmp/x",
+        "mkdir -p 00-Inbox/sub",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+
+
 def test_mkdir_fail_closed_refusals(tmp_path: Path, monkeypatch) -> None:
     vault = _vault(tmp_path)
     _memory_home(tmp_path, monkeypatch)
@@ -419,6 +446,10 @@ def test_mkdir_fail_closed_refusals(tmp_path: Path, monkeypatch) -> None:
         "/bin/mkdir foo",
         "DEST=x mkdir foo",
         "mkdir -p ~/.{ssh,gnupg}/x",
+        "mkdir /tmp/x>~/.ssh/authorized_keys",
+        "mkdir /tmp/x>>~/.ssh/authorized_keys",
+        "mkdir /tmp/x>~/.gnupg/x",
+        "mkdir foo < /etc/passwd",
     )
     for command in commands:
         decision = evaluate_safety_gate(command=command, vault=vault)
