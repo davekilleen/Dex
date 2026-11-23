@@ -690,11 +690,14 @@ def test_mkdir_os_temp_and_tmpdir_stay_allowed(tmp_path: Path, monkeypatch) -> N
     for command in (
         "mkdir -p /tmp/x",
         "mkdir -p /private/tmp/claude-501/proj/scratchpad/sub",
-        "mkdir -p $TMPDIR/x",
         f"mkdir -p {scratch / 'x'}",
     ):
+        assert _parse_strict_mkdir_command(command) is not None, command
         decision = evaluate_safety_gate(command=command, vault=vault)
         assert decision.refused is False, (command, decision.reason)
+    env_temp = "mkdir -p $TMPDIR/x"
+    assert _parse_strict_mkdir_command(env_temp) is None
+    assert evaluate_safety_gate(command=env_temp, vault=vault).refused is True
 
 
 def test_write_tool_path_outside_the_vault_stays_blocked(

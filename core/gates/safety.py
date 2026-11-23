@@ -994,16 +994,15 @@ def evaluate_safety_gate(
                 resolved_target = target
             else:
                 resolved_target = str(workdir / target)
-            if allow_os_temp and _is_os_temp_path(target):
-                continue
+            # Non-allow-list mkdir does not get the outside-vault exception,
+            # including OS-temp paths. Only the strict allow-list may create
+            # a folder outside the vault.
             if _is_temp_env_specifier(target):
                 return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
             target_path_reason = _unsafe_path_reason(resolved_target, root)
             if target_path_reason:
                 return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
-            target_folder_reason = new_top_level_folder_reason(
-                root, resolved_target, as_directory=True
-            )
+            target_folder_reason = new_top_level_folder_reason(root, resolved_target, as_directory=True)
             if target_folder_reason:
                 return GateDecision(
                     DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
