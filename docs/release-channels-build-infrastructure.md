@@ -19,7 +19,7 @@ Every completed distribution build creates an annotated tag with this scheme:
 dist/<target>/v<package-version>-<release-short-sha>
 ```
 
-For example, stable and beta builds might create `dist/release/v1.61.0-a1b2c3d` and `dist/release-beta/v1.61.0-e4f5a6b`. The target segment keeps channel identities separate. The suffix identifies the sanitized release commit containing that build's installed-files manifest, and the annotated tag peels to that same commit. Tags are pushed without force and never moved. This gives future rollback code a durable historical identity even though the channel branches themselves are force-refreshed.
+For example, stable and beta builds might create `dist/release/v1.61.0-a1b2c3d` and `dist/release-beta/v1.61.0-e4f5a6b`. The target segment keeps channel identities separate. The suffix identifies the sanitized release commit containing that build's installed-files manifest, and the annotated tag peels to that same commit. Tags are pushed without force and never moved. This gives future rollback code a durable historical identity even though the channel branches themselves are force-refreshed. When a live `dist/release` name must leave the old-install update window, copy that same annotated object to `dist/archive/` using the [bridge-and-archive procedure](release-tag-archive.md); do not mint a new tag object.
 
 Release catalog v1 remains readable with its original concrete-tag field so
 installed public catalogs are not reinterpreted. New builds emit catalog v2,

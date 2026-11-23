@@ -12,7 +12,9 @@ means the `dist/release/v*` packages, historic `dist/archive/v*` distribution
 tags, and the older public `v*` release tags that predate that format. Archive
 tags preserve an immutable historic starting tree after its canonical
 distribution ref is retired; both current and legacy archives retain their
-version-and-commit suffix. A release catalog independently binds its publisher
+version-and-commit suffix. The operator steps that copy a live `dist/release`
+ref to `dist/archive/` without rewriting the tag object are in
+[release-tag-archive.md](release-tag-archive.md). A release catalog independently binds its publisher
 source without changing the immutable tag's release-commit identity. If two tags point at different trees—even when they share
 the same version number—they are separate cases. Byte-identical trees are one
 case. A canonical and archive tag that claim the same version-and-commit
