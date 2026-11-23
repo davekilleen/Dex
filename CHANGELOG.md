@@ -7,6 +7,20 @@ All notable changes to Dex will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### You can make a new folder next to Dex, not only inside it
+
+Claude would copy a file into a project folder outside Dex — iCloud, a shared drive, another working folder — but refused to create that folder, so you had to make it by hand.
+
+**What this fixes for you:**
+
+* **A new folder next to Dex is allowed.** If you keep a project outside your Dex folder, Claude can create the folder it needs instead of stopping with a safety message.
+* **System and private folders stay blocked.** Your home folder itself, system files, and private computer folders are still refused. Claude can only create a folder outside Dex with a straightforward mkdir and a simple path — not a roundabout command. Anything else is refused the same way it was before.
+* **Dex still will not invent a brand-new folder at the top of your notes.** That rule did not change.
+
+Thanks to Jim McDermott for reporting this.
+
 ## [1.97.35] — Commitments due finds notes in dated folders, and setup on an Intel Mac no longer fails halfway (2026-11-17)
 
 After meetings were processed, "commitments due" could still come back empty when the notes sat in a dated folder instead of directly in the meetings folder. And a brand-new install on an Intel Mac with a very new Python could stop later with a raw error instead of a clear message.

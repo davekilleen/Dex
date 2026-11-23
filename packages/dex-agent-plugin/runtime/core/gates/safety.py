@@ -38,6 +38,7 @@ CODE_FORCE_PUSH_MAIN = "force_push_main"
 CODE_SQL_DROP = "sql_drop"
 CODE_GITHUB_REPO_DELETE = "github_repo_delete"
 CODE_UNSAFE_PATH = "unsafe_path"
+CODE_PROTECTED_LOCATION = "protected_location"
 CODE_NEW_TOP_LEVEL_FOLDER = "new_top_level_folder"
 CODE_CHMOD_777 = "chmod_777"
 CODE_KILL_9 = "kill_9"
@@ -54,6 +55,7 @@ REASON_FORCE_PUSH = "Blocked: force push to main/master"
 REASON_SQL_DROP = "Blocked: SQL DROP command"
 REASON_GITHUB_DELETE = "Blocked: GitHub repo deletion"
 REASON_UNSAFE_PATH = "Blocked: unsafe path (root, home, or outside the vault)"
+REASON_PROTECTED_LOCATION = "Blocked: system or home-root folder"
 REASON_CHMOD_777 = (
     "WARNING: chmod 777 grants full permissions to all users. "
     "Consider more restrictive permissions."
@@ -84,7 +86,33 @@ SQL_DROP = re.compile(r"(DROP\s+TABLE|DROP\s+DATABASE)", re.IGNORECASE)
 GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
-CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "/Users"})
+CATASTROPHIC_BARE_PATHS = frozenset({"/", "~", "$HOME", "${HOME}", "/Users"})
+_STRICT_MKDIR_FLAGS = frozenset({"-p", "--parents"})
+_STRICT_MKDIR_PATH_CHARS = re.compile(r"^[A-Za-z0-9._/~-]+$")
+_PROTECTED_SYSTEM_PREFIXES = (
+    "/etc",
+    "/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/Library",
+    "/opt",
+    "/root",
+    "/Applications",
+    "/dev",
+    "/proc",
+    "/sys",
+    "/run",
+    "/boot",
+)
+_PROTECTED_VAR_PREFIXES = ("/var", "/private")
+# Named denylist plus the leading-dot rule in _protected_location_reason.
+_PROTECTED_HOME_CHILDREN = frozenset({"Library", ".ssh", ".gnupg", ".config", ".claude"})
+_FOREIGN_HOME_ROOTS = frozenset({"Users", "home"})
+_WINDOWS_PROTECTED = re.compile(
+    r"^[A-Za-z]:[\\/](?:Windows|Program Files)",
+    re.IGNORECASE,
+)
 MIGRATION_LOCK_RELATIVE = Path("System") / ".dex" / "mutation.lock"
 # Temp-root values that must never become an outside-vault allowance. Home
 # itself is checked separately so a Windows temp folder under the profile
@@ -217,8 +245,146 @@ def _migration_lock_is_live(vault: Path) -> bool:
 
 
 def _is_catastrophic_path(candidate: str) -> bool:
-    collapsed = candidate.rstrip("/") or "/"
-    return collapsed in CATASTROPHIC_BARE_PATHS or candidate.startswith(("~/", "$HOME/"))
+    collapsed = candidate.rstrip("/\\") or "/"
+    return collapsed in CATASTROPHIC_BARE_PATHS
+
+
+def _is_recognized_braced_home(candidate: str) -> bool:
+    """True for exact ``${HOME}`` or ``${HOME}/rest`` (backslash too)."""
+    if not candidate.startswith("${HOME}"):
+        return False
+    rest = candidate[len("${HOME}") :]
+    return rest == "" or rest[:1] in {"/", "\\"}
+
+
+def _is_unparsed_braced_home(candidate: str) -> bool:
+    """True for ``${HOME…}`` spellings that are not exact ``${HOME}`` / ``${HOME}/rest``.
+
+    Bash parameter forms such as ``${HOME:0}`` are not evaluated. Callers fail
+    closed instead of treating them as cwd-relative names.
+    """
+    return candidate.startswith("${HOME") and not _is_recognized_braced_home(candidate)
+
+
+def _parse_home_shorthand(candidate: str) -> tuple[str, str] | None:
+    """Split a current-user home spelling into ("", rest).
+
+    Recognizes ``~``, ``$HOME``, ``${HOME}``, ``~/rest``, ``$HOME/rest``,
+    and ``${HOME}/rest`` (backslash separators too). Other ``~user`` forms
+    are not expanded; file tools treat them as filenames.
+    """
+    if not candidate:
+        return None
+    if candidate == "~" or candidate.startswith("~/") or candidate.startswith("~\\"):
+        rest = candidate[1:]
+        if rest[:1] in {"/", "\\"}:
+            rest = rest[1:]
+        return ("", rest)
+    if _is_recognized_braced_home(candidate):
+        rest = candidate[len("${HOME}") :]
+        return ("", rest[1:] if rest else "")
+    if candidate.startswith("$HOME"):
+        rest = candidate[len("$HOME") :]
+        if rest == "" or rest[:1] in {"/", "\\"}:
+            return ("", rest[1:] if rest else "")
+        return None
+    return None
+
+
+def _join_under(base: Path, rest: str) -> Path:
+    """Join *rest* onto *base* without discarding *base* when *rest* looks absolute."""
+    base_s = str(base)
+    trimmed = rest.lstrip("/\\")
+    if not trimmed:
+        return Path(base_s)
+    return Path(os.path.join(base_s, trimmed))
+
+
+def _has_parent_dir_component(path: str) -> bool:
+    """True when any ``/`` or ``\\``-separated component is exactly ``..``."""
+    return any(part == ".." for part in re.split(r"[/\\]", path))
+
+
+def _collapse_slashes_and_dot_components(raw: str) -> str:
+    """Collapse extra slashes and ``.`` components; leave ``..`` in place."""
+    if raw == "":
+        return raw
+    unified = raw.replace("\\", "/")
+    drive = ""
+    if len(unified) >= 2 and unified[1] == ":" and unified[0].isalpha():
+        drive = unified[:2]
+        unified = unified[2:]
+    is_abs = unified.startswith("/")
+    parts = [part for part in unified.split("/") if part and part != "."]
+    body = "/".join(parts)
+    if is_abs:
+        body = "/" + body if body else "/"
+    return drive + body
+
+
+def _normalize_write_path(path: Path) -> Path | None:
+    """Collapse extra slashes and ``.``, then realpath the deepest existing parent.
+
+    Does not lexically collapse ``..``. A remaining ``..`` component is
+    unresolved: return None so callers refuse.
+    """
+    raw = _collapse_slashes_and_dot_components(str(path))
+    if _has_parent_dir_component(raw):
+        return None
+    suffix: list[str] = []
+    cursor = raw
+    while cursor and not os.path.lexists(cursor):
+        parent = os.path.dirname(cursor)
+        name = os.path.basename(cursor)
+        if parent == cursor:
+            break
+        if name:
+            suffix.append(name)
+        cursor = parent
+    if cursor and os.path.lexists(cursor):
+        try:
+            cursor = os.path.realpath(cursor)
+        except OSError:
+            pass
+    rebuilt = cursor
+    for name in reversed(suffix):
+        rebuilt = os.path.join(rebuilt, name)
+    collapsed = _collapse_slashes_and_dot_components(rebuilt)
+    if _has_parent_dir_component(collapsed):
+        return None
+    return Path(collapsed)
+
+
+def _expand_parsed_home(parsed: tuple[str, str]) -> Path | None:
+    username, rest = parsed
+    if username:
+        return None
+    try:
+        home = Path.home()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    joined = _join_under(home, rest) if rest else home
+    return _normalize_write_path(joined)
+
+
+def _is_unjoined_shell_target(candidate: str) -> bool:
+    """True when the caller named an absolute, home, or temp path, not cwd-relative.
+
+    Bare ``~word`` is a filename. Current-user ``~`` / ``~/...`` / ``$HOME``
+    spellings are home, not cwd-relative names.
+    """
+    if not candidate:
+        return False
+    if _is_catastrophic_path(candidate) or _is_temp_env_specifier(candidate):
+        return True
+    if _is_unparsed_braced_home(candidate):
+        return True
+    if _parse_home_shorthand(candidate) is not None:
+        return True
+    try:
+        return Path(candidate).is_absolute()
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def _claude_project_slugs(vault: Path) -> frozenset[str]:
@@ -242,11 +408,10 @@ def _claude_config_bases() -> list[Path]:
 
 
 def _absolute_home_or_literal(candidate: str) -> Path | None:
-    """Expand only the home prefixes this gate already recognizes as shorthand."""
-    if candidate.startswith("~/"):
-        return Path.home() / candidate[2:]
-    if candidate.startswith("$HOME/"):
-        return Path.home() / candidate[6:]
+    """Expand recognized home shorthand, or return an absolute literal path."""
+    parsed = _parse_home_shorthand(candidate)
+    if parsed is not None:
+        return _expand_parsed_home(parsed)
     try:
         path = Path(candidate)
     except (OSError, TypeError, ValueError):
@@ -267,7 +432,7 @@ def _expand_temp_shorthand(candidate: str) -> Path | None:
             raw = os.environ.get(env_name, "").strip()
             if not raw:
                 return None
-            return Path(raw) / candidate[len(prefix) :]
+            return _join_under(Path(raw), candidate[len(prefix) :])
     return None
 
 
@@ -435,12 +600,213 @@ def _is_this_vault_claude_memory_path(candidate: str, vault: Path) -> bool:
     return False
 
 
+def _path_for_location_check(candidate: str) -> Path | None:
+    """Expand home/temp shorthand, or return an absolute or relative Path.
+
+    Current-user home shorthand that cannot be resolved returns None so callers
+    fail closed. Unparsed ``${HOME…}`` forms fail closed the same way.
+    """
+    if _is_unparsed_braced_home(candidate):
+        return None
+    parsed = _parse_home_shorthand(candidate)
+    if parsed is not None:
+        expanded = _expand_parsed_home(parsed)
+        return None if expanded is None else expanded
+    expanded = _expand_temp_shorthand(candidate)
+    if expanded is not None:
+        return _normalize_write_path(expanded) if expanded.is_absolute() else expanded
+    try:
+        path = Path(candidate)
+    except (OSError, TypeError, ValueError):
+        return None
+    if path.is_absolute():
+        return _normalize_write_path(path)
+    collapsed = _collapse_slashes_and_dot_components(str(path))
+    if _has_parent_dir_component(collapsed):
+        return None
+    return Path(collapsed)
+
+
+def _resolved_home() -> Path | None:
+    try:
+        return Path.home().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _is_inside_vault(candidate: str, vault: Path) -> bool:
+    """True when the named path sits under the vault after home/symlink normalisation."""
+    target = _path_for_location_check(candidate)
+    if target is None:
+        return False
+    if not target.is_absolute():
+        target = _join_under(vault, str(target))
+    target = _normalize_write_path(target)
+    if target is None:
+        return False
+    lexical = Path(os.path.normpath(str(target)))
+    try:
+        roots = {vault, vault.resolve()}
+    except (OSError, RuntimeError, TypeError, ValueError):
+        roots = {vault}
+    for base in roots:
+        try:
+            lexical.relative_to(Path(os.path.normpath(str(base))))
+        except (OSError, ValueError):
+            continue
+        return True
+    return False
+
+
+def _is_direct_root_child(resolved: Path) -> bool:
+    return len(resolved.parts) == 2 and resolved.parts[0] == "/"
+
+
+def _is_under_direct_root_child(resolved: Path) -> bool:
+    """True when *resolved* is ``/name`` or a nested path that mkdir -p would create under ``/name``."""
+    parts = resolved.parts
+    if len(parts) < 2 or parts[0] != "/":
+        return False
+    return _is_direct_root_child(Path("/") / parts[1])
+
+
+def _is_well_known_os_temp_path(resolved: Path) -> bool:
+    """True for well-known OS scratch trees, compared case-insensitively."""
+    return any(_path_has_prefix_ci(resolved, prefix) for prefix in _WELL_KNOWN_OS_TEMP_PREFIXES)
+
+
+def _is_foreign_user_tree(resolved: Path, home: Path | None) -> bool:
+    """True for /Users, /home, and another user's directory under them."""
+    parts = resolved.parts
+    if len(parts) < 2 or parts[0] != "/" or parts[1] not in _FOREIGN_HOME_ROOTS:
+        return False
+    if home is not None:
+        try:
+            resolved.relative_to(home)
+        except ValueError:
+            return True
+        else:
+            return False
+    return True
+
+
+def _path_has_prefix_ci(resolved: Path, prefix: str) -> bool:
+    """True when *resolved* is *prefix* or a child of it, ignoring case."""
+    left = str(resolved).replace("\\", "/").rstrip("/") or "/"
+    right = prefix.replace("\\", "/").rstrip("/") or "/"
+    left_c, right_c = left.casefold(), right.casefold()
+    return left_c == right_c or left_c.startswith(right_c + "/")
+
+
+def _is_under_system_prefix(resolved: Path, prefix: str) -> bool:
+    if _path_has_prefix_ci(resolved, prefix):
+        return True
+    root = Path(prefix)
+    if _is_under_root(resolved, root) or resolved == root:
+        return True
+    try:
+        resolved_root = root.resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    collapsed = str(resolved_root).rstrip("/") or "/"
+    if collapsed in {"/", "/Users", "/home"}:
+        return False
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        home = None
+    if home is not None and resolved_root == home:
+        return False
+    return _is_under_root(resolved, resolved_root) or resolved == resolved_root
+
+
+_WINDOWS_POSIX_PROTECTED = re.compile(
+    r"^/(?:mnt/)?[A-Za-z]/(?:Windows|Program Files)",
+    re.IGNORECASE,
+)
+# Lexical OS-temp prefixes. _is_os_temp_path refuses a claimed temp root
+# that is an ancestor of $HOME, which happens in pytest (HOME lives under
+# /tmp). Nested mkdir under these prefixes is still ordinary scratch.
+_WELL_KNOWN_OS_TEMP_PREFIXES = (
+    "/tmp",
+    "/private/tmp",
+    "/var/tmp",
+    "/private/var/tmp",
+)
+
+
+def _is_windows_protected_path(candidate: str, resolved: Path) -> bool:
+    for raw in (candidate, str(resolved)):
+        normalized = raw.replace("/", "\\")
+        if _WINDOWS_PROTECTED.match(normalized):
+            return True
+        posix = raw.replace("\\", "/")
+        if _WINDOWS_POSIX_PROTECTED.match(posix):
+            return True
+    return False
+
+
+def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
+    """Refuse catastrophic, system, and private home locations; allow ordinary folders."""
+    candidate = _safe_string(path)
+    if not candidate:
+        return None
+    if vault is not None and _is_this_vault_claude_memory_path(candidate, vault):
+        return None
+    if _is_os_temp_path(candidate):
+        return None
+    if _is_catastrophic_path(candidate):
+        return REASON_PROTECTED_LOCATION
+    target = _path_for_location_check(candidate)
+    if target is None:
+        return REASON_PROTECTED_LOCATION
+    try:
+        resolved = target.expanduser().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return REASON_PROTECTED_LOCATION
+    home = _resolved_home()
+    if home is not None and (resolved == home or _is_under_root(resolved, home)):
+        # Judge the user's own tree before /var or /private: on macOS, pytest
+        # (and some real homes) live under /private/var/folders/.../T.
+        if resolved == home:
+            return REASON_PROTECTED_LOCATION
+        try:
+            relative = resolved.relative_to(home)
+        except ValueError:
+            return None
+        if relative.parts:
+            first = relative.parts[0]
+            if first.startswith(".") or first.casefold() == "library":
+                return REASON_PROTECTED_LOCATION
+            protected = {name.casefold() for name in _PROTECTED_HOME_CHILDREN}
+            if first.casefold() in protected:
+                return REASON_PROTECTED_LOCATION
+        return None
+    if _is_well_known_os_temp_path(resolved):
+        return None
+    if _is_direct_root_child(resolved) or _is_under_direct_root_child(resolved):
+        return REASON_PROTECTED_LOCATION
+    if _is_foreign_user_tree(resolved, home):
+        return REASON_PROTECTED_LOCATION
+    for prefix in _PROTECTED_SYSTEM_PREFIXES:
+        if _is_under_system_prefix(resolved, prefix):
+            return REASON_PROTECTED_LOCATION
+    for prefix in _PROTECTED_VAR_PREFIXES:
+        if _is_under_system_prefix(resolved, prefix):
+            return REASON_PROTECTED_LOCATION
+    if _is_windows_protected_path(candidate, resolved):
+        return REASON_PROTECTED_LOCATION
+    return None
+
+
 def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     # File tools use literal names. Trimming whitespace or expanding shell
     # variables can judge a different inode and hide an escaping symlink.
     candidate = _safe_string(path)
     if not candidate:
         return None
+    if _has_parent_dir_component(candidate):
+        return REASON_UNSAFE_PATH
     if vault is not None and _is_this_vault_claude_memory_path(candidate, vault):
         return None
     if _is_catastrophic_path(candidate):
@@ -448,11 +814,23 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     if vault is None:
         return None
 
+    if _is_unparsed_braced_home(candidate):
+        return REASON_UNSAFE_PATH
+    parsed = _parse_home_shorthand(candidate)
+    expanded: Path | None = None
+    if parsed is not None:
+        expanded = _expand_parsed_home(parsed)
+        if expanded is None and not parsed[0]:
+            return REASON_UNSAFE_PATH
+        # Unknown ``~user/rest`` is a cwd-relative filename for file tools.
     try:
-        expanded_path = Path(candidate)
+        expanded_path = expanded if expanded is not None else Path(candidate)
     except (OSError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     if expanded_path.is_absolute():
+        expanded_path = _normalize_write_path(expanded_path)
+        if expanded_path is None:
+            return REASON_UNSAFE_PATH
         try:
             expanded_path.resolve().relative_to(vault.resolve())
         except (OSError, ValueError):
@@ -465,6 +843,121 @@ def _unsafe_path_reason(path: Any, vault: Path | None) -> str | None:
     except (OSError, RuntimeError, TypeError, ValueError):
         return REASON_UNSAFE_PATH
     return REASON_UNSAFE_PATH if reason else None
+
+
+def _is_strict_mkdir_path(path: str) -> bool:
+    """True for one allow-listed mkdir operand.
+
+    Optional leading ``~/``, ``$HOME/``, or ``${HOME}/``. The rest is only
+    ``[A-Za-z0-9._/~-]``. No ``..`` segment and no ``~user``.
+    """
+    if not path:
+        return False
+    if any(part == ".." for part in path.split("/")):
+        return False
+    rest = path
+    if path.startswith("~/"):
+        rest = path[2:]
+    elif path.startswith("$HOME/"):
+        rest = path[6:]
+    elif path.startswith("${HOME}/"):
+        rest = path[8:]
+    elif path.startswith("~") or path.startswith("$"):
+        return False
+    if rest == "":
+        return True
+    return _STRICT_MKDIR_PATH_CHARS.fullmatch(rest) is not None
+
+
+def _parse_strict_mkdir_command(command: str) -> list[str] | None:
+    """Return operands when *command* fully matches the outside-vault allow-list.
+
+    The only matching form is ``mkdir`` with optional `` -p`` or `` --parents``,
+    then one or more space-separated paths. Anything else is not this exception.
+    """
+    if not command or any(char in command for char in "\n\r\0"):
+        return None
+    parts = command.split(" ")
+    if not parts or parts[0] != "mkdir":
+        return None
+    index = 1
+    if index < len(parts) and parts[index] in _STRICT_MKDIR_FLAGS:
+        index += 1
+    paths = parts[index:]
+    if not paths or any(part == "" for part in paths):
+        return None
+    if any(not _is_strict_mkdir_path(part) for part in paths):
+        return None
+    return paths
+
+
+def _evaluate_allowed_mkdir_paths(
+    paths: list[str],
+    *,
+    root: Path,
+    workdir: Path,
+    allow_os_temp: bool,
+) -> GateDecision | None:
+    """Refuse one allow-listed mkdir operand, or None when every path is allowed."""
+    for target in paths:
+        decision = _shell_target_decision(
+            target,
+            root=root,
+            workdir=workdir,
+            allow_os_temp=allow_os_temp,
+            as_directory=True,
+        )
+        if decision is not None:
+            return decision
+    return None
+
+
+def _resolve_shell_target(target: str, workdir: Path) -> str:
+    if _is_unjoined_shell_target(target):
+        return target
+    return str(_join_under(workdir, target))
+
+
+def _shell_target_decision(
+    target: str,
+    *,
+    root: Path,
+    workdir: Path,
+    allow_os_temp: bool,
+    as_directory: bool,
+) -> GateDecision | None:
+    """Refuse one mkdir/write operand, or None when the shell target is allowed."""
+    resolved_target = _resolve_shell_target(target, workdir)
+    if _has_parent_dir_component(target) or _has_parent_dir_component(resolved_target):
+        return GateDecision(
+            DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
+        )
+    if _is_catastrophic_path(target) or _is_catastrophic_path(resolved_target):
+        return GateDecision(
+            DECISION_BLOCK, REASON_PROTECTED_LOCATION, CODE_PROTECTED_LOCATION, 2
+        )
+    if allow_os_temp and _is_os_temp_path(target):
+        return None
+    if _is_temp_env_specifier(target):
+        return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
+    if _is_inside_vault(resolved_target, root):
+        target_path_reason = _unsafe_path_reason(resolved_target, root)
+        if target_path_reason:
+            return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
+        if not as_directory:
+            return None
+        target_folder_reason = new_top_level_folder_reason(
+            root, resolved_target, as_directory=True
+        )
+        if target_folder_reason:
+            return GateDecision(
+                DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
+            )
+        return None
+    protected = _protected_location_reason(resolved_target, root)
+    if protected:
+        return GateDecision(DECISION_BLOCK, protected, CODE_PROTECTED_LOCATION, 2)
+    return None
 
 
 def evaluate_safety_gate(
@@ -483,8 +976,8 @@ def evaluate_safety_gate(
         root = resolve_vault(vault)
     except VaultSelectionError as exc:
         return refusal(str(exc), exc.code)
-    command_text = _safe_string(command)
-    path_text = _safe_string(path)
+    command_text = command if isinstance(command, str) else ""
+    path_text = path if isinstance(path, str) else ""
     try:
         workdir = Path(cwd).expanduser().resolve() if cwd is not None else root
     except (OSError, RuntimeError, TypeError, ValueError):
@@ -506,6 +999,8 @@ def evaluate_safety_gate(
         if GITHUB_REPO_DELETE.search(command_text):
             return GateDecision(DECISION_BLOCK, REASON_GITHUB_DELETE, CODE_GITHUB_REPO_DELETE, 2)
 
+    if path_text and _has_parent_dir_component(path_text):
+        return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
     path_is_os_temp = allow_os_temp and _is_os_temp_path(path_text)
     if _is_temp_env_specifier(path_text) and not path_is_os_temp:
         return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
@@ -518,27 +1013,29 @@ def evaluate_safety_gate(
         if folder_reason:
             return GateDecision(DECISION_BLOCK, folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2)
     if command_text:
+        allowed_paths = _parse_strict_mkdir_command(command_text)
+        if allowed_paths is not None:
+            mkdir_decision = _evaluate_allowed_mkdir_paths(
+                allowed_paths,
+                root=root,
+                workdir=workdir,
+                allow_os_temp=allow_os_temp,
+            )
+            return ALLOW if mkdir_decision is None else mkdir_decision
         for target in mkdir_targets(command_text):
-            if _is_catastrophic_path(target):
-                resolved_target = target
-            elif (
-                Path(target).is_absolute()
-                or target.startswith(("~/", "$HOME/"))
-                or _is_temp_env_specifier(target)
-            ):
+            if _is_catastrophic_path(target) or _is_unjoined_shell_target(target):
                 resolved_target = target
             else:
                 resolved_target = str(workdir / target)
-            if allow_os_temp and _is_os_temp_path(target):
-                continue
+            # Non-allow-list mkdir does not get the outside-vault exception,
+            # including OS-temp paths. Only the strict allow-list may create
+            # a folder outside the vault.
             if _is_temp_env_specifier(target):
                 return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
             target_path_reason = _unsafe_path_reason(resolved_target, root)
             if target_path_reason:
                 return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
-            target_folder_reason = new_top_level_folder_reason(
-                root, resolved_target, as_directory=True
-            )
+            target_folder_reason = new_top_level_folder_reason(root, resolved_target, as_directory=True)
             if target_folder_reason:
                 return GateDecision(
                     DECISION_BLOCK, target_folder_reason, CODE_NEW_TOP_LEVEL_FOLDER, 2
@@ -653,7 +1150,7 @@ def evaluate_hook_payload(payload: Mapping[str, Any] | None, *, vault: str | Pat
         if _is_os_temp_path(path):
             target = path
             allow_os_temp = True
-        elif _is_catastrophic_path(path):
+        elif _is_unjoined_shell_target(path):
             target = path
             allow_os_temp = False
         else:
