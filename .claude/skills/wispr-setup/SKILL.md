@@ -38,10 +38,18 @@ you are sitting in a session and one that works overnight. Once connected:
 You need a Wispr Flow account with the notetaker enabled. There is no key to
 paste and nothing to copy: you authorise once in a browser.
 
+## Which Python to use
+
+Run every command here from the vault folder with the vault's own Python, the
+one Dex installed its packages into: `.venv/bin/python` on a Mac or Linux
+computer, `.venv/Scripts/python.exe` on Windows. Never use a bare `python3`. It
+can be a different Python with none of Dex's packages, and then the connection
+fails with `No module named 'mcp'`.
+
 ## Step 1: Run the connection
 
 ```bash
-python3 -c "from pathlib import Path; from core.meeting_sources.wispr_setup import connect; print(connect(Path('.')))"
+./.venv/bin/python -c "from pathlib import Path; from core.meeting_sources.wispr_setup import connect; print(connect(Path('.')))"
 ```
 
 This registers Dex with Wispr, opens your browser, and waits for you to approve.
@@ -53,7 +61,7 @@ with owner-only permissions.
 ## Step 2: Confirm it worked
 
 ```bash
-python3 -c "from pathlib import Path; from core.meeting_sources import wispr_client; print(wispr_client.list_tools(Path('.')))"
+./.venv/bin/python -c "from pathlib import Path; from core.meeting_sources import wispr_client; print(wispr_client.list_tools(Path('.')))"
 ```
 
 You should see the tools Wispr exposes. If this fails, say what the error was
@@ -62,7 +70,7 @@ rather than assuming the connection is fine.
 ## Step 3: Pull your recent captures
 
 ```bash
-python3 -m core.meeting_sources.wispr_sync
+./.venv/bin/python -m core.meeting_sources.wispr_sync
 ```
 
 It reports what it did in one line. Then run `/process-meetings` to turn the new
@@ -71,8 +79,10 @@ notes into person page updates and tasks.
 ## Step 4: Keep it running (optional)
 
 To have captures arrive on their own, schedule the same command. On macOS that
-is a launch agent running `python3 -m core.meeting_sources.wispr_sync` with
-`VAULT_PATH` set to your vault.
+is a launch agent running `<vault>/.venv/bin/python -m core.meeting_sources.wispr_sync`
+with `VAULT_PATH` set to your vault. Give it the full path to the vault's own
+Python, never a bare `python3`: the scheduler starts with none of your shell's
+setup, and a `python3` found on the system path can change under you.
 
 ## Two things to tell the user plainly
 

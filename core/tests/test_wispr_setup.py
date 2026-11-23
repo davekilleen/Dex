@@ -10,14 +10,18 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import urllib.error
 import urllib.parse
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
 from core.meeting_sources import wispr_setup
 from core.meeting_sources.wispr_auth import RESOURCE, WisprAuthError
+
+SKILL = Path(__file__).resolve().parents[2] / ".claude/skills/wispr-setup/SKILL.md"
 
 
 class _Response(BytesIO):
@@ -143,3 +147,20 @@ def test_connect_stores_a_usable_credential(monkeypatch, tmp_path):
     assert path.stat().st_mode & 0o777 == 0o600
     assert wispr_auth.is_connected(tmp_path) is True
     assert json.loads(path.read_text())["client_id"] == "client_X"
+
+
+def test_the_setup_skill_runs_on_the_python_dex_manages():
+    """A bare python3 can be any interpreter on PATH, including one with no Dex packages.
+
+    A package manager repointing python3 at a fresh install broke a scheduled
+    sync with "No module named 'mcp'" while every MCP server, which runs on the
+    vault's .venv, kept working.
+    """
+    text = SKILL.read_text(encoding="utf-8")
+    commands = re.findall(r"^\S*python\S* -[cm] .*$", text, re.M)
+    scheduled = re.findall(r"`(\S*python\S* -m core\.meeting_sources\.wispr_sync)`", text)
+
+    assert len(commands) == 3
+    assert all(c.startswith("./.venv/bin/python ") for c in commands), commands
+    assert scheduled == ["<vault>/.venv/bin/python -m core.meeting_sources.wispr_sync"]
+    assert not re.search(r"^python3 ", text, re.M)
