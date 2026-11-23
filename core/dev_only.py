@@ -152,8 +152,28 @@ def is_dev_leftover_archive_path(path: str) -> bool:
     return path.startswith(DEV_LEFTOVER_ARCHIVE_PREFIX)
 
 
+# Runtime secret/state prefixes that appear in ``.distignore`` but must never
+# be rewritten by leftover tidy. Classification may still list them; the write
+# bound and tidy preview skip them so owner-only journals stay owner-only.
+SECRET_RUNTIME_TIDY_PREFIXES = (
+    "System/.dex/adoption/credential-journals/",
+    "System/.dex/adoption/history-backups/",
+    "System/.dex/customization-migrations/",
+)
+
+
+def is_secret_runtime_tidy_path(path: str) -> bool:
+    for prefix in SECRET_RUNTIME_TIDY_PREFIXES:
+        root = prefix[:-1] if prefix.endswith("/") else prefix
+        if path == root or path.startswith(root + "/"):
+            return True
+    return False
+
+
 def is_tidable_leftover_source(path: str) -> bool:
     """True when the ownership contract may move this leftover source path."""
+    if is_secret_runtime_tidy_path(path):
+        return False
     return matches_dev_only_pattern(path, CONTRACT_TIDY_PATTERNS)
 
 
@@ -172,6 +192,7 @@ __all__ = [
     "archived_source_path",
     "internal_object_store_root",
     "is_dev_leftover_archive_path",
+    "is_secret_runtime_tidy_path",
     "is_tidable_leftover_source",
     "load_distignore_patterns",
     "matches_dev_only_pattern",

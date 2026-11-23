@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -216,6 +217,26 @@ def test_tidy_dev_leftovers_dry_run_and_apply(tmp_path: Path) -> None:
     assert (vault / "notes.md").read_bytes() == b"leave me\n"
 
 
+def test_tidy_preserves_owner_only_mode(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _install_catalog(vault, patterns=DEV_PATTERNS)
+    secret = vault / "core/tests/secret.py"
+    write_file(vault, "core/tests/secret.py", b"TOKEN = 'x'\n")
+    secret.chmod(0o600)
+
+    preview = preview_tidy_dev_leftovers(vault, clock=lambda: CLOCK)
+    result = apply_tidy_dev_leftovers(
+        vault, str(preview["preview_sha256"]), clock=lambda: CLOCK
+    )
+    archived = vault / str(result["archive_dir"]) / "core/tests/secret.py"
+    assert stat.S_IMODE(archived.stat().st_mode) == 0o600
+
+    restore_dev_leftovers(vault, str(result["archive_dir"]))
+    assert secret.read_bytes() == b"TOKEN = 'x'\n"
+    assert stat.S_IMODE(secret.stat().st_mode) == 0o600
+
+
 def test_tidy_refuses_a_symlinked_leftover(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()
@@ -283,6 +304,11 @@ def test_tidy_operation_allows_only_leftover_and_archive_paths() -> None:
         exists=True,
         operation="dev-leftover-tidy",
     )
+    journals = portable_contract.update_write_verdict(
+        "System/.dex/adoption/credential-journals/preimage.env",
+        exists=True,
+        operation="dev-leftover-tidy",
+    )
 
     assert leftover.allowed is True
     assert leftover.action == "write-dev-leftover-tidy"
@@ -290,6 +316,8 @@ def test_tidy_operation_allows_only_leftover_and_archive_paths() -> None:
     assert archive.action == "write-dev-leftover-tidy"
     assert notes.allowed is False
     assert notes.action == "outside-dev-leftover-tidy"
+    assert journals.allowed is False
+    assert journals.action == "outside-dev-leftover-tidy"
 
 
 def test_stock_unmodified_shipped_file_is_not_a_customization(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ from core.dev_only import (
     archive_dir_for,
     archived_source_path,
     is_dev_leftover_archive_path,
+    is_tidable_leftover_source,
 )
 from core.lifecycle.filesystem import (
     STOCK_HASH_MAX_BYTES,
@@ -48,10 +49,21 @@ def leftover_paths(assessment: Assessment) -> tuple[str, ...]:
         exclusion.path
         for exclusion in assessment.exclusions
         if exclusion.reason == "dev-only-leftover"
+        and is_tidable_leftover_source(exclusion.path)
     )
 
 
-def _inspect_file(root: Path, relative: str) -> tuple[bytes, str, int]:
+def _file_mode(st_mode: int) -> int:
+    mode = stat.S_IMODE(st_mode)
+    if mode & ~0o777:
+        raise MigrationServiceError(
+            "leftover-unreadable",
+            "A leftover file could not be read.",
+        )
+    return mode
+
+
+def _inspect_file(root: Path, relative: str) -> tuple[bytes, str, int, int]:
     target = root / relative
     try:
         metadata = target.lstat()
@@ -77,7 +89,7 @@ def _inspect_file(root: Path, relative: str) -> tuple[bytes, str, int]:
             "leftover-unreadable",
             "A leftover file could not be read.",
         ) from error
-    return raw, hashlib.sha256(raw).hexdigest(), len(raw)
+    return raw, hashlib.sha256(raw).hexdigest(), len(raw), _file_mode(metadata.st_mode)
 
 
 def preview_tidy_dev_leftovers(
@@ -91,12 +103,13 @@ def preview_tidy_dev_leftovers(
     archive_dir = archive_dir_for(_stamp(clock))
     files: list[dict[str, object]] = []
     for path in leftover_paths(assessment):
-        _raw, digest, size = _inspect_file(root, path)
+        _raw, digest, size, mode = _inspect_file(root, path)
         files.append(
             {
                 "path": path,
                 "sha256": digest,
                 "size": size,
+                "mode": mode,
                 "archived_path": archived_source_path(archive_dir, path),
             }
         )
@@ -104,7 +117,12 @@ def preview_tidy_dev_leftovers(
     # dry-run and the later confirm still match when a second has passed.
     token_payload = {
         "files": [
-            {"path": item["path"], "sha256": item["sha256"], "size": item["size"]}
+            {
+                "path": item["path"],
+                "sha256": item["sha256"],
+                "size": item["size"],
+                "mode": item["mode"],
+            }
             for item in files
         ]
     }
@@ -140,7 +158,12 @@ def apply_tidy_dev_leftovers(
             "manifest_path": None,
         }
     manifest_files = [
-        {"path": item["path"], "sha256": item["sha256"], "size": item["size"]}
+        {
+            "path": item["path"],
+            "sha256": item["sha256"],
+            "size": item["size"],
+            "mode": item["mode"],
+        }
         for item in files
     ]
     manifest = {
@@ -159,8 +182,8 @@ def apply_tidy_dev_leftovers(
     ]
     for item in files:
         path = str(item["path"])
-        raw, digest, size = _inspect_file(root, path)
-        if digest != item["sha256"] or size != item["size"]:
+        raw, digest, size, mode = _inspect_file(root, path)
+        if digest != item["sha256"] or size != item["size"] or mode != item["mode"]:
             raise MigrationServiceError(
                 "leftover-drifted",
                 "A leftover file changed after the preview, so nothing was moved.",
@@ -169,7 +192,7 @@ def apply_tidy_dev_leftovers(
             PlanEntry(
                 str(item["archived_path"]),
                 raw,
-                mode=0o644,
+                mode=mode,
                 expected_absent=True,
             )
         )
@@ -177,6 +200,7 @@ def apply_tidy_dev_leftovers(
             PlanEntry(
                 path,
                 None,
+                mode=mode,
                 expected_current_sha256=digest,
             )
         )
@@ -254,18 +278,21 @@ def restore_dev_leftovers(vault_root: Path, archive_dir: str) -> dict[str, objec
         source_path = item.get("path")
         digest = item.get("sha256")
         size = item.get("size")
+        mode = item.get("mode")
         if (
             not isinstance(source_path, str)
             or not isinstance(digest, str)
             or type(size) is not int
+            or type(mode) is not int
+            or mode & ~0o777
         ):
             raise MigrationServiceError(
                 "invalid-archive",
                 "The leftover archive manifest is not a recognised restore record.",
             )
         archived = archived_source_path(relative, source_path)
-        payload, actual_digest, actual_size = _inspect_file(root, archived)
-        if actual_digest != digest or actual_size != size:
+        payload, actual_digest, actual_size, actual_mode = _inspect_file(root, archived)
+        if actual_digest != digest or actual_size != size or actual_mode != mode:
             raise MigrationServiceError(
                 "archive-drifted",
                 "An archived leftover no longer matches its manifest, so nothing was restored.",
@@ -279,7 +306,7 @@ def restore_dev_leftovers(vault_root: Path, archive_dir: str) -> dict[str, objec
             PlanEntry(
                 source_path,
                 payload,
-                mode=0o644,
+                mode=mode,
                 expected_absent=True,
             )
         )
@@ -287,6 +314,7 @@ def restore_dev_leftovers(vault_root: Path, archive_dir: str) -> dict[str, objec
             PlanEntry(
                 archived,
                 None,
+                mode=mode,
                 expected_current_sha256=digest,
             )
         )
