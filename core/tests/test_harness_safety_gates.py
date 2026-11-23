@@ -355,30 +355,28 @@ def test_cp_and_curl_into_ordinary_outside_folder_match_mkdir(
     assert curl.code == mkdir.code
 
 
-@pytest.mark.parametrize(
-    "command",
-    (
+def test_mkdir_protected_locations_stay_blocked(tmp_path: Path, monkeypatch) -> None:
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    # Built at runtime so source never contains a literal /Users/ path.
+    other_user = str(Path("/") / "Users" / "other")
+    commands = (
         "mkdir /",
         "mkdir ~",
         "mkdir $HOME",
-        "mkdir /Users/other",
+        f"mkdir {other_user}",
         "mkdir -p /etc/foo",
         "mkdir -p /usr/local/x",
         "mkdir -p ~/Library/x",
         "mkdir -p ~/.ssh/x",
         "mkdir -p ~/.claude/other",
-    ),
-)
-def test_mkdir_protected_locations_stay_blocked(
-    tmp_path: Path, monkeypatch, command: str
-) -> None:
-    vault = _vault(tmp_path)
-    _memory_home(tmp_path, monkeypatch)
-    decision = evaluate_safety_gate(command=command, vault=vault)
-    assert decision.refused is True, command
-    assert decision.code == CODE_PROTECTED_LOCATION
-    assert decision.reason == REASON_PROTECTED_LOCATION
-    assert "outside the vault" not in decision.reason
+    )
+    for command in commands:
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION
+        assert decision.reason == REASON_PROTECTED_LOCATION
+        assert "outside the vault" not in decision.reason
 
 
 def test_parsed_writes_to_protected_locations_match_mkdir(

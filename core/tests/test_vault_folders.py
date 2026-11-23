@@ -199,6 +199,21 @@ def test_mkdir_through_symlinked_parent_escaping_vault_is_blocked(tmp_path: Path
     assert decision.code == "unsafe_path"
 
 
+def test_parsed_write_through_vault_symlink_to_protected_location_is_blocked(
+    tmp_path: Path,
+) -> None:
+    vault = _vault(tmp_path)
+    inbox = vault / "00-Inbox"
+    inbox.mkdir()
+    (inbox / "escape").symlink_to("/etc")
+    copy = evaluate_safety_gate(command="cp a.jpg 00-Inbox/escape/passwd", vault=vault)
+    redirect = evaluate_safety_gate(command="echo x > 00-Inbox/escape/passwd", vault=vault)
+    assert copy.refused is True
+    assert copy.code == "unsafe_path"
+    assert redirect.refused is True
+    assert redirect.code == "unsafe_path"
+
+
 def test_shell_write_targets_reads_curl_cp_and_redirects() -> None:
     assert shell_write_targets("curl -o ~/CloudProj/x.jpg https://example.invalid/x.jpg") == [
         "~/CloudProj/x.jpg"

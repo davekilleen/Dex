@@ -587,8 +587,16 @@ def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
     except (OSError, RuntimeError, TypeError, ValueError):
         return REASON_PROTECTED_LOCATION
     home = _resolved_home()
-    if home is not None and resolved == home:
-        return REASON_PROTECTED_LOCATION
+    if home is not None and (resolved == home or _is_under_root(resolved, home)):
+        # Judge the user's own tree before /var or /private: on macOS, pytest
+        # (and some real homes) live under /private/var/folders/.../T.
+        if resolved == home:
+            return REASON_PROTECTED_LOCATION
+        for name in _PROTECTED_HOME_CHILDREN:
+            protected_root = home / name
+            if resolved == protected_root or _is_under_root(resolved, protected_root):
+                return REASON_PROTECTED_LOCATION
+        return None
     if _is_direct_root_child(resolved):
         return REASON_PROTECTED_LOCATION
     if _is_foreign_user_tree(resolved, home):
@@ -601,11 +609,6 @@ def _protected_location_reason(path: Any, vault: Path | None) -> str | None:
             return REASON_PROTECTED_LOCATION
     if _is_windows_protected_path(candidate, resolved):
         return REASON_PROTECTED_LOCATION
-    if home is not None:
-        for name in _PROTECTED_HOME_CHILDREN:
-            protected_root = home / name
-            if resolved == protected_root or _is_under_root(resolved, protected_root):
-                return REASON_PROTECTED_LOCATION
     return None
 
 
@@ -667,11 +670,11 @@ def _shell_target_decision(
     if _is_temp_env_specifier(target):
         return GateDecision(DECISION_BLOCK, REASON_UNSAFE_PATH, CODE_UNSAFE_PATH, 2)
     if _is_inside_vault(resolved_target, root):
-        if not as_directory:
-            return None
         target_path_reason = _unsafe_path_reason(resolved_target, root)
         if target_path_reason:
             return GateDecision(DECISION_BLOCK, target_path_reason, CODE_UNSAFE_PATH, 2)
+        if not as_directory:
+            return None
         target_folder_reason = new_top_level_folder_reason(
             root, resolved_target, as_directory=True
         )
