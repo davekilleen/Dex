@@ -482,6 +482,49 @@ def test_mkdir_wrappers_quotes_and_prefixes_are_refused(
         assert decision.reason == REASON_PROTECTED_LOCATION, command
 
 
+def test_globbed_mkdir_spellings_are_refused(tmp_path: Path, monkeypatch) -> None:
+    """A glob that expands to mkdir is treated as mkdir, then fail-closed."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+    for command in (
+        "/bin/mkdi* ~/.ssh",
+        "mkdi* ~/.gnupg",
+        "/usr/bin/mkdi? ~/.ssh",
+        "mkd?? ~/.ssh",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is True, command
+        assert decision.code == CODE_PROTECTED_LOCATION, command
+        assert decision.reason == REASON_PROTECTED_LOCATION, command
+    for command in (
+        "mkdir -p ~/Projects/new",
+        "mkdir -p /tmp/x",
+        "mkdir -p 00-Inbox/sub",
+        "ls *",
+        "echo *.md",
+        "cp a.jpg /etc/foo",
+    ):
+        decision = evaluate_safety_gate(command=command, vault=vault)
+        assert decision.refused is False, (command, decision.reason)
+
+
+def test_malformed_mkdir_glob_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    """A glob that cannot be matched is treated as mkdir and refused."""
+    vault = _vault(tmp_path)
+    _memory_home(tmp_path, monkeypatch)
+
+    def boom(name: str, pat: str) -> bool:
+        raise ValueError("malformed glob")
+
+    monkeypatch.setattr("core.gates.safety.fnmatch.fnmatch", boom)
+    decision = evaluate_safety_gate(command="echo mkd[ir", vault=vault)
+    assert decision.refused is True
+    assert decision.code == CODE_PROTECTED_LOCATION
+    assert decision.reason == REASON_PROTECTED_LOCATION
+    allowed = evaluate_safety_gate(command="ls *", vault=vault)
+    assert allowed.refused is False, allowed.reason
+
+
 def test_mkdir_os_temp_and_tmpdir_stay_allowed(tmp_path: Path, monkeypatch) -> None:
     vault = _vault(tmp_path)
     scratch = _isolate_tempdir(monkeypatch, tmp_path / "scratch")

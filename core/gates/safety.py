@@ -9,6 +9,7 @@ refusal. Claude's wrapper exits 2 after the same function returns a block.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -86,7 +87,7 @@ SQL_DROP = re.compile(r"(DROP\s+TABLE|DROP\s+DATABASE)", re.IGNORECASE)
 GITHUB_REPO_DELETE = re.compile(r"gh\s+repo\s+delete")
 CHMOD_777 = re.compile(r"chmod\s+777")
 KILL_9 = re.compile(r"kill\s+-9")
-_MKDIR_WORD = re.compile(r"\bmkdir\b", re.IGNORECASE)
+_MKDIR_GLOB_CHARS = frozenset("*?[")
 _MKDIR_BANNED_WORD = re.compile(
     r"(?:^|\s)(?:cd|pushd|command|env|sudo|xargs|busybox|exec)(?:\s|$)",
     re.IGNORECASE,
@@ -851,6 +852,33 @@ def _tilde_form_is_disallowed(command: str) -> bool:
     return False
 
 
+def _command_looks_like_mkdir(command: str) -> bool:
+    """True when the command should be judged as mkdir, then fail closed.
+
+    A pathname glob such as ``/bin/mkdi*`` never contains the word ``mkdir``,
+    so detection refuses more spellings rather than parsing wrappers. The
+    letters ``mkdi`` (case-insensitive) cover ``mkdir``, ``mkdi*``, and
+    ``/bin/mkdi*``. A whitespace token whose basename is a glob (not a lone
+    ``*`` or ``?``) that matches ``mkdir`` covers ``mkd??``. A malformed glob
+    is treated as mkdir.
+    """
+    if "mkdi" in command.lower():
+        return True
+    for token in command.split():
+        basename = os.path.basename(token)
+        if not _MKDIR_GLOB_CHARS.intersection(basename):
+            continue
+        if basename in {"*", "?"}:
+            continue
+        try:
+            matched = fnmatch.fnmatch("mkdir", basename)
+        except Exception:
+            return True
+        if matched:
+            return True
+    return False
+
+
 def _is_bare_mkdir_prefix(command: str) -> bool:
     stripped = command.lstrip()
     if len(stripped) < 5 or stripped[:5].lower() != "mkdir":
@@ -928,11 +956,11 @@ def _evaluate_mkdir_command(
 ) -> GateDecision | None:
     """Refuse or allow a mkdir command. None means the command is not mkdir.
 
-    Any command containing the word ``mkdir`` (including quoted or wrapped
-    forms) must be a simple bare mkdir. Wrapper, quoted, and path-prefixed
-    spellings are refused rather than parsed.
+    Any command that looks like mkdir — the letters ``mkdi``, or a glob that
+    matches mkdir — must be a simple bare mkdir. Wrapper, quoted, globbed,
+    and path-prefixed spellings are refused rather than parsed.
     """
-    if _MKDIR_WORD.search(command) is None:
+    if not _command_looks_like_mkdir(command):
         return None
     operands = _simple_mkdir_operands(command)
     if operands is None:
